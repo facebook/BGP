@@ -94,6 +94,7 @@ folly::coro::Task<void> UpdateGroupManager::maybeDestroyUpdateGroups(
     group->deactivateChangeListConsumer();
     group->resetChangeListConsumer();
     group->clearPackingList();
+    group->clearLastSeenRibVersion();
 
     updateGroups_.erase(it);
     BgpStats::decrNumUpdateGroups();

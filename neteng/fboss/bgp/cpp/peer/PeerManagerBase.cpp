@@ -2363,6 +2363,7 @@ folly::coro::Task<void> PeerManagerBase::sessionTerminated(
   adjRib->markStateTerminated();
   adjRib->resetInInitialAnnouncement();
   adjRib->deactivateChangeListConsumer();
+  adjRib->clearLastSeenRibVersion();
 
   if (enableUpdateGroup_) {
     /*

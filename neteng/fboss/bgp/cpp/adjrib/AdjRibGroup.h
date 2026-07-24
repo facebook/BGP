@@ -1059,6 +1059,14 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   }
 
   /*
+   * Clear the last seen RIB version for this group.
+   * Called when the group is destroyed.
+   */
+  void clearLastSeenRibVersion() noexcept {
+    lastSeenRibVersion_ = 0;
+  }
+
+  /*
    * Check if a peer (identified by bit position) is in sync with this group.
    * A peer is in-sync if its bit is set in adjRibSyncBitmap_.
    * Used to determine whether to return group's or peer's cached RIB version.

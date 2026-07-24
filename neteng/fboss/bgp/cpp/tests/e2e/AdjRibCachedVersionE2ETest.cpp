@@ -33,6 +33,7 @@
 
 #include <folly/logging/xlog.h>
 #include "fboss/lib/CommonUtils.h"
+#include "neteng/fboss/bgp/cpp/adjrib/AdjRibGroup.h"
 #include "neteng/fboss/bgp/cpp/tests/e2e/E2ETestFixture.h"
 
 using namespace facebook::bgp;
@@ -596,6 +597,218 @@ TEST_F(AdjRibCachedVersionE2ETest, RibDumpSetsCorrectCachedVersion) {
    */
   EXPECT_TRUE(waitForPeerCachedVersion(kPeerAddr4, ribVersion));
   EXPECT_EQ(getPeerCachedRibVersion(kPeerAddr4), ribVersion);
+}
+
+/*
+ * Test: lastSeenRibVersion is reset to 0 when the peer session is terminated,
+ * with update group DISABLED.
+ *
+ * Steps:
+ * 1. Bring up source peer3 and receiver peer4 (update group off)
+ * 2. Inject a route from peer3, verify peer4 receives it
+ * 3. Verify peer4's cachedRibVersion is non-zero
+ * 4. Terminate peer4's session (AdjRib retained, peerDelete=false)
+ * 5. Verify peer4's cachedRibVersion is reset to 0
+ */
+TEST_F(AdjRibCachedVersionE2ETest, VersionClearedOnTerminateNoUpdateGroup) {
+  addPeer(kDefaultPeerSpec3_v4only); /* Route source */
+  addPeer(kDefaultPeerSpec4_v4only); /* Receiver */
+
+  createRib();
+  createPeerManager(
+      false /* enableUpdateGroup */, true /* enableEgressBackpressure */);
+
+  bringUpPeer(kPeerAddr3);
+  bringUpPeer(kPeerAddr4);
+
+  BgpPeerId peerId3{kPeerAddr3, kPeerAddr3.asV4().toLongHBO()};
+  BgpPeerId peerId4{kPeerAddr4, kPeerAddr4.asV4().toLongHBO()};
+
+  sendEoRToPeer(peerId3);
+  sendEoRToPeer(peerId4);
+  EXPECT_TRUE(waitForEoR(peerId4));
+
+  /* Inject a route from peer3 and verify peer4 receives it */
+  addRoute("v4", "10.0.1.0", 24, kPeerAddr3, kNextHopV4_3.str());
+  EXPECT_TRUE(
+      verifyRouteAdd("v4", "10.0.1.0", 24, kPeerAddr4, kNextHopV4_4.str()));
+
+  /* peer4 consumed an update, so its cached version must be non-zero */
+  EXPECT_TRUE(waitForPeerCachedVersion(kPeerAddr4, 1));
+  EXPECT_GT(getPeerCachedRibVersion(kPeerAddr4), 0);
+
+  /* Terminate peer4's session; AdjRib is retained (peerDelete=false) */
+  bringDownPeer(kPeerAddr4);
+
+  /* lastSeenRibVersion must be reset to 0 on session termination */
+  EXPECT_EQ(getPeerCachedRibVersion(kPeerAddr4), 0);
+}
+
+/*
+ * Test: lastSeenRibVersion is reset to 0 when the peer session is terminated,
+ * with update group ENABLED.
+ *
+ * getLastSeenRibVersion() returns the group's cached version while a peer is
+ * in-sync with its update group. On termination, unregisterPeer() detaches the
+ * peer (clears its group bit position) before clearLastSeenRibVersion() zeroes
+ * the per-peer value, so the getter falls through to the cleared per-peer
+ * value.
+ *
+ * Steps:
+ * 1. Bring up source peer3 and receivers peer4/peer5 (update group on)
+ * 2. Inject a route from peer3, verify both receivers get it via the group
+ * 3. Verify both receivers' cachedRibVersion is non-zero
+ * 4. Terminate peer4's session (AdjRib retained, peerDelete=false)
+ * 5. Verify peer4's cachedRibVersion is reset to 0
+ * 6. Verify peer5 (still up) retains its non-zero version
+ */
+TEST_F(AdjRibCachedVersionE2ETest, VersionClearedOnTerminateWithUpdateGroup) {
+  addPeer(kDefaultPeerSpec3_v4only); /* Route source */
+  addPeer(kDefaultPeerSpec4_v4only); /* Receiver 1 */
+  addPeer(kDefaultPeerSpec5_v4only); /* Receiver 2 */
+
+  createRib();
+  createPeerManager(
+      true /* enableUpdateGroup */, true /* enableEgressBackpressure */);
+
+  bringUpPeer(kPeerAddr3);
+  bringUpPeer(kPeerAddr4);
+  bringUpPeer(kPeerAddr5);
+
+  BgpPeerId peerId3{kPeerAddr3, kPeerAddr3.asV4().toLongHBO()};
+  BgpPeerId peerId4{kPeerAddr4, kPeerAddr4.asV4().toLongHBO()};
+  BgpPeerId peerId5{kPeerAddr5, kPeerAddr5.asV4().toLongHBO()};
+
+  sendEoRToPeer(peerId3);
+  sendEoRToPeer(peerId4);
+  sendEoRToPeer(peerId5);
+  EXPECT_TRUE(waitForEoR(peerId4));
+  EXPECT_TRUE(waitForEoR(peerId5));
+
+  /* Inject a route from peer3 and verify both receivers get it via the group */
+  addRoute("v4", "10.0.1.0", 24, kPeerAddr3, kNextHopV4_3.str());
+  EXPECT_TRUE(
+      verifyRouteAdd("v4", "10.0.1.0", 24, kPeerAddr4, kNextHopV4_4.str()));
+  EXPECT_TRUE(
+      verifyRouteAdd("v4", "10.0.1.0", 24, kPeerAddr5, kNextHopV4_5.str()));
+
+  /* Both receivers consumed the group update; versions must be non-zero */
+  EXPECT_TRUE(waitForPeerCachedVersion(kPeerAddr4, 1));
+  EXPECT_TRUE(waitForPeerCachedVersion(kPeerAddr5, 1));
+  EXPECT_GT(getPeerCachedRibVersion(kPeerAddr4), 0);
+  EXPECT_GT(getPeerCachedRibVersion(kPeerAddr5), 0);
+
+  /* Terminate peer4's session; unregisters it from the update group */
+  bringDownPeer(kPeerAddr4);
+
+  /*
+   * peer4's cached version must be reset to 0 even though it was part of an
+   * update group: after unregisterPeer, getLastSeenRibVersion() returns the
+   * per-peer value (cleared to 0), not the group's version.
+   */
+  EXPECT_EQ(getPeerCachedRibVersion(kPeerAddr4), 0);
+
+  /* peer5 is still up and must retain its non-zero version */
+  EXPECT_GT(getPeerCachedRibVersion(kPeerAddr5), 0);
+}
+
+/*
+ * Test: the update group's lastSeenRibVersion is reset to 0 when the group is
+ * destroyed (its last member's session is terminated).
+ *
+ * UpdateGroupManager::maybeDestroyUpdateGroups() calls the group's
+ * clearLastSeenRibVersion() right before erasing an empty group. We keep the
+ * group alive via a shared_ptr so its version is observable after teardown.
+ *
+ * Steps:
+ * 1. Bring up source peer3 and receivers peer4/peer5 (update group on)
+ * 2. Inject a route so the group's lastSeenRibVersion advances past 0
+ * 3. Capture peer4's update group (held alive by a shared_ptr)
+ * 4. Verify the group's lastSeenRibVersion is non-zero
+ * 5. Terminate every member's session so the group is destroyed
+ * 6. Verify the group's lastSeenRibVersion is reset to 0
+ */
+TEST_F(AdjRibCachedVersionE2ETest, GroupVersionClearedOnGroupDestroy) {
+  addPeer(kDefaultPeerSpec3_v4only); /* Route source */
+  addPeer(kDefaultPeerSpec4_v4only); /* Receiver 1 */
+  addPeer(kDefaultPeerSpec5_v4only); /* Receiver 2 */
+
+  createRib();
+  createPeerManager(
+      true /* enableUpdateGroup */, true /* enableEgressBackpressure */);
+
+  bringUpPeer(kPeerAddr3);
+  bringUpPeer(kPeerAddr4);
+  bringUpPeer(kPeerAddr5);
+
+  BgpPeerId peerId3{kPeerAddr3, kPeerAddr3.asV4().toLongHBO()};
+  BgpPeerId peerId4{kPeerAddr4, kPeerAddr4.asV4().toLongHBO()};
+  BgpPeerId peerId5{kPeerAddr5, kPeerAddr5.asV4().toLongHBO()};
+
+  sendEoRToPeer(peerId3);
+  sendEoRToPeer(peerId4);
+  sendEoRToPeer(peerId5);
+  EXPECT_TRUE(waitForEoR(peerId4));
+  EXPECT_TRUE(waitForEoR(peerId5));
+
+  /* Inject a route so the group's lastSeenRibVersion advances past 0 */
+  addRoute("v4", "10.0.1.0", 24, kPeerAddr3, kNextHopV4_3.str());
+  EXPECT_TRUE(
+      verifyRouteAdd("v4", "10.0.1.0", 24, kPeerAddr4, kNextHopV4_4.str()));
+  EXPECT_TRUE(
+      verifyRouteAdd("v4", "10.0.1.0", 24, kPeerAddr5, kNextHopV4_5.str()));
+  EXPECT_TRUE(waitForPeerCachedVersion(kPeerAddr4, 1));
+
+  /*
+   * Capture the receiver's update group. Holding this shared_ptr keeps the
+   * group object alive after it is erased on destruction, so we can read its
+   * version. Access AdjRib/group state on the PeerManager EVB to avoid a
+   * TSAN data race.
+   */
+  auto adjRib = getAdjRibByAddr(kPeerAddr4);
+  ASSERT_NE(adjRib, nullptr);
+
+  std::shared_ptr<AdjRibOutGroup> group;
+  uint64_t groupId = 0;
+  peerManager_->getEventBase().runInEventBaseThreadAndWait([&]() {
+    group = adjRib->getUpdateGroup();
+    if (group) {
+      groupId = group->getGroupId();
+    }
+  });
+  ASSERT_NE(group, nullptr);
+
+  auto groupVersion = [&]() {
+    uint64_t version = 0;
+    peerManager_->getEventBase().runInEventBaseThreadAndWait(
+        [&]() { version = group->getLastSeenRibVersion(); });
+    return version;
+  };
+
+  /*
+   * getUpdateGroupInfo() returns live groups from the UpdateGroupManager;
+   * filtering by this group's id yields an entry only while it exists.
+   */
+  auto groupExistsInManager = [&]() {
+    return !peerManager_->getUpdateGroupInfo(static_cast<int64_t>(groupId))
+                .empty();
+  };
+
+  /* Before teardown: group is live in the manager with a non-zero version */
+  EXPECT_TRUE(groupExistsInManager());
+  EXPECT_GT(groupVersion(), 0);
+
+  /* Terminate every member so the group's member count drops to 0 */
+  bringDownPeer(kPeerAddr3);
+  bringDownPeer(kPeerAddr4);
+  bringDownPeer(kPeerAddr5);
+
+  /*
+   * The group is removed from the UpdateGroupManager on destruction, and its
+   * cached version is reset to 0 by clearLastSeenRibVersion() beforehand.
+   */
+  EXPECT_FALSE(groupExistsInManager());
+  EXPECT_EQ(groupVersion(), 0);
 }
 
 } // namespace bgp

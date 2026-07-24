@@ -1204,6 +1204,15 @@ class AdjRib : boost::noncopyable,
     }
   }
 
+  /**
+   * Clears the cached RIB version for this peer. This should be called
+   * when the peer goes down.
+   */
+  void clearLastSeenRibVersion() {
+    lastSeenRibVersion_ = 0;
+    stats_.setPeerTableVersion(0);
+  }
+
   /*
    * Set the detached packing list (deep copy from group on detachment).
    */
