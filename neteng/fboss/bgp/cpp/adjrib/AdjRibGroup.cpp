@@ -3562,6 +3562,14 @@ void AdjRibOutGroup::checkAndAcceptReadyToJoinPeers() noexcept {
   std::vector<std::shared_ptr<AdjRib>> dfpPeers;
   std::vector<std::shared_ptr<AdjRib>> dspCandidates;
 
+  /*
+   * Counts of DETACHED_READY_TO_JOIN peers that could not rejoin this pass:
+   * (1) kept in place with packing timers left canceled (ahead of group on CL),
+   * (2) moved to DETACHED_RUNNING with packing timers rescheduled.
+   */
+  size_t peersKeptWithTimersCanceled = 0;
+  size_t peersWithTimersRescheduled = 0;
+
   for (const auto& adjRib : detachedPeers_) {
     if (adjRib->getPeerState() != PeerUpdateState::DETACHED_READY_TO_JOIN) {
       continue;
@@ -3582,17 +3590,7 @@ void AdjRibOutGroup::checkAndAcceptReadyToJoinPeers() noexcept {
        * Do not reschedule packing timers — the peer must wait for the
        * group to catch up before it can start consuming.
        */
-      XLOGF(
-          DBG1,
-          "Group {}: Peer {} at bit {} ahead of group on CL "
-          "(peer rv {} > group rv {}), keeping in {} "
-          "without rescheduling packing timers",
-          groupDescriptor_,
-          adjRib->getPeerName(),
-          adjRib->getGroupBitPosition(),
-          adjRib->getLastSeenRibVersion(),
-          lastSeenRibVersion_,
-          adjRib->getPeerState());
+      ++peersKeptWithTimersCanceled;
     } else {
       /*
        * Peers that were in DETACHED_READY_TO_JOIN state must resume consuming
@@ -3602,18 +3600,26 @@ void AdjRibOutGroup::checkAndAcceptReadyToJoinPeers() noexcept {
        *   (2) The candidate DSP peer is no longer changelist consumer READY
        * The peer must try to rejoin again after consuming more changes.
        */
-      XLOGF(
-          DBG1,
-          "Group {}: Peer {} at bit {} State Transition: {} (DSP) -> {}",
-          groupDescriptor_,
-          adjRib->getPeerName(),
-          adjRib->getGroupBitPosition(),
-          adjRib->getPeerState(),
-          PeerUpdateState::DETACHED_RUNNING);
+      ++peersWithTimersRescheduled;
       adjRib->setPeerState(PeerUpdateState::DETACHED_RUNNING);
       adjRib->reschedulePackingTimers();
     }
   }
+
+  XLOGF_IF(
+      DBG1,
+      peersKeptWithTimersCanceled > 0,
+      "Group {}: {} DETACHED_READY_TO_JOIN peers kept with packing timers "
+      "canceled (ahead of group on CL)",
+      groupDescriptor_,
+      peersKeptWithTimersCanceled);
+  XLOGF_IF(
+      DBG1,
+      peersWithTimersRescheduled > 0,
+      "Group {}: {} DETACHED_READY_TO_JOIN peers moved to DETACHED_RUNNING "
+      "with packing timers rescheduled",
+      groupDescriptor_,
+      peersWithTimersRescheduled);
 
   // Accept DFP peers directly (no collapse needed, RIB-OUT identical to group)
   for (const auto& peer : dfpPeers) {
