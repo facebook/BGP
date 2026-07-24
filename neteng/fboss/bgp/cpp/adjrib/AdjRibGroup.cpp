@@ -2386,13 +2386,6 @@ void AdjRibOutGroup::registerPeer(const std::shared_ptr<AdjRib>& adjRib) {
    */
   uint64_t bit = bitManager_.getConsumerBit();
 
-  XLOGF(
-      INFO,
-      "Group {}: Registering peer {} at bit position {}",
-      groupDescriptor_,
-      adjRib->getPeerName(),
-      bit);
-
   // Store the mapping
   bitToAdjRibs_[bit] = adjRib;
 
@@ -2421,7 +2414,7 @@ void AdjRibOutGroup::registerPeer(const std::shared_ptr<AdjRib>& adjRib) {
      */
     XLOGF(
         DBG1,
-        "Group {}: Peer {} at bit {} State Transition: {} -> {}",
+        "Group {}: Registered peer {} at bit {} with State Transition: {} -> {}",
         groupDescriptor_,
         adjRib->getPeerName(),
         bit,
@@ -2445,7 +2438,7 @@ void AdjRibOutGroup::registerPeer(const std::shared_ptr<AdjRib>& adjRib) {
 
     XLOGF(
         DBG1,
-        "Group {}: Peer {} at bit {} State Transition: {} -> {}",
+        "Group {}: Registered peer {} at bit {} with State Transition: {} -> {}",
         groupDescriptor_,
         adjRib->getPeerName(),
         bit,

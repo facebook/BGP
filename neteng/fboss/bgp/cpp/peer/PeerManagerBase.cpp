@@ -1408,11 +1408,6 @@ PeerManagerBase::handleBufferedRibDumpsForDetachedPeers() {
     pendingRibDumpAdjRibs_.erase(pendingRibDumpAdjRibs_.begin());
     BgpStats::decrPendingRibDumpReqsCount(1);
 
-    XLOGF(
-        INFO,
-        "Handling pending RibDumpReq for detached peer {}",
-        adjRib->getRemotePeerId().str());
-
     co_await processRibDumpReqWithCancellationCoro(adjRib);
     co_await folly::coro::sleepReturnEarlyOnCancel(
         std::chrono::milliseconds(1));

@@ -2710,7 +2710,7 @@ class AdjRibOutConsumer : public Consumer<ShadowRibEntry> {
       return;
     }
     size_t bitPosition = getBitPosition();
-    XLOGF(INFO, "Re-Set consumer bit-position: {}", bitPosition);
+    XLOGF(DBG2, "Re-Set consumer bit-position: {}", bitPosition);
     // Clear from both bitmaps (consumer will only be in one)
     BitmapUtils::clearBit(addPathConsumerBitmap_, bitPosition);
     BitmapUtils::clearBit(nonAddPathConsumerBitmap_, bitPosition);
@@ -2724,7 +2724,7 @@ class AdjRibOutConsumer : public Consumer<ShadowRibEntry> {
       return;
     }
     size_t bitPosition = getBitPosition();
-    XLOGF(INFO, "Set consumer bit-position: {}", bitPosition);
+    XLOGF(DBG2, "Set consumer bit-position: {}", bitPosition);
     if (adjRib_->sendAddPath()) {
       BitmapUtils::setBit(addPathConsumerBitmap_, bitPosition);
     } else {
