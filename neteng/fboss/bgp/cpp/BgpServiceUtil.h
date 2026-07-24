@@ -106,6 +106,15 @@ neteng::fboss::bgp::thrift::TBgpPath createTBgpPath(
     const facebook::bgp::BgpPath& attr);
 
 /**
+ * Utility method to convert a deduplicated EXTENDED COMMUNITIES container to
+ * its thrift representation. Shared by createTBgpPath and the canonical RIB
+ * encoder (which interns ext-communities by pointer and rebuilds the value
+ * here at snapshot time).
+ */
+std::vector<neteng::fboss::bgp::thrift::TBgpExtCommunity> createTExtCommunities(
+    const nettools::bgplib::BgpAttrExtCommunitiesC& extCommunities);
+
+/**
  * Utility function to set TResult with success status and optional error
  * message
  */

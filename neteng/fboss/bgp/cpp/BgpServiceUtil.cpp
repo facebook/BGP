@@ -117,6 +117,35 @@ TAsPathSeg createTAsPathSeg(const BgpAttrAsPathSegmentC& seg) {
   return tSeg;
 }
 
+vector<TBgpExtCommunity> createTExtCommunities(
+    const BgpAttrExtCommunitiesC& extCommunities) {
+  vector<TBgpExtCommunity> tExtComms;
+  for (const auto& extComm : extCommunities) {
+    TBgpExtCommunity tExtComm;
+    const BgpExtCommunityAsSpecificExtTypeC* asExtComm =
+        dynamic_cast<const BgpExtCommunityAsSpecificExtTypeC*>(
+            extComm.attr.get());
+    TBgpExtCommUnion extCommUnion;
+    if (asExtComm) {
+      TBgpTwoByteAsnExtComm twoByteAsn;
+      twoByteAsn.type() = asExtComm->getType();
+      twoByteAsn.sub_type() = *asExtComm->getSubType();
+      twoByteAsn.asn() = asExtComm->getAsn();
+      twoByteAsn.value() = asExtComm->getValue();
+      extCommUnion.two_byte_asn() = twoByteAsn;
+    } else {
+      TBgpRawExtComm rawComm;
+      rawComm.value_low() = extComm.getRawValueInWords().first;
+      rawComm.value_high() = extComm.getRawValueInWords().second;
+      // Pending fix for D union implementation
+      // extCommUnion.raw_values() = rawComm;
+    }
+    tExtComm.u() = extCommUnion;
+    tExtComms.emplace_back(tExtComm);
+  }
+  return tExtComms;
+}
+
 TBgpPath createTBgpPath(const facebook::bgp::BgpPath& attr) {
   TBgpPath path;
 
@@ -131,7 +160,7 @@ TBgpPath createTBgpPath(const facebook::bgp::BgpPath& attr) {
   }
 
   if (auto topoInfo = attr.getTopologyInfo()) {
-    path.topologyInfo() = *topoInfo;
+    path.topologyInfo() = std::move(*topoInfo);
   }
 
   path.as_path() = std::move(tAsPath);
@@ -169,31 +198,7 @@ TBgpPath createTBgpPath(const facebook::bgp::BgpPath& attr) {
   // O'r definition and fboss Thrift definitions are same
   path.origin() = static_cast<int>(attr.getOrigin());
 
-  vector<TBgpExtCommunity> tExtComms;
-  for (const auto& extComm : attr.getExtCommunities().get()) {
-    TBgpExtCommunity tExtComm;
-    const BgpExtCommunityAsSpecificExtTypeC* asExtComm =
-        dynamic_cast<const BgpExtCommunityAsSpecificExtTypeC*>(
-            extComm.attr.get());
-    TBgpExtCommUnion extCommUnion;
-    if (asExtComm) {
-      TBgpTwoByteAsnExtComm twoByteAsn;
-      twoByteAsn.type() = asExtComm->getType();
-      twoByteAsn.sub_type() = *asExtComm->getSubType();
-      twoByteAsn.asn() = asExtComm->getAsn();
-      twoByteAsn.value() = asExtComm->getValue();
-      extCommUnion.two_byte_asn() = twoByteAsn;
-    } else {
-      TBgpRawExtComm rawComm;
-      rawComm.value_low() = extComm.getRawValueInWords().first;
-      rawComm.value_high() = extComm.getRawValueInWords().second;
-      // Pending fix for D union implementation
-      // extCommUnion.raw_values() = rawComm;
-    }
-    tExtComm.u() = extCommUnion;
-    tExtComms.emplace_back(tExtComm);
-  }
-  path.extCommunities() = std::move(tExtComms);
+  path.extCommunities() = createTExtCommunities(attr.getExtCommunities().get());
 
   path.med() = attr.getMed();
 
@@ -226,8 +231,8 @@ PeerGroupValidationResult isPeerGroupConfigValid(
   // Only validate if key_type is PEER_GROUP_NAME
   if (!policy.key_type().has_value() ||
       policy.key_type().value() != rib_policy::KeyType::PEER_GROUP_NAME) {
-    return PeerGroupValidationResult::SUCCESS; // No validation needed for other
-                                               // key types
+    return PeerGroupValidationResult::SUCCESS; // No validation needed for
+                                               // other key types
   }
 
   // Helper function to validate IP version compatibility
