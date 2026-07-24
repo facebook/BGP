@@ -652,6 +652,8 @@ target_link_libraries(bgp_fsdb_syncer
 )
 
 add_library(bgp_rib
+  neteng/fboss/bgp/cpp/rib/CanonicalConvert.cpp
+  neteng/fboss/bgp/cpp/rib/CanonicalRibBuilder.cpp
   neteng/fboss/bgp/cpp/rib/RibBase.cpp
   neteng/fboss/bgp/cpp/rib/RibDC.cpp
   neteng/fboss/bgp/cpp/rib/RibEntry.cpp
