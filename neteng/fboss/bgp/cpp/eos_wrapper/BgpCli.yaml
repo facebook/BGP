@@ -27,7 +27,7 @@ commands:
       | (rib-policy [(criteria {<ipPrefix>}) | crf])
       | health
       | (holdtimers [{<ipAddr>}])
-      | (nexthopinfo <ipAddr>)
+      | (nexthopinfo [{<ipAddr>}])
       )
     mode: Unprivileged
     outputSchema:
@@ -56,7 +56,7 @@ commands:
       shadowrib: { keyword: { help: Show BGP shadow RIB information } }
       more-specifics: { keyword: { help: Show BGP route details within passed-in subnet} }
       neighbors: { keyword: { help: Show BGP neighbor information } }
-      nexthopinfo: { keyword: { help: Show nexthop information for a specific nexthop } }
+      nexthopinfo: { keyword: { help: Show nexthop cache information for all entries or a specific nexthop } }
       originated-routes: { keyword: { help: Show statically configured routes } }
       policy: { keyword: { help: Show BGP policy information } }
       post-policy: { keyword: { help: After policy } }

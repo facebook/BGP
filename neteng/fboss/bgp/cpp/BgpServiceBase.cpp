@@ -2693,6 +2693,81 @@ BgpServiceBase::co_getNexthopInfoForNexthop(
   co_return std::make_unique<neteng::fboss::bgp::thrift::TNexthopInfo>();
 }
 
+folly::coro::Task<
+    std::unique_ptr<std::vector<neteng::fboss::bgp::thrift::TNexthopInfo>>>
+BgpServiceBase::co_getNexthopInfos(
+    std::unique_ptr<std::vector<std::string>> nexthops) {
+  auto log = LOG_THRIFT_CALL(DBG2);
+  if (exitInitiated_ || nexthops == nullptr) {
+    auto errStr = exitInitiated_ ? "Session exits" : "Null nexthops";
+    XLOGF(
+        ERR,
+        "[{}]: Failed to get nexthop infos. Error: {}",
+        kExitNullPtrLogPrefix,
+        errStr);
+    co_return std::make_unique<
+        std::vector<neteng::fboss::bgp::thrift::TNexthopInfo>>();
+  }
+
+  if (!continueExecution(true)) {
+    co_return std::make_unique<
+        std::vector<neteng::fboss::bgp::thrift::TNexthopInfo>>();
+  }
+  SCOPE_EXIT {
+    decrRequestsInExecution();
+  };
+
+  // Empty request = all cache entries. A non-empty request filters to the
+  // valid IPs; invalid entries are dropped (and logged) rather than silently
+  // widening the query back to "list all".
+  const bool filterRequested = !nexthops->empty();
+  std::vector<folly::IPAddress> filter;
+  std::vector<std::string> invalidNexthops;
+  for (const auto& addrStr : *nexthops) {
+    if (!addrStr.empty() && folly::IPAddress::validate(addrStr)) {
+      filter.emplace_back(addrStr);
+    } else {
+      invalidNexthops.push_back(addrStr);
+    }
+  }
+
+  if (!invalidNexthops.empty()) {
+    XLOGF(
+        WARN,
+        "getNexthopInfos: ignoring {} invalid nexthop(s): {}",
+        invalidNexthops.size(),
+        fmt::join(invalidNexthops, ", "));
+  }
+
+  // The caller asked for specific IPs but none were valid: return empty rather
+  // than falling through to the list-all path (an empty filter = every entry).
+  if (filterRequested && filter.empty()) {
+    co_return std::make_unique<
+        std::vector<neteng::fboss::bgp::thrift::TNexthopInfo>>();
+  }
+
+  auto result = co_await co_runOnEvbWithTimeout(
+      rib_.getEventBase(),
+      [this, filter = std::move(filter)]() {
+        return rib_.getNexthopInfos(filter);
+      },
+      kRibThriftHandlerTimeout);
+
+  if (result.hasValue()) {
+    co_return std::make_unique<
+        std::vector<neteng::fboss::bgp::thrift::TNexthopInfo>>(
+        std::move(result.value()));
+  }
+
+  if (result.exception().is_compatible_with<folly::FutureTimeout>()) {
+    XLOGF(ERR, "getNexthopInfos timed out — Rib evb unresponsive");
+  } else {
+    XLOGF(ERR, "getNexthopInfos failed: {}", result.exception().what());
+  }
+  co_return std::make_unique<
+      std::vector<neteng::fboss::bgp::thrift::TNexthopInfo>>();
+}
+
 folly::coro::Task<std::unique_ptr<TAttributeStats>>
 BgpServiceBase::co_getAttributeStatsFiltered(
     std::unique_ptr<facebook::neteng::fboss::bgp::thrift::TAttributeStatsFilter>

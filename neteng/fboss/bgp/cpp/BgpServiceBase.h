@@ -233,6 +233,11 @@ class BgpServiceBase
   co_getNexthopInfoForNexthop(std::unique_ptr<std::string> nexthop) override;
 
   folly::coro::Task<
+      std::unique_ptr<std::vector<neteng::fboss::bgp::thrift::TNexthopInfo>>>
+  co_getNexthopInfos(
+      std::unique_ptr<std::vector<std::string>> nexthops) override;
+
+  folly::coro::Task<
       std::unique_ptr<facebook::neteng::fboss::bgp::thrift::TAttributeStats>>
   co_getAttributeStatsFiltered(
       std::unique_ptr<

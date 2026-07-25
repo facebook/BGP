@@ -7134,6 +7134,80 @@ TEST_F(RibNexthopTrackingFixture, GetNexthopInfoForNexthop) {
   EXPECT_FALSE(nexthopInfo3.has_value());
 }
 
+/**
+ * Verifies getNexthopInfos returns all cache entries when the filter is empty,
+ * a subset when specific nexthops are requested, and skips unknown nexthops.
+ */
+TEST_F(RibNexthopTrackingFixture, GetNexthopInfos) {
+  RibStats::initCounters();
+
+  NexthopStatus reachableStatus(kPeerAddr1, true, 100);
+  NexthopStatus unreachableStatus(kPeerAddr2, false);
+
+  std::vector<NexthopStatus> nexthopStatusList;
+  nexthopStatusList.push_back(reachableStatus);
+  nexthopStatusList.push_back(unreachableStatus);
+  updateCacheAndNotifyRib(nexthopStatusList);
+
+  auto prefixBatch1 = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
+  auto prefixBatch2 = PrefixPathIds{{kV6Prefix1, kDefaultPathID}};
+
+  const auto attrs = *buildBgpPathFields(4, 4, 4, 4);
+
+  auto attrs1 = std::make_shared<facebook::bgp::BgpPath>(attrs);
+  attrs1->setNexthop(kPeerAddr1);
+  attrs1->publish();
+
+  auto attrs2 = std::make_shared<facebook::bgp::BgpPath>(attrs);
+  attrs2->setNexthop(kPeerAddr2);
+  attrs2->publish();
+
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendAnnouncement(prefixBatch1, iBgpPeer_, attrs1);
+  sendAnnouncement(prefixBatch2, iBgpPeer_, attrs2);
+  sendInitialPathComputation();
+  fibFuture.wait();
+
+  // Empty filter => all cache entries (both nexthops).
+  auto all = rib_->getNexthopInfos({});
+  ASSERT_EQ(all.size(), 2);
+  std::map<folly::IPAddress, TNexthopInfo> byAddr;
+  for (const auto& info : all) {
+    byAddr.emplace(
+        folly::IPAddress::fromBinary(
+            folly::ByteRange(
+                folly::StringPiece(*info.next_hop()->prefix_bin()))),
+        info);
+  }
+  ASSERT_TRUE(byAddr.count(kPeerAddr1));
+  ASSERT_TRUE(byAddr.count(kPeerAddr2));
+
+  // Reachable nexthop: resolved, and has change timestamps (resolved at
+  // creation).
+  const auto& reachable = byAddr.at(kPeerAddr1);
+  EXPECT_TRUE(*reachable.is_reachable());
+  EXPECT_TRUE(*reachable.is_resolved_for_selection());
+  EXPECT_TRUE(reachable.last_reachability_change_age_s().has_value());
+  EXPECT_TRUE(reachable.last_igp_cost_change_age_s().has_value());
+
+  // Unreachable nexthop: never resolved => no change timestamps ("-").
+  const auto& unreachable = byAddr.at(kPeerAddr2);
+  EXPECT_FALSE(*unreachable.is_reachable());
+  EXPECT_FALSE(unreachable.last_reachability_change_age_s().has_value());
+  EXPECT_FALSE(unreachable.last_igp_cost_change_age_s().has_value());
+
+  // Specific filter => only requested (and existing) nexthops.
+  auto filtered = rib_->getNexthopInfos({kPeerAddr1});
+  ASSERT_EQ(filtered.size(), 1);
+  EXPECT_TRUE(*filtered[0].is_reachable());
+  EXPECT_EQ(filtered[0].igp_cost(), 100);
+  EXPECT_GE(*filtered[0].route_count(), 1);
+
+  // Unknown nexthop => skipped (empty result).
+  auto none = rib_->getNexthopInfos({folly::IPAddress("10.99.99.99")});
+  EXPECT_TRUE(none.empty());
+}
+
 // Test that setRouteFilterPolicy logs the correct policy versions
 TEST_F(RibFixture, ReplaceRouteFilterPolicyLoggingTest) {
   // Replace the real scuba logger with mock

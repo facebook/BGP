@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include <chrono>
+
 #include <folly/logging/xlog.h>
 
 #include "neteng/fboss/bgp/cpp/common/RouteInfo.h"
@@ -28,7 +30,17 @@ namespace facebook::bgp {
 
 class NexthopInfo : public NexthopInfoBase {
  public:
-  explicit NexthopInfo(const NexthopStatus& status) : status_(status) {}
+  explicit NexthopInfo(const NexthopStatus& status) : status_(status) {
+    // Stamp the initial resolution state so "never resolved" (unset) is
+    // distinguishable from "resolved at least once".
+    const auto now = std::chrono::steady_clock::now();
+    if (status_.isReachable()) {
+      lastReachabilityChangeTs_ = now;
+    }
+    if (status_.getIgpCost().has_value()) {
+      lastIgpCostChangeTs_ = now;
+    }
+  }
 
   // Delete copy constructor and assignment operator since
   // NexthopAssociationList is not copyable
@@ -70,7 +82,34 @@ class NexthopInfo : public NexthopInfoBase {
    * @param status The new status for this nexthop
    */
   void updateStatus(const NexthopStatus& status) {
+    const auto now = std::chrono::steady_clock::now();
+    if (status_.isReachable() != status.isReachable()) {
+      lastReachabilityChangeTs_ = now;
+    }
+    if (status_.getIgpCost() != status.getIgpCost()) {
+      lastIgpCostChangeTs_ = now;
+    }
     status_ = status;
+  }
+
+  /**
+   * @brief Time of the last reachability transition for this nexthop.
+   * @return steady_clock time_point of the last change; nullopt if the nexthop
+   *         has never been reachable (i.e. never resolved).
+   */
+  std::optional<std::chrono::steady_clock::time_point>
+  getLastReachabilityChangeTs() const {
+    return lastReachabilityChangeTs_;
+  }
+
+  /**
+   * @brief Time of the last IGP-cost change for this nexthop.
+   * @return steady_clock time_point of the last change; nullopt if a cost has
+   *         never been received (i.e. never resolved).
+   */
+  std::optional<std::chrono::steady_clock::time_point> getLastIgpCostChangeTs()
+      const {
+    return lastIgpCostChangeTs_;
   }
 
   void linkRouteInfo(RouteInfo& routeInfo) {
@@ -114,6 +153,11 @@ class NexthopInfo : public NexthopInfoBase {
   NexthopStatus status_;
   // List of routes associated with the nexthop
   NexthopAssociationList nexthopAssociationList_;
+  // Timestamps of the last reachability / IGP-cost change. nullopt means the
+  // corresponding value has never been resolved since this entry was created.
+  std::optional<std::chrono::steady_clock::time_point>
+      lastReachabilityChangeTs_;
+  std::optional<std::chrono::steady_clock::time_point> lastIgpCostChangeTs_;
 };
 
 } // namespace facebook::bgp

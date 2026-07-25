@@ -614,6 +614,16 @@ TEST_F(BgpServiceNullPtrTestFixture, GetNexthopInfoForNexthopNullPtrTest) {
       Contains(ContainsRegex(kExitNullPtrLogPrefix)));
 }
 
+// test co_getNexthopInfos with nullptr
+TEST_F(BgpServiceNullPtrTestFixture, GetNexthopInfosNullPtrTest) {
+  auto result =
+      folly::coro::blockingWait(service_->co_getNexthopInfos(nullptr));
+  EXPECT_TRUE(result->empty());
+  EXPECT_THAT(
+      logHandler_->getMessageValues(),
+      Contains(ContainsRegex(kExitNullPtrLogPrefix)));
+}
+
 // test co_getBgpNeighbors with nullptr
 TEST_F(BgpServiceBaseNullPtrTestFixture, GetBgpNeighborsNullPtrTest) {
   auto result =
@@ -1180,6 +1190,40 @@ TEST_F(BgpServiceTestFixture, GetNexthopInfoForNexthopInvalidTest) {
   EXPECT_FALSE(
       apache::thrift::is_non_optional_field_set_manually_or_by_serializer(
           nexthopInfo->next_hop()));
+
+  rib_->stop();
+  ribThread.join();
+}
+
+// Test getNexthopInfos returns empty when the RIB nexthop cache is empty
+TEST_F(BgpServiceTestFixture, GetNexthopInfosEmptyTest) {
+  auto ribThread = rib_->runInThread();
+
+  // Empty filter over an empty cache => empty result.
+  auto all = folly::coro::blockingWait(service_->co_getNexthopInfos(
+      std::make_unique<std::vector<std::string>>()));
+  EXPECT_TRUE(all->empty());
+
+  // Specific (unknown) nexthop => empty result.
+  auto filtered = folly::coro::blockingWait(service_->co_getNexthopInfos(
+      std::make_unique<std::vector<std::string>>(
+          std::vector<std::string>{"10.0.0.1"})));
+  EXPECT_TRUE(filtered->empty());
+
+  rib_->stop();
+  ribThread.join();
+}
+
+// A non-empty request made up solely of invalid nexthop strings must return
+// empty rather than falling through to the list-all path (an empty filter =
+// every cache entry). Exercises the invalid-input guard + drop path.
+TEST_F(BgpServiceTestFixture, GetNexthopInfosAllInvalidTest) {
+  auto ribThread = rib_->runInThread();
+
+  auto result = folly::coro::blockingWait(service_->co_getNexthopInfos(
+      std::make_unique<std::vector<std::string>>(
+          std::vector<std::string>{"not-an-ip", ""})));
+  EXPECT_TRUE(result->empty());
 
   rib_->stop();
   ribThread.join();

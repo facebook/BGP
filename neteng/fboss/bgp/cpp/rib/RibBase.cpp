@@ -3255,6 +3255,42 @@ bool RibBase::checkAndDeleteNexthopInfo(const folly::IPAddress& nexthop) {
   return true;
 }
 
+namespace {
+/**
+ * Convert an internal NexthopInfo cache entry to its thrift representation.
+ * Shared by the single-nexthop and list-all query paths.
+ */
+TNexthopInfo toTNexthopInfo(
+    const folly::IPAddress& nexthop,
+    const NexthopInfo& nexthopInfo) {
+  TNexthopInfo nexthopInfoThrift;
+  nexthopInfoThrift.next_hop() = createTIpPrefix(nexthop);
+  nexthopInfoThrift.is_reachable() = nexthopInfo.isReachable();
+  if (nexthopInfo.getIgpCost().has_value()) {
+    nexthopInfoThrift.igp_cost() = nexthopInfo.getIgpCost().value();
+  }
+  if (nexthopInfo.isConnected().has_value()) {
+    nexthopInfoThrift.is_connected() = nexthopInfo.isConnected().value();
+  }
+  nexthopInfoThrift.is_resolved_for_selection() =
+      nexthopInfo.isResolvedForSelection();
+  nexthopInfoThrift.route_count() = nexthopInfo.getRouteInfoListSize();
+
+  // Report change times as an age (seconds ago), computed here on the RIB
+  // thread that owns the timestamps. Unset => never resolved.
+  const auto now = std::chrono::steady_clock::now();
+  if (const auto ts = nexthopInfo.getLastReachabilityChangeTs()) {
+    nexthopInfoThrift.last_reachability_change_age_s() =
+        std::chrono::duration_cast<std::chrono::seconds>(now - *ts).count();
+  }
+  if (const auto ts = nexthopInfo.getLastIgpCostChangeTs()) {
+    nexthopInfoThrift.last_igp_cost_change_age_s() =
+        std::chrono::duration_cast<std::chrono::seconds>(now - *ts).count();
+  }
+  return nexthopInfoThrift;
+}
+} // namespace
+
 std::optional<TNexthopInfo> RibBase::getNexthopInfoForNexthop(
     const folly::IPAddress& nexthop) {
   std::optional<TNexthopInfo> result;
@@ -3265,17 +3301,32 @@ std::optional<TNexthopInfo> RibBase::getNexthopInfoForNexthop(
       result = std::nullopt;
       return;
     }
+    result = toTNexthopInfo(nexthop, it->second);
+  });
 
-    const auto& nexthopInfo = it->second;
+  return result;
+}
 
-    // Populate TNexthopInfo
-    TNexthopInfo nexthopInfoThrift;
-    nexthopInfoThrift.next_hop() = createTIpPrefix(nexthop);
-    nexthopInfoThrift.is_reachable() = nexthopInfo.isReachable();
-    if (nexthopInfo.getIgpCost().has_value()) {
-      nexthopInfoThrift.igp_cost() = nexthopInfo.getIgpCost().value();
+std::vector<TNexthopInfo> RibBase::getNexthopInfos(
+    const std::vector<folly::IPAddress>& nexthops) {
+  std::vector<TNexthopInfo> result;
+
+  evb_.runImmediatelyOrRunInEventBaseThreadAndWait([&]() {
+    if (nexthops.empty()) {
+      // No filter: return every entry in the nexthop cache.
+      result.reserve(nexthopInfoMap_.size());
+      for (const auto& [nexthop, nexthopInfo] : nexthopInfoMap_) {
+        result.push_back(toTNexthopInfo(nexthop, nexthopInfo));
+      }
+      return;
     }
-    result = std::move(nexthopInfoThrift);
+
+    for (const auto& nexthop : nexthops) {
+      auto it = nexthopInfoMap_.find(nexthop);
+      if (it != nexthopInfoMap_.end()) {
+        result.push_back(toTNexthopInfo(nexthop, it->second));
+      }
+    }
   });
 
   return result;

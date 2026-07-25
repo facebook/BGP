@@ -313,6 +313,17 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
   std::optional<neteng::fboss::bgp::thrift::TNexthopInfo>
   getNexthopInfoForNexthop(const folly::IPAddress& nexthop);
 
+  /**
+   * @brief Retrieves NexthopInfo for the given nexthop IP addresses from the
+   * nexthopInfoMap_. If @p nexthops is empty, returns info for ALL entries
+   * currently in the nexthop cache.
+   *
+   * @param nexthops The nexthop IP addresses to look up; empty = all entries
+   * @return vector of TNexthopInfo, one per matching nexthop-cache entry
+   */
+  std::vector<neteng::fboss::bgp::thrift::TNexthopInfo> getNexthopInfos(
+      const std::vector<folly::IPAddress>& nexthops);
+
   static std::optional<size_t> getSwitchId(
       const std::optional<std::string>& deviceName) {
     if (!deviceName) {
