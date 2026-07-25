@@ -17,6 +17,8 @@
 #include <limits>
 
 #include <boost/algorithm/string/trim.hpp>
+#include <folly/container/F14Map.h>
+#include <folly/container/F14Set.h>
 #include <folly/logging/xlog.h>
 #include <thrift/lib/cpp2/op/Get.h>
 
@@ -195,6 +197,107 @@ std::vector<size_t> encodingSchemeToVector(
       },
       []() { folly::assume_unreachable(); });
   return lengths;
+}
+
+namespace {
+
+void validateSwitchIdAction(
+    const std::string& policyName,
+    const std::string& termName,
+    const bgp_policy::LbwExtCommunityAction& action,
+    const std::optional<size_t>& switchId) {
+  if (!switchId) {
+    throw BgpError(
+        fmt::format(
+            "Policy '{}', term '{}' encodes switch_id, but the local switch ID is unavailable",
+            policyName,
+            termName));
+  }
+  if (!action.encoding_scheme() || !action.encoding_id()) {
+    throw BgpError(
+        fmt::format(
+            "Policy '{}', term '{}' has an incomplete switch_id encoding action",
+            policyName,
+            termName));
+  }
+
+  /*
+   * encoding_id selects a field by its position in the encoding scheme. The
+   * selected field may be rack_id or plane_id; compatibility depends on its
+   * width, not on a hard-coded field name.
+   */
+  const auto fieldWidths = encodingSchemeToVector(*action.encoding_scheme());
+  const auto encodingId = *action.encoding_id();
+  if (encodingId < 0 || static_cast<size_t>(encodingId) >= fieldWidths.size()) {
+    throw BgpError(
+        fmt::format(
+            "Policy '{}', term '{}' has invalid switch_id encoding_id {}",
+            policyName,
+            termName,
+            encodingId));
+  }
+
+  const auto fieldWidth = fieldWidths[encodingId];
+  if (fieldWidth < std::numeric_limits<size_t>::digits &&
+      *switchId >= (size_t{1} << fieldWidth)) {
+    throw BgpError(
+        fmt::format(
+            "Policy '{}', term '{}' allocates {} bits for switch_id, but switch ID {} does not fit",
+            policyName,
+            termName,
+            fieldWidth,
+            *switchId));
+  }
+}
+
+} // namespace
+
+void validateSwitchIdEncoding(
+    const bgp_policy::BgpPolicies& policies,
+    const folly::F14FastSet<std::string>& referencedPolicyNames,
+    const std::optional<size_t>& switchId) {
+  folly::F14FastMap<std::string, const bgp_policy::BgpPolicyStatement*>
+      policiesByName;
+  for (const auto& policy : *policies.bgp_policy_statements()) {
+    policiesByName.emplace(*policy.name(), &policy);
+  }
+
+  std::vector<std::string> policiesToCheck(
+      referencedPolicyNames.begin(), referencedPolicyNames.end());
+  folly::F14FastSet<std::string> checkedPolicies;
+  while (!policiesToCheck.empty()) {
+    auto policyName = std::move(policiesToCheck.back());
+    policiesToCheck.pop_back();
+    if (!checkedPolicies.emplace(policyName).second) {
+      continue;
+    }
+    const auto policy = policiesByName.find(policyName);
+    if (policy == policiesByName.end()) {
+      // Config::verifyIfPoliciesExist reports missing root policy names.
+      continue;
+    }
+    for (const auto& term : *policy->second->policy_entries()) {
+      for (const auto& action : *term.policy_action_entries()) {
+        /*
+         * Policies form a graph through NEXT_POLICY. checkedPolicies prevents
+         * repeated work and makes cycles safe.
+         */
+        if (action.next_policy_id()) {
+          policiesToCheck.push_back(*action.next_policy_id());
+        }
+        if (!action.lbw_ext_community_action() ||
+            *action.lbw_ext_community_action()->type() !=
+                bgp_policy::LbwExtCommunityActionType::ENCODE_SWITCH_ID) {
+          continue;
+        }
+        validateSwitchIdAction(
+            policyName,
+            *term.name(),
+            *action.lbw_ext_community_action(),
+            switchId);
+      }
+    }
+  }
 }
 
 std::unordered_map<std::string, int64_t> decodeValues(

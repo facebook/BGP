@@ -19,6 +19,8 @@
 #include <boost/regex.hpp>
 #include <algorithm>
 
+#include <folly/container/F14Set.h>
+
 #include "thrift/lib/cpp/util/EnumUtils.h"
 
 #include "configerator/structs/neteng/bgp_policy/thrift/gen-cpp2/bgp_policy_types.h"
@@ -67,6 +69,23 @@ routing::PolicyComparisonOperator toPolicyComparisonOperator(
 // the bits referenced by id based on EncodingScheme
 std::vector<size_t> encodingSchemeToVector(
     const nsf_policy::NsfTeWeightEncoding& encodingScheme);
+
+/**
+ * Validate ENCODE_SWITCH_ID actions reachable from policies used by this BGP
+ * instance. The traversal starts at referencedPolicyNames and follows
+ * NEXT_POLICY actions; unrelated statements in a shared policy bundle are not
+ * validated.
+ *
+ * Throws BgpError when a reachable action cannot encode switchId, when the
+ * switch ID is unavailable, or when its encoding scheme or field ID is
+ * incomplete or invalid. This is intended for startup validation before RIB
+ * construction, while the policy and resolved BGP configuration are both
+ * available.
+ */
+void validateSwitchIdEncoding(
+    const bgp_policy::BgpPolicies& policies,
+    const folly::F14FastSet<std::string>& referencedPolicyNames,
+    const std::optional<size_t>& switchId);
 
 std::unordered_map<std::string, int64_t> decodeValues(
     uint32_t encodedLbw,

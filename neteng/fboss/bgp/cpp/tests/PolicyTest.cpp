@@ -6004,6 +6004,82 @@ TEST_F(PolicyTest, NsfEncodingSchemeToVectorTest) {
   EXPECT_EQ(5, lengths[4]);
 }
 
+TEST_F(PolicyTest, ValidateSwitchIdEncodingTest) {
+  nsf_policy::NsfTeWeightEncoding encoding;
+  encoding.l2_encoding() = nsf_policy::NsfL2TeWeightEncoding();
+  encoding.l2_encoding()->rack_id() = 4;
+  encoding.l2_encoding()->plane_id() = 4;
+  encoding.l2_encoding()->remote_rack_capacity() = 8;
+  encoding.l2_encoding()->spine_capacity() = 8;
+  encoding.l2_encoding()->local_rack_capacity() = 8;
+
+  auto encodeTerm = createBgpPolicyTerm(
+      "encode-switch-id",
+      "",
+      {},
+      {createBgpPolicyLbwExtCommunityAction(
+          bgp_policy::LbwExtCommunityActionType::ENCODE_SWITCH_ID,
+          encoding,
+          0)},
+      bgp_policy::FlowControlAction::NEXT_TERM);
+  auto encodePolicy = createBgpPolicyStatement("encode-policy");
+  encodePolicy.policy_entries() = {encodeTerm};
+
+  auto unrelatedPolicy = createBgpPolicyStatement("unrelated-policy");
+  bgp_policy::BgpPolicies policies;
+  policies.bgp_policy_statements() = {encodePolicy, unrelatedPolicy};
+
+  EXPECT_NO_THROW(
+      validateSwitchIdEncoding(policies, {"encode-policy"}, size_t{15}));
+  EXPECT_THROW(
+      validateSwitchIdEncoding(policies, {"encode-policy"}, size_t{16}),
+      BgpError);
+  EXPECT_THROW(
+      validateSwitchIdEncoding(policies, {"encode-policy"}, size_t{1024}),
+      BgpError);
+  EXPECT_THROW(
+      validateSwitchIdEncoding(policies, {"encode-policy"}, std::nullopt),
+      BgpError);
+  EXPECT_NO_THROW(
+      validateSwitchIdEncoding(policies, {"unrelated-policy"}, size_t{1024}));
+}
+
+TEST_F(PolicyTest, ValidateSwitchIdEncodingFollowsNextPolicyTest) {
+  nsf_policy::NsfTeWeightEncoding encoding;
+  encoding.l2_encoding() = nsf_policy::NsfL2TeWeightEncoding();
+  encoding.l2_encoding()->rack_id() = 4;
+  encoding.l2_encoding()->plane_id() = 4;
+  encoding.l2_encoding()->remote_rack_capacity() = 8;
+  encoding.l2_encoding()->spine_capacity() = 8;
+  encoding.l2_encoding()->local_rack_capacity() = 8;
+
+  bgp_policy::BgpPolicyAction nextPolicyAction;
+  nextPolicyAction.next_policy_id() = "encode-policy";
+  auto entryPolicy = createBgpPolicyStatement("entry-policy");
+  entryPolicy.policy_entries() = {createBgpPolicyTerm(
+      "next-policy",
+      "",
+      {},
+      {nextPolicyAction},
+      bgp_policy::FlowControlAction::NEXT_TERM)};
+  auto encodePolicy = createBgpPolicyStatement("encode-policy");
+  encodePolicy.policy_entries() = {createBgpPolicyTerm(
+      "encode-switch-id",
+      "",
+      {},
+      {createBgpPolicyLbwExtCommunityAction(
+          bgp_policy::LbwExtCommunityActionType::ENCODE_SWITCH_ID,
+          encoding,
+          0)},
+      bgp_policy::FlowControlAction::NEXT_TERM)};
+  bgp_policy::BgpPolicies policies;
+  policies.bgp_policy_statements() = {entryPolicy, encodePolicy};
+
+  EXPECT_THROW(
+      validateSwitchIdEncoding(policies, {"entry-policy"}, size_t{16}),
+      BgpError);
+}
+
 TEST_F(PolicyTest, NsfEncodeValueTest) {
   // prepare a scheme
   nsf_policy::NsfTeWeightEncoding encoding;

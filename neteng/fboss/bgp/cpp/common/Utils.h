@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <optional>
 #include <string>
 
 #include <folly/IPAddress.h>
@@ -36,6 +37,14 @@ inline void toLower(std::string& s) {
 }
 
 int64_t getCurrentTimeMicroSec();
+
+/**
+ * Extract the complete trailing decimal switch ID from the first DNS label.
+ * For example, rtsw016.u001.example.com maps to 16 and
+ * rtsw1024.u001.example.com maps to 1024. Names without a domain suffix or a
+ * trailing decimal ID return std::nullopt.
+ */
+std::optional<size_t> getSwitchId(const std::optional<std::string>& deviceName);
 
 /**
  * Utility method to build BgpEndOfRib

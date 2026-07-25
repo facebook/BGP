@@ -20,6 +20,7 @@
 
 #include <folly/FileUtil.h>
 #include <folly/String.h>
+#include <folly/container/F14Set.h>
 #include <folly/json/json.h>
 #include <folly/logging/xlog.h>
 #include <thrift/lib/cpp/util/EnumUtils.h>
@@ -163,6 +164,50 @@ std::optional<uint32_t> resolveCascadedAsn(
 
 namespace facebook::bgp {
 
+namespace {
+
+template <typename PeerMap>
+void addReferencedPeerPolicies(
+    const PeerMap& peers,
+    folly::F14FastSet<std::string>& policyNames) {
+  for (const auto& [_, peer] : peers) {
+    const auto& peerConfig = peer->commonPeerGroupConfig;
+    if (peerConfig.ingressPolicyName) {
+      policyNames.insert(*peerConfig.ingressPolicyName);
+    }
+    if (peerConfig.egressPolicyName) {
+      policyNames.insert(*peerConfig.egressPolicyName);
+    }
+  }
+}
+
+/*
+ * The policy file is shared across devices, so validating every statement
+ * would reject switches because of policies they never apply. The resolved
+ * peer maps already include peer-group inheritance and peer overrides; local
+ * route policies are stored on the normalized global config.
+ */
+folly::F14FastSet<std::string> getReferencedPolicyNames(
+    const Config& config,
+    const BgpGlobalConfig& globalConfig) {
+  folly::F14FastSet<std::string> policyNames;
+  addReferencedPeerPolicies(config.getPeerToConfig(), policyNames);
+  addReferencedPeerPolicies(config.getDynamicPeerToConfig(), policyNames);
+
+  const auto addNetworkPolicies = [&policyNames](const auto& networks) {
+    for (const auto& [_, network] : networks) {
+      if (network.policy_name()) {
+        policyNames.insert(*network.policy_name());
+      }
+    }
+  };
+  addNetworkPolicies(globalConfig.networksV4);
+  addNetworkPolicies(globalConfig.networksV6);
+  return policyNames;
+}
+
+} // namespace
+
 // Create config with dry run config file
 std::shared_ptr<Config> Config::createDryRunConfig(
     const std::unique_ptr<std::string>& file_name) {
@@ -188,8 +233,13 @@ std::shared_ptr<PolicyManager> Config::createPolicyManager(
   if (config->arePoliciesConfigured()) {
     // Populate policy config and create policy manager
     auto policies = config->getPolicies();
-    policyManager = std::make_shared<PolicyManager>(
-        *policies, config->getBgpGlobalConfig().get());
+    const auto globalConfig = config->getBgpGlobalConfig();
+    validateSwitchIdEncoding(
+        *policies,
+        getReferencedPolicyNames(*config, *globalConfig),
+        getSwitchId(globalConfig->deviceName));
+    policyManager =
+        std::make_shared<PolicyManager>(*policies, globalConfig.get());
   } else {
     XLOG(INFO, "policies are not configured.");
   }

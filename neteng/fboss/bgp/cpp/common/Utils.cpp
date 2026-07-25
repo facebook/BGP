@@ -25,6 +25,34 @@ using namespace facebook::nettools::bgplib;
 
 namespace facebook::bgp {
 
+std::optional<size_t> getSwitchId(
+    const std::optional<std::string>& deviceName) {
+  if (!deviceName) {
+    return std::nullopt;
+  }
+  std::vector<std::string> segments;
+  folly::split('.', *deviceName, segments);
+  if (segments.size() < 2) {
+    return std::nullopt;
+  }
+  const auto lastNonDigit = segments[0].find_last_not_of("0123456789");
+  if (lastNonDigit == segments[0].size() - 1) {
+    return std::nullopt;
+  }
+  const auto switchIdStart =
+      lastNonDigit == std::string::npos ? 0 : lastNonDigit + 1;
+  try {
+    return std::stoul(segments[0].substr(switchIdStart));
+  } catch (const std::exception& ex) {
+    XLOGF(
+        ERR,
+        "unable to obtain switchId from deviceName: {}, reason: {}",
+        *deviceName,
+        ex.what());
+    return std::nullopt;
+  }
+}
+
 int64_t getCurrentTimeMicroSec() {
   auto now = std::chrono::system_clock::now();
   auto value = std::chrono::time_point_cast<std::chrono::microseconds>(now)
