@@ -324,6 +324,16 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
   std::vector<neteng::fboss::bgp::thrift::TNexthopInfo> getNexthopInfos(
       const std::vector<folly::IPAddress>& nexthops);
 
+  /**
+   * Extracts the complete trailing decimal run from the first DNS label.
+   * For example:
+   * - rtsw1024.u001.c001.abc1 returns 1024.
+   * - fa001-uu002.abc1 returns 2.
+   * - 1024.u001.c001.abc1 returns 1024.
+   *
+   * Returns std::nullopt when the name has fewer than two DNS labels, the
+   * first label does not end in digits, or the extracted value is invalid.
+   */
   static std::optional<size_t> getSwitchId(
       const std::optional<std::string>& deviceName) {
     if (!deviceName) {
@@ -335,8 +345,14 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
       // fa001-uu001.abc1 has 2 segments, this is the minimum case
       return std::nullopt;
     }
+    const auto lastNonDigit = segments[0].find_last_not_of("0123456789");
+    if (lastNonDigit == segments[0].size() - 1) {
+      return std::nullopt;
+    }
+    const auto switchIdStart =
+        lastNonDigit == std::string::npos ? 0 : lastNonDigit + 1;
     try {
-      auto switchId = stoul(segments[0].substr(segments[0].size() - 3));
+      auto switchId = stoul(segments[0].substr(switchIdStart));
       return switchId;
     } catch (const std::exception& ex) {
       XLOGF(

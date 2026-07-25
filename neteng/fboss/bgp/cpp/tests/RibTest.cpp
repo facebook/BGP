@@ -6499,7 +6499,7 @@ TEST_F(RibFixture, GetSwitchIdTest) {
   EXPECT_FALSE(rib_->getSwitchId(""));
   // std::nullopt is returned if switchId has no '.' in it
   EXPECT_FALSE(rib_->getSwitchId("foo"));
-  // std::nullopt is returned if first segment does not end with 3 digits
+  // std::nullopt is returned if first segment does not end with digits
   EXPECT_FALSE(rib_->getSwitchId("foo.bar"));
 
   // FE
@@ -6509,11 +6509,18 @@ TEST_F(RibFixture, GetSwitchIdTest) {
   EXPECT_EQ(4, rib_->getSwitchId("ssw004.s001.f01.abc1"));
   EXPECT_EQ(5, rib_->getSwitchId("fa001-du005.abc1"));
   EXPECT_EQ(6, rib_->getSwitchId("fa001-uu006.abc1"));
+  EXPECT_EQ(2, rib_->getSwitchId("fa001-uu002.abc1"));
+  EXPECT_EQ(1, rib_->getSwitchId("fa002-uu001.abc1"));
+  EXPECT_EQ(2, rib_->getSwitchId("fa001-uu2.abc1"));
 
   // BE
+  EXPECT_EQ(1, rib_->getSwitchId("rtsw1.u001.c001.abc1"));
+  EXPECT_EQ(10, rib_->getSwitchId("rtsw10.u001.c001.abc1"));
   EXPECT_EQ(7, rib_->getSwitchId("rtsw007.u001.c001.abc1"));
   EXPECT_EQ(8, rib_->getSwitchId("ftsw008.r001.c001.abc1"));
   EXPECT_EQ(9, rib_->getSwitchId("stsw009.r001.c001.abc1"));
+  EXPECT_EQ(1024, rib_->getSwitchId("rtsw1024.u001.c001.abc1"));
+  EXPECT_EQ(1024, rib_->getSwitchId("1024.u001.c001.abc1"));
 }
 
 TEST_F(RibFixture, RouteChurnDetectionTest) {
