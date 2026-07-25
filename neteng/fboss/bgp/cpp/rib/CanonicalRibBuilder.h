@@ -21,7 +21,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
 
 #include <folly/IPAddress.h>
@@ -92,8 +91,8 @@ class CanonicalRibBuilder {
       return byPtr_.at(key);
     }
     template <typename OutT, typename Fn>
-    std::unordered_map<int64_t, OutT> snapshot(const Fn& toThrift) const {
-      std::unordered_map<int64_t, OutT> out;
+    folly::F14FastMap<int64_t, OutT> snapshot(const Fn& toThrift) const {
+      folly::F14FastMap<int64_t, OutT> out;
       out.reserve(byPtr_.size());
       for (const auto& [obj, id] : byPtr_) {
         out.emplace(id, toThrift(*obj));
@@ -138,10 +137,10 @@ class CanonicalRibBuilder {
   InternPool<nettools::bgplib::BgpAttrClusterListC> clusterListPool_;
 
   folly::F14FastMap<PeerKey, int64_t, PeerKeyHash> peerIdxByKey_;
-  std::unordered_map<int64_t, bgp_thrift::TCanonicalPeer> peers_;
+  folly::F14FastMap<int64_t, bgp_thrift::TCanonicalPeer> peers_;
   int64_t nextPeerId_{0};
 
-  std::unordered_map<std::string, bgp_thrift::TRibEntryCanonical> ribEntries_;
+  folly::F14FastMap<std::string, bgp_thrift::TRibEntryCanonical> ribEntries_;
   bool built_{false};
 };
 
