@@ -476,7 +476,7 @@ void AdjRibOutGroup::createChangeListConsumeTimer() noexcept {
       changeListConsumer_->markStalenessLogged();
     }
     XLOGF_IF(
-        DBG2,
+        DBG1,
         previousRibVersion != lastSeenRibVersion_,
         "Group {}: Updating cached RIB version from {} to {}",
         groupDescriptor_,
@@ -708,7 +708,7 @@ uint64_t AdjRibOutGroup::processRibDumpForGroup(bool sendWithEoR) {
    * receive updates as a unit. Display logic reads from group.
    */
   XLOGF(
-      DBG2,
+      DBG1,
       "Group {}: Updating cached RIB version from {} to {} after rib walk",
       groupDescriptor_,
       lastSeenRibVersion_,
@@ -795,6 +795,7 @@ void AdjRibOutGroup::reEvaluateSyncPeersEgressPolicy() {
       "Group {}: Starting group RIB walk for egress policy re-evaluation",
       groupDescriptor_);
 
+  auto previousLastSeenRibVersion = lastSeenRibVersion_;
   walkAndProcessShadowRib(false /* sendWithEoR */);
 
   /*
@@ -819,9 +820,11 @@ void AdjRibOutGroup::reEvaluateSyncPeersEgressPolicy() {
    * policy. */
   XLOGF(
       INFO,
-      "Group {}: Finished group RIB walk for egress policy re-evaluation with {} in-sync peers",
+      "Group {}: Finished group egress policy re-evaluation for {} in-sync peers, (lastSeenRibVersion {} -> {})",
       groupDescriptor_,
-      numInSyncPeers_);
+      numInSyncPeers_,
+      previousLastSeenRibVersion,
+      lastSeenRibVersion_);
 }
 
 /*

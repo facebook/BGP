@@ -1749,11 +1749,13 @@ void AdjRib::transitionPeerUpdateState() noexcept {
      */
     XLOGF(
         DBG1,
-        "Group {}: Peer {} at bit {} ahead of group on CL, "
+        "Group {}: Peer {} at bit {} with lastSeenRibVersion {} ahead of group {}, "
         "State Transition: {} -> {}",
         adjRibOutGroup_->getGroupDescriptor(),
         getPeerName(),
         getGroupBitPosition(),
+        lastSeenRibVersion_,
+        adjRibOutGroup_->getLastSeenRibVersion(),
         peerState_,
         PeerUpdateState::DETACHED_READY_TO_JOIN);
     setPeerState(PeerUpdateState::DETACHED_READY_TO_JOIN);
