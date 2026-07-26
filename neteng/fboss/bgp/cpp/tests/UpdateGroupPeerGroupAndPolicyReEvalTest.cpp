@@ -1733,6 +1733,26 @@ class UpdateGroupsEgressReEvalTest : public UpdateGroupPolicyReEvalUTBase {
                &evb, [&]() { return ctx.adjRibs.at(id)->getPeerState(); })
         .get();
   }
+  // Whether peer `id`'s AdjRib is a member of `group` (in its bit map), as
+  // opposed to merely having a stale pointer at it.
+  bool isMemberOf(
+      TestContext& ctx,
+      const std::shared_ptr<AdjRibOutGroup>& group,
+      const BgpPeerId& id) {
+    auto& evb = ctx.peerMgr->getEventBase();
+    return folly::via(
+               &evb,
+               [&]() {
+                 auto adjRib = ctx.adjRibs.at(id);
+                 for (const auto& [bit, member] : group->getBitToAdjRibs()) {
+                   if (member == adjRib) {
+                     return true;
+                   }
+                 }
+                 return false;
+               })
+        .get();
+  }
 };
 
 /*
@@ -1798,6 +1818,258 @@ TEST_F(UpdateGroupsEgressReEvalTest, SchedulesConsumeTimerAfterSplit) {
    */
   EXPECT_TRUE(isConsumeTimerScheduled(targetGroup));
   EXPECT_TRUE(isConsumeTimerScheduled(sourceGroup));
+
+  tearDown(ctx);
+}
+
+/*
+ * processUpdateGroupsEgressPolicyReevaluation must ignore peers in the DOWN
+ * state. When a session flaps, unregisterPeer removes the peer from its group's
+ * member set and marks it DOWN, but the AdjRib stays in adjRibs_ with a stale
+ * (non-null) update-group pointer. Re-keying/moving such a peer during
+ * egress-policy re-evaluation would be incorrect -- it re-joins with a freshly
+ * built key when its session comes back.
+ *
+ * Setup (3 peers in one source group): peer 1 is flapped DOWN (unregistered,
+ * so no longer a member). peers 0 and 1 both get the same diverging override;
+ * peer 2 keeps the original policy so the source group survives peer 0's split.
+ * Only the UP peer (peer 0) may split out to a new group. The DOWN peer (peer
+ * 1) must be left untouched: not a member of any group, not moved into peer 0's
+ * new group, key never rebuilt, still DOWN. Without the DOWN guard, peer 1's
+ * diverging key would drag it into the move.
+ *
+ * This exercises the splitToNewGroup reconcile path (the target key has no
+ * existing group). The movePeers path is covered by
+ * IgnoresDownPeerDuringEgressReevalMoveToExistingGroup below.
+ */
+TEST_F(UpdateGroupsEgressReEvalTest, IgnoresDownPeerDuringEgressReeval) {
+  constexpr int kN = 3;
+  const std::string kPg = "PEERGROUP_1";
+  const std::string kPolicy0 = kPNameMatchNoAdvtDeny;
+  const std::string kPolicy1 = kPNameMatchModifyAppend;
+
+  auto ctx = setUpGroups({{kPg, kN}}, true, kPolicy0);
+  sendInitialRibDump(ctx);
+  auto peer = [](int i) { return makePeerId(i); };
+  expectEventualStateOnEvb(ctx, peer(0), PeerUpdateState::JOINED_RUNNING);
+  expectEventualStateOnEvb(ctx, peer(1), PeerUpdateState::JOINED_RUNNING);
+  expectEventualStateOnEvb(ctx, peer(2), PeerUpdateState::JOINED_RUNNING);
+
+  // All three peers start in the same source group.
+  auto sourceGroup = groupOf(ctx, peer(0));
+  ASSERT_EQ(sourceGroup, groupOf(ctx, peer(1)));
+  ASSERT_EQ(sourceGroup, groupOf(ctx, peer(2)));
+
+  /*
+   * Flap peer 1 through the real session-down path: an IDLE event drives
+   * PeerManager::sessionTerminated, which unregisters the peer from its group
+   * (dropped from the member set, marked DOWN) while leaving its stale group
+   * pointer and its adjRibs_ entry in place.
+   */
+  triggerPeerDownOnEvb(ctx, peer(1));
+  expectEventualStateOnEvb(ctx, peer(1), PeerUpdateState::DOWN);
+  ASSERT_FALSE(isMemberOf(ctx, sourceGroup, peer(1)));
+
+  /*
+   * peers 0 and 1 both diverge to the same new policy; peer 2 stays on the
+   * original policy so peer 0 splits out rather than rekeying in place.
+   */
+  disableAsyncEgressReEvalOnEvb(ctx);
+  updatePeerEgressPolicyOnEvb(ctx, peer(0), kPolicy1);
+  updatePeerEgressPolicyOnEvb(ctx, peer(1), kPolicy1);
+  markEgressPolicyUpdateRequiredOnEvb(ctx, {peer(0), peer(1)});
+
+  auto downGroupBefore = groupOf(ctx, peer(1));
+  auto downKeyBefore = keyOf(ctx, peer(1));
+
+  runProcessUpdateGroupsEgressPolicyReevaluationOnEvb(ctx);
+
+  // peer 0 (UP) split out to a new group; peer 2 stayed behind.
+  auto targetGroup = groupOf(ctx, peer(0));
+  EXPECT_NE(targetGroup, sourceGroup);
+  EXPECT_TRUE(isMemberOf(ctx, targetGroup, peer(0)));
+  EXPECT_EQ(groupOf(ctx, peer(2)), sourceGroup);
+  EXPECT_TRUE(isMemberOf(ctx, sourceGroup, peer(2)));
+
+  // peer 1 (DOWN) was ignored: not a member of either group, not moved into
+  // peer 0's new group, stale pointer/key untouched, still DOWN.
+  EXPECT_FALSE(isMemberOf(ctx, sourceGroup, peer(1)));
+  EXPECT_FALSE(isMemberOf(ctx, targetGroup, peer(1)));
+  EXPECT_NE(groupOf(ctx, peer(1)), targetGroup);
+  EXPECT_EQ(groupOf(ctx, peer(1)), downGroupBefore);
+  EXPECT_EQ(keyOf(ctx, peer(1)), downKeyBefore);
+  EXPECT_EQ(stateOf(ctx, peer(1)), PeerUpdateState::DOWN);
+
+  tearDown(ctx);
+}
+
+/*
+ * Companion to IgnoresDownPeerDuringEgressReeval that exercises the OTHER
+ * reconcile path: movePeers into an already-existing target group (Case 1),
+ * rather than splitToNewGroup.
+ *
+ * Setup (4 peers in one source group): peer 3 is first overridden to policy 1
+ * and re-evaluated, splitting it off into a standing group at that key. Then
+ * peer 1 is flapped DOWN (unregistered, no longer a member) and peers 0 and 1
+ * are both overridden to policy 1 -- the key of the standing group. On
+ * re-evaluation the UP peer (peer 0) is detached from the source group and
+ * moved into the standing group; peer 2 keeps the original policy and stays.
+ * The DOWN peer (peer 1) must be left untouched: not a member of any group, not
+ * moved into the standing group, key never rebuilt, still DOWN. Without the
+ * DOWN guard, peer 1's diverging key would drag it into the move.
+ */
+TEST_F(
+    UpdateGroupsEgressReEvalTest,
+    IgnoresDownPeerDuringEgressReevalMoveToExistingGroup) {
+  constexpr int kN = 4;
+  const std::string kPg = "PEERGROUP_1";
+  const std::string kPolicy0 = kPNameMatchNoAdvtDeny;
+  const std::string kPolicy1 = kPNameMatchModifyAppend;
+
+  auto ctx = setUpGroups({{kPg, kN}}, true, kPolicy0);
+  sendInitialRibDump(ctx);
+  auto peer = [](int i) { return makePeerId(i); };
+  for (int i = 0; i < kN; ++i) {
+    expectEventualStateOnEvb(ctx, peer(i), PeerUpdateState::JOINED_RUNNING);
+  }
+
+  auto sourceGroup = groupOf(ctx, peer(0));
+  ASSERT_EQ(sourceGroup, groupOf(ctx, peer(1)));
+  ASSERT_EQ(sourceGroup, groupOf(ctx, peer(2)));
+  ASSERT_EQ(sourceGroup, groupOf(ctx, peer(3)));
+
+  /*
+   * Split peer 3 out onto policy 1 so a standing target group exists at that
+   * key before the peer under test moves.
+   */
+  disableAsyncEgressReEvalOnEvb(ctx);
+  updatePeerEgressPolicyOnEvb(ctx, peer(3), kPolicy1);
+  markEgressPolicyUpdateRequiredOnEvb(ctx, {peer(3)});
+  runProcessUpdateGroupsEgressPolicyReevaluationOnEvb(ctx);
+
+  auto existingTarget = groupOf(ctx, peer(3));
+  ASSERT_NE(existingTarget, sourceGroup);
+  ASSERT_TRUE(isMemberOf(ctx, existingTarget, peer(3)));
+
+  /*
+   * Flap peer 1 through the real session-down path: an IDLE event drives
+   * PeerManager::sessionTerminated, which unregisters the peer from its group
+   * (dropped from the member set, marked DOWN) while leaving its stale group
+   * pointer and its adjRibs_ entry in place.
+   */
+  triggerPeerDownOnEvb(ctx, peer(1));
+  expectEventualStateOnEvb(ctx, peer(1), PeerUpdateState::DOWN);
+  ASSERT_FALSE(isMemberOf(ctx, sourceGroup, peer(1)));
+
+  /*
+   * peers 0 and 1 both diverge to policy 1 -- the standing group's key -- so
+   * they target movePeers into it; peer 2 stays on policy 0 so the source group
+   * survives.
+   */
+  disableAsyncEgressReEvalOnEvb(ctx);
+  updatePeerEgressPolicyOnEvb(ctx, peer(0), kPolicy1);
+  updatePeerEgressPolicyOnEvb(ctx, peer(1), kPolicy1);
+  markEgressPolicyUpdateRequiredOnEvb(ctx, {peer(0), peer(1)});
+
+  auto downGroupBefore = groupOf(ctx, peer(1));
+  auto downKeyBefore = keyOf(ctx, peer(1));
+  auto targetMembersBefore = existingTarget->getMemberCount();
+
+  runProcessUpdateGroupsEgressPolicyReevaluationOnEvb(ctx);
+
+  // peer 0 (UP) was moved into the standing target group; peer 2 stayed behind.
+  EXPECT_EQ(groupOf(ctx, peer(0)), existingTarget);
+  EXPECT_TRUE(isMemberOf(ctx, existingTarget, peer(0)));
+  EXPECT_EQ(groupOf(ctx, peer(2)), sourceGroup);
+  EXPECT_TRUE(isMemberOf(ctx, sourceGroup, peer(2)));
+  // Only peer 0 joined the standing group (peer 3 was already there).
+  EXPECT_EQ(existingTarget->getMemberCount(), targetMembersBefore + 1);
+
+  // peer 1 (DOWN) was ignored: not a member of either group, not moved into the
+  // standing target, stale pointer/key untouched, still DOWN.
+  EXPECT_FALSE(isMemberOf(ctx, sourceGroup, peer(1)));
+  EXPECT_FALSE(isMemberOf(ctx, existingTarget, peer(1)));
+  EXPECT_NE(groupOf(ctx, peer(1)), existingTarget);
+  EXPECT_EQ(groupOf(ctx, peer(1)), downGroupBefore);
+  EXPECT_EQ(keyOf(ctx, peer(1)), downKeyBefore);
+  EXPECT_EQ(stateOf(ctx, peer(1)), PeerUpdateState::DOWN);
+
+  tearDown(ctx);
+}
+
+/*
+ * Third companion covering the rekeyGroup reconcile path: when EVERY member of
+ * a group diverges to the same new key and no group exists at that key, the
+ * group is rekeyed in place (O(1)) rather than split or moved.
+ *
+ * Setup (4 peers in one group): peer 1 is flapped DOWN (unregistered, so no
+ * longer a member -- the group has 3 live members). All 4 peers get the same
+ * egress policy change. On re-evaluation the DOWN peer is skipped, so all 3
+ * live members diverge together and the group is rekeyed in place. The result
+ * must contain exactly the 3 UP peers; the DOWN peer (peer 1) is not pulled
+ * back into the group, its key never rebuilt, still DOWN.
+ */
+TEST_F(UpdateGroupsEgressReEvalTest, IgnoresDownPeerDuringEgressReevalRekey) {
+  constexpr int kN = 4;
+  const std::string kPg = "PEERGROUP_1";
+  const std::string kPolicy0 = kPNameMatchNoAdvtDeny;
+  const std::string kPolicy1 = kPNameMatchModifyAppend;
+
+  auto ctx = setUpGroups({{kPg, kN}}, true, kPolicy0);
+  sendInitialRibDump(ctx);
+  auto peer = [](int i) { return makePeerId(i); };
+  for (int i = 0; i < kN; ++i) {
+    expectEventualStateOnEvb(ctx, peer(i), PeerUpdateState::JOINED_RUNNING);
+  }
+
+  // All four peers start in the same group.
+  auto group = groupOf(ctx, peer(0));
+  for (int i = 1; i < kN; ++i) {
+    ASSERT_EQ(group, groupOf(ctx, peer(i)));
+  }
+  ASSERT_EQ(group->getMemberCount(), kN);
+
+  /*
+   * Flap peer 1 through the real session-down path: an IDLE event drives
+   * PeerManager::sessionTerminated, which unregisters the peer from its group
+   * (dropped from the member set, marked DOWN) while leaving its stale group
+   * pointer and its adjRibs_ entry in place. The group now has 3 live members.
+   */
+  triggerPeerDownOnEvb(ctx, peer(1));
+  expectEventualStateOnEvb(ctx, peer(1), PeerUpdateState::DOWN);
+  ASSERT_FALSE(isMemberOf(ctx, group, peer(1)));
+  ASSERT_EQ(group->getMemberCount(), kN - 1);
+
+  // Every peer -- including the DOWN one -- gets the same egress policy change.
+  disableAsyncEgressReEvalOnEvb(ctx);
+  for (int i = 0; i < kN; ++i) {
+    updatePeerEgressPolicyOnEvb(ctx, peer(i), kPolicy1);
+  }
+  markEgressPolicyUpdateRequiredOnEvb(
+      ctx, {peer(0), peer(1), peer(2), peer(3)});
+
+  auto downGroupBefore = groupOf(ctx, peer(1));
+  auto downKeyBefore = keyOf(ctx, peer(1));
+
+  runProcessUpdateGroupsEgressPolicyReevaluationOnEvb(ctx);
+
+  /*
+   * All 3 live members diverged together -> the group is rekeyed in place (same
+   * object, new policy) and holds exactly those 3 peers.
+   */
+  EXPECT_EQ(groupOf(ctx, peer(0)), group);
+  EXPECT_EQ(group->getGroupKey().egressPolicyName.value_or(""), kPolicy1);
+  EXPECT_EQ(group->getMemberCount(), kN - 1);
+  EXPECT_TRUE(isMemberOf(ctx, group, peer(0)));
+  EXPECT_TRUE(isMemberOf(ctx, group, peer(2)));
+  EXPECT_TRUE(isMemberOf(ctx, group, peer(3)));
+
+  // peer 1 (DOWN) was ignored: not pulled back into the rekeyed group, key
+  // never rebuilt, still DOWN.
+  EXPECT_FALSE(isMemberOf(ctx, group, peer(1)));
+  EXPECT_EQ(groupOf(ctx, peer(1)), downGroupBefore);
+  EXPECT_EQ(keyOf(ctx, peer(1)), downKeyBefore);
+  EXPECT_EQ(stateOf(ctx, peer(1)), PeerUpdateState::DOWN);
 
   tearDown(ctx);
 }

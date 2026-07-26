@@ -4078,6 +4078,16 @@ PeerManagerBase::processUpdateGroupsEgressPolicyReevaluation() {
   folly::F14FastSet<std::shared_ptr<AdjRibOutGroup>> sourceGroups;
   uint32_t affectedAdjRibs = 0;
   for (const auto& [peerId, adjRib] : adjRibs_) {
+    /*
+     * Ignore peers whose session is down. A terminated-but-not-deleted peer
+     * stays in adjRibs_ with a stale (non-null) update-group pointer, so
+     * re-keying/splitting/moving it during egress-policy re-evaluation would be
+     * incorrect. It re-joins a group with a freshly built key when its session
+     * is re-established.
+     */
+    if (adjRib->getPeerState() == PeerUpdateState::DOWN) {
+      continue;
+    }
     adjRib->buildAndSetUpdateGroupKey();
     const auto& group = adjRib->getUpdateGroup();
     if (!group) {
