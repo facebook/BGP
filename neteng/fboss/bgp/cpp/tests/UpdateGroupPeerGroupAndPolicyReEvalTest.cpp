@@ -21,7 +21,11 @@
  * https://docs.google.com/document/d/1XLc3-u0Wx7jTivHVz0tJd-PJ4NKtlPixyitfhD069Iw
  */
 
-#define PeerManager_TEST_FRIENDS friend class UpdateGroupPolicyReEvalUTBase;
+#define PeerManager_TEST_FRIENDS              \
+  friend class UpdateGroupPolicyReEvalUTBase; \
+  FRIEND_TEST(                                \
+      UpdateGroupsEgressReEvalTest,           \
+      PolicyUpdateDuringGroupDestroyIsNotDropped);
 
 #define AdjRib_TEST_FRIENDS friend class UpdateGroupPolicyReEvalUTBase;
 
@@ -35,10 +39,18 @@
   FRIEND_TEST(SplitToGroup, MovesJoinedRunningPeer);                          \
   FRIEND_TEST(                                                                \
       SplitToGroup, SplitBlockedPeerDrainWaitsInBuildAndSendGroupMessages);   \
-  FRIEND_TEST(SplitToGroup, SplitBlockedPeerDrainNoInSyncPeerDoesNotReschedule);
+  FRIEND_TEST(                                                                \
+      SplitToGroup, SplitBlockedPeerDrainNoInSyncPeerDoesNotReschedule);      \
+  FRIEND_TEST(                                                                \
+      UpdateGroupsEgressReEvalTest,                                           \
+      PolicyUpdateDuringGroupDestroyIsNotDropped);
 
 #include <array>
 #include <tuple>
+
+#include <folly/CancellationToken.h>
+#include <folly/coro/Baton.h>
+#include <folly/coro/Invoke.h>
 
 #include "neteng/fboss/bgp/cpp/tests/UpdateGroupPolicyReEvalUTCommon.h"
 
@@ -2070,6 +2082,93 @@ TEST_F(UpdateGroupsEgressReEvalTest, IgnoresDownPeerDuringEgressReevalRekey) {
   EXPECT_EQ(groupOf(ctx, peer(1)), downGroupBefore);
   EXPECT_EQ(keyOf(ctx, peer(1)), downKeyBefore);
   EXPECT_EQ(stateOf(ctx, peer(1)), PeerUpdateState::DOWN);
+
+  tearDown(ctx);
+}
+
+/*
+ * Regression: a policy update that arrives while
+ * processUpdateGroupsEgressPolicyReevaluation is suspended in its trailing
+ * maybeDestroyUpdateGroups co_await (draining a destroyed group's async scope)
+ * must not be dropped. The coroutine clears
+ * egressPolicyUpdateForUpdateGroupsScheduled_ before that co_await, so a
+ * concurrent handleEgressPolicyUpdate would schedule a fresh run rather than
+ * reject it as already-in-flight.
+ *
+ * peer 1 first splits off to a policy1 group, leaving peer 0 alone in the
+ * source group. The next re-evaluation moves peer 0 into peer 1's group,
+ * emptying and destroying the source group. A task parked on the source group's
+ * async scope is cancelled while maybeDestroyUpdateGroups drains it, and
+ * records the scheduled flag at that exact point -- which must already be
+ * cleared.
+ */
+TEST_F(
+    UpdateGroupsEgressReEvalTest,
+    PolicyUpdateDuringGroupDestroyIsNotDropped) {
+  constexpr int kN = 2;
+  const std::string kPg = "PEERGROUP_1";
+  const std::string kPolicy0 = kPNameMatchNoAdvtDeny;
+  const std::string kPolicy1 = kPNameMatchModifyAppend;
+
+  auto ctx = setUpGroups({{kPg, kN}}, true, kPolicy0);
+  sendInitialRibDump(ctx);
+  auto peer = [](int i) { return makePeerId(i); };
+  expectEventualStateOnEvb(ctx, peer(0), PeerUpdateState::JOINED_RUNNING);
+  expectEventualStateOnEvb(ctx, peer(1), PeerUpdateState::JOINED_RUNNING);
+
+  auto sourceGroup = groupOf(ctx, peer(0));
+  ASSERT_EQ(sourceGroup, groupOf(ctx, peer(1)));
+
+  auto& evb = ctx.peerMgr->getEventBase();
+
+  // Split peer 1 into a standing policy1 group through the production egress-
+  // policy apply path: updatePeerEgressPolicyOnEvb ->
+  // updateIngressEgressPolicyNames marks peer 1 and schedules
+  // handleEgressPolicyUpdate, which runs the async re-eval. peer 0 is left
+  // alone in sourceGroup.
+  updatePeerEgressPolicyOnEvb(ctx, peer(1), kPolicy1);
+  WITH_RETRIES(
+      { EXPECT_EVENTUALLY_TRUE(groupOf(ctx, peer(1)) != sourceGroup); });
+  ASSERT_EQ(groupOf(ctx, peer(0)), sourceGroup);
+
+  // Park a task on sourceGroup's async scope. folly::coro::Baton is not
+  // cancellation-aware, so a cancellation callback posts it: when
+  // maybeDestroyUpdateGroups cancels the scope while draining the destroyed
+  // sourceGroup, the callback fires and resumes this task at exactly that
+  // point, where it records the scheduled flag.
+  folly::coro::Baton baton;
+  std::optional<bool> flagDuringDestroy;
+  evb.runInEventBaseThreadAndWait([&]() {
+    sourceGroup->asyncScope_.add(
+        folly::coro::co_withExecutor(
+            &evb, folly::coro::co_invoke([&]() -> folly::coro::Task<void> {
+              auto token = co_await folly::coro::co_current_cancellation_token;
+              folly::CancellationCallback cb(
+                  token, [&baton]() noexcept { baton.post(); });
+              co_await baton;
+              flagDuringDestroy =
+                  ctx.peerMgr->egressPolicyUpdateForUpdateGroupsScheduled_;
+            })));
+  });
+  // Ensure the parked task has reached its baton wait before the re-eval runs.
+  flushEventBase(ctx);
+
+  // Move peer 0 into peer 1's group through the same production apply path.
+  // That empties sourceGroup, and processUpdateGroupsEgressPolicyReevaluation's
+  // trailing maybeDestroyUpdateGroups drains (and cancels) sourceGroup's scope,
+  // resuming the parked task -- which records the flag at that instant.
+  updatePeerEgressPolicyOnEvb(ctx, peer(0), kPolicy1);
+
+  WITH_RETRIES({
+    EXPECT_EVENTUALLY_TRUE(folly::via(&evb, [&]() {
+                             return flagDuringDestroy.has_value();
+                           }).get());
+  });
+
+  // The re-eval cleared egressPolicyUpdateForUpdateGroupsScheduled_ BEFORE
+  // suspending in maybeDestroyUpdateGroups, so a policy update arriving during
+  // the drain reschedules a fresh run instead of being dropped.
+  EXPECT_FALSE(*folly::via(&evb, [&]() { return flagDuringDestroy; }).get());
 
   tearDown(ctx);
 }

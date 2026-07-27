@@ -4077,14 +4077,14 @@ void PeerManagerBase::schedulePolicyReEvalForAdjRibs() {
 folly::coro::Task<void>
 PeerManagerBase::processUpdateGroupsEgressPolicyReevaluation() {
   /*
-   * Always clear the scheduled flag on exit -- normal completion, cancellation,
-   * or an exception from any step below. Leaving it set would make
-   * handleEgressPolicyUpdate reject all future re-evaluations for
-   * the rest of the process lifetime.
+   * Clear the scheduled flag if cancellation is requested or steps 1 and 2 (the
+   * key rebuild and group membership changes) throw -- leaving it set would
+   * make handleEgressPolicyUpdate reject all future re-evaluations. Dismissed
+   * once those steps complete so it does not fire on the normal path.
    */
-  SCOPE_EXIT {
+  auto clearFlagGuard = folly::makeGuard([this]() noexcept {
     egressPolicyUpdateForUpdateGroupsScheduled_ = false;
-  };
+  });
 
   auto cancelToken = co_await folly::coro::co_current_cancellation_token;
   if (cancelToken.isCancellationRequested()) {
@@ -4337,6 +4337,16 @@ PeerManagerBase::processUpdateGroupsEgressPolicyReevaluation() {
       group->scheduleChangeListConsumeTimer();
     }
   }
+  /*
+   * Steps 1 and 2 are done, so this run has handled every policy update seen so
+   * far. Clear the flag before the co_await so an update arriving during the
+   * maybeDestroyUpdateGroups drain schedules a fresh run instead of being
+   * dropped, and dismiss the guard so it does not re-clear on exit and stomp
+   * that run. maybeDestroyUpdateGroups only drains already-emptied groups, so
+   * an overlapping run cannot interleave with any group mutation.
+   */
+  clearFlagGuard.dismiss();
+  egressPolicyUpdateForUpdateGroupsScheduled_ = false;
   co_await updateGroupManager_->maybeDestroyUpdateGroups(emptiedOldGroups);
 
   XLOGF_IF(
