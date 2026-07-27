@@ -21,11 +21,14 @@
  * https://docs.google.com/document/d/1XLc3-u0Wx7jTivHVz0tJd-PJ4NKtlPixyitfhD069Iw
  */
 
-#define PeerManager_TEST_FRIENDS              \
-  friend class UpdateGroupPolicyReEvalUTBase; \
-  FRIEND_TEST(                                \
-      UpdateGroupsEgressReEvalTest,           \
-      PolicyUpdateDuringGroupDestroyIsNotDropped);
+#define PeerManager_TEST_FRIENDS                   \
+  friend class UpdateGroupPolicyReEvalUTBase;      \
+  FRIEND_TEST(                                     \
+      UpdateGroupsEgressReEvalTest,                \
+      PolicyUpdateDuringGroupDestroyIsNotDropped); \
+  FRIEND_TEST(                                     \
+      UpdateGroupsEgressReEvalTest,                \
+      BufferedRibDumpRemovedBeforeSessionTerminateDrain);
 
 #define AdjRib_TEST_FRIENDS friend class UpdateGroupPolicyReEvalUTBase;
 
@@ -43,7 +46,10 @@
       SplitToGroup, SplitBlockedPeerDrainNoInSyncPeerDoesNotReschedule);      \
   FRIEND_TEST(                                                                \
       UpdateGroupsEgressReEvalTest,                                           \
-      PolicyUpdateDuringGroupDestroyIsNotDropped);
+      PolicyUpdateDuringGroupDestroyIsNotDropped);                            \
+  FRIEND_TEST(                                                                \
+      UpdateGroupsEgressReEvalTest,                                           \
+      BufferedRibDumpRemovedBeforeSessionTerminateDrain);
 
 #include <array>
 #include <tuple>
@@ -2169,6 +2175,82 @@ TEST_F(
   // suspending in maybeDestroyUpdateGroups, so a policy update arriving during
   // the drain reschedules a fresh run instead of being dropped.
   EXPECT_FALSE(*folly::via(&evb, [&]() { return flagDuringDestroy; }).get());
+
+  tearDown(ctx);
+}
+
+/*
+ * Regression: sessionTerminated must drop a detached peer's buffered RibDumpReq
+ * (cancelRibDumpForAdjRib) BEFORE its trailing maybeDestroyUpdateGroups
+ * co_await. Otherwise, while suspended draining the destroyed group's async
+ * scope, the concurrent handleBufferedRibDumpsForDetachedPeers drain could pull
+ * the terminating peer off pendingRibDumpAdjRibs_ and service a torn-down peer.
+ *
+ * A single peer owns its update group. A buffered RibDumpReq is seeded for it,
+ * then a task is parked on the group's async scope. Terminating the peer
+ * empties and destroys the group; maybeDestroyUpdateGroups drains (and cancels)
+ * the scope, resuming the parked task, which records whether the buffered
+ * request is still present at that instant -- which must already be gone.
+ */
+TEST_F(
+    UpdateGroupsEgressReEvalTest,
+    BufferedRibDumpRemovedBeforeSessionTerminateDrain) {
+  const std::string kPg = "PEERGROUP_1";
+  const std::string kPolicy0 = kPNameMatchNoAdvtDeny;
+
+  auto ctx = setUpGroups({{kPg, 1}}, true, kPolicy0);
+  sendInitialRibDump(ctx);
+  auto peer0 = makePeerId(0);
+  expectEventualStateOnEvb(ctx, peer0, PeerUpdateState::JOINED_RUNNING);
+
+  auto& evb = ctx.peerMgr->getEventBase();
+  auto group = groupOf(ctx, peer0);
+  ASSERT_NE(group, nullptr);
+
+  folly::coro::Baton baton;
+  std::optional<bool> bufferedDuringDrain;
+  std::shared_ptr<AdjRib> adjRib;
+
+  // Seed a buffered detached-peer RibDumpReq for the sole peer, then park a
+  // task on its (single-member) group's async scope. folly::coro::Baton is not
+  // cancellation-aware, so a cancellation callback posts it: when
+  // maybeDestroyUpdateGroups cancels the scope while draining the destroyed
+  // group, the callback fires and resumes this task at exactly that point,
+  // where it records whether the peer's buffered RibDumpReq is still present.
+  evb.runInEventBaseThreadAndWait([&]() {
+    adjRib = ctx.peerMgr->adjRibs_.at(peer0);
+    ctx.peerMgr->pendingRibDumpAdjRibs_.insert(adjRib);
+    group->asyncScope_.add(
+        folly::coro::co_withExecutor(
+            &evb, folly::coro::co_invoke([&]() -> folly::coro::Task<void> {
+              auto token = co_await folly::coro::co_current_cancellation_token;
+              folly::CancellationCallback cb(
+                  token, [&baton]() noexcept { baton.post(); });
+              co_await baton;
+              bufferedDuringDrain =
+                  ctx.peerMgr->pendingRibDumpAdjRibs_.contains(adjRib);
+            })));
+  });
+  // Ensure the parked task has reached its baton wait before terminating.
+  flushEventBase(ctx);
+
+  // Precondition: the buffered dump is present before termination.
+  ASSERT_TRUE(folly::via(&evb, [&]() {
+                return ctx.peerMgr->pendingRibDumpAdjRibs_.contains(adjRib);
+              }).get());
+
+  // Terminate the sole peer through the production event path.
+  triggerPeerDownOnEvb(ctx, peer0);
+
+  WITH_RETRIES({
+    EXPECT_EVENTUALLY_TRUE(folly::via(&evb, [&]() {
+                             return bufferedDuringDrain.has_value();
+                           }).get());
+  });
+
+  // The buffered RibDumpReq was removed before sessionTerminated suspended in
+  // maybeDestroyUpdateGroups.
+  EXPECT_FALSE(*folly::via(&evb, [&]() { return bufferedDuringDrain; }).get());
 
   tearDown(ctx);
 }

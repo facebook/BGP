@@ -2376,6 +2376,16 @@ folly::coro::Task<void> PeerManagerBase::sessionTerminated(
 
   // Handle update group cleanup if enabled (Scenario E)
   if (enableUpdateGroup_) {
+    /*
+     * Drop a buffered request and cancel any scheduled/in-flight rib dump for
+     * this peer (a RibDumpReq may have been made during initialization). This
+     * must happen before the maybeDestroyUpdateGroups co_await below: while
+     * suspended there, handleBufferedRibDumpsForDetachedPeers could otherwise
+     * pull this terminating peer off pendingRibDumpAdjRibs_ and service a
+     * torn-down peer.
+     */
+    cancelRibDumpForAdjRib(adjRib);
+
     auto updateGroup = adjRib->getUpdateGroup();
     if (updateGroup) {
       XLOGF(
@@ -2395,16 +2405,11 @@ folly::coro::Task<void> PeerManagerBase::sessionTerminated(
   adjRib->deactivateChangeListConsumer();
   adjRib->clearLastSeenRibVersion();
 
-  if (enableUpdateGroup_) {
-    /*
-     * Drop a buffered request and cancel any scheduled/in-flight rib dump for
-     * this peer (a RibDumpReq may have been made during initialization).
-     */
-    cancelRibDumpForAdjRib(adjRib);
-  } else if (pendingRibDumpReqs_.erase(peerId) > 0) {
+  if (!enableUpdateGroup_ && pendingRibDumpReqs_.erase(peerId) > 0) {
     /*
      * Remove peer's request from the pending RibDumpReq collection if a
-     * RibDumpReq was made during initialization.
+     * RibDumpReq was made during initialization. The update-group equivalent is
+     * handled by cancelRibDumpForAdjRib above (before the co_await).
      */
     BgpStats::decrPendingRibDumpReqsCount(1);
   }
