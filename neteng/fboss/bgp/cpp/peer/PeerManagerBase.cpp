@@ -1103,7 +1103,13 @@ void PeerManagerBase::processRibDumpReq(
   RibOutAnnouncement announcement;
   announcement.initialDump = true;
 
-  uint64_t maxRibVersion = ribVersionBeforeWalk;
+  /*
+   * Track whether any entry was skipped because it is already pending on this
+   * consumer's changeList. If so, the peer will still receive those entries
+   * (and advance its version) via the changeList, so we must NOT advance its
+   * lastSeenRibVersion off this dump.
+   */
+  bool skippedChangeListEntry = false;
   for (const auto& [prefix, trackedShadowRibEntry] : shadowRibEntries_) {
     /*
      * If this shadow rib entry is already on a changeList for this
@@ -1112,6 +1118,7 @@ void PeerManagerBase::processRibDumpReq(
     auto trackedObject = trackedShadowRibEntry.get();
     if (changeListTracker_->isConsumerSetOnTrackableObject(
             trackedObject, adjRib->getChangeListConsumer())) {
+      skippedChangeListEntry = true;
       continue;
     }
 
@@ -1120,7 +1127,6 @@ void PeerManagerBase::processRibDumpReq(
      * announcement even if can over the packing limit with add-path enabled.
      */
     auto& shadowRibEntry = trackedShadowRibEntry->get();
-    maxRibVersion = std::max(maxRibVersion, shadowRibEntry.ribVersion);
 
     if (!sendAddPath) {
       // send out bestpath only.
@@ -1183,13 +1189,17 @@ void PeerManagerBase::processRibDumpReq(
    */
   adjRib->processRibMessage(announcement);
   /*
-   * processRibMessage version-tracks only successfully-announced entries;
-   * implicitly-withdrawn or AFI-unsupported entries walked in this dump are
-   * skipped. Advance the peer to the max shadow-rib version it was dumped so
-   * its lastSeenRibVersion stays accurate. setLastSeenRibVersion only advances
-   * if greater than the peer's current version.
+   * If the dump covered every entry (nothing was skipped because it was already
+   * pending on this consumer's changeList), the peer has now seen the whole
+   * table, so advance it to the max table version tracked by the PeerManager.
+   * If any entry was skipped, the peer will receive those entries and advance
+   * its version through the changeList instead, so leave lastSeenRibVersion
+   * untouched here. setLastSeenRibVersion only advances if greater than the
+   * peer's current version.
    */
-  adjRib->setLastSeenRibVersion(maxRibVersion);
+  if (!skippedChangeListEntry) {
+    adjRib->setLastSeenRibVersion(maxRibVersion_);
+  }
   /*
    * changeList consumers are to be registered to the tracker
    * library only after initial dump with EoR flag is sent to

@@ -3130,6 +3130,37 @@ uint64_t E2ETestFixture::getPeerCachedRibVersion(
   return version;
 }
 
+size_t E2ETestFixture::getShadowRibEntriesCount() {
+  if (!peerManager_) {
+    XLOG(ERR, "PeerManagerBase is not initialized");
+    return 0;
+  }
+
+  size_t count = 0;
+  peerManager_->getEventBase().runInEventBaseThreadAndWait(
+      [&]() { count = peerManager_->shadowRibEntries_.size(); });
+
+  return count;
+}
+
+void E2ETestFixture::triggerRibDumpForPeer(
+    const folly::IPAddress& peerAddr,
+    bool sendAddPath,
+    bool sendWithEoR) {
+  if (!peerManager_) {
+    XLOG(ERR, "PeerManagerBase is not initialized");
+    return;
+  }
+
+  BgpPeerId peerId{peerAddr, peerAddr.asV4().toLongHBO()};
+  peerManager_->getEventBase().runInEventBaseThreadAndWait([&]() {
+    auto adjRib = peerManager_->findAdjRib(peerId);
+    if (adjRib) {
+      peerManager_->processRibDumpReq(adjRib, sendAddPath, sendWithEoR);
+    }
+  });
+}
+
 std::optional<E2ETestFixture::PeerQueues> E2ETestFixture::getPeerQueues(
     const BgpPeerId& peerId) const {
   auto it = peerQueues_.find(peerId);

@@ -959,6 +959,25 @@ class E2ETestFixture : public ::testing::Test {
    */
   uint64_t getPeerCachedRibVersion(const folly::IPAddress& peerAddr);
 
+  /*
+   * Number of entries currently in PeerManagerBase's shadow RIB
+   * (shadowRibEntries_.size()).
+   *
+   * Thread-safe: runs on PeerManagerBase's event base. Requires friendship
+   * (PeerManager_TEST_FRIENDS) to read the private member.
+   */
+  size_t getShadowRibEntriesCount();
+
+  /*
+   * Run PeerManagerBase::processRibDumpReq for an already-connected peer on the
+   * PeerManager event base, simulating a re-dump (e.g. from egress-policy
+   * re-evaluation). Requires friendship to call the private method.
+   */
+  void triggerRibDumpForPeer(
+      const folly::IPAddress& peerAddr,
+      bool sendAddPath = false,
+      bool sendWithEoR = false);
+
  public:
   /*
    * Route specification for batch operations
