@@ -581,13 +581,18 @@ void AdjRibOutGroup::scheduleInitialDump() noexcept {
  * processRibOutAnnouncement().
  * Used by both initial dump and policy re-evaluation.
  */
-uint64_t AdjRibOutGroup::walkAndProcessShadowRib(bool sendWithEoR) {
+void AdjRibOutGroup::walkAndProcessShadowRib(bool sendWithEoR) {
   // Build announcement struct, same as PeerManagerBase::processRibDumpReq
   RibOutAnnouncement announcement;
   announcement.initialDump = true;
 
-  // Track max RIB version seen during walk
-  uint64_t maxRibVersion = 0;
+  /*
+   * Track whether any entry was skipped because it is already pending on this
+   * group's changeList consumer. If so, the group will still receive those
+   * entries (and advance its version) via the changeList, so we must NOT
+   * advance its lastSeenRibVersion off this dump.
+   */
+  bool skippedChangeListEntry = false;
 
   // Walk through all shadow RIB entries
   // NOTE: this ensures maximum packing without chunk limit.
@@ -597,12 +602,19 @@ uint64_t AdjRibOutGroup::walkAndProcessShadowRib(bool sendWithEoR) {
       continue;
     }
 
-    const auto& srEntry = srEntryPtr->get();
-
-    // Track max version across all entries
-    if (srEntry.ribVersion > maxRibVersion) {
-      maxRibVersion = srEntry.ribVersion;
+    /*
+     * If this shadow rib entry is already on a changeList for this group's
+     * consumer, skip it from the dump. Mirrors
+     * PeerManagerBase::processRibDumpReq at the peer level.
+     */
+    if (changeListTracker_ && changeListConsumer_ &&
+        changeListTracker_->isConsumerSetOnTrackableObject(
+            srEntryPtr.get(), changeListConsumer_)) {
+      skippedChangeListEntry = true;
+      continue;
     }
+
+    const auto& srEntry = srEntryPtr->get();
 
     if (!groupKey_.sendAddPath) {
       // Send out bestpath only (no add-path)
@@ -670,7 +682,25 @@ uint64_t AdjRibOutGroup::walkAndProcessShadowRib(bool sendWithEoR) {
    */
   processRibOutAnnouncement(announcement);
 
-  return maxRibVersion;
+  /*
+   * If the dump covered every entry (nothing was skipped because it was already
+   * pending on this group's changeList consumer), the group has now seen the
+   * whole table, so set it to the PeerManager's max seen RIB version -- correct
+   * even when the walk was empty (all routes withdrawn and their entries
+   * erased). All members of an update group share this version since they
+   * receive updates as a unit. If any entry was skipped, the group will receive
+   * those entries and advance its version through the changeList instead, so
+   * leave lastSeenRibVersion untouched here.
+   */
+  if (maxRibVersion_ && !skippedChangeListEntry) {
+    XLOGF(
+        DBG1,
+        "Group {}: Updating cached RIB version from {} to {} after rib walk",
+        groupDescriptor_,
+        lastSeenRibVersion_,
+        *maxRibVersion_);
+    setLastSeenRibVersion(*maxRibVersion_);
+  }
 }
 
 /*
@@ -694,26 +724,15 @@ uint64_t AdjRibOutGroup::processRibDumpForGroup(bool sendWithEoR) {
     return lastSeenRibVersion_;
   }
 
-  auto maxRibVersion = walkAndProcessShadowRib(sendWithEoR);
+  /* walkAndProcessShadowRib advances lastSeenRibVersion_ after the full walk.
+   */
+  walkAndProcessShadowRib(sendWithEoR);
 
   /*
    * Transition to WAITING state - ready to send updates
    * Note: Initial dump sent with EoR marker
    */
   state_ = UpdateGroupState::WAITING;
-
-  /*
-   * Set cached RIB version on the group after initial dump.
-   * All members of an update group share this version since they
-   * receive updates as a unit. Display logic reads from group.
-   */
-  XLOGF(
-      DBG1,
-      "Group {}: Updating cached RIB version from {} to {} after rib walk",
-      groupDescriptor_,
-      lastSeenRibVersion_,
-      maxRibVersion);
-  setLastSeenRibVersion(maxRibVersion);
 
   initialDumpCompletionTimeMs_ =
       std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -807,10 +826,9 @@ void AdjRibOutGroup::reEvaluateSyncPeersEgressPolicy() {
    * These change-list entries are not routes that arrived during the walk --
    * the walk is uninterrupted, so nothing is added mid-walk. They are entries
    * that were already pending on this group's consumer before the
-   * re-evaluation. The walk reads the shadow RIB directly and does not advance
-   * the consumer marker, so those already-present entries -- whose latest state
-   * the walk has already applied -- remain on the list and are drained here
-   * purely to move the marker to the tail.
+   * re-evaluation. The walk skips those already-pending entries, so draining
+   * them here both applies their latest state and advances the consumer marker
+   * (and lastSeenRibVersion) to the tail.
    */
   if (changeListConsumer_) {
     changeListConsumer_->iterateChanges();

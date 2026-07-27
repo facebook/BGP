@@ -39,7 +39,7 @@ std::shared_ptr<AdjRibOutGroup> UpdateGroupManager::findOrCreateGroup(
       groupId,
       true /* enableUpdateGroup */,
       key,
-      shadowRibEntries_,
+      ShadowRibView{shadowRibEntries_, maxRibVersion_},
       policyManager_ /* policyManager */,
       updateGroupConfig_);
   updateGroups_[key] = group;

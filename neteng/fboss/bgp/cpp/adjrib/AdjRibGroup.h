@@ -60,6 +60,14 @@ class PolicyManager;
 struct AdjRibEntry;
 struct PostPolicyInfo;
 
+/*
+ * Non-owning view of PeerManagerBase's shadow RIB handed to an update group:
+ * the entries map plus a live pointer to the PeerManager's max seen RIB version
+ * (maxRibVersion_). Both are null when no shadow RIB is wired in (e.g. the
+ * legacy/non-update-group path or tests).
+ */
+using ShadowRibView = std::pair<const ShadowRibEntriesMap*, const uint64_t*>;
+
 /**
  * Adjacency RIB Grouping has benefits for enabling memory and CPU improvements
  * However, implementation differences for the use of Group may differ for
@@ -82,7 +90,7 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
       uint64_t groupId = 0,
       bool enableUpdateGroup = false,
       const UpdateGroupKey& groupKey = UpdateGroupKey{},
-      const ShadowRibEntriesMap* shadowRibEntries = nullptr,
+      const ShadowRibView& shadowRib = {},
       std::shared_ptr<PolicyManager> policyManager = nullptr,
       const UpdateGroupConfig& updateGroupConfig = {})
       : evb_(evb),
@@ -96,7 +104,8 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
                 groupId,
                 groupKey.egressPolicyName.value_or(""),
                 buildAfiLabel(groupKey))),
-        shadowRibEntries_(shadowRibEntries),
+        shadowRibEntries_(shadowRib.first),
+        maxRibVersion_(shadowRib.second),
         policyManager_(std::move(policyManager)),
         policyCache_(AdjRibPolicyCache::get()),
         updateGroupConfig_(updateGroupConfig),
@@ -489,9 +498,8 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
    * This is not interruptible -- runs synchronously in a single
    * event loop turn with no co_await inside the loop.
    * @param sendWithEoR - whether to mark the announcement with EoR
-   * @return max RIB version seen during the walk
    */
-  uint64_t walkAndProcessShadowRib(bool sendWithEoR);
+  void walkAndProcessShadowRib(bool sendWithEoR);
 
   /*
    * Build initial RIB dump from shadow RIB. Returns lastSeenRibVersion_.
@@ -1461,6 +1469,14 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
    * entity which can retrieve the reference to shadowRibEntries.
    */
   const ShadowRibEntriesMap* shadowRibEntries_{nullptr};
+
+  /*
+   * Live pointer to PeerManagerBase's max seen RIB version
+   * (maxRibVersion_). Non-owning; nullptr if no shadow RIB is wired in.
+   * Read during a full RIB dump to advance the group to the current table
+   * version even when the shadow RIB has been emptied.
+   */
+  const uint64_t* maxRibVersion_{nullptr};
 
   /*
    * Flag to indicate if RIB-allocated path IDs are enabled

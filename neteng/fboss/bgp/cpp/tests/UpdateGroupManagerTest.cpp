@@ -343,6 +343,7 @@ TEST_F(
       evb,
       UpdateGroupConfig{},
       nullptr, // shadowRibEntries
+      nullptr, // maxRibVersion
       policyManager,
       nullptr); // isRibInitDone
 

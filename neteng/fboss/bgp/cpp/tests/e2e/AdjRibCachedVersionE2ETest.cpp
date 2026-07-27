@@ -921,17 +921,19 @@ TEST_F(AdjRibCachedVersionE2ETest, MaxRibVersionSurvivesEmptyShadowRib) {
       verifyRouteAdd("v4", "10.0.1.0", 24, kPeerAddr4, kNextHopV4_4.str()));
 
   /*
-   * Withdraw all routes. Draining peer4's queue lets it consume the withdrawals
-   * off its change list, which erases the shadow RIB entries once the sole
-   * receiver has consumed them.
+   * Withdraw all routes. deleteRoute is asynchronous (RIB path selection +
+   * batch), so gate on peer4 actually receiving the withdrawal before checking
+   * the shadow RIB -- that confirms it propagated through the RIB and was
+   * consumed off the change list, which erases the shadow RIB entries. The two
+   * same-attribute withdrawals batch into a single UPDATE.
    */
   deleteRoute("v4", "10.0.1.0", 24, kPeerAddr3);
   deleteRoute("v4", "10.0.2.0", 24, kPeerAddr3);
-  drainPeerQueueCompletely(peerId4);
+  EXPECT_TRUE(verifyRouteWithdraw("v4", "10.0.1.0", 24, kPeerAddr4));
   EXPECT_TRUE(verifyRouteNotInShadowRib(
-      folly::IPAddress::createNetwork("10.0.1.0/24")));
+      folly::IPAddress::createNetwork("10.0.1.0/24"), 20 /* waitRetries */));
   EXPECT_TRUE(verifyRouteNotInShadowRib(
-      folly::IPAddress::createNetwork("10.0.2.0/24")));
+      folly::IPAddress::createNetwork("10.0.2.0/24"), 20 /* waitRetries */));
 
   /* The shadow RIB is now empty, but the max RIB version is non-zero. */
   EXPECT_EQ(getShadowRibEntriesCount(), 0);

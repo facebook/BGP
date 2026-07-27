@@ -696,7 +696,8 @@ TEST_F(AdjRibGroupTest, ScheduleInitialDumpOnce) {
 
 /*
  * With populated shadowRibEntries_, processRibDumpForGroup walks the shadow
- * RIB and transitions INIT peers to JOINED_RUNNING with rib version set.
+ * RIB and transitions INIT peers to JOINED_RUNNING with the PeerManager's max
+ * RIB version set on them.
  */
 TEST_F(AdjRibGroupTest, ScheduleInitialDumpSetsRibVersionOnJoinedPeers) {
   ShadowRibEntriesMap shadowRibEntries;
@@ -713,13 +714,14 @@ TEST_F(AdjRibGroupTest, ScheduleInitialDumpSetsRibVersionOnJoinedPeers) {
       std::make_unique<TrackableObject<ShadowRibEntry>>(std::move(srEntry));
   shadowRibEntries.emplace(prefix, std::move(trackable));
 
+  uint64_t maxRibVersion = 42;
   adjRibOutGroup_ = std::make_shared<AdjRibOutGroup>(
       *evb_,
       "test_group",
       0,
       true /* enableUpdateGroup */,
       UpdateGroupKey{},
-      &shadowRibEntries);
+      ShadowRibView{&shadowRibEntries, &maxRibVersion});
 
   auto adjRib1 = createMinimalAdjRib(1);
   adjRibOutGroup_->registerPeer(adjRib1);
@@ -756,6 +758,37 @@ TEST_F(AdjRibGroupTest, ScheduleInitialDumpWithNullShadowRibKeepsPeersInInit) {
   EXPECT_EQ(adjRib1->getPeerState(), PeerUpdateState::INIT);
   EXPECT_EQ(adjRib1->getLastSeenRibVersion(), 0);
   EXPECT_EQ(adjRib2->getLastSeenRibVersion(), 0);
+}
+
+/*
+ * With an empty shadow RIB but a wired-in maxRibVersion, the dump walks
+ * nothing (no change-list entry skipped), so the group -- and its joined peers
+ * -- must advance to the PeerManager's maxRibVersion, not the walked max
+ * (which is 0 for an empty shadow RIB). Mirrors the AdjRib
+ * InitialDumpOnEmptyShadowRibUsesMaxRibVersion case.
+ */
+TEST_F(AdjRibGroupTest, InitialDumpOnEmptyShadowRibUsesMaxRibVersion) {
+  ShadowRibEntriesMap emptyShadowRib;
+  uint64_t maxRibVersion = 7;
+
+  adjRibOutGroup_ = std::make_shared<AdjRibOutGroup>(
+      *evb_,
+      "test_group",
+      0,
+      true /* enableUpdateGroup */,
+      UpdateGroupKey{},
+      ShadowRibView{&emptyShadowRib, &maxRibVersion});
+
+  auto adjRib1 = createMinimalAdjRib(1);
+  adjRibOutGroup_->registerPeer(adjRib1);
+  ASSERT_EQ(adjRib1->getPeerState(), PeerUpdateState::INIT);
+
+  adjRibOutGroup_->scheduleInitialDump();
+  evb_->loopOnce();
+
+  EXPECT_EQ(adjRibOutGroup_->getLastSeenRibVersion(), maxRibVersion);
+  EXPECT_EQ(adjRib1->getPeerState(), PeerUpdateState::JOINED_RUNNING);
+  EXPECT_EQ(adjRib1->getLastSeenRibVersion(), maxRibVersion);
 }
 
 /**
@@ -2386,7 +2419,7 @@ class AdjRibGroupAddPathFixture : public AdjRibGroupTest {
         42,
         true /* enableUpdateGroup */,
         groupKey,
-        shadowRibEntries);
+        ShadowRibView{shadowRibEntries, nullptr});
   }
 
   std::shared_ptr<BgpPath> createPath(uint32_t localPref) {
