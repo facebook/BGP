@@ -114,6 +114,21 @@ INSTANTIATE_TEST_SUITE_P(
 TEST_P(RibFixtureAddPathTestSuite, LbwProgramFibTest) {
   rib_->setFibBatchTime(std::chrono::milliseconds(2));
 
+  /*
+   * Statement expiry offsets (seconds from now). Widened from the original
+   * 2/4/6s: statement expiry is checked against the system wall clock
+   * (RibPolicy::isActive() -> std::time), so each phase below must run its
+   * post-wait checks before the NEXT statement's expiry. The large gaps
+   * (~10s) between consecutive expiries give each phase a generous margin, so
+   * a scheduling stall under load cannot let a later statement expire before
+   * this phase observes it -- the source of a pre-existing flake. (The
+   * deterministic alternative, injecting a controllable clock into the
+   * expiration path, was deliberately deferred to keep this a test-only fix.)
+   */
+  constexpr int64_t kStmt2ExpirySec = 2; // expires first
+  constexpr int64_t kStmt1ExpirySec = 12; // expires second (~10s after stmt2)
+  constexpr int64_t kStmt3ExpirySec = 22; // expires third  (~10s after stmt1)
+
   auto prefix1 = folly::IPAddress::createNetwork("1::/64");
   auto prefixBatch1 = PrefixPathIds{{prefix1, kDefaultPathID}};
   auto prefix2 = folly::IPAddress::createNetwork("2::/64");
@@ -137,14 +152,14 @@ TEST_P(RibFixtureAddPathTestSuite, LbwProgramFibTest) {
         {prefix1},
         kLbw10G,
         "stmt1",
-        std::chrono::seconds(std::time(nullptr)).count() + 4 /* 4s */));
+        std::chrono::seconds(std::time(nullptr)).count() + kStmt1ExpirySec));
     rib_->waitForRouteAttributePolicyUpdate();
 
     sendInitialPathComputation();
     // this wait() will be fulfilled by push of the policy itself
     ribFuture.wait();
 
-    // a 4s timer has started in the background at this point
+    // stmt1's expiry timer is now running in the background
 
     const auto& v4Rib = rib_->ribEntries_.find(prefix1);
     EXPECT_NE(rib_->ribEntries_.end(), v4Rib);
@@ -176,24 +191,26 @@ TEST_P(RibFixtureAddPathTestSuite, LbwProgramFibTest) {
         {prefix1},
         kLbw10G,
         "stmt1",
-        std::chrono::seconds(std::time(nullptr)).count() + 4 /* 4s */);
+        std::chrono::seconds(std::time(nullptr)).count() + kStmt1ExpirySec);
     policy.statements()->emplace(
         "stmt2",
         createTRouteAttributeStatementLbw(
             {prefix2},
             kLbw10G,
-            std::chrono::seconds(std::time(nullptr)).count() + 2 /* 2s */));
+            std::chrono::seconds(std::time(nullptr)).count() +
+                kStmt2ExpirySec));
     policy.statements()->emplace(
         "stmt3",
         createTRouteAttributeStatementLbw(
             {prefix2},
             kLbw10G,
-            std::chrono::seconds(std::time(nullptr)).count() + 6 /* 6s */));
+            std::chrono::seconds(std::time(nullptr)).count() +
+                kStmt3ExpirySec));
 
     sendRouteAttributePolicySet(policy);
     rib_->waitForRouteAttributePolicyUpdate();
 
-    // a 2s timer has started in the background at this point
+    // the next statement's expiry timer is now running in the background
 
     // this wait() will be fulfilled by the push of the new policy above
     ribFuture.wait();
@@ -222,10 +239,10 @@ TEST_P(RibFixtureAddPathTestSuite, LbwProgramFibTest) {
     EXPECT_TRUE(
         rib_->routeAttributePolicy_->statements_.at("stmt3").isActive());
 
-    // this wait() will be fulfilled by the 2s timer expiration (stmt2)
+    // this wait() will be fulfilled by stmt2's expiry (the earliest)
     ribFuture.wait();
 
-    // a 2s timer has started in the background at this point
+    // the next statement's expiry timer is now running in the background
 
     // Ensure that only stmt2 has expired
     EXPECT_TRUE(
@@ -248,10 +265,10 @@ TEST_P(RibFixtureAddPathTestSuite, LbwProgramFibTest) {
   }
   {
     auto ribFuture = rib_->getRibPrepareFibProgrammingFuture();
-    // this wait() will be fulfilled by the 2s timer expiration (stmt1)
+    // this wait() will be fulfilled by stmt1's expiry
     ribFuture.wait();
 
-    // a 2s timer has started at this point
+    // the next statement's expiry timer is now running
 
     // Ensure that both stmt1 and stmt2 have expired
     EXPECT_FALSE(
@@ -284,7 +301,7 @@ TEST_P(RibFixtureAddPathTestSuite, LbwProgramFibTest) {
   }
   {
     auto ribFuture = rib_->getRibPrepareFibProgrammingFuture();
-    // this wait() will be fulfilled by the 2s timer expiration (stmt3)
+    // this wait() will be fulfilled by stmt3's expiry
     ribFuture.wait();
 
     // Lastly all 3 statements expire
