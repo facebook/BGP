@@ -88,6 +88,17 @@ class AdjRibCachedVersionE2ETest : public E2ETestFixture {
   }
 
   /*
+   * Helper to read the PeerManager's max seen RibVersion.
+   * Runs in the PeerManager event base thread to avoid a TSAN data race.
+   */
+  uint64_t getMaxRibVersion() {
+    uint64_t version = 0;
+    peerManager_->getEventBase().runInEventBaseThreadAndWait(
+        [&]() { version = peerManager_->getMaxRibVersion(); });
+    return version;
+  }
+
+  /*
    * Wait for a peer's cached version to reach at least the target version.
    */
   bool waitForPeerCachedVersion(
@@ -809,6 +820,128 @@ TEST_F(AdjRibCachedVersionE2ETest, GroupVersionClearedOnGroupDestroy) {
    */
   EXPECT_FALSE(groupExistsInManager());
   EXPECT_EQ(groupVersion(), 0);
+}
+
+/*
+ * Test: PeerManager's max seen RibVersion starts at 0 before any RIB updates.
+ */
+TEST_F(AdjRibCachedVersionE2ETest, MaxRibVersionStartsAtZero) {
+  setupComponents();
+
+  bringUpPeer(kPeerAddr4);
+
+  EXPECT_EQ(getMaxRibVersion(), 0);
+}
+
+/*
+ * Test: PeerManager's max seen RibVersion advances as RibOutAnnouncement
+ * entries are processed, tracking the RIB version.
+ *
+ * Steps:
+ * 1. Bring up source peer3 and receiver peer4, consume EoR
+ * 2. Inject a route from peer3, verify peer4 receives it
+ * 3. Verify maxRibVersion advanced and equals the RIB version
+ * 4. Inject a second route and verify it advances again, still == RIB version
+ */
+TEST_F(AdjRibCachedVersionE2ETest, MaxRibVersionAdvancesOnAnnouncement) {
+  setupComponents();
+
+  bringUpPeer(kPeerAddr3);
+  bringUpPeer(kPeerAddr4);
+
+  BgpPeerId peerId4{kPeerAddr4, kPeerAddr4.asV4().toLongHBO()};
+  EXPECT_TRUE(waitForEoR(peerId4));
+
+  /* Inject first route */
+  addRoute("v4", "10.0.1.0", 24, kPeerAddr3, kNextHopV4_3.str());
+  EXPECT_TRUE(
+      verifyRouteAdd("v4", "10.0.1.0", 24, kPeerAddr4, kNextHopV4_4.str()));
+
+  uint64_t maxRibV1 = getMaxRibVersion();
+  EXPECT_GT(maxRibV1, 0);
+  EXPECT_EQ(maxRibV1, getRibVersion());
+
+  /* Inject second route */
+  addRoute("v4", "10.0.2.0", 24, kPeerAddr3, kNextHopV4_3.str());
+  EXPECT_TRUE(
+      verifyRouteAdd("v4", "10.0.2.0", 24, kPeerAddr4, kNextHopV4_4.str()));
+
+  uint64_t maxRibV2 = getMaxRibVersion();
+  EXPECT_GT(maxRibV2, maxRibV1);
+  EXPECT_EQ(maxRibV2, getRibVersion());
+}
+
+/*
+ * Test: PeerManager's max seen RibVersion keeps advancing through withdrawals
+ * and survives an emptied shadow RIB.
+ *
+ * This is the key property: a version derived by walking shadowRibEntries_
+ * would be lost once every route is withdrawn, but maxRibVersion_ is
+ * updated from each RibOutWithdrawal entry, so it still reflects the latest RIB
+ * version even when the shadow RIB is empty.
+ *
+ * Steps:
+ * 1. Bring up source peer3 and receiver peer4, consume EoR
+ * 2. Advertise two routes; record maxRibVersion after advertise
+ * 3. Withdraw both routes so the shadow RIB is empty
+ * 4. Verify maxRibVersion advanced past the advertise value, equals the
+ *    (higher) RIB version, and is non-zero despite the empty shadow RIB
+ */
+TEST_F(AdjRibCachedVersionE2ETest, MaxRibVersionSurvivesEmptyShadowRib) {
+  addPeer(kDefaultPeerSpec3_v4only); /* Route source */
+  addPeer(kDefaultPeerSpec4_v4only); /* Receiver */
+
+  createRib();
+  /*
+   * Large queue so the receiver never blocks: the shadow RIB entry is only
+   * erased once every consumer has consumed the withdrawal, so a blocked peer
+   * would leave the entry in place.
+   */
+  setDefaultQueueSizes(100 /* capacity */, 80 /* highWm */, 20 /* lowWm */);
+  createPeerManager(
+      false /* enableUpdateGroup */, true /* enableEgressBackpressure */);
+
+  bringUpPeer(kPeerAddr3);
+  bringUpPeer(kPeerAddr4);
+
+  BgpPeerId peerId4{kPeerAddr4, kPeerAddr4.asV4().toLongHBO()};
+  EXPECT_TRUE(waitForEoR(peerId4));
+
+  /*
+   * Advertise two routes. Gate on the shadow RIB (where maxRibVersion is
+   * updated) rather than the peer's out queue, since same-attribute routes are
+   * batched into a single UPDATE.
+   */
+  addRoute("v4", "10.0.1.0", 24, kPeerAddr3, kNextHopV4_3.str());
+  addRoute("v4", "10.0.2.0", 24, kPeerAddr3, kNextHopV4_3.str());
+  ASSERT_TRUE(
+      waitForRouteInShadowRib(folly::IPAddress::createNetwork("10.0.1.0/24")));
+  ASSERT_TRUE(
+      waitForRouteInShadowRib(folly::IPAddress::createNetwork("10.0.2.0/24")));
+
+  uint64_t maxRibAfterAdvertise = getMaxRibVersion();
+  EXPECT_GT(maxRibAfterAdvertise, 0);
+
+  /*
+   * Withdraw both routes. The shadow RIB entry is only erased once the peer
+   * consumes the withdrawal, so drain its queue to let the send coroutine
+   * advance the change-list marker and trigger the erase.
+   */
+  deleteRoute("v4", "10.0.1.0", 24, kPeerAddr3);
+  deleteRoute("v4", "10.0.2.0", 24, kPeerAddr3);
+  drainPeerQueueCompletely(peerId4, 10 /* maxRetries */);
+  EXPECT_TRUE(verifyRouteNotInShadowRib(
+      folly::IPAddress::createNetwork("10.0.1.0/24")));
+  EXPECT_TRUE(verifyRouteNotInShadowRib(
+      folly::IPAddress::createNetwork("10.0.2.0/24")));
+
+  /*
+   * Even with an emptied shadow RIB, maxRibVersion reflects the latest RIB
+   * version (advanced past the advertise value by the withdrawals).
+   */
+  uint64_t maxRibAfterWithdraw = getMaxRibVersion();
+  EXPECT_GT(maxRibAfterWithdraw, maxRibAfterAdvertise);
+  EXPECT_EQ(maxRibAfterWithdraw, getRibVersion());
 }
 
 } // namespace bgp

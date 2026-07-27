@@ -282,6 +282,12 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
           std::shared_ptr<nettools::bgplib::BgpPeerDisplayInfo>>&
           allPeers) noexcept;
 
+  // Highest RibVersion seen across all RibOutAnnouncement/RibOutWithdrawal
+  // entries processed from the RIB.
+  uint64_t getMaxRibVersion() const noexcept {
+    return maxRibVersion_;
+  }
+
   // Get current shadowRibEntries by address family
   std::vector<neteng::fboss::bgp::thrift::TRibEntry> getShadowRibEntries(
       neteng::fboss::bgp_attr::TBgpAfi afi);
@@ -1149,6 +1155,18 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
    * adding extra burdens to ribOut message queue.
    */
   ShadowRibEntriesMap shadowRibEntries_;
+
+  /*
+   * Highest RibVersion observed across every RibOutAnnouncement and
+   * RibOutWithdrawal entry processed from the RIB. Survives an emptied shadow
+   * RIB (unlike a version derived by walking @shadowRibEntries_). Only accessed
+   * from the EVB thread (same as @shadowRibEntries_).
+   */
+  uint64_t maxRibVersion_{0};
+
+  void setMaxRibVersion(uint64_t ribVersion) noexcept {
+    maxRibVersion_ = std::max(maxRibVersion_, ribVersion);
+  }
 
   // AdjRib will post this baton when session is terminated (both message
   // processing loops have completed). Used to do sequential synchronization

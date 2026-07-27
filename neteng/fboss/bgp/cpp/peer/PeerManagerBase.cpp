@@ -1492,6 +1492,17 @@ const ConsumerBitmap& PeerManagerBase::getConsumerBitmapForChange(
 
 void PeerManagerBase::handleShadowRibEntryAnnouncement(
     const RibOutAnnouncement& announcement) {
+  /*
+   * Entries within a RibOutAnnouncement are ordered by ribVersion, so the last
+   * entry of each vector carries the batch's max version. Track it up front so
+   * maxRibVersion_ advances even when the walk below skips/erases entries.
+   */
+  if (!announcement.entries.empty()) {
+    setMaxRibVersion(announcement.entries.back().ribVersion);
+  }
+  if (!announcement.addPathEntries.empty()) {
+    setMaxRibVersion(announcement.addPathEntries.back().ribVersion);
+  }
   for (const auto& entry : announcement.entries) {
     // bestpath only advertisement, hence the pathId will always be 0
     auto srRouteInfo = std::make_shared<ShadowRibRouteInfo>(
@@ -1611,6 +1622,17 @@ void PeerManagerBase::handleShadowRibEntryAnnouncement(
 
 void PeerManagerBase::handleShadowRibEntryWithdrawal(
     const RibOutWithdrawal& withdrawal) {
+  /*
+   * Entries within a RibOutWithdrawal are ordered by ribVersion, so the last
+   * entry of each vector carries the batch's max version. Track it up front so
+   * a withdrawal for an already-removed prefix still advances maxRibVersion_.
+   */
+  if (!withdrawal.entries.empty()) {
+    setMaxRibVersion(withdrawal.entries.back().ribVersion);
+  }
+  if (!withdrawal.addPathEntries.empty()) {
+    setMaxRibVersion(withdrawal.addPathEntries.back().ribVersion);
+  }
   // process bestpath withdrawal
   for (const auto& entry : withdrawal.entries) {
     auto srEntryIter = shadowRibEntries_.find(entry.prefix);
