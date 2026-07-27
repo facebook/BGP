@@ -106,6 +106,9 @@
       RibWithLocalRouteFixture, ConditionalLocalRoute_UnknownNexthopNoOp);     \
   FRIEND_TEST(RibFixture, RibVersionIncrementsOnBestpathChange);               \
   FRIEND_TEST(RibFixture, RibVersionNoChangeOnDuplicateRoute);                 \
+  FRIEND_TEST(RibFixture, RibVersionDistinctPerPrefixInWithdrawal);            \
+  FRIEND_TEST(                                                                 \
+      RibFixture, RibVersionAddPathWithdrawalsSpanningChunksBumpAcrossChunks); \
   FRIEND_TEST(RibFixture, CreateTRibEntryBestGroupReflectsBestPathPresence);
 
 #define RibEntry_TEST_FRIENDS \
@@ -1574,13 +1577,23 @@ TEST_F(RibFixture, RibVersionIncrementsOnBestpathChange) {
   // RIB version should still be 0 (no routes yet)
   EXPECT_EQ(0, rib_->getRibVersion());
 
-  // Step 2: Inject first route - should increment RIB version
+  // Step 2: Inject first route - should increment RIB version. The version is
+  // now stamped at emission time (in handleFibProgrammedMessage, after the FIB
+  // round-trip), so synchronize on the announcement being pushed before reading
+  // the version.
   fibFuture = fib_->getFibProgramFuture();
   sendAnnouncement(prefixBatch, injector2_, attr_);
   fibFuture.wait();
 
+  msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
+
   uint64_t versionAfterFirstRoute = rib_->getRibVersion();
   EXPECT_GT(versionAfterFirstRoute, 0);
+  // The emitted entry carries the same version as the global counter.
+  EXPECT_EQ(
+      versionAfterFirstRoute,
+      std::get<RibOutAnnouncement>(msg).entries.at(0).ribVersion);
 
   // Verify RibEntry has the version set
   rib_->evb_.runInEventBaseThreadAndWait([&]() {
@@ -1597,18 +1610,20 @@ TEST_F(RibFixture, RibVersionIncrementsOnBestpathChange) {
   // Verify prefix counter after first route
   EXPECT_EQ(1, tcData->getCounter(RibStats::kRibPrefixCount));
 
-  // Drain the RibOut message
-  msg = folly::coro::blockingWait(ribOutQ_.pop());
-  ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
-
   // Step 3: Inject same prefix from peer with lower router ID - bestpath
-  // changes
+  // changes. Synchronize on the announcement before reading the version.
   fibFuture = fib_->getFibProgramFuture();
   sendAnnouncement(prefixBatch, injector1_, attr_);
   fibFuture.wait();
 
+  msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
+
   uint64_t versionAfterBetterRoute = rib_->getRibVersion();
   EXPECT_GT(versionAfterBetterRoute, versionAfterFirstRoute);
+  EXPECT_EQ(
+      versionAfterBetterRoute,
+      std::get<RibOutAnnouncement>(msg).entries.at(0).ribVersion);
 
   // Verify RibEntry version updated
   rib_->evb_.runInEventBaseThreadAndWait([&]() {
@@ -1625,17 +1640,21 @@ TEST_F(RibFixture, RibVersionIncrementsOnBestpathChange) {
   // Verify prefix count unchanged (same prefix)
   EXPECT_EQ(1, tcData->getCounter(RibStats::kRibPrefixCount));
 
-  // Drain the RibOut message
-  msg = folly::coro::blockingWait(ribOutQ_.pop());
-  ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
-
-  // Step 4: Withdraw best path - bestpath changes back to injector2
+  // Step 4: Withdraw the winning path - bestpath reverts to injector2, which is
+  // re-advertised in handleFibProgrammedMessage. Synchronize on the
+  // announcement before reading the version.
   fibFuture = fib_->getFibProgramFuture();
   sendWithdrawal(prefixBatch, injector1_);
   fibFuture.wait();
 
+  msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
+
   uint64_t versionAfterWithdrawal = rib_->getRibVersion();
   EXPECT_GT(versionAfterWithdrawal, versionAfterBetterRoute);
+  EXPECT_EQ(
+      versionAfterWithdrawal,
+      std::get<RibOutAnnouncement>(msg).entries.at(0).ribVersion);
 
   // Verify RibEntry version updated again
   rib_->evb_.runInEventBaseThreadAndWait([&]() {
@@ -1678,17 +1697,17 @@ TEST_F(RibFixture, RibVersionNoChangeOnDuplicateRoute) {
   msg = folly::coro::blockingWait(ribOutQ_.pop());
   ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
 
-  // Inject route
+  // Inject route. The version is stamped at emission time, so synchronize on
+  // the announcement being pushed before reading the version.
   fibFuture = fib_->getFibProgramFuture();
   sendAnnouncement(prefixBatch, eBgpPeer1_, attr_);
   fibFuture.wait();
 
-  uint64_t versionAfterFirst = rib_->getRibVersion();
-  EXPECT_GT(versionAfterFirst, 0);
-
-  // Drain the RibOut message
   msg = folly::coro::blockingWait(ribOutQ_.pop());
   ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
+
+  uint64_t versionAfterFirst = rib_->getRibVersion();
+  EXPECT_GT(versionAfterFirst, 0);
 
   // Re-inject same route with same attributes (no material change)
   // Note: We don't wait for FIB programming since duplicate routes don't
@@ -1698,6 +1717,635 @@ TEST_F(RibFixture, RibVersionNoChangeOnDuplicateRoute) {
     // Version should NOT have changed since bestpath didn't change
     EXPECT_EQ(versionAfterFirst, rib_->getRibVersion());
   });
+}
+
+/*
+ * Test: the RIB version is stamped on the emitted RibOut entries (the message
+ * carrier consumed by AdjRib), not just on the global counter, and a prefix's
+ * version is monotonic from the reader's point of view across
+ * announce -> withdraw.
+ *
+ * This guards the queue-push-time assignment: the version carried by each
+ * RibOutAnnouncementEntry / RibOutWithdrawalEntry equals the RIB version at the
+ * moment the prefix is pushed onto ribOutQ_, and a withdrawal (stamped in
+ * prepareFibProgramming) carries a strictly greater version than the prior
+ * announcement of the same prefix.
+ */
+TEST_F(RibFixture, RibVersionStampedOnEmittedEntriesMonotonicPerPrefix) {
+  EXPECT_CALL(*rib_, prepareFibProgramming_()).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, program_(_)).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, updateUnicastRoute_(_, _, _, _, _, _))
+      .Times(testing::AnyNumber());
+
+  auto prefixBatch = PrefixPathIds{{kV6Prefix1, kDefaultPathID}};
+
+  // Send EoR first and drain the initial dump.
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendInitialPathComputation();
+  fibFuture.wait();
+  auto msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibInitialAnnouncementStart>(msg));
+  msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
+
+  // Announce a prefix: the emitted announcement entry carries the current RIB
+  // version (stamped at emission in handleFibProgrammedMessage).
+  fibFuture = fib_->getFibProgramFuture();
+  sendAnnouncement(prefixBatch, eBgpPeer1_, attr_);
+  fibFuture.wait();
+
+  msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
+  auto announcement = std::get<RibOutAnnouncement>(msg);
+  ASSERT_EQ(1, announcement.entries.size());
+  const uint64_t announceVersion = announcement.entries.at(0).ribVersion;
+  EXPECT_EQ(kV6Prefix1, announcement.entries.at(0).prefix);
+  EXPECT_GT(announceVersion, 0);
+  EXPECT_EQ(rib_->getRibVersion(), announceVersion);
+
+  // Withdraw the prefix: the withdrawal entry carries a strictly greater
+  // version (stamped at emission in prepareFibProgramming, before the FIB
+  // round-trip).
+  fibFuture = fib_->getFibProgramFuture();
+  sendWithdrawal(prefixBatch, eBgpPeer1_);
+  fibFuture.wait();
+
+  msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibOutWithdrawal>(msg));
+  auto withdrawal = std::get<RibOutWithdrawal>(msg);
+  ASSERT_EQ(1, withdrawal.entries.size());
+  const uint64_t withdrawVersion = withdrawal.entries.at(0).ribVersion;
+  EXPECT_EQ(kV6Prefix1, withdrawal.entries.at(0).prefix);
+  EXPECT_EQ(rib_->getRibVersion(), withdrawVersion);
+  EXPECT_GT(withdrawVersion, announceVersion);
+}
+
+/*
+ * Test: a prefix with multiple ECMP / add-path entries is version-bumped
+ * exactly once per pass. Every emitted entry for the prefix -- the best-path
+ * entry and all add-path entries -- carries the same RIB version, and the
+ * global counter advances by exactly one, not once per path.
+ */
+TEST_F(RibFixture, RibVersionSingleBumpAcrossMultipathAddPathEntries) {
+  EXPECT_CALL(*rib_, prepareFibProgramming_()).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, program_(_)).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, updateUnicastRoute_(_, _, _, _, _, _))
+      .Times(testing::AnyNumber());
+
+  auto prefixBatch = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
+
+  // Two equal-cost paths for the same prefix (kV4Nexthop1 via eBgpPeer1_,
+  // kV4Nexthop2 via eBgpPeer2_) so multipath selection yields two ECMP
+  // nexthops -> one best-path entry plus two add-path entries.
+  sendAnnouncement(prefixBatch, eBgpPeer1_, attr_); // attr_ carries kV4Nexthop1
+  auto newAttr =
+      std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
+  newAttr->setNexthop(kV4Nexthop2);
+  newAttr->publish();
+  sendAnnouncement(prefixBatch, eBgpPeer2_, newAttr);
+
+  // Nothing is advertised (and no version is bumped) before EoR.
+  const uint64_t versionBeforeEoR = rib_->getRibVersion();
+  EXPECT_EQ(0, versionBeforeEoR);
+
+  // EoR triggers best-path selection, FIB programming and the announcement.
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendInitialPathComputation();
+  fibFuture.wait();
+
+  auto msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibInitialAnnouncementStart>(msg));
+  msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
+  auto announcement = std::get<RibOutAnnouncement>(msg);
+  ASSERT_EQ(1, announcement.entries.size());
+  ASSERT_EQ(2, announcement.addPathEntries.size());
+
+  // Best entry and both add-path entries share the single per-prefix version.
+  const uint64_t version = announcement.entries.at(0).ribVersion;
+  EXPECT_GT(version, 0);
+  for (const auto& addPathEntry : announcement.addPathEntries) {
+    EXPECT_EQ(kV4Prefix1, addPathEntry.prefix);
+    EXPECT_EQ(version, addPathEntry.ribVersion);
+  }
+
+  // Exactly one bump for the single prefix, regardless of its path count.
+  EXPECT_EQ(versionBeforeEoR + 1, rib_->getRibVersion());
+  EXPECT_EQ(version, rib_->getRibVersion());
+}
+
+/*
+ * Test: when several prefixes are announced in a single pass, the one
+ * RibOutAnnouncement carries one entry per prefix, each with its own version,
+ * and the versions are distinct and strictly increasing in emission (queue)
+ * order -- i.e. the reader sees a monotonic sequence within the message.
+ */
+TEST_F(RibFixture, RibVersionDistinctPerPrefixInAnnouncement) {
+  EXPECT_CALL(*rib_, prepareFibProgramming_()).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, program_(_)).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, updateUnicastRoute_(_, _, _, _, _, _))
+      .Times(testing::AnyNumber());
+
+  // Announce two distinct prefixes before EoR so a single initial-dump
+  // announcement carries both, each version-stamped once at emission.
+  sendAnnouncement(
+      PrefixPathIds{{kV4Prefix1, kDefaultPathID}}, eBgpPeer1_, attr_);
+  auto attr2 =
+      std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
+  attr2->setNexthop(kV4Nexthop2);
+  attr2->publish();
+  sendAnnouncement(
+      PrefixPathIds{{kV4Prefix2, kDefaultPathID}}, eBgpPeer1_, attr2);
+
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendInitialPathComputation();
+  fibFuture.wait();
+
+  auto msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibInitialAnnouncementStart>(msg));
+  msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
+  auto announcement = std::get<RibOutAnnouncement>(msg);
+  ASSERT_EQ(2, announcement.entries.size());
+
+  // Two distinct prefixes -> two distinct versions, strictly increasing in
+  // the order they were pushed onto the queue.
+  EXPECT_NE(
+      announcement.entries.at(0).prefix, announcement.entries.at(1).prefix);
+  EXPECT_LT(
+      announcement.entries.at(0).ribVersion,
+      announcement.entries.at(1).ribVersion);
+}
+
+/*
+ * Test: when several prefixes are withdrawn in a single prepareFibProgramming
+ * pass, the one RibOutWithdrawal carries one entry per prefix, each with its
+ * own version, distinct and strictly increasing in emission (queue) order.
+ * Drives prepareFibProgramming() directly so both prefixes are guaranteed to
+ * be withdrawn in the same pass.
+ */
+TEST_F(RibFixture, RibVersionDistinctPerPrefixInWithdrawal) {
+  EXPECT_CALL(*rib_, prepareFibProgramming_()).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, program_(_)).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, updateUnicastRoute_(_, _, _, _, _, _))
+      .Times(testing::AnyNumber());
+
+  rib_->evb_.runInEventBaseThreadAndWait([&]() {
+    for (const auto& prefix : {kV4Prefix1, kV4Prefix2}) {
+      rib_->ribEntries_.emplace(prefix, RibEntry(prefix));
+      auto& entry = rib_->ribEntries_.at(prefix);
+      auto pathAttr = std::make_shared<facebook::bgp::BgpPath>(
+          *buildBgpPathFields(4, 4, 4, 4));
+      pathAttr->publish();
+      entry.updatePath(eBgpPeer1_, pathAttr, true, 0);
+      RibBase::selectBestPath(
+          entry, multipathSelector, bestpathSelector, false, 0);
+      // Commit so the prefix is treated as already advertised, then withdraw
+      // its only path so best path becomes null (a full withdrawal).
+      entry.commitMultipaths();
+      entry.commitMultipathNexthops();
+      entry.commitBestpath();
+      entry.updatePath(eBgpPeer1_, nullptr, true, 0);
+      entry.requirePathSelection();
+    }
+    rib_->prepareFibProgramming();
+  });
+
+  auto msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibOutWithdrawal>(msg));
+  auto withdrawal = std::get<RibOutWithdrawal>(msg);
+  ASSERT_EQ(2, withdrawal.entries.size());
+
+  EXPECT_NE(withdrawal.entries.at(0).prefix, withdrawal.entries.at(1).prefix);
+  EXPECT_LT(
+      withdrawal.entries.at(0).ribVersion, withdrawal.entries.at(1).ribVersion);
+}
+
+/*
+ * Scenario 1: in one prepareFibProgramming pass, one prefix is withdrawn and
+ * another is (re)announced. The withdrawal is pushed to ribOutQ_ inside
+ * prepareFibProgramming (before the FIB round-trip); the announcement is pushed
+ * later, in handleFibProgrammedMessage (after it). Because the version is
+ * stamped at emission time, the withdrawal -- advertised first -- always
+ * carries a LOWER version than the announcement, regardless of the order in
+ * which the two prefixes happened to be evaluated during path selection.
+ */
+TEST_F(RibFixture, RibVersionWithdrawalAdvertisedFirstHasLowerVersion) {
+  EXPECT_CALL(*rib_, prepareFibProgramming_()).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, program_(_)).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, updateUnicastRoute_(_, _, _, _, _, _))
+      .Times(testing::AnyNumber());
+
+  auto p1 = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
+  auto p2 = PrefixPathIds{{kV4Prefix2, kDefaultPathID}};
+
+  // Establish both prefixes before EoR, then drain the initial dump.
+  sendAnnouncement(p1, eBgpPeer1_, attr_);
+  sendAnnouncement(p2, eBgpPeer1_, attr_);
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendInitialPathComputation();
+  fibFuture.wait();
+  REPEAT_N(2, folly::coro::blockingWait(ribOutQ_.pop()));
+
+  // In one pass: fully withdraw p1 and change p2's best path (a higher
+  // local-pref path from another peer). p1's withdrawal is advertised before
+  // the FIB round-trip; p2's re-announcement after it.
+  fibFuture = fib_->getFibProgramFuture();
+  sendWithdrawal(p1, eBgpPeer1_);
+  sendAnnouncement(p2, eBgpPeer2_, attrHighLocalPref_);
+  fibFuture.wait();
+
+  auto msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibOutWithdrawal>(msg));
+  auto withdrawal = std::get<RibOutWithdrawal>(msg);
+  ASSERT_EQ(1, withdrawal.entries.size());
+  EXPECT_EQ(kV4Prefix1, withdrawal.entries.at(0).prefix);
+
+  msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
+  auto announcement = std::get<RibOutAnnouncement>(msg);
+  ASSERT_EQ(1, announcement.entries.size());
+  EXPECT_EQ(kV4Prefix2, announcement.entries.at(0).prefix);
+
+  EXPECT_LT(
+      withdrawal.entries.at(0).ribVersion,
+      announcement.entries.at(0).ribVersion);
+}
+
+/*
+ * Scenario 1b (revert guard): in one prepareFibProgramming pass, one block of
+ * prefixes is withdrawn while another block is re-announced (a strictly better
+ * path). Withdrawals are pushed to ribOutQ_ inside prepareFibProgramming
+ * (before the FIB round-trip); announcements are pushed later, in
+ * handleFibProgrammedMessage (after it). Because the version is stamped at
+ * emission time, EVERY withdrawal carries a strictly LOWER version than EVERY
+ * announcement, regardless of the (F14) order in which the prefixes were
+ * path-selected.
+ *
+ * This is the reliable regression guard for the fix: under the old
+ * path-selection-time stamping the two blocks' versions interleave in F14
+ * order, so max(withdrawal) < min(announcement) would hold only if all
+ * withdrawn prefixes happened to sort before all announced ones -- ~1/C(12,6)
+ * (about 1/924) with the block size below -- so this test fails on a revert to
+ * path-selection-time stamping with near-certainty, unlike the single-prefix
+ * scenario 1 above (which can pass vacuously depending on hash order).
+ */
+TEST_F(RibFixture, RibVersionWithdrawalsPrecedeAllAnnouncementsInPass) {
+  EXPECT_CALL(*rib_, prepareFibProgramming_()).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, program_(_)).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, updateUnicastRoute_(_, _, _, _, _, _))
+      .Times(testing::AnyNumber());
+
+  constexpr uint32_t kBlock = 6;
+  constexpr int kWithdrawBase = 0x0A000000; // 10.0.0.0
+  constexpr int kAnnounceBase = 0x14000000; // 20.0.0.0
+
+  // Establish both blocks from eBgpPeer1_, then drain the initial dump.
+  sendBulkAnnouncement(kBlock, eBgpPeer1_, attr_, kWithdrawBase);
+  sendBulkAnnouncement(kBlock, eBgpPeer1_, attr_, kAnnounceBase);
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendInitialPathComputation();
+  fibFuture.wait();
+  REPEAT_N(2, folly::coro::blockingWait(ribOutQ_.pop())); // start + dump
+
+  // One pass: withdraw the first block and re-announce the second with a
+  // strictly better path (higher local-pref from a different peer), so the
+  // second block is re-advertised in handleFibProgrammedMessage.
+  fibFuture = fib_->getFibProgramFuture();
+  sendBulkWithdrawal(kBlock, eBgpPeer1_, kWithdrawBase);
+  sendBulkAnnouncement(kBlock, eBgpPeer2_, attrHighLocalPref_, kAnnounceBase);
+  fibFuture.wait();
+
+  // Collect every main withdrawal/announcement version from the pass.
+  uint64_t maxWithdrawVersion = 0;
+  uint64_t minAnnounceVersion = 0;
+  bool haveAnnounce = false;
+  uint32_t withdrawn = 0;
+  uint32_t announced = 0;
+  while (withdrawn < kBlock || announced < kBlock) {
+    auto msg = folly::coro::blockingWait(ribOutQ_.pop());
+    if (std::holds_alternative<RibOutWithdrawal>(msg)) {
+      for (const auto& entry : std::get<RibOutWithdrawal>(msg).entries) {
+        if (entry.ribVersion > maxWithdrawVersion) {
+          maxWithdrawVersion = entry.ribVersion;
+        }
+        withdrawn++;
+      }
+    } else if (std::holds_alternative<RibOutAnnouncement>(msg)) {
+      for (const auto& entry : std::get<RibOutAnnouncement>(msg).entries) {
+        if (!haveAnnounce || entry.ribVersion < minAnnounceVersion) {
+          minAnnounceVersion = entry.ribVersion;
+          haveAnnounce = true;
+        }
+        announced++;
+      }
+    }
+  }
+
+  ASSERT_EQ(kBlock, withdrawn);
+  ASSERT_EQ(kBlock, announced);
+  // The last-emitted withdrawal still precedes the first-emitted announcement.
+  EXPECT_LT(maxWithdrawVersion, minAnnounceVersion);
+}
+
+/*
+ * Scenario 2: a pure best-path change (no change to the multipath nexthop set)
+ * bumps the RIB version exactly once. Two paths for one prefix share the same
+ * nexthop (so the ECMP nexthop set never changes) and the best flips onto the
+ * lower-router-id path. This proves a best-path change does NOT always come
+ * with a multipath change, and that it still increments the version by exactly
+ * one.
+ */
+TEST_F(RibFixture, RibVersionBestPathOnlyChangeBumpsExactlyOnce) {
+  EXPECT_CALL(*rib_, prepareFibProgramming_()).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, program_(_)).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, updateUnicastRoute_(_, _, _, _, _, _))
+      .Times(testing::AnyNumber());
+
+  auto prefixBatch = PrefixPathIds{{kV6Prefix1, kDefaultPathID}};
+
+  // EoR with no routes; drain the initial-dump start marker + empty dump.
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendInitialPathComputation();
+  fibFuture.wait();
+  REPEAT_N(2, folly::coro::blockingWait(ribOutQ_.pop()));
+
+  // First path (injector2) establishes the best path.
+  fibFuture = fib_->getFibProgramFuture();
+  sendAnnouncement(prefixBatch, injector2_, attr_);
+  fibFuture.wait();
+  auto msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
+  const uint64_t versionAfterFirst = rib_->getRibVersion();
+
+  // Same prefix, same nexthop, lower router id (injector1) -> the best path
+  // flips but the multipath nexthop set is unchanged. Exactly one more bump.
+  fibFuture = fib_->getFibProgramFuture();
+  sendAnnouncement(prefixBatch, injector1_, attr_);
+  fibFuture.wait();
+  msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
+  const uint64_t versionAfterBestFlip = rib_->getRibVersion();
+
+  EXPECT_EQ(versionAfterFirst + 1, versionAfterBestFlip);
+  EXPECT_EQ(
+      versionAfterBestFlip,
+      std::get<RibOutAnnouncement>(msg).entries.at(0).ribVersion);
+}
+
+/*
+ * Scenario 3: adding one path to an existing ECMP prefix re-advertises the
+ * entire multipath (all paths) but bumps the RIB version exactly once -- not
+ * once per path. Every re-advertised add-path entry shares the single new
+ * version.
+ */
+TEST_F(RibFixture, RibVersionIncrementalAddPathBumpsExactlyOnce) {
+  EXPECT_CALL(*rib_, prepareFibProgramming_()).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, program_(_)).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, updateUnicastRoute_(_, _, _, _, _, _))
+      .Times(testing::AnyNumber());
+
+  auto prefixBatch = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
+
+  // Establish two ECMP paths for the prefix (nh1 via peer1, nh2 via peer2).
+  sendAnnouncement(prefixBatch, eBgpPeer1_, attr_); // attr_ carries kV4Nexthop1
+  auto attr2 =
+      std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
+  attr2->setNexthop(kV4Nexthop2);
+  attr2->publish();
+  sendAnnouncement(prefixBatch, eBgpPeer2_, attr2);
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendInitialPathComputation();
+  fibFuture.wait();
+  REPEAT_N(2, folly::coro::blockingWait(ribOutQ_.pop()));
+  const uint64_t versionAfterTwoPaths = rib_->getRibVersion();
+
+  // Add a third ECMP path (nh3 via peer3). All three paths are re-advertised,
+  // but the version bumps by exactly one and every add-path entry shares it.
+  auto attr3 =
+      std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
+  attr3->setNexthop(kV4Nexthop3);
+  attr3->publish();
+  fibFuture = fib_->getFibProgramFuture();
+  sendAnnouncement(prefixBatch, eBgpPeer3_, attr3);
+  fibFuture.wait();
+
+  auto msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
+  auto announcement = std::get<RibOutAnnouncement>(msg);
+  ASSERT_EQ(3, announcement.addPathEntries.size());
+
+  const uint64_t versionAfterThreePaths = rib_->getRibVersion();
+  EXPECT_EQ(versionAfterTwoPaths + 1, versionAfterThreePaths);
+  for (const auto& addPathEntry : announcement.addPathEntries) {
+    EXPECT_EQ(versionAfterThreePaths, addPathEntry.ribVersion);
+  }
+}
+
+/*
+ * Scenario 4: shrinking an ECMP set (bestpath/multipath shrink) makes one
+ * prefix emit BOTH an add-path withdrawal (for the removed nexthop) AND a
+ * re-announcement (surviving paths) in the same pass. These are two separate
+ * RibOut messages -- the withdrawal is pushed before the announcement -- but
+ * they SHARE one version (one bump per pass). This same-version behavior is
+ * safe: the reader coalesces both onto one change-list item and advances the
+ * consumer's version once (see AdjRibOut.cpp:processShadowRibEntryChange), so
+ * no two-phase (V, V+1) bump is needed.
+ */
+TEST_F(RibFixture, RibVersionEcmpShrinkWithdrawAndReannounceShareVersion) {
+  EXPECT_CALL(*rib_, prepareFibProgramming_()).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, program_(_)).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, updateUnicastRoute_(_, _, _, _, _, _))
+      .Times(testing::AnyNumber());
+
+  auto prefixBatch = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
+
+  // Establish three ECMP paths (nh1/nh2/nh3 via peers 1/2/3).
+  sendAnnouncement(prefixBatch, eBgpPeer1_, attr_);
+  auto attr2 =
+      std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
+  attr2->setNexthop(kV4Nexthop2);
+  attr2->publish();
+  sendAnnouncement(prefixBatch, eBgpPeer2_, attr2);
+  auto attr3 =
+      std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
+  attr3->setNexthop(kV4Nexthop3);
+  attr3->publish();
+  sendAnnouncement(prefixBatch, eBgpPeer3_, attr3);
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendInitialPathComputation();
+  fibFuture.wait();
+  REPEAT_N(2, folly::coro::blockingWait(ribOutQ_.pop()));
+  const uint64_t versionBeforeShrink = rib_->getRibVersion();
+
+  // Shrink the ECMP set: withdraw the nh3 path. The same prefix now emits an
+  // add-path withdrawal (for nh3) then a re-announcement (nh1/nh2), two
+  // separate RibOut messages that share ONE version.
+  fibFuture = fib_->getFibProgramFuture();
+  sendWithdrawal(prefixBatch, eBgpPeer3_);
+  fibFuture.wait();
+
+  auto msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibOutWithdrawal>(msg));
+  auto withdrawal = std::get<RibOutWithdrawal>(msg);
+  ASSERT_EQ(1, withdrawal.addPathEntries.size());
+
+  msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
+  auto announcement = std::get<RibOutAnnouncement>(msg);
+  ASSERT_EQ(2, announcement.addPathEntries.size());
+
+  const uint64_t versionAfterShrink = rib_->getRibVersion();
+  // One bump for the whole shrink pass; withdrawal and re-announcement share
+  // it.
+  EXPECT_EQ(versionBeforeShrink + 1, versionAfterShrink);
+  EXPECT_EQ(versionAfterShrink, withdrawal.addPathEntries.at(0).ribVersion);
+  for (const auto& addPathEntry : announcement.addPathEntries) {
+    EXPECT_EQ(versionAfterShrink, addPathEntry.ribVersion);
+  }
+}
+
+/*
+ * Rule 2 (announcement path): a single prefix with more than kRibChunkSize
+ * add-paths spans more than one add-path chunk. Entries within one chunk share
+ * a version (rule 1); the chunk that follows a mid-prefix flush carries a
+ * strictly higher version (rule 2), so a peer that detaches between the two
+ * chunks sees the later paths as not-yet-shared and re-syncs them instead of
+ * silently missing them.
+ */
+TEST_F(RibFixture, RibVersionAddPathsSpanningChunksBumpAcrossChunks) {
+  EXPECT_CALL(*rib_, prepareFibProgramming_()).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, program_(_)).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, updateUnicastRoute_(_, _, _, _, _, _))
+      .Times(testing::AnyNumber());
+
+  // Establish kRibChunkSize + 1 equal-cost paths for ONE prefix, from a single
+  // peer via distinct received path-ids and distinct nexthops, so multipath
+  // selection yields kRibChunkSize + 1 add-paths that span two chunks.
+  constexpr uint32_t kNumPaths = kRibChunkSize + 1;
+  constexpr int kNexthopBase = 0x0B010000; // 11.1.0.0
+  for (uint32_t i = 0; i < kNumPaths; i++) {
+    auto attr = std::make_shared<facebook::bgp::BgpPath>(
+        *buildBgpPathFields(4, 4, 4, 4));
+    attr->setNexthop(folly::IPAddress::fromLongHBO(kNexthopBase + i));
+    attr->publish();
+    sendAnnouncement(PrefixPathIds{{kV4Prefix1, i + 1}}, eBgpPeer1_, attr);
+  }
+
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendInitialPathComputation();
+  fibFuture.wait();
+
+  // Drain the initial-dump start marker.
+  auto msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibInitialAnnouncementStart>(msg));
+
+  // Walk the emitted announcement chunks, collecting one representative version
+  // per add-path chunk. The final chunk carries the EoR flag.
+  std::vector<uint64_t> chunkVersions;
+  uint32_t addPathTotal = 0;
+  bool haveEoR = false;
+  while (!haveEoR) {
+    msg = folly::coro::blockingWait(ribOutQ_.pop());
+    ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
+    const auto& ann = std::get<RibOutAnnouncement>(msg);
+    haveEoR = ann.sendWithEoR;
+    if (ann.addPathEntries.empty()) {
+      continue;
+    }
+    const uint64_t chunkVersion = ann.addPathEntries.front().ribVersion;
+    // rule 1: every add-path entry in this chunk shares one version.
+    for (const auto& entry : ann.addPathEntries) {
+      EXPECT_EQ(kV4Prefix1, entry.prefix);
+      EXPECT_EQ(chunkVersion, entry.ribVersion);
+      addPathTotal++;
+    }
+    // rule 2: each new chunk's version strictly exceeds the previous chunk's.
+    if (!chunkVersions.empty()) {
+      EXPECT_GT(chunkVersion, chunkVersions.back());
+    }
+    chunkVersions.push_back(chunkVersion);
+  }
+
+  // All paths advertised, across exactly two chunks (one flush boundary).
+  EXPECT_EQ(kNumPaths, addPathTotal);
+  ASSERT_EQ(2, chunkVersions.size());
+  EXPECT_LT(chunkVersions[0], chunkVersions[1]);
+}
+
+/*
+ * Rule 2 (withdrawal path): a single prefix with more than kRibChunkSize
+ * advertised add-paths is fully withdrawn, so handleFullAddPathWithdrawal emits
+ * the add-path withdrawals across more than one chunk. Entries within one chunk
+ * share a version (rule 1) and each chunk after a flush carries a strictly
+ * higher version (rule 2). Drives prepareFibProgramming() directly so the setup
+ * and the chunk boundary are deterministic (and asserts the setup actually
+ * produced > kRibChunkSize advertised paths).
+ */
+TEST_F(RibFixture, RibVersionAddPathWithdrawalsSpanningChunksBumpAcrossChunks) {
+  EXPECT_CALL(*rib_, prepareFibProgramming_()).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, program_(_)).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, updateUnicastRoute_(_, _, _, _, _, _))
+      .Times(testing::AnyNumber());
+
+  constexpr uint32_t kNumPaths = kRibChunkSize + 1;
+  constexpr int kNexthopBase = 0x0B010000; // 11.1.0.0
+
+  rib_->evb_.runInEventBaseThreadAndWait([&]() {
+    rib_->ribEntries_.emplace(kV4Prefix1, RibEntry(kV4Prefix1));
+    auto& entry = rib_->ribEntries_.at(kV4Prefix1);
+    for (uint32_t i = 0; i < kNumPaths; i++) {
+      auto attr = std::make_shared<facebook::bgp::BgpPath>(
+          *buildBgpPathFields(4, 4, 4, 4));
+      attr->setNexthop(folly::IPAddress::fromLongHBO(kNexthopBase + i));
+      attr->publish();
+      entry.updatePath(eBgpPeer1_, attr, true, i + 1);
+    }
+    RibBase::selectBestPath(
+        entry, multipathSelector, bestpathSelector, false, 0);
+    // The setup must actually produce > kRibChunkSize advertised paths for the
+    // withdrawal to span chunks; otherwise the test would not exercise rule 2.
+    ASSERT_EQ(kNumPaths, entry.getMultipaths().size());
+
+    // Commit as advertised, then fully withdraw every path so
+    // prepareFibProgramming emits an add-path withdrawal per advertised
+    // nexthop.
+    entry.commitMultipaths();
+    entry.commitMultipathNexthops();
+    entry.commitBestpath();
+    for (uint32_t i = 0; i < kNumPaths; i++) {
+      entry.updatePath(eBgpPeer1_, nullptr, true, i + 1);
+    }
+    entry.requirePathSelection();
+    rib_->prepareFibProgramming();
+  });
+
+  std::vector<uint64_t> chunkVersions;
+  uint32_t addPathTotal = 0;
+  while (addPathTotal < kNumPaths) {
+    auto msg = folly::coro::blockingWait(ribOutQ_.pop());
+    ASSERT_TRUE(std::holds_alternative<RibOutWithdrawal>(msg));
+    const auto& wd = std::get<RibOutWithdrawal>(msg);
+    if (wd.addPathEntries.empty()) {
+      continue;
+    }
+    const uint64_t chunkVersion = wd.addPathEntries.front().ribVersion;
+    // rule 1: every add-path withdrawal in this chunk shares one version.
+    for (const auto& entry : wd.addPathEntries) {
+      EXPECT_EQ(kV4Prefix1, entry.prefix);
+      EXPECT_EQ(chunkVersion, entry.ribVersion);
+      addPathTotal++;
+    }
+    // rule 2: each new chunk's version strictly exceeds the previous chunk's.
+    if (!chunkVersions.empty()) {
+      EXPECT_GT(chunkVersion, chunkVersions.back());
+    }
+    chunkVersions.push_back(chunkVersion);
+  }
+
+  EXPECT_EQ(kNumPaths, addPathTotal);
+  ASSERT_EQ(2, chunkVersions.size());
+  EXPECT_LT(chunkVersions[0], chunkVersions[1]);
 }
 
 // Verify that after read only announcements are sent in chunks

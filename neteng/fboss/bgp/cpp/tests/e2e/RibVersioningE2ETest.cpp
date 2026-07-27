@@ -488,5 +488,114 @@ TEST_F(RibVersioningE2ETest, UpdateGroupTracksRibVersion) {
       versionAfterSecond);
 }
 
+/*
+ * Test (scenario 4, end-to-end): ECMP shrink -- the consuming peer catches up
+ * and the version stays monotonic.
+ *
+ * A prefix with two ECMP paths (peer3, peer4) has one path (peer3) withdrawn.
+ * The shrink makes the RIB emit, for that single prefix, an add-path withdrawal
+ * AND a re-announcement in one pass, sharing one RIB version. This verifies
+ * end-to-end that the receiving peer materializes the shrink and its cached
+ * lastSeenRibVersion advances to the current RIB version (never regresses) --
+ * i.e. the same-version withdraw+re-announce is consumed correctly.
+ */
+TEST_F(RibVersioningE2ETest, VersionAndPeerCatchUpOnEcmpShrink) {
+  setupComponents();
+  bringUpPeer(kPeerAddr3);
+  bringUpPeer(kPeerAddr4);
+  bringUpPeer(kPeerAddr5);
+
+  /* Two equal-cost paths -> ECMP with two nexthops for the prefix. */
+  addRoute(
+      "v4", "10.0.1.0", 24, kPeerAddr3, kNextHopV4_3.str(), "", "", 0, 100);
+  addRoute(
+      "v4", "10.0.1.0", 24, kPeerAddr4, kNextHopV4_4.str(), "", "", 0, 100);
+  EXPECT_TRUE(
+      verifyRouteAdd("v4", "10.0.1.0", 24, kPeerAddr5, kNextHopV4_5.str()));
+  ASSERT_TRUE(waitForMultipathNexthopCount("10.0.1.0/24", 2));
+
+  /* Peer catches up to the RIB version before the shrink. */
+  uint64_t versionBeforeShrink = 0;
+  facebook::fboss::checkWithRetry(
+      [&]() {
+        versionBeforeShrink = getRibVersion();
+        return versionBeforeShrink > 0 &&
+            getPeerCachedRibVersion(kPeerAddr5) == versionBeforeShrink;
+      },
+      10 /* retries */,
+      std::chrono::milliseconds(500));
+  ASSERT_GT(versionBeforeShrink, 0);
+
+  /* Shrink the ECMP set: withdraw the peer3 path, leaving a single path. */
+  deleteRoute("v4", "10.0.1.0", 24, kPeerAddr3);
+  ASSERT_TRUE(waitForMultipathNexthopCount("10.0.1.0/24", 1));
+
+  /*
+   * The RIB version advances once for the shrink pass and the peer catches back
+   * up to it: the add-path withdrawal and the re-announcement (same version)
+   * are both materialized, and the cached version never moves backward.
+   */
+  uint64_t versionAfterShrink = 0;
+  facebook::fboss::checkWithRetry(
+      [&]() {
+        versionAfterShrink = getRibVersion();
+        return versionAfterShrink > versionBeforeShrink &&
+            getPeerCachedRibVersion(kPeerAddr5) == versionAfterShrink;
+      },
+      10 /* retries */,
+      std::chrono::milliseconds(500));
+
+  EXPECT_GT(versionAfterShrink, versionBeforeShrink);
+  EXPECT_EQ(getPeerCachedRibVersion(kPeerAddr5), versionAfterShrink);
+}
+
+/*
+ * Test (scenario 5, end-to-end): across a mix of announcement, multipath grow,
+ * a second prefix, and a withdrawal, the peer's cached lastSeenRibVersion is
+ * always monotonic (never decreases) and never exceeds the RIB version. This is
+ * the end-to-end "reader always sees monotonically rising versions" guarantee.
+ */
+TEST_F(RibVersioningE2ETest, PeerCachedVersionMonotonicAcrossMixedUpdates) {
+  setupComponents();
+  bringUpPeer(kPeerAddr3);
+  bringUpPeer(kPeerAddr4);
+  bringUpPeer(kPeerAddr5);
+
+  uint64_t lastPeerVersion = 0;
+  auto observe = [&]() {
+    const uint64_t ribV = getRibVersion();
+    const uint64_t peerV = getPeerCachedRibVersion(kPeerAddr5);
+    /* The peer is never ahead of the RIB, and never regresses. */
+    EXPECT_LE(peerV, ribV);
+    EXPECT_GE(peerV, lastPeerVersion);
+    lastPeerVersion = peerV;
+  };
+
+  /* 1) Announce prefix A. */
+  addRoute("v4", "10.0.1.0", 24, kPeerAddr3, kNextHopV4_3.str());
+  EXPECT_TRUE(
+      verifyRouteAdd("v4", "10.0.1.0", 24, kPeerAddr5, kNextHopV4_5.str()));
+  observe();
+
+  /* 2) Grow prefix A to two ECMP paths. */
+  addRoute(
+      "v4", "10.0.1.0", 24, kPeerAddr4, kNextHopV4_4.str(), "", "", 0, 100);
+  ASSERT_TRUE(waitForMultipathNexthopCount("10.0.1.0/24", 2));
+  observe();
+
+  /* 3) Announce a second prefix B. */
+  addRoute("v4", "10.0.2.0", 24, kPeerAddr3, kNextHopV4_3.str());
+  EXPECT_TRUE(
+      verifyRouteAdd("v4", "10.0.2.0", 24, kPeerAddr5, kNextHopV4_5.str()));
+  observe();
+
+  /* 4) Withdraw prefix B. */
+  deleteRoute("v4", "10.0.2.0", 24, kPeerAddr3);
+  EXPECT_TRUE(verifyRouteWithdraw("v4", "10.0.2.0", 24, kPeerAddr5));
+  observe();
+
+  EXPECT_GT(lastPeerVersion, 0);
+}
+
 } // namespace bgp
 } // namespace facebook

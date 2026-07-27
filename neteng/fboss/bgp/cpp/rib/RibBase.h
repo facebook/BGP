@@ -356,16 +356,38 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
 
   /**
    * Get the current RIB version. This is a monotonically increasing counter
-   * that increments whenever a material routing change occurs (best path
-   * or multipath changes).
+   * bumped once per prefix at queue-emission time (in
+   * handleFibProgrammedMessage for announcements and prepareFibProgramming for
+   * withdrawals), so a prefix's version reflects the order its entries are
+   * pushed onto ribOutQ_ rather than path-selection order. See the invariant
+   * note in RibBase.cpp for why the stamp is not applied at path selection.
    */
   uint64_t getRibVersion() const {
     return ribVersion_.load(std::memory_order_relaxed);
   }
 
   /**
-   * Increment the RIB version counter. Called when a material routing change
-   * occurs (best path or multipath changes). Returns the new version value.
+   * Bump the RIB version counter and return the new value. Called at
+   * queue-emission time -- once per emitted prefix, and again at each
+   * kRibChunkSize chunk boundary. Also advances the published RIB table-version
+   * stat.
+   *
+   * ribVersion is stamped on every RibOut{Announcement,Withdrawal} entry and
+   * consumed by AdjRib / AdjRibOutGroup (notably AdjRibGroup::isEntryShared) to
+   * decide how caught-up each peer/group is. It is stamped at emission time
+   * (here, and in handleFibProgrammedMessage / prepareFibProgramming), NOT at
+   * path selection, so a prefix's version reflects the order its entries are
+   * pushed onto ribOutQ_. The emit sites in RibBase.cpp reference three rules
+   * by name; they are defined here:
+   *
+   *   Rule 1: a prefix's paths emitted within one chunk share one version.
+   *   Rule 2: a prefix whose paths span more than one chunk strictly increases
+   *           across those chunks.
+   *   Rule 3: different prefixes within a message strictly increase.
+   *
+   * Net: non-decreasing within a chunk, strictly increasing across
+   * chunks/messages. This is what isEntryShared relies on so a detached peer is
+   * never wrongly treated as having already seen a post-detach entry.
    */
   uint64_t incrementRibVersion() {
     RibStats::incrementRibTableVersion();
@@ -484,7 +506,8 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
   virtual void prepareFibProgramming(bool fullSync = false) noexcept;
   void handleFullAddPathWithdrawal(
       const RibEntry& ribEntry,
-      RibOutWithdrawal& withdrawalAddPath);
+      RibOutWithdrawal& withdrawalAddPath,
+      uint64_t& currentRibVersion);
 
   /*
    * Captured prior state used as the baseline for change detection at the

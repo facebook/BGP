@@ -535,8 +535,12 @@ void publishShadowRibSize(uint64_t routeCount);
 // number of shadow RIB entries
 inline constexpr auto kTotalShadowRibEntries = "bgpd.rib.totalShadowRibEntries";
 
-// BGP table version (ribVersion) - monotonically increasing counter that
-// increments on material routing changes (best path, nexthop, or multipath)
+/*
+ * BGP table version (ribVersion) - monotonically increasing counter bumped once
+ * per prefix at queue-emission time (announcements and withdrawals). Note it
+ * advances per emitted prefix, including no-op FIB resyncs, so its rate tracks
+ * emission volume rather than only material routing changes.
+ */
 inline const auto kRibTableVersion =
     fmt::format("{}.rib.tableVersion", kBgpcppTag);
 void incrementRibTableVersion();

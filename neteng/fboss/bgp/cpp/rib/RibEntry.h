@@ -280,16 +280,15 @@ class RibEntry {
   }
 
   /**
-   * Get the RIB version when this entry was last updated (best path or
-   * multipath change).
+   * Get the RIB version stamped on this entry at its last queue emission.
    */
   inline uint64_t getRibVersion() const {
     return ribVersion_;
   }
 
   /**
-   * Set the RIB version for this entry. Called by Rib when a material
-   * change occurs (best path or multipath change).
+   * Set the RIB version for this entry. Called by Rib at queue-emission time
+   * (once per prefix), not at path selection.
    */
   inline void setRibVersion(uint64_t version) {
     ribVersion_ = version;

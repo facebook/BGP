@@ -1345,8 +1345,16 @@ TEST_P(RibFixtureAddPathTestSuite, CreateTRibEntryWithCteUcmpAction) {
   sendInitialPathComputation();
   fibFuture.wait();
 
-  // 3. Verify createTRibEntry populates active_cte_ucmp_action.
-  {
+  /*
+   * 3. Verify createTRibEntry populates active_cte_ucmp_action. ribEntries_ and
+   * createTRibEntry read RIB-evb-confined state (routeAttributePolicy_ and the
+   * RibEntry, including its ribVersion / advertised paths), so the read must
+   * run on the RIB evb: reading from the test thread races the RIB thread still
+   * finishing handleFibProgrammedMessage after fibFuture.wait() (a TSAN data
+   * race). This mirrors how production reads entries -- via an evb hop in
+   * RibBase::getRibEntries* / BgpServiceBase.
+   */
+  rib_->evb_.runInEventBaseThreadAndWait([&]() {
     const auto& v6Rib = rib_->ribEntries_.find(kV6Prefix1);
     EXPECT_NE(rib_->ribEntries_.end(), v6Rib);
 
@@ -1357,7 +1365,7 @@ TEST_P(RibFixtureAddPathTestSuite, CreateTRibEntryWithCteUcmpAction) {
     EXPECT_EQ(ucmpAction.nexthop_weight_actions()->size(), 2);
     EXPECT_EQ(*ucmpAction.nexthop_weight_actions()[0].weight(), nhWt1);
     EXPECT_EQ(*ucmpAction.nexthop_weight_actions()[1].weight(), nhWt2);
-  }
+  });
 
   // 4. Verify that a non-matching prefix does NOT have active_cte_ucmp_action.
   {
@@ -1372,11 +1380,14 @@ TEST_P(RibFixtureAddPathTestSuite, CreateTRibEntryWithCteUcmpAction) {
         [&]() { rib_->schedulePrepareFibProgrammingTimer(); });
     fibFuture.wait();
 
-    const auto& v4Rib = rib_->ribEntries_.find(kV4Prefix1);
-    EXPECT_NE(rib_->ribEntries_.end(), v4Rib);
+    // Read on the RIB evb to serialize with the RIB thread (see step 3 above).
+    rib_->evb_.runInEventBaseThreadAndWait([&]() {
+      const auto& v4Rib = rib_->ribEntries_.find(kV4Prefix1);
+      EXPECT_NE(rib_->ribEntries_.end(), v4Rib);
 
-    auto tRibEntry = rib_->createTRibEntry(*v4Rib);
-    EXPECT_FALSE(tRibEntry.active_cte_ucmp_action().has_value());
+      auto tRibEntry = rib_->createTRibEntry(*v4Rib);
+      EXPECT_FALSE(tRibEntry.active_cte_ucmp_action().has_value());
+    });
   }
 
   // 5. Clear policy and verify active_cte_ucmp_action is no longer set.
@@ -1386,11 +1397,14 @@ TEST_P(RibFixtureAddPathTestSuite, CreateTRibEntryWithCteUcmpAction) {
     rib_->waitForRouteAttributePolicyClear();
     fibFuture.wait();
 
-    const auto& v6Rib = rib_->ribEntries_.find(kV6Prefix1);
-    EXPECT_NE(rib_->ribEntries_.end(), v6Rib);
+    // Read on the RIB evb to serialize with the RIB thread (see step 3 above).
+    rib_->evb_.runInEventBaseThreadAndWait([&]() {
+      const auto& v6Rib = rib_->ribEntries_.find(kV6Prefix1);
+      EXPECT_NE(rib_->ribEntries_.end(), v6Rib);
 
-    auto tRibEntry = rib_->createTRibEntry(*v6Rib);
-    EXPECT_FALSE(tRibEntry.active_cte_ucmp_action().has_value());
+      auto tRibEntry = rib_->createTRibEntry(*v6Rib);
+      EXPECT_FALSE(tRibEntry.active_cte_ucmp_action().has_value());
+    });
   }
 }
 

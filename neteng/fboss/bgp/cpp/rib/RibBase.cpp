@@ -1672,14 +1672,17 @@ void RibBase::prepareFibProgramming(bool fullSync) noexcept {
     }
 
     /*
-     * Increment RIB version on material routing changes (best path, nexthop,
-     * or multipath change). This tracks routing table evolution for
-     * backpressure visibility - peers can see how far behind they are from
-     * current state.
+     * NOTE: the RIB version is intentionally NOT bumped here at path-selection
+     * time. It is stamped at queue-emission time instead -- on the withdrawal
+     * path below and in handleFibProgrammedMessage() for announcements -- so a
+     * prefix's ribVersion reflects the order its entries are pushed onto
+     * ribOutQ_. Withdrawals are pushed before the FIB round-trip and
+     * announcements after it; stamping at path-selection (F14 order) could give
+     * a withdrawn prefix a higher version than an announced prefix that reaches
+     * the queue later, breaking the reader-side invariant that a prefix
+     * modified after a peer's detach point is strictly ahead of that peer's
+     * detach version (the ordering AdjRibGroup::isEntryShared relies on).
      */
-    if (bestpathChanged || nexthopChanged || ribEntry.multipathChanged()) {
-      ribEntry.setRibVersion(incrementRibVersion());
-    }
 
     // update fib for all entries if fullsync
     if (fullSync) {
@@ -1733,9 +1736,22 @@ void RibBase::prepareFibProgramming(bool fullSync) noexcept {
           withdrawal = RibOutWithdrawal();
           withdrawal.entries.reserve(kRibChunkSize);
         }
-        handleFullAddPathWithdrawal(ribEntry, withdrawalAddPath);
+        /*
+         * Stamp the RIB version at emission time for this withdrawn prefix.
+         * currentRibVersion starts fresh (rule 3: different prefixes strictly
+         * increase) and is re-bumped inside handleFullAddPathWithdrawal() at
+         * each chunk (kRibChunkSize) flush, so a prefix whose add-path
+         * withdrawals span more than one chunk strictly increases across them
+         * (rule 2), while entries within a chunk share one version (rule 1).
+         * The main withdrawal entry below carries the final (highest) version,
+         * which is then persisted onto the entry.
+         */
+        uint64_t currentRibVersion = incrementRibVersion();
+        handleFullAddPathWithdrawal(
+            ribEntry, withdrawalAddPath, currentRibVersion);
         withdrawal.entries.emplace_back(
-            prefix, kDefaultPathID, std::nullopt, ribEntry.getRibVersion());
+            prefix, kDefaultPathID, std::nullopt, currentRibVersion);
+        ribEntry.setRibVersion(currentRibVersion);
         ribEntry.commitBestpath();
         // wait till fib programming to commit multipathNexthops
       }
@@ -1793,7 +1809,8 @@ void RibBase::prepareFibProgramming(bool fullSync) noexcept {
 
 void RibBase::handleFullAddPathWithdrawal(
     const RibEntry& ribEntry,
-    RibOutWithdrawal& withdrawalAddPath) {
+    RibOutWithdrawal& withdrawalAddPath,
+    uint64_t& currentRibVersion) {
   // if rib-allocated path IDs are enabled, use them for constructing rib out
   // withdrawal
   if (enableRibAllocatedPathId_) {
@@ -1804,10 +1821,7 @@ void RibBase::handleFullAddPathWithdrawal(
                                              // have a pathIdToSend value which
                                              // should be its key in this map
       withdrawAddPath(
-          withdrawalAddPath,
-          ribEntry.getPrefix(),
-          id,
-          ribEntry.getRibVersion());
+          withdrawalAddPath, ribEntry.getPrefix(), id, currentRibVersion);
     }
     // otherwise use old behavior of constructing rib out withdrawal based on
     // NHs. TODO: Get rid of this branch upon stable rollout
@@ -1821,12 +1835,19 @@ void RibBase::handleFullAddPathWithdrawal(
               std::move(withdrawalAddPath));
           withdrawalAddPath = RibOutWithdrawal();
           withdrawalAddPath.addPathEntries.reserve(kRibChunkSize);
+
+          /*
+           * rule 2: this prefix's remaining add-path withdrawals land in a new
+           * chunk, so bump the version (see prepareFibProgramming for the
+           * reasoning).
+           */
+          currentRibVersion = incrementRibVersion();
         }
         withdrawalAddPath.addPathEntries.emplace_back(
             ribEntry.getPrefix(),
             kPlaceholderPathID,
             advWeightedNhIter.first,
-            ribEntry.getRibVersion());
+            currentRibVersion);
       }
     }
   }
@@ -1977,6 +1998,30 @@ void RibBase::handleFibProgrammedMessage(
         continue;
       }
 
+      /*
+       * Stamp the RIB version at emission time. Each prefix starts at a fresh
+       * version (rule 3: different prefixes within a message strictly
+       * increase). The local currentRibVersion is re-bumped at each chunk
+       * (kRibChunkSize) flush below, so a prefix whose add-path entries span
+       * more than one chunk strictly increases across those chunks (rule 2),
+       * while all entries emitted within a single chunk share one version
+       * (rule 1). A prefix appears exactly once in the FIB-ack (one
+       * updateUnicastRoute per prefix, best-path-attr key), so this per-prefix
+       * initialization runs once and needs no deduplication. Placed after the
+       * two continue-guards above so a prefix that is skipped (already
+       * withdrawn from FIB, or whose nexthops will change next round) does not
+       * consume a version.
+       *
+       * entry.setRibVersion is called here so the deprecated
+       * enableRibAllocatedPathId_ path (whose helpers read
+       * entry.getRibVersion()) sees this prefix's version. On the production
+       * (else) path the emit sites read currentRibVersion directly and this
+       * value is overwritten below with the final (highest) version -- that
+       * later assignment is the authoritative one for the else path.
+       */
+      uint64_t currentRibVersion = incrementRibVersion();
+      entry.setRibVersion(currentRibVersion);
+
       const auto oldAdvMultipathNHs =
           entry.getAdvertisedMultipathWeightedNexthops();
       entry.commitMultipathNexthops();
@@ -1996,6 +2041,17 @@ void RibBase::handleFibProgrammedMessage(
       }
 
       if (enableRibAllocatedPathId_) {
+        /*
+         * NOTE: rule 2 (per-chunk version bump) is intentionally NOT wired into
+         * this branch. announceAndWithdrawAddPathsBasedOnDelta() and its
+         * helpers chunk-flush internally against the fixed
+         * entry.getRibVersion(), so a prefix whose add-paths span chunks would
+         * keep one version here. This branch is gated by
+         * enableRibAllocatedPathId_, which is default-off and slated for
+         * removal; the per-chunk bump lives only on the production (else) path
+         * below. If this branch is ever revived, thread currentRibVersion
+         * through those helpers the same way.
+         */
         // if bestpath_ is nullptr, then we should not be advertising anything,
         // because RIB determined that this prefix is not routable
         if (entry.multipathChanged() && entry.bestpath_) {
@@ -2023,6 +2079,16 @@ void RibBase::handleFibProgrammedMessage(
                 std::move(announcementAddPath));
             announcementAddPath = RibOutAnnouncement();
             announcementAddPath.addPathEntries.reserve(kRibChunkSize);
+
+            /*
+             * rule 2: this prefix's remaining add-path entries land in a new
+             * chunk (a separate RibOut message), so bump the version. A peer
+             * that detached after the flushed chunk must observe a strictly
+             * higher version on the entries that follow, otherwise
+             * isEntryShared would wrongly treat them as already-seen and the
+             * peer would miss them.
+             */
+            currentRibVersion = incrementRibVersion();
           }
 
           auto nextHop = advMultPath->attrs->getNexthop();
@@ -2045,7 +2111,7 @@ void RibBase::handleFibProgrammedMessage(
               entry.getRibPolicyUcmpWeight(),
               newlyInstalledInLocalRib,
               entry.installTimeStamp_,
-              entry.getRibVersion(),
+              currentRibVersion,
               entry.getIsPartialDrain());
         }
 
@@ -2061,16 +2127,31 @@ void RibBase::handleFibProgrammedMessage(
                     std::move(withdrawal));
                 withdrawal = RibOutWithdrawal();
                 withdrawal.addPathEntries.reserve(kRibChunkSize);
+
+                /*
+                 * rule 2: this prefix's remaining add-path withdrawals land in
+                 * a new chunk, so bump the version (see the add-path
+                 * announcement flush above for the reasoning).
+                 */
+                currentRibVersion = incrementRibVersion();
               }
               withdrawal.addPathEntries.emplace_back(
                   prefix,
                   kPlaceholderPathID,
                   oldNhIter.first,
-                  entry.getRibVersion());
+                  currentRibVersion);
             }
           }
         }
       }
+
+      /*
+       * Persist the final (highest) version reached for this prefix, so
+       * getRibVersion() and any later reader reflect the last chunk emitted --
+       * including when the best path itself did not change and we
+       * early-continue below without emitting a best-path entry.
+       */
+      entry.setRibVersion(currentRibVersion);
 
       if (!entry.commitBestpath()) {
         // bestpath did not change, no need for new advertisement
@@ -2108,7 +2189,7 @@ void RibBase::handleFibProgrammedMessage(
           entry.getRibPolicyUcmpWeight(),
           newlyInstalledInLocalRib,
           entry.installTimeStamp_,
-          entry.getRibVersion(),
+          currentRibVersion,
           entry.getIsPartialDrain());
     }
   }
