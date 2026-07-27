@@ -93,6 +93,7 @@ class IpPrefix:
     def parse_bgp_prefix(cls, afi: TBgpAfi, prefix: str, num_bits: int) -> TIpPrefix:
         """just pad here and invoke constructor"""
         max_len = 4 if afi == TBgpAfi.AFI_IPV4 else 16
+        # pyrefly: ignore [bad-argument-type]
         prefix_bin = bytes(prefix) + (b"\x00" * (max_len - len(prefix)))
         return TIpPrefix(afi=afi, prefix_bin=prefix_bin, num_bits=num_bits)
 
