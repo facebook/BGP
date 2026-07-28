@@ -438,26 +438,6 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
 
   virtual void clearRouteFilterPolicy();
 
-  void announceAndWithdrawAddPathsBasedOnDelta(
-      const RibEntry& entry,
-      RibOutAnnouncement& announcement,
-      bool sendWithEoR,
-      bool newlyInstalledInLocalRib,
-      RibOutWithdrawal& withdrawal);
-
-  void announceAddPath(
-      const RibEntry& entry,
-      RibOutAnnouncement& announcement,
-      bool sendWithEoR,
-      bool newlyInstalledInLocalRib,
-      const std::shared_ptr<RouteInfo>& addPath);
-
-  void withdrawAddPath(
-      RibOutWithdrawal& withdrawal,
-      const folly::CIDRNetwork& prefix,
-      uint32_t pathId,
-      uint64_t ribVersion);
-
   /*
    * Generic hook invoked once at the end of each prepareFibProgramming pass
    * (after path selection and route-attribute overwrite, before the
@@ -547,8 +527,7 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
       const std::unique_ptr<RouteInfoSelector>& bestpathSelector,
       bool computeUcmp,
       uint32_t ucmpWidth,
-      const std::optional<BgpUcmpQuantizer>& quantizer = std::nullopt,
-      bool enableRibAllocatedPathId = false) noexcept;
+      const std::optional<BgpUcmpQuantizer>& quantizer = std::nullopt) noexcept;
 
   /*
    * Instance entry point used by prepareFibProgramming. Reads
@@ -1149,10 +1128,6 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
   uint32_t fibAgentRecvTimeout_;
 
  private:
-  // temporary flag for rolling out rib-allocated path ID
-  // TODO: deprecate/remove once rollout is stable
-  bool enableRibAllocatedPathId_{false};
-
   uint32_t ribOutQHighWatermark_{kRibOutQueueSizePauseThreshold};
 
   /*

@@ -1288,8 +1288,7 @@ std::pair<bool, bool> RibDC::runBestPathSelection(RibEntry& entry) noexcept {
       globalConfig_.computeUcmpFromLbwComm,
       globalConfig_.ucmpWidth,
       std::optional<BgpUcmpQuantizer>(globalConfig_.ucmpQuantizer),
-      pathSelectionPolicy_,
-      enableRibAllocatedPathId_);
+      pathSelectionPolicy_);
 
   recordBestpathSourceDelta(
       entry.getPrefix(), oldSource, entry.getBestPathRaw());
@@ -1333,8 +1332,7 @@ std::pair<bool, bool> RibDC::selectBestPath(
     bool computeUcmp,
     uint32_t ucmpWidth,
     const std::optional<BgpUcmpQuantizer>& quantizer,
-    const std::unique_ptr<PathSelectionPolicy>& pathSelectionPolicy,
-    bool enableRibAllocatedPathId) noexcept {
+    const std::unique_ptr<PathSelectionPolicy>& pathSelectionPolicy) noexcept {
   const auto input = snapshotAndResetForPathSelection(entry);
   /*
    * Partial-drain state is DC-only — RibBase's snapshot/orchestrator is
@@ -1351,9 +1349,6 @@ std::pair<bool, bool> RibDC::selectBestPath(
 
   if (routes.empty()) {
     entry.bestpath_ = nullptr;
-    if (enableRibAllocatedPathId) {
-      entry.multipaths_ = {};
-    }
     entry.installToFib_ = true;
     entry.weightedNexthops_ = nullptr;
     return std::make_pair(

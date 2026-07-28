@@ -158,8 +158,7 @@ RibBase::RibBase(
       enableNexthopTracking_(globalConfig.enableNextHopTracking),
       nexthopCache_(nexthopCache),
       fibAgentPort_(fibAgentPort),
-      fibAgentRecvTimeout_(fibAgentRecvTimeout),
-      enableRibAllocatedPathId_(globalConfig.enableRibAllocatedPathId) {
+      fibAgentRecvTimeout_(fibAgentRecvTimeout) {
   // init switchId best effort if deviceName is set in global config
   switchId_ = facebook::bgp::getSwitchId(globalConfig_.deviceName);
   // add monitoring for inter-thread queues
@@ -1544,16 +1543,12 @@ std::pair<bool, bool> RibBase::selectBestPath(
     const std::unique_ptr<RouteInfoSelector>& bestpathSelector,
     bool computeUcmp,
     uint32_t ucmpWidth,
-    const std::optional<BgpUcmpQuantizer>& quantizer,
-    bool enableRibAllocatedPathId) noexcept {
+    const std::optional<BgpUcmpQuantizer>& quantizer) noexcept {
   const auto input = snapshotAndResetForPathSelection(entry);
   auto routes = prePathSelectionFiltering(entry);
 
   if (routes.empty()) {
     entry.bestpath_ = nullptr;
-    if (enableRibAllocatedPathId) {
-      entry.multipaths_ = {};
-    }
     entry.installToFib_ = true;
     entry.weightedNexthops_ = nullptr;
     return std::make_pair(
@@ -1612,8 +1607,7 @@ std::pair<bool, bool> RibBase::runBestPathSelection(RibEntry& entry) noexcept {
       bestpathSelector_,
       globalConfig_.computeUcmpFromLbwComm,
       globalConfig_.ucmpWidth,
-      std::optional<BgpUcmpQuantizer>(globalConfig_.ucmpQuantizer),
-      enableRibAllocatedPathId_);
+      std::optional<BgpUcmpQuantizer>(globalConfig_.ucmpQuantizer));
 
   recordBestpathSourceDelta(
       entry.getPrefix(), oldSource, entry.getBestPathRaw());
@@ -1811,44 +1805,28 @@ void RibBase::handleFullAddPathWithdrawal(
     const RibEntry& ribEntry,
     RibOutWithdrawal& withdrawalAddPath,
     uint64_t& currentRibVersion) {
-  // if rib-allocated path IDs are enabled, use them for constructing rib out
-  // withdrawal
-  if (enableRibAllocatedPathId_) {
-    for (auto& [id, path] : ribEntry.getAdvertisedMultipaths()) {
-      XCHECK(
-          path->pathIdToSend.has_value() &&
-          id == path->pathIdToSend.value()); // if path was selected, it should
-                                             // have a pathIdToSend value which
-                                             // should be its key in this map
-      withdrawAddPath(
-          withdrawalAddPath, ribEntry.getPrefix(), id, currentRibVersion);
-    }
-    // otherwise use old behavior of constructing rib out withdrawal based on
-    // NHs. TODO: Get rid of this branch upon stable rollout
-  } else {
-    if (ribEntry.getAdvertisedMultipathWeightedNexthops()) {
-      for (const auto& advWeightedNhIter :
-           *ribEntry.getAdvertisedMultipathWeightedNexthops()) {
-        if (withdrawalAddPath.addPathEntries.size() == kRibChunkSize) {
-          XLOGF(DBG1, "{}", formatRibOutWithdrawalLog(withdrawalAddPath, true));
-          ribOutQPushAndMayPauseBestPathAndFibProgramming(
-              std::move(withdrawalAddPath));
-          withdrawalAddPath = RibOutWithdrawal();
-          withdrawalAddPath.addPathEntries.reserve(kRibChunkSize);
+  if (ribEntry.getAdvertisedMultipathWeightedNexthops()) {
+    for (const auto& advWeightedNhIter :
+         *ribEntry.getAdvertisedMultipathWeightedNexthops()) {
+      if (withdrawalAddPath.addPathEntries.size() == kRibChunkSize) {
+        XLOGF(DBG1, "{}", formatRibOutWithdrawalLog(withdrawalAddPath, true));
+        ribOutQPushAndMayPauseBestPathAndFibProgramming(
+            std::move(withdrawalAddPath));
+        withdrawalAddPath = RibOutWithdrawal();
+        withdrawalAddPath.addPathEntries.reserve(kRibChunkSize);
 
-          /*
-           * rule 2: this prefix's remaining add-path withdrawals land in a new
-           * chunk, so bump the version (see prepareFibProgramming for the
-           * reasoning).
-           */
-          currentRibVersion = incrementRibVersion();
-        }
-        withdrawalAddPath.addPathEntries.emplace_back(
-            ribEntry.getPrefix(),
-            kPlaceholderPathID,
-            advWeightedNhIter.first,
-            currentRibVersion);
+        /*
+         * rule 2: this prefix's remaining add-path withdrawals land in a new
+         * chunk, so bump the version (see prepareFibProgramming for the
+         * reasoning).
+         */
+        currentRibVersion = incrementRibVersion();
       }
+      withdrawalAddPath.addPathEntries.emplace_back(
+          ribEntry.getPrefix(),
+          kPlaceholderPathID,
+          advWeightedNhIter.first,
+          currentRibVersion);
     }
   }
 }
@@ -2012,15 +1990,11 @@ void RibBase::handleFibProgrammedMessage(
        * withdrawn from FIB, or whose nexthops will change next round) does not
        * consume a version.
        *
-       * entry.setRibVersion is called here so the deprecated
-       * enableRibAllocatedPathId_ path (whose helpers read
-       * entry.getRibVersion()) sees this prefix's version. On the production
-       * (else) path the emit sites read currentRibVersion directly and this
-       * value is overwritten below with the final (highest) version -- that
-       * later assignment is the authoritative one for the else path.
+       * The final (highest) version is persisted onto the entry after add-path
+       * processing (see the entry.setRibVersion below); the emit sites read
+       * currentRibVersion directly.
        */
       uint64_t currentRibVersion = incrementRibVersion();
-      entry.setRibVersion(currentRibVersion);
 
       const auto oldAdvMultipathNHs =
           entry.getAdvertisedMultipathWeightedNexthops();
@@ -2040,30 +2014,7 @@ void RibBase::handleFibProgrammedMessage(
         newlyInstalledInLocalRib = true;
       }
 
-      if (enableRibAllocatedPathId_) {
-        /*
-         * NOTE: rule 2 (per-chunk version bump) is intentionally NOT wired into
-         * this branch. announceAndWithdrawAddPathsBasedOnDelta() and its
-         * helpers chunk-flush internally against the fixed
-         * entry.getRibVersion(), so a prefix whose add-paths span chunks would
-         * keep one version here. This branch is gated by
-         * enableRibAllocatedPathId_, which is default-off and slated for
-         * removal; the per-chunk bump lives only on the production (else) path
-         * below. If this branch is ever revived, thread currentRibVersion
-         * through those helpers the same way.
-         */
-        // if bestpath_ is nullptr, then we should not be advertising anything,
-        // because RIB determined that this prefix is not routable
-        if (entry.multipathChanged() && entry.bestpath_) {
-          announceAndWithdrawAddPathsBasedOnDelta(
-              entry,
-              announcementAddPath,
-              sendWithEoR,
-              newlyInstalledInLocalRib,
-              withdrawal);
-          entry.commitMultipaths();
-        }
-      } else if (entry.commitMultipaths() && entry.bestpath_) {
+      if (entry.commitMultipaths() && entry.bestpath_) {
         // TODO: It looks here that we are re-advertising all paths whether or
         // not they changed.  While this is not incorrect, it will result in
         // sending more info than we need.  Something can be done here, or in
@@ -2219,95 +2170,6 @@ void RibBase::handleFibProgrammedMessage(
   if (ribEntries_.size() <= localRoutes_.size()) {
     FibStats::incrFibFlushed();
   }
-}
-
-void RibBase::announceAndWithdrawAddPathsBasedOnDelta(
-    const RibEntry& entry,
-    RibOutAnnouncement& announcement,
-    bool sendWithEoR,
-    bool newlyInstalledInLocalRib,
-    RibOutWithdrawal& withdrawal) {
-  const auto& prevMultipaths = entry.getAdvertisedMultipaths();
-  const auto& multipaths = entry.getMultipaths();
-  for (const auto& [prevId, _] : prevMultipaths) {
-    if (!multipaths.contains(prevId)) {
-      withdrawAddPath(
-          withdrawal, entry.getPrefix(), prevId, entry.getRibVersion());
-    }
-  }
-  // TODO: determine the precise condition for needAllPathsAnnounced.
-  // (we could probably also restructure RibOutAnnouncementEntry for add-path
-  // to send the minimum amount of data to adjRibOut for add-path updates) it
-  // seems correct to have needAllPathsAnnounced=true if UCMP weight changes.
-  // we might also require needAllPathsAnnounced=true for multipath size
-  // changes, since multipathSize is part of policy action data (used in GAR,
-  // see https://fburl.com/code/r07rk6x2), but we probably don't
-  // want to send all paths out of Rib just because multipath size changed...
-  bool needAllPathsAnnounced = true; /*entry.getMultipaths().size() !=
-  entry.getAdvertisedMultipaths().size() || entry.multipathWeightChanged();*/
-  for (const auto& [id, path] : multipaths) {
-    if (needAllPathsAnnounced || !prevMultipaths.contains(id) ||
-        path->attrs != prevMultipaths.at(id)->attrs) {
-      announceAddPath(
-          entry, announcement, sendWithEoR, newlyInstalledInLocalRib, path);
-    }
-  }
-}
-
-void RibBase::announceAddPath(
-    const RibEntry& entry,
-    RibOutAnnouncement& announcement,
-    bool sendWithEoR,
-    bool newlyInstalledInLocalRib,
-    const std::shared_ptr<RouteInfo>& addPath) {
-  if (announcement.addPathEntries.size() == kRibChunkSize) {
-    if (sendWithEoR) {
-      announcement.initialDump = true;
-    }
-    XLOGF(DBG1, "{}", formatRibOutAnnouncementLog(announcement));
-    ribOutQPushAndMayPauseBestPathAndFibProgramming(std::move(announcement));
-    announcement = RibOutAnnouncement();
-    announcement.addPathEntries.reserve(kRibChunkSize);
-  }
-
-  auto nextHop = addPath->attrs->getNexthop();
-  std::optional<uint32_t> nhWeight;
-  // Check if nhWeightMap is a nullptr or not
-  if (entry.getAdvertisedMultipathWeightedNexthops() &&
-      entry.getAdvertisedMultipathWeightedNexthops()->contains(nextHop)) {
-    nhWeight = entry.getAdvertisedMultipathWeightedNexthops()->at(nextHop);
-  }
-
-  XCHECK(addPath->pathIdToSend.has_value());
-  announcement.addPathEntries.emplace_back(
-      entry.getPrefix(),
-      addPath->pathIdToSend.value(),
-      addPath->peer,
-      addPath->attrs,
-      switchId_,
-      entry.getMultipaths().size(),
-      entry.getAggregateReceivedUcmpWeight(),
-      entry.getAggregateLocalUcmpWeight(),
-      entry.getRibPolicyUcmpWeight(),
-      newlyInstalledInLocalRib,
-      entry.installTimeStamp_,
-      entry.getRibVersion(),
-      entry.getIsPartialDrain());
-}
-
-void RibBase::withdrawAddPath(
-    RibOutWithdrawal& withdrawal,
-    const folly::CIDRNetwork& prefix,
-    uint32_t pathId,
-    uint64_t ribVersion) {
-  if (withdrawal.addPathEntries.size() == kRibChunkSize) {
-    XLOGF(DBG1, "{}", formatRibOutWithdrawalLog(withdrawal, true));
-    ribOutQPushAndMayPauseBestPathAndFibProgramming(std::move(withdrawal));
-    withdrawal = RibOutWithdrawal();
-    withdrawal.addPathEntries.reserve(kRibChunkSize);
-  }
-  withdrawal.addPathEntries.emplace_back(
-      prefix, pathId, std::nullopt, ribVersion);
 }
 
 void RibBase::handleFibSyncReq(const Fib::FibSyncReq& /* unused */) noexcept {

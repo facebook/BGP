@@ -111,8 +111,7 @@
       RibFixture, RibVersionAddPathWithdrawalsSpanningChunksBumpAcrossChunks); \
   FRIEND_TEST(RibFixture, CreateTRibEntryBestGroupReflectsBestPathPresence);
 
-#define RibEntry_TEST_FRIENDS \
-  FRIEND_TEST(RibFixture, AnnounceAndWithdrawAddPathsBasedOnDeltaTest);
+#define RibEntry_TEST_FRIENDS
 
 #define RibDC_TEST_FRIENDS \
   FRIEND_TEST(RibFixture, CreateTRibEntryBestGroupReflectsBestPathPresence);
@@ -6447,61 +6446,6 @@ TEST_P(RibFixtureAddPathTestSuite, RouteWithdrawnAndRibDumpReqTest) {
   }
 }
 
-TEST_F(
-    RibFixtureAddPathTestSuite,
-    PrepareFibProgrammingFullMultipathWithdrawal) {
-  rib_->enableRibAllocatedPathId_ = true;
-  rib_->ribEntries_.emplace(kV4Prefix1, RibEntry(kV4Prefix1));
-  auto& entry = rib_->ribEntries_.at(kV4Prefix1);
-  // populate RibEntry with 3 identical routes and selectBestPath. All should be
-  // selected as they're dupes
-  auto attr1 =
-      std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
-  attr1->setNonTransitiveLbwExtCommunity(
-      kLocalAs1, kLbw10G); // to prompt NH weighting
-  attr1->publish();
-  auto attr2 =
-      std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
-  attr2->setNexthop(kV4Nexthop2);
-  attr2->publish();
-  auto attr3 =
-      std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
-  attr3->setNexthop(kV4Nexthop3);
-  attr3->publish();
-  entry.updatePath(eBgpPeer1_, attr1, true, 0);
-  entry.updatePath(eBgpPeer1_, attr2, true, 1);
-  entry.updatePath(eBgpPeer1_, attr3, true, 2);
-  RibBase::selectBestPath(entry, multipathSelector, bestpathSelector, true, 0);
-  ASSERT_EQ(entry.getMultipaths().size(), 3);
-  // commit multipaths to set advMultipaths to multipaths_
-  // and same with weighted nexthops
-  entry.commitMultipaths();
-  entry.commitMultipathNexthops();
-
-  // update paths to have null attrs (indicating to Rib that they should be
-  // withdrawn)
-  entry.updatePath(eBgpPeer1_, nullptr, true, 0);
-  entry.updatePath(eBgpPeer1_, nullptr, true, 1);
-  entry.updatePath(eBgpPeer1_, nullptr, true, 2);
-
-  // directly set needPathSelection on the entry and then call
-  // prepareFibProgramming. prepareFibProgramming will handle selecting best
-  // path (none, since all paths were withdrawn) and also sending
-  // RibOutWithdrawal for the withdrawn paths, which we need to verify
-  entry.requirePathSelection();
-  rib_->prepareFibProgramming();
-  EXPECT_EQ(entry.getMultipaths().size(), 0);
-
-  // verify that all paths are present with correct pathIdToSend values in
-  // RibOutWithdrawal
-  auto msg = folly::coro::blockingWait(ribOutQ_.pop());
-  ASSERT_TRUE(std::holds_alternative<RibOutWithdrawal>(msg));
-  auto withdrawal = std::get<RibOutWithdrawal>(msg);
-  EXPECT_EQ(1, withdrawal.entries.size());
-  ASSERT_EQ(3, withdrawal.addPathEntries.size());
-  checkRibOutEntriesAddPathIds(withdrawal);
-}
-
 TEST_F(RibFixture, GetSelectionFilterCriteriaTest) {
   // make 5 attrs with different attributes
   // attrs1: { LocalPref = kLocalPref2, AsPathCount = 4, Origin = IGP }
@@ -7949,131 +7893,6 @@ TEST_F(RibFixture, ReplacePathSelectionPolicyLoggingTest) {
 
   // ensure all requests are served before ending
   future.wait();
-}
-
-TEST_F(RibFixture, AnnounceAndWithdrawAddPathsBasedOnDeltaTest) {
-  RibEntry ribEntry(kV4Prefix1);
-  auto path1 = createRouteInfo(kV4Prefix1, kLocalV4RoutePeerAddr, kV4Nexthop1);
-  path1->pathIdToSend = 1;
-  auto path2 = createRouteInfo(kV4Prefix1, kLocalV4RoutePeerAddr, kV4Nexthop2);
-  path2->pathIdToSend = 2;
-  auto path3 = createRouteInfo(kV4Prefix1, kLocalV4RoutePeerAddr, kV4Nexthop3);
-  path3->pathIdToSend = 3;
-  auto path4 = createRouteInfo(kV4Prefix1, kLocalV4RoutePeerAddr, kV4Nexthop4);
-  path4->pathIdToSend = 4;
-
-  // new paths 1,2,3 -> all three are announced
-  ribEntry.advertisedMultipaths_ = {};
-  ribEntry.multipaths_ = {{1, path1}, {2, path2}, {3, path3}};
-  RibOutAnnouncement ann;
-  RibOutWithdrawal with;
-  rib_->announceAndWithdrawAddPathsBasedOnDelta(
-      ribEntry, ann, false, false, with);
-  EXPECT_EQ(ann.addPathEntries.size(), 3);
-  auto pathMap = getPathIdAttrsMapFromAnnouncement(ann);
-  folly::F14FastMap<uint32_t, std::shared_ptr<const BgpPath>> expectedPaths{
-      {1, path1->attrs}, {2, path2->attrs}, {3, path3->attrs}};
-  EXPECT_EQ(pathMap, expectedPaths);
-  EXPECT_EQ(with.addPathEntries.size(), 0);
-
-  // new path 4 -> all paths (1,2,3,4) are announced
-  ribEntry.advertisedMultipaths_ = {{1, path1}, {2, path2}, {3, path3}};
-  ribEntry.multipaths_ = {{1, path1}, {2, path2}, {3, path3}, {4, path4}};
-  ann = RibOutAnnouncement();
-  with = RibOutWithdrawal();
-  rib_->announceAndWithdrawAddPathsBasedOnDelta(
-      ribEntry, ann, false, false, with);
-  EXPECT_EQ(ann.addPathEntries.size(), 4);
-  pathMap = getPathIdAttrsMapFromAnnouncement(ann);
-  expectedPaths = {
-      {1, path1->attrs},
-      {2, path2->attrs},
-      {3, path3->attrs},
-      {4, path4->attrs}};
-  EXPECT_EQ(pathMap, expectedPaths);
-  EXPECT_EQ(with.addPathEntries.size(), 0);
-
-  // withdraw 1 -> 1 is withdrawn, 2,3,4 are announced
-  ribEntry.advertisedMultipaths_ = {
-      {1, path1}, {2, path2}, {3, path3}, {4, path4}};
-  ribEntry.multipaths_ = {{2, path2}, {3, path3}, {4, path4}};
-  ann = RibOutAnnouncement();
-  with = RibOutWithdrawal();
-  rib_->announceAndWithdrawAddPathsBasedOnDelta(
-      ribEntry, ann, false, false, with);
-  EXPECT_EQ(ann.addPathEntries.size(), 3);
-  pathMap = getPathIdAttrsMapFromAnnouncement(ann);
-  expectedPaths = {{2, path2->attrs}, {3, path3->attrs}, {4, path4->attrs}};
-  EXPECT_EQ(pathMap, expectedPaths);
-  EXPECT_EQ(with.addPathEntries.size(), 1);
-  auto pathSet = getPathIdSetFromWithdrawal(with);
-  folly::F14FastSet<uint32_t> expectedPathSet = {1};
-  EXPECT_EQ(pathSet, expectedPathSet);
-
-  // withdraw 2,3,4 -> 2,3,4 withdrawn
-  ribEntry.advertisedMultipaths_ = {{2, path2}, {3, path3}, {4, path4}};
-  ribEntry.multipaths_ = {};
-  ann = RibOutAnnouncement();
-  with = RibOutWithdrawal();
-  rib_->announceAndWithdrawAddPathsBasedOnDelta(
-      ribEntry, ann, false, false, with);
-  EXPECT_EQ(ann.addPathEntries.size(), 0);
-  EXPECT_EQ(with.addPathEntries.size(), 3);
-  pathSet = getPathIdSetFromWithdrawal(with);
-  expectedPathSet = {2, 3, 4};
-  EXPECT_EQ(pathSet, expectedPathSet);
-}
-
-TEST_F(RibFixture, AnnounceAddPathTest) {
-  RibEntry ribEntry(kV4Prefix1);
-  RibOutAnnouncement ann;
-
-  // invoke n times where n < chunk size. ribOutQ_ remains empty, but they
-  // get added as entries
-  for (int i = 0; i < kRibChunkSize; i++) {
-    auto routeInfo =
-        createRouteInfo(kV4Prefix1, kLocalV4RoutePeerAddr, kV4Nexthop1);
-    routeInfo->pathIdToSend = i;
-    rib_->announceAddPath(ribEntry, ann, false, false, routeInfo);
-    EXPECT_EQ(ribOutQ_.size(), 0);
-    EXPECT_EQ(ann.addPathEntries.size(), i + 1);
-  }
-
-  // invoke one more time. ribOutQ is pushed to. Now announcement has no
-  // entries
-  auto routeInfo =
-      createRouteInfo(kV4Prefix1, kLocalV4RoutePeerAddr, kV4Nexthop1);
-  routeInfo->pathIdToSend = kRibChunkSize + 1;
-  rib_->announceAddPath(ribEntry, ann, false, false, routeInfo);
-  ASSERT_EQ(ribOutQ_.size(), 1);
-  auto msg = folly::coro::blockingWait(ribOutQ_.pop());
-  ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
-  auto pushedAnn = std::get<RibOutAnnouncement>(msg);
-  EXPECT_EQ(pushedAnn.addPathEntries.size(), kRibChunkSize);
-  EXPECT_EQ(ann.addPathEntries.size(), 1);
-}
-
-TEST_F(RibFixture, WithdrawAddPathTest) {
-  RibOutWithdrawal with;
-
-  // invoke n times where n < chunk size. ribOutQ_ remains empty, but they
-  // get added as entries
-  for (int i = 0; i < kRibChunkSize; i++) {
-    rib_->withdrawAddPath(with, kV4Prefix1, i, 0 /* ribVersion */);
-    EXPECT_EQ(ribOutQ_.size(), 0);
-    EXPECT_EQ(with.addPathEntries.size(), i + 1);
-  }
-
-  // invoke one more time. ribOutQ is pushed to. Now withdrawal has no
-  // entries
-  rib_->withdrawAddPath(
-      with, kV4Prefix1, kRibChunkSize + 1, 0 /* ribVersion */);
-  ASSERT_EQ(ribOutQ_.size(), 1);
-  auto msg = folly::coro::blockingWait(ribOutQ_.pop());
-  ASSERT_TRUE(std::holds_alternative<RibOutWithdrawal>(msg));
-  auto pushedWith = std::get<RibOutWithdrawal>(msg);
-  EXPECT_EQ(pushedWith.addPathEntries.size(), kRibChunkSize);
-  EXPECT_EQ(with.addPathEntries.size(), 1);
 }
 
 /*

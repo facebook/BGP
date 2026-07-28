@@ -274,6 +274,8 @@ struct BgpGlobalConfig {
    * Enable using path IDs allocated upon selection in Rib for outgoing updates,
    * instead of using cached per-nexthop IDs in AdjRibOut. This also includes
    * constructing RibOut messages based on these path IDs instead of nexthops.
+   *
+   * DEPRECATED: unused, retained for config compatibility.
    */
   const bool enableRibAllocatedPathId{false};
 

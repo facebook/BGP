@@ -1477,14 +1477,6 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
    * version even when the shadow RIB has been emptied.
    */
   const uint64_t* maxRibVersion_{nullptr};
-
-  /*
-   * Flag to indicate if RIB-allocated path IDs are enabled
-   * Cached from representative peer (first peer in group)
-   * All peers in group must have same setting per update group criteria
-   */
-  bool enableRibAllocatedPathId_{false};
-
   /*
    * Peering parameters cached from the first peer that formed this group
    * Used for AS-PATH manipulation, local pref, MED, etc.

@@ -301,8 +301,8 @@ class RibDC : public RibBase {
       bool computeUcmp,
       uint32_t ucmpWidth,
       const std::optional<BgpUcmpQuantizer>& quantizer = std::nullopt,
-      const std::unique_ptr<PathSelectionPolicy>& pathSelectionPolicy = nullptr,
-      bool enableRibAllocatedPathId = false) noexcept;
+      const std::unique_ptr<PathSelectionPolicy>& pathSelectionPolicy =
+          nullptr) noexcept;
 
   /*
    * DC-only overrides of the mixed-content methods that RibBase keeps

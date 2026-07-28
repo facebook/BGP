@@ -1335,13 +1335,6 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
 
   uint32_t ribOutQLowWatermark_{kRibOutQueueSizeResumeThreshold};
 
-  /**
-   * Enable using path IDs allocated upon selection in Rib for outgoing updates,
-   * instead of using cached per-nexthop IDs in AdjRibOut. This also includes
-   * constructing RibOut messages based on these path IDs instead of nexthops.
-   */
-  bool enableRibAllocatedPathId_{false};
-
   friend class PeerManagerDC;
 
 // per class placeholder for test code injection

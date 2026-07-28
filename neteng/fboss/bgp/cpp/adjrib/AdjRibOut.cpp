@@ -102,10 +102,8 @@ void AdjRib::processShadowRibEntryChange(ShadowRibEntry& srEntry) noexcept {
               srEntry.prefix,
               multipath->pathIdToSend,
               multipath->attrs->getNexthop());
-          uint32_t pathId = enableRibAllocatedPathId_
-              ? multipath->pathIdToSend
-              : pathIdGenerator_->getPathId(
-                    entry.prefix, entry.nh.value_or(folly::IPAddress()));
+          uint32_t pathId = pathIdGenerator_->getPathId(
+              entry.prefix, entry.nh.value_or(folly::IPAddress()));
           processRibWithdraw(entry.prefix, pathId);
         } else {
           XLOGF(
@@ -154,10 +152,8 @@ void AdjRib::processShadowRibEntryChange(ShadowRibEntry& srEntry) noexcept {
             srEntry.prefix,
             kDefaultPathID,
             srEntry.bestpath->attrs->getNexthop());
-        uint32_t pathId = enableRibAllocatedPathId_
-            ? kDefaultPathID
-            : pathIdGenerator_->getPathId(
-                  entry.prefix, entry.nh.value_or(folly::IPAddress()));
+        uint32_t pathId = pathIdGenerator_->getPathId(
+            entry.prefix, entry.nh.value_or(folly::IPAddress()));
         processRibWithdraw(entry.prefix, pathId);
       } else {
         XLOGF(
@@ -830,8 +826,7 @@ void AdjRib::handleRibAnnouncedEntry(
   }
   // sanity check
   if (!canAnnounceEntry(entry)) {
-    handleImplicitWithdrawal(
-        entry.prefix, entry.attrs->getNexthop(), entry.pathIdToSend);
+    handleImplicitWithdrawal(entry.prefix, entry.attrs->getNexthop());
     return;
   }
 
@@ -1014,8 +1009,8 @@ void AdjRib::processRibAnnouncedEntry(
   const std::string updatePeerIdStr =
       BgpPeerId(update.peer.addr, update.peer.routerId).str();
 
-  auto adjRibEntry = tryInsertRibOutEntry(
-      update.prefix, update.attrs->getNexthop(), update.pathIdToSend);
+  auto adjRibEntry =
+      tryInsertRibOutEntry(update.prefix, update.attrs->getNexthop());
   CHECK(adjRibEntry);
   stats_.updateAttributeSizes(update.attrs);
   adjRibEntry->setPreOut(update.attrs);
@@ -1156,11 +1151,8 @@ void AdjRib::processRibAnnouncedEntry(
 // create a new one and return it.
 AdjRibEntry* FOLLY_NULLABLE AdjRib::tryInsertRibOutEntry(
     const folly::CIDRNetwork& prefix,
-    const folly::IPAddress& nexthop,
-    const uint32_t pathIdToSend) noexcept {
-  auto pathId = enableRibAllocatedPathId_
-      ? pathIdToSend
-      : pathIdGenerator_->getPathId(prefix, nexthop);
+    const folly::IPAddress& nexthop) noexcept {
+  auto pathId = pathIdGenerator_->getPathId(prefix, nexthop);
 
   auto adjRibEntry = enableUpdateGroup_
       ? getRibEntryWithUpdateGroup(prefix, pathId)
@@ -1495,13 +1487,9 @@ void AdjRib::processRibOutWithdrawal(
         folly::IPAddress::networkToString(entry.prefix),
         getPeerName());
 
-    if (enableRibAllocatedPathId_) {
-      processRibWithdraw(entry.prefix, entry.pathIdToSend);
-    } else {
-      auto nh = entry.nh.has_value() ? entry.nh.value() : folly::IPAddress();
-      processRibWithdraw(
-          entry.prefix, pathIdGenerator_->getPathId(entry.prefix, nh));
-    }
+    auto nh = entry.nh.has_value() ? entry.nh.value() : folly::IPAddress();
+    processRibWithdraw(
+        entry.prefix, pathIdGenerator_->getPathId(entry.prefix, nh));
 
     // Update cached RIB version to track how caught up this peer is
     setLastSeenRibVersion(entry.ribVersion);
@@ -1516,11 +1504,8 @@ void AdjRib::processRibOutWithdrawal(
 // bestpath change and latest prefix/path no longer qualifies for announcing
 void AdjRib::handleImplicitWithdrawal(
     const folly::CIDRNetwork& prefix,
-    const folly::IPAddress& nextHop,
-    const uint32_t pathIdToSend) noexcept {
-  auto pathId = enableRibAllocatedPathId_
-      ? pathIdToSend
-      : pathIdGenerator_->getPathId(prefix, nextHop);
+    const folly::IPAddress& nextHop) noexcept {
+  auto pathId = pathIdGenerator_->getPathId(prefix, nextHop);
 
   XLOGF(
       DBG3,

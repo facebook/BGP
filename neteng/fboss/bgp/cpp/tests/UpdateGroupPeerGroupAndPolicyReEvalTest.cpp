@@ -320,7 +320,6 @@ TEST_F(SplitToGroup, CopiesGroupFields) {
     sourceGroup->setState(UpdateGroupState::READY);
     sourceGroup->setLastSeenRibVersion(12345);
     sourceGroup->mraiInterval_ = 30000;
-    sourceGroup->enableRibAllocatedPathId_ = true;
     sourceGroup->egressEoRPendingV4_ = true;
     sourceGroup->egressEoRPendingV6_ = true;
     sourceGroup->initialDumpCompletionTimeMs_ = int64_t{777};
@@ -360,9 +359,6 @@ TEST_F(SplitToGroup, CopiesGroupFields) {
         targetGroup->getLastSeenRibVersion(),
         sourceGroup->getLastSeenRibVersion());
     EXPECT_EQ(targetGroup->mraiInterval_, sourceGroup->mraiInterval_);
-    EXPECT_EQ(
-        targetGroup->enableRibAllocatedPathId_,
-        sourceGroup->enableRibAllocatedPathId_);
     EXPECT_EQ(
         targetGroup->egressEoRPendingV4_, sourceGroup->egressEoRPendingV4_);
     EXPECT_EQ(

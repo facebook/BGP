@@ -21,8 +21,8 @@
   FRIEND_TEST(PeerManagerTestFixture, ShadowRibEntryBestpathTest);              \
   FRIEND_TEST(PeerManagerTestFixture, GetShadowRibEntriesCanonical);            \
   FRIEND_TEST(PeerManagerTestFixture, ShadowRibEntryEmptyAttrTest);             \
-  FRIEND_TEST(RibAllocatedPathIdTestFixture, ShadowRibEntryMixpathTest);        \
-  FRIEND_TEST(RibAllocatedPathIdTestFixture, ShadowRibEntryMultipathTest);      \
+  FRIEND_TEST(PeerManagerTestFixture, ShadowRibEntryMixpathTest);               \
+  FRIEND_TEST(PeerManagerTestFixture, ShadowRibEntryMultipathTest);             \
   FRIEND_TEST(PeerManagerTestFixture, ShadowRibEntryMultiUpdateTest);           \
   FRIEND_TEST(PeerManagerTestFixture, RibDumpReqNegativeTest);                  \
   FRIEND_TEST(PeerManagerTestFixture, RibDumpReqPositiveTest);                  \
@@ -367,23 +367,12 @@ TEST_F(PeerManagerTestFixture, ShadowRibEntryBestpathTest) {
   }
 }
 
-// Parameterize tests to toggle rib-allocated path ID on and off.
-class RibAllocatedPathIdTestFixture : public PeerManagerTestFixture,
-                                      public testing::WithParamInterface<bool> {
-};
-
-INSTANTIATE_TEST_SUITE_P(
-    RibAllocatedPathIdTestFixture,
-    RibAllocatedPathIdTestFixture,
-    testing::Bool() /* ribAllocatedPathId */);
-
 /*
  * This test creates RibAnnouncement with the add-path update and make sure:
  *  1. multipath(one of) is overridden when the SAME nexthop is populated.
  *  2. multipath is appended when a DIFF nexthop is populated.
  */
-TEST_P(RibAllocatedPathIdTestFixture, ShadowRibEntryMultipathTest) {
-  bool ribAllocatedPathId = GetParam();
+TEST_F(PeerManagerTestFixture, ShadowRibEntryMultipathTest) {
   auto config = getConfig(
       true /* includeStaticPeer */, true /* includeDynamicShivPeer */);
   auto peerMgr = std::make_shared<PeerManagerBase>(
@@ -392,14 +381,8 @@ TEST_P(RibAllocatedPathIdTestFixture, ShadowRibEntryMultipathTest) {
       ribInQ_,
       ribOutQ_,
       nbrRouteChangeQ_);
-  peerMgr->enableRibAllocatedPathId_ = ribAllocatedPathId;
 
-  PathId pathId;
-  if (ribAllocatedPathId) {
-    pathId = uint32_t(0);
-  } else {
-    pathId = kV4Nexthop1;
-  }
+  PathId pathId = kV4Nexthop1;
 
   {
     //
@@ -552,14 +535,8 @@ TEST_F(PeerManagerTestFixture, ShadowRibEntryEmptyAttrTest) {
  * and make sure different processing order does not make a difference for the
  * processing result.
  */
-TEST_P(RibAllocatedPathIdTestFixture, ShadowRibEntryMixpathTest) {
-  bool ribAllocatedPathId = GetParam();
-  PathId pathId;
-  if (ribAllocatedPathId) {
-    pathId = uint32_t(0);
-  } else {
-    pathId = kV4Nexthop1;
-  }
+TEST_F(PeerManagerTestFixture, ShadowRibEntryMixpathTest) {
+  PathId pathId = kV4Nexthop1;
 
   auto config = getConfig(
       true /* includeStaticPeer */, true /* includeDynamicShivPeer */);
@@ -569,7 +546,6 @@ TEST_P(RibAllocatedPathIdTestFixture, ShadowRibEntryMixpathTest) {
       ribInQ_,
       ribOutQ_,
       nbrRouteChangeQ_);
-  peerMgr->enableRibAllocatedPathId_ = ribAllocatedPathId;
 
   auto msg1 = createRibSingleAnnounce(
       kV4Prefix1, /* prefix */

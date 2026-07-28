@@ -45,7 +45,10 @@
       ProcessShadowRibEntryChangeAddPath_StampsPartialDrainOnAllMultipaths);  \
   FRIEND_TEST(                                                                \
       AdjRibOutboundFixture,                                                  \
-      PartialDrainCacheCollisionLiveThenDrainAcceptAllPolicy);
+      PartialDrainCacheCollisionLiveThenDrainAcceptAllPolicy);                \
+  FRIEND_TEST(                                                                \
+      AdjRibOutboundFixture, ProcessShadowRibEntryChangeWithdrawAddPath);     \
+  FRIEND_TEST(AdjRibOutboundFixture, ProcessRibOutWithdrawal);
 
 #include <folly/coro/BlockingWait.h>
 #include <folly/logging/xlog.h>
@@ -872,7 +875,7 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributesWithAcceptAllPolicyTest) {
   auto update1 = RibOutAnnouncementEntry(
       kV4Prefix1, kPlaceholderPathID, iBgpPeer_, preAttrs1);
   auto adjRibEntry = adjRib_->tryInsertRibOutEntry(
-      update1.prefix, update1.attrs->getNexthop(), kPlaceholderPathID);
+      update1.prefix, update1.attrs->getNexthop());
   // Apply policy on preAttrsClone.
   auto outputAttrs1 = preAttrs1->clone();
   auto postAttrs1 = adjRib_->getPostOutPolicyAttributes(
@@ -902,7 +905,7 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributesWithAcceptAllPolicyTest) {
   EXPECT_EQ(
       adjRibEntry,
       adjRib_->tryInsertRibOutEntry(
-          update2.prefix, update2.attrs->getNexthop(), kPlaceholderPathID));
+          update2.prefix, update2.attrs->getNexthop()));
   // Apply policy on preAttrs clone.
   auto outputAttrs2 = preAttrs2->clone();
   auto postAttrs2 = adjRib_->getPostOutPolicyAttributes(
@@ -1851,8 +1854,8 @@ TEST_F(
   auto update = RibOutAnnouncementEntry(
       kV4Prefix1, kPlaceholderPathID, iBgpPeer_, preAttrs);
   update.isPartialDrain = true;
-  auto adjRibEntry = adjRib_->tryInsertRibOutEntry(
-      update.prefix, update.attrs->getNexthop(), kPlaceholderPathID);
+  auto adjRibEntry =
+      adjRib_->tryInsertRibOutEntry(update.prefix, update.attrs->getNexthop());
 
   // Mirror production sequence in AdjRib::processRibAnnouncedEntry.
   auto prePolicyAttrs = update.attrs->clone();
@@ -1905,7 +1908,7 @@ TEST_F(
         RibOutAnnouncementEntry(kV4Prefix1, pathId, iBgpPeer_, preAttrs);
     update.isPartialDrain = true;
     auto adjRibEntry = adjRib_->tryInsertRibOutEntry(
-        update.prefix, update.attrs->getNexthop(), pathId);
+        update.prefix, update.attrs->getNexthop());
 
     // Mirror production sequence in AdjRib::processRibAnnouncedEntry.
     auto prePolicyAttrs = update.attrs->clone();
@@ -1956,13 +1959,20 @@ TEST_F(
   adjRib_->egressEoRsSent_ = true;
   adjRib_->isAfiIpv4Negotiated_ = true;
   adjRib_->isAfiIpv6Negotiated_ = true;
-  adjRib_->enableRibAllocatedPathId_ = true;
 
-  constexpr std::array<uint32_t, 3> kAddPathIds{1, 2, 3};
+  /*
+   * Three multipaths with distinct nexthops. Egress path IDs are generated per
+   * (prefix, nexthop) by pathIdGenerator_, so distinct nexthops yield three
+   * distinct add-path entries in the PathTree.
+   */
+  const std::array<folly::IPAddress, 3> kNexthops{
+      kV4Nexthop1, kV4Nexthop2, kV4Nexthop3};
 
   ShadowRibRouteInfos multipaths;
-  for (uint32_t pathId : kAddPathIds) {
+  uint32_t receivedPathId = 1;
+  for (const auto& nexthop : kNexthops) {
     auto attrs = std::make_shared<BgpPath>(*buildBgpPathFields(1, 1, 1, 1));
+    attrs->setNexthop(nexthop);
     replaceZerosInAsPath(attrs, adjRib_->peeringParams_.localAs);
     BgpAttrCommunitiesC seed;
     seed.push_back(kLiveCommunity);
@@ -1972,9 +1982,10 @@ TEST_F(
     // Source peer is eBGP so the iBGP egress can announce; canAnnounce
     // rejects iBGP-to-iBGP routes when isRrClient=false.
     auto path = std::make_shared<ShadowRibRouteInfo>(
-        eBgpPeer_, attrs, pathId, /*isPartialDrain=*/true);
+        eBgpPeer_, attrs, receivedPathId, /*isPartialDrain=*/true);
     setShadowRibRouteState(path, SHADOWRIBROUTE_IN_UPDATE);
-    multipaths.emplace(pathId, std::move(path));
+    multipaths.emplace(receivedPathId, std::move(path));
+    receivedPathId++;
   }
   ShadowRibOutAnnouncementEntry srEntry(
       kV4Prefix1, /*bestpath=*/nullptr, std::move(multipaths));
@@ -1984,23 +1995,25 @@ TEST_F(
   // One add-path AdjRibEntry per multipath should now exist in PathTree, each
   // with post-policy attrs that carry kDrainCommunity (and not kLiveCommunity).
   ASSERT_EQ(
-      kAddPathIds.size(),
+      kNexthops.size(),
       adjRib_->adjRibOutGroup_->getPeerEntriesCountFromPathTree(
           adjRib_->adjRibOutGroup_->PathTree_, adjRib_->getPeerOwnerKey()));
-  for (uint32_t pathId : kAddPathIds) {
+  for (const auto& nexthop : kNexthops) {
+    const uint32_t pathId =
+        adjRib_->pathIdGenerator_->getPathId(kV4Prefix1, nexthop);
     auto adjRibEntry = adjRib_->adjRibOutGroup_->getFromPathTree(
         adjRib_->adjRibOutGroup_->PathTree_,
         kV4Prefix1,
         adjRib_->getPeerOwnerKey(),
         pathId);
-    ASSERT_NE(nullptr, adjRibEntry) << "pathIdToSend=" << pathId;
+    ASSERT_NE(nullptr, adjRibEntry) << "nexthop=" << nexthop.str();
     const auto& postAttrs = adjRibEntry->getPostAttr();
-    ASSERT_NE(nullptr, postAttrs) << "pathIdToSend=" << pathId;
+    ASSERT_NE(nullptr, postAttrs) << "nexthop=" << nexthop.str();
     const auto& comms = postAttrs->getCommunities().get();
     EXPECT_TRUE(hasCommunity(comms, kDrainCommunity))
-        << "pathIdToSend=" << pathId;
+        << "nexthop=" << nexthop.str();
     EXPECT_FALSE(hasCommunity(comms, kLiveCommunity))
-        << "pathIdToSend=" << pathId;
+        << "nexthop=" << nexthop.str();
   }
 }
 
@@ -2045,8 +2058,8 @@ TEST_F(
 
   auto update = RibOutAnnouncementEntry(
       kV4Prefix1, kPlaceholderPathID, iBgpPeer_, preAttrs);
-  auto adjRibEntry = adjRib_->tryInsertRibOutEntry(
-      update.prefix, update.attrs->getNexthop(), kPlaceholderPathID);
+  auto adjRibEntry =
+      adjRib_->tryInsertRibOutEntry(update.prefix, update.attrs->getNexthop());
   const auto peerIdStr =
       BgpPeerId(update.peer.addr, update.peer.routerId).str();
 
@@ -2087,6 +2100,120 @@ TEST_F(
         << "LIVE community still present after drain: "
            "policy-cache collision returned the stale LIVE result";
   }
+}
+
+/*
+ * Add-path withdrawal via processShadowRibEntryChange removes the corresponding
+ * add-path AdjRibEntry from the PathTree. Egress path IDs are generated per
+ * (prefix, nexthop). Ported from the removed enableRibAllocatedPathId_ suite to
+ * retain direct coverage of the production (nexthop-keyed) add-path withdraw
+ * path.
+ */
+TEST_F(AdjRibOutboundFixture, ProcessShadowRibEntryChangeWithdrawAddPath) {
+  setupAdjRib(
+      kLocalAs1, /* globalAs */
+      kLocalAs1, /* localAs */
+      kRemoteAs2, /* remoteAs */
+      false, /* isRrClient */
+      false, /* isConfedPeer */
+      false, /* nexthopSelf */
+      kV4Nexthop1, /* v4Nexthop */
+      kV6Nexthop1, /* v6Nexthop */
+      false /* call sessionEstablished */);
+  adjRib_->pathIdGenerator_ = std::make_unique<PathIdGenerator>(false);
+  adjRib_->sendAddPath_ = true;
+  adjRib_->egressEoRsSent_ = true;
+  adjRib_->isAfiIpv4Negotiated_ = true;
+  adjRib_->isAfiIpv6Negotiated_ = true;
+  auto attrs1 =
+      std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(1, 4, 4, 4));
+  attrs1->publish();
+  auto path = std::make_shared<ShadowRibRouteInfo>(
+      localPeerV4_, attrs1, kMaxPathIDToSend);
+  setShadowRibRouteState(path, SHADOWRIBROUTE_IN_WITHDRAW);
+  ShadowRibRouteInfos mp{{uint32_t(0), path}};
+  ShadowRibOutAnnouncementEntry srEntry(kV4Prefix1, nullptr, mp);
+  const auto pathId =
+      adjRib_->pathIdGenerator_->getPathId(kV4Prefix1, kV4Nexthop1);
+
+  adjRib_->adjRibOutGroup_->addToPathTree(
+      adjRib_->adjRibOutGroup_->PathTree_,
+      kV4Prefix1,
+      adjRib_->getPeerOwnerKey(),
+      pathId);
+  auto adjRibEntry = adjRib_->adjRibOutGroup_->getFromPathTree(
+      adjRib_->adjRibOutGroup_->PathTree_,
+      kV4Prefix1,
+      adjRib_->getPeerOwnerKey(),
+      pathId);
+  ASSERT_NE(adjRibEntry, nullptr);
+  adjRibEntry->setPreOut(attrs1);
+  ASSERT_EQ(
+      adjRib_->adjRibOutGroup_->getPeerEntriesCountFromPathTree(
+          adjRib_->adjRibOutGroup_->PathTree_, adjRib_->getPeerOwnerKey()),
+      1);
+
+  adjRib_->processShadowRibEntryChange(srEntry);
+
+  // The add-path entry is withdrawn from the PathTree.
+  ASSERT_EQ(
+      adjRib_->adjRibOutGroup_->getPeerEntriesCountFromPathTree(
+          adjRib_->adjRibOutGroup_->PathTree_, adjRib_->getPeerOwnerKey()),
+      0);
+}
+
+/*
+ * Single-path RibOut withdrawal via processRibOutWithdrawal removes the
+ * corresponding AdjRibEntry from the LiteTree; the egress path ID is generated
+ * per (prefix, nexthop). Ported from the removed enableRibAllocatedPathId_
+ * suite to retain direct coverage of the production withdraw path.
+ */
+TEST_F(AdjRibOutboundFixture, ProcessRibOutWithdrawal) {
+  setupAdjRib(
+      kLocalAs1, /* globalAs */
+      kLocalAs1, /* localAs */
+      kRemoteAs2, /* remoteAs */
+      false, /* isRrClient */
+      false, /* isConfedPeer */
+      false, /* nexthopSelf */
+      kV4Nexthop1, /* v4Nexthop */
+      kV6Nexthop1, /* v6Nexthop */
+      false /* call sessionEstablished */);
+  adjRib_->pathIdGenerator_ = std::make_unique<PathIdGenerator>(false);
+  adjRib_->egressEoRsSent_ = true;
+  adjRib_->isAfiIpv4Negotiated_ = true;
+  adjRib_->isAfiIpv6Negotiated_ = true;
+  auto attrs1 =
+      std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(1, 4, 4, 4));
+  attrs1->publish();
+  const auto pathId =
+      adjRib_->pathIdGenerator_->getPathId(kV4Prefix1, kV4Nexthop1);
+  RibOutWithdrawalEntry withEntry(kV4Prefix1, pathId, kV4Nexthop1);
+  RibOutWithdrawal with({withEntry}, {});
+
+  adjRib_->adjRibOutGroup_->addToLiteTree(
+      adjRib_->adjRibOutGroup_->LiteTree_,
+      kV4Prefix1,
+      adjRib_->getPeerOwnerKey(),
+      pathId);
+  auto adjRibEntry = adjRib_->adjRibOutGroup_->getFromLiteTree(
+      adjRib_->adjRibOutGroup_->LiteTree_,
+      kV4Prefix1,
+      adjRib_->getPeerOwnerKey());
+  ASSERT_NE(adjRibEntry, nullptr);
+  adjRibEntry->setPreOut(attrs1);
+  ASSERT_EQ(
+      adjRib_->adjRibOutGroup_->getPeerEntriesCountFromLiteTree(
+          adjRib_->adjRibOutGroup_->LiteTree_, adjRib_->getPeerOwnerKey()),
+      1);
+
+  adjRib_->processRibOutWithdrawal(with);
+
+  // The single-path entry is withdrawn from the LiteTree.
+  ASSERT_EQ(
+      adjRib_->adjRibOutGroup_->getPeerEntriesCountFromLiteTree(
+          adjRib_->adjRibOutGroup_->LiteTree_, adjRib_->getPeerOwnerKey()),
+      0);
 }
 
 } // namespace facebook::bgp

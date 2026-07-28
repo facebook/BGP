@@ -283,7 +283,6 @@ class AdjRib : boost::noncopyable,
         enableEgressQueueBackpressure_ =
             globalConfig->enableEgressQueueBackpressure;
         enableUpdateGroup_ = globalConfig->enableUpdateGroup;
-        enableRibAllocatedPathId_ = globalConfig->enableRibAllocatedPathId;
         enableOptimizedGR_ = globalConfig->enableOptimizedGR;
         enableAddPathGrReconcile_ = globalConfig->enableAddPathGrReconcile;
         enableDynamicPolicyEvaluation_ =
@@ -2076,8 +2075,7 @@ class AdjRib : boost::noncopyable,
   // create a new one and return it.
   AdjRibEntry* FOLLY_NULLABLE tryInsertRibOutEntry(
       const folly::CIDRNetwork& prefix,
-      const folly::IPAddress& nexthop,
-      const uint32_t pathIdToSend) noexcept;
+      const folly::IPAddress& nexthop) noexcept;
 
   // Get post policy attributes (including CRF filtering)
   // Look up in the cache - if found just return the result
@@ -2122,8 +2120,7 @@ class AdjRib : boost::noncopyable,
   // without any explicit withdrawal from RIB
   void handleImplicitWithdrawal(
       const folly::CIDRNetwork& prefix,
-      const folly::IPAddress& nextHop,
-      const uint32_t pathIdToSend) noexcept;
+      const folly::IPAddress& nextHop) noexcept;
 
   // Process single prefix best path withdrawal
   void processRibWithdraw(
@@ -2525,13 +2522,6 @@ class AdjRib : boost::noncopyable,
    * Feature flag to enable update group feature
    */
   bool enableUpdateGroup_{false};
-
-  /**
-   * Enable using path IDs allocated upon selection in Rib for outgoing updates,
-   * instead of using cached per-nexthop IDs in AdjRibOut. This also includes
-   * constructing RibOut messages based on these path IDs instead of nexthops.
-   */
-  bool enableRibAllocatedPathId_{false};
 
   /**
    * Enable optimized GR (Graceful Restart) logic.

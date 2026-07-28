@@ -1442,7 +1442,7 @@ AdjRibOutGroupConsumer::~AdjRibOutGroupConsumer() {
  *
  * Key differences from peer-level:
  * - Uses group owner key instead of peer owner key
- * - Uses enableRibAllocatedPathId_ to decide pathId (no pathIdGenerator_)
+ * - Update-group path always uses pathIdToSend (never pathIdGenerator_)
  * - Conditionally uses PathTree or LiteTree based on groupKey_.sendAddPath
  *
  * @param  prefix - The prefix to insert/get
@@ -1455,10 +1455,8 @@ AdjRibEntry* FOLLY_NULLABLE AdjRibOutGroup::tryInsertRibOutEntry(
     const folly::CIDRNetwork& prefix,
     const folly::IPAddress& /* nexthop */,
     const uint32_t pathIdToSend) noexcept {
-  // Group level always uses RIB-allocated path ID (no pathIdGenerator)
-  // Per spec: "use enableRibAllocatedPathId_, dont use pathIdGenerator_, always
-  // use pathIdToSend"
-  auto pathId = enableRibAllocatedPathId_ ? pathIdToSend : pathIdToSend;
+  // Update-group path always uses pathIdToSend (never pathIdGenerator_)
+  auto pathId = pathIdToSend;
 
   auto groupOwnerKey = getGroupOwnerKey();
   AdjRibEntry* adjRibEntry = nullptr;
@@ -3077,7 +3075,6 @@ void AdjRibOutGroup::copyGroupFieldsToNewGroup(
   newGroup->setState(state_);
   newGroup->setLastSeenRibVersion(lastSeenRibVersion_);
   newGroup->peeringParams_ = peeringParams_;
-  newGroup->enableRibAllocatedPathId_ = enableRibAllocatedPathId_;
   newGroup->mraiInterval_ = mraiInterval_;
   newGroup->egressEoRPendingV4_ = egressEoRPendingV4_;
   newGroup->egressEoRPendingV6_ = egressEoRPendingV6_;

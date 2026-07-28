@@ -1371,22 +1371,6 @@ TEST_F(AdjRibGroupRibOutEntryFixture, TryInsertRibOutEntry_MultiplePrefixes) {
 }
 
 /**
- * Test: tryInsertRibOutEntry uses enableRibAllocatedPathId flag
- */
-TEST_F(
-    AdjRibGroupRibOutEntryFixture,
-    TryInsertRibOutEntry_UsesRibAllocatedPathId) {
-  // enableRibAllocatedPathId_ defaults to true in AdjRibGroup
-  // So pathId should always be the pathIdToSend parameter
-
-  auto* entry =
-      adjRibOutGroup_->tryInsertRibOutEntry(kV4Prefix1_, kNexthop_, kPathId1_);
-
-  ASSERT_NE(entry, nullptr);
-  EXPECT_EQ(entry->getPathId(), kPathId1_);
-}
-
-/**
  * Test: tryInsertRibOutEntry with PathTree when sendAddPath is enabled
  */
 TEST_F(

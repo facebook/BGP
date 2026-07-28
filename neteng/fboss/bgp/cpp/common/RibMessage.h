@@ -246,12 +246,13 @@ struct ShadowRibRouteInfo {
         isPartialDrain(isPartialDrain) {}
 };
 
-// TODO: keys should only be pathIdToSend (uint32_t) once ADD-PATH changes for
-// rib-allocated path ID are stable. We need variant here because if
-// ribAllocatedPathId is disabled, we will include nh instead of pathIdToSend on
-// RibOutWithdrawal messages. Thus, if the feature is disabled, we should key SR
-// routeInfos by nexthop. Otherwise we would have to do some search or store
-// some lookup table
+/*
+ * SR routeInfos are keyed by nexthop: RibOutWithdrawal messages carry the
+ * nexthop, so keying by it avoids a search or a separate lookup table. The
+ * uint32_t alternative of PathId is a remnant of the removed rib-allocated
+ * path-id path (getPathId now always returns the folly::IPAddress alternative);
+ * collapsing PathId to just folly::IPAddress is a separate follow-up cleanup.
+ */
 using PathId = std::variant<uint32_t, /* pathIdToSend */ folly::IPAddress>;
 using ShadowRibRouteInfos =
     std::unordered_map<PathId, std::shared_ptr<ShadowRibRouteInfo>>;
