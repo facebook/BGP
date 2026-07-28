@@ -151,6 +151,19 @@ RouteTestData genRouteTestData(int toAdd, int toDelete) {
   return ret;
 }
 
+TEST(FibFbossTest, CreateNetworkTopoInfo) {
+  const std::unordered_map<std::string, int64_t> topologyInfo{
+      {"rack_id", 5}, {"remote_rack_capacity", 3}, {"spine_id", 17}};
+
+  const auto thriftTopologyInfo = FibFboss::createNetworkTopoInfo(topologyInfo);
+  EXPECT_EQ(5, thriftTopologyInfo.rack_id());
+  EXPECT_EQ(3, thriftTopologyInfo.remote_rack_capacity());
+  EXPECT_EQ(17, thriftTopologyInfo.spine_id());
+  EXPECT_FALSE(thriftTopologyInfo.plane_id().has_value());
+  EXPECT_FALSE(thriftTopologyInfo.spine_capacity().has_value());
+  EXPECT_FALSE(thriftTopologyInfo.local_rack_capacity().has_value());
+}
+
 TEST_F(FibFixture, TestStopFib) {
   // Step1: MockFib is running in a separate thread. Coro tasks are scheduled
   // with SetUp() call.
