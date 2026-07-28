@@ -338,6 +338,16 @@ bool findPrefixInWithdrawals(
     const folly::CIDRNetwork& expectedCidr,
     uint32_t addPathId = 0);
 
+// Collect every announced (REACH) prefix in an UPDATE, across the v4 and MP
+// NLRI lists, as CIDRs.
+std::vector<folly::CIDRNetwork> getAnnouncedPrefixes(
+    const nettools::bgplib::BgpUpdate2& update);
+
+// Collect every withdrawn (UNREACH) prefix in an UPDATE, across the v4 and MP
+// NLRI lists, as CIDRs.
+std::vector<folly::CIDRNetwork> getWithdrawnPrefixes(
+    const nettools::bgplib::BgpUpdate2& update);
+
 // Verify route attributes match expectations
 bool verifyRouteAttributes(
     const nettools::bgplib::BgpUpdate2& update,

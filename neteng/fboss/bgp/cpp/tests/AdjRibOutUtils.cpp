@@ -551,6 +551,34 @@ bool findPrefixInWithdrawals(
       *update.mpWithdrawn()->prefixes(), expectedCidr, addPathId);
 }
 
+std::vector<folly::CIDRNetwork> getAnnouncedPrefixes(
+    const nettools::bgplib::BgpUpdate2& update) {
+  std::vector<folly::CIDRNetwork> prefixes;
+  for (const auto& riggedPrefix : *update.v4Announced2()) {
+    prefixes.push_back(
+        facebook::network::toCIDRNetwork(*riggedPrefix.prefix()));
+  }
+  for (const auto& riggedPrefix : *update.mpAnnounced()->prefixes()) {
+    prefixes.push_back(
+        facebook::network::toCIDRNetwork(*riggedPrefix.prefix()));
+  }
+  return prefixes;
+}
+
+std::vector<folly::CIDRNetwork> getWithdrawnPrefixes(
+    const nettools::bgplib::BgpUpdate2& update) {
+  std::vector<folly::CIDRNetwork> prefixes;
+  for (const auto& riggedPrefix : *update.v4Withdrawn2()) {
+    prefixes.push_back(
+        facebook::network::toCIDRNetwork(*riggedPrefix.prefix()));
+  }
+  for (const auto& riggedPrefix : *update.mpWithdrawn()->prefixes()) {
+    prefixes.push_back(
+        facebook::network::toCIDRNetwork(*riggedPrefix.prefix()));
+  }
+  return prefixes;
+}
+
 bool verifyRouteAttributes(
     const nettools::bgplib::BgpUpdate2& update,
     const std::string& expectedNexthop,

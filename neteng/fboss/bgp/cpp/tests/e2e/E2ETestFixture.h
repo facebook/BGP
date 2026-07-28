@@ -26,8 +26,11 @@
 #define PeerManager_TEST_FRIENDS friend class E2ETestFixture;
 #define AdjRib_TEST_FRIENDS friend class E2ETestFixture;
 #define RibBase_TEST_FRIENDS friend class E2ETestFixture;
+#define AdjRibOutGroup_TEST_FRIENDS friend class E2ETestFixture;
 
 #include <gtest/gtest.h>
+
+#include <set>
 
 #include <folly/coro/BlockingWait.h>
 #include <folly/logging/xlog.h>
@@ -104,6 +107,15 @@ struct BgpPeerSpec {
    * letting downstream filters (e.g., RFC 1997 NO_ADVERTISE) decide.
    */
   bool isRrClient = false;
+
+  /*
+   * Peer-group membership. When set, the peer is added to the named peer
+   * group (peer.peer_group_name) and getConfig() registers the group in
+   * thriftConfig.peer_groups. Required for peer-group-level runtime policy
+   * changes via BgpServiceBB::co_setPeerGroupsPolicy — that API rejects
+   * with INPUT_ERROR unless the group exists in config.
+   */
+  std::optional<std::string> peerGroupName = std::nullopt;
 };
 
 /* Inline default peer specs for common test scenarios */
@@ -712,6 +724,35 @@ class E2ETestFixture : public ::testing::Test {
       int maxMessages = 100);
 
   /*
+   * A peer's currently-advertised routes, reconstructed from the UPDATEs
+   * drained off its egress queue: prefix -> the path attributes last announced
+   * for it. An announcement sets/overwrites the entry, a withdrawal erases it,
+   * so the map converges to the peer's Adj-RIB-Out and never needs to be reset
+   * between policy phases.
+   */
+  using ReceivedRoutes =
+      std::map<folly::CIDRNetwork, nettools::bgplib::BgpAttributes>;
+
+  /*
+   * Drain a peer's egress queue (via drainAllOutboundMessagesToOrderedVec) and
+   * fold each drained UPDATE into the peer's received-routes map: announced
+   * prefixes set/overwrite their attributes, withdrawn prefixes are erased
+   * (EoRs are skipped). Lets a test verify exactly which prefixes -- and which
+   * attributes (e.g. communities) -- a peer currently has, not just the group
+   * RIB-OUT state.
+   */
+  void recordDrainedRoutes(
+      const BgpPeerId& peerId,
+      int idleRetries = 20,
+      int maxMessages = 500);
+
+  /*
+   * The routes currently advertised to a peer as recorded by
+   * recordDrainedRoutes (empty if the peer has never been drained via it).
+   */
+  const ReceivedRoutes& receivedRoutes(const BgpPeerId& peerId) const;
+
+  /*
    * Drain all messages from a peer's outbound queue and report whether
    * any EoR messages were found. Counts of updates and EoRs are returned
    * via output parameters.
@@ -836,6 +877,128 @@ class E2ETestFixture : public ::testing::Test {
    * Iterates PeerManagerBase::adjRibs_ to find the matching entry.
    */
   std::shared_ptr<AdjRib> getAdjRibByAddr(const folly::IPAddress& peerAddr);
+
+  /*
+   * Walk a peer's RIB-OUT entries in its update group's LiteTree on the
+   * PeerManager event base and return the count of entries for which
+   * verifyOnRouteIndexFunc returns true, restricted to routes whose index octet
+   * (the 3rd octet of the prefix) satisfies routeIndexPredicate.
+   *
+   * For each prefix the peer's own owner-key entry wins; otherwise the
+   * group-owned (shared) entry is used, subject to isEntryShared for a detached
+   * peer. Ported from the UT UpdateGroupPolicyReEvalUTCommon.h so e2e tests can
+   * assert RIB-OUT *state* (not just outbound messages) at scale.
+   */
+  size_t verifyRibOutEntries(
+      const folly::IPAddress& peerAddr,
+      std::function<bool(int)> routeIndexPredicate = [](int) { return true; },
+      std::function<bool(const AdjRibEntry&, const folly::CIDRNetwork&)>
+          verifyOnRouteIndexFunc =
+              [](const AdjRibEntry&, const folly::CIDRNetwork&) {
+                return true;
+              }) {
+    auto& evb = peerManager_->getEventBase();
+    return folly::via(
+               &evb,
+               [&]() -> size_t {
+                 auto adjRib = getAdjRibByAddr(peerAddr);
+                 if (!adjRib) {
+                   return 0;
+                 }
+                 auto group = adjRib->getUpdateGroup();
+                 if (!group) {
+                   return 0;
+                 }
+                 auto peerOwnerKey = adjRib->getPeerOwnerKey();
+                 auto groupOwnerKey = group->getGroupOwnerKey();
+                 bool isDetached = adjRib->isDetachedPeer();
+                 auto detachedRibVersion = adjRib->getDetachedRibVersion();
+
+                 size_t count = 0;
+                 for (auto it = group->LiteTree_.begin();
+                      it != group->LiteTree_.end();
+                      ++it) {
+                   auto& ownerMap = it->value();
+                   AdjRibEntry* entry = nullptr;
+
+                   auto peerIt = ownerMap.find(peerOwnerKey);
+                   if (peerIt != ownerMap.end()) {
+                     entry = peerIt->second.get();
+                   } else {
+                     auto groupIt = ownerMap.find(groupOwnerKey);
+                     if (groupIt != ownerMap.end() &&
+                         (!isDetached ||
+                          AdjRibOutGroup::isEntryShared(
+                              detachedRibVersion,
+                              groupIt->second->getRibVersion()))) {
+                       entry = groupIt->second.get();
+                     }
+                   }
+
+                   if (!entry) {
+                     continue;
+                   }
+
+                   int routeIndexOctet = it.ipAddress().asV4().getNthMSByte(2);
+                   if (!routeIndexPredicate(routeIndexOctet)) {
+                     continue;
+                   }
+                   folly::CIDRNetwork prefix{it.ipAddress(), it.masklen()};
+                   if (verifyOnRouteIndexFunc(*entry, prefix)) {
+                     ++count;
+                   }
+                 }
+                 return count;
+               })
+        .get();
+  }
+
+  static std::function<bool(const AdjRibEntry&, const folly::CIDRNetwork&)>
+  verifyAdvertised() {
+    return [](const AdjRibEntry& entry, const folly::CIDRNetwork& prefix) {
+      EXPECT_NE(entry.getPostAttr(), nullptr)
+          << prefix.first.str() << "/" << prefix.second
+          << " was not advertised";
+      return entry.getPostAttr() != nullptr;
+    };
+  }
+
+  static std::function<bool(const AdjRibEntry&, const folly::CIDRNetwork&)>
+  verifyNotAdvertised() {
+    return [](const AdjRibEntry& entry, const folly::CIDRNetwork& prefix) {
+      EXPECT_EQ(entry.getPostAttr(), nullptr)
+          << prefix.first.str() << "/" << prefix.second
+          << " should be withdrawn or not advertised";
+      return entry.getPostAttr() == nullptr;
+    };
+  }
+
+  static std::function<bool(const AdjRibEntry&, const folly::CIDRNetwork&)>
+  verifyCommOnAdvertisedRoute(const std::string& community) {
+    auto expectedComm =
+        *nettools::bgplib::BgpAttrCommunityC::createBgpAttrCommunity(community);
+    return [expectedComm](
+               const AdjRibEntry& entry,
+               const folly::CIDRNetwork& prefix) -> bool {
+      auto postPolicy = entry.getPostAttr();
+      EXPECT_NE(postPolicy, nullptr) << prefix.first.str() << "/"
+                                     << prefix.second << " was not advertised";
+      if (!postPolicy) {
+        return false;
+      }
+      const auto& communities = postPolicy->getCommunities();
+      bool found = false;
+      for (const auto& comm : communities.get()) {
+        if (comm == expectedComm) {
+          found = true;
+          break;
+        }
+      }
+      EXPECT_TRUE(found) << prefix.first.str() << "/" << prefix.second
+                         << " missing expected community";
+      return found;
+    };
+  }
 
  protected:
   /*
@@ -977,6 +1140,18 @@ class E2ETestFixture : public ::testing::Test {
       const folly::IPAddress& peerAddr,
       bool sendAddPath = false,
       bool sendWithEoR = false);
+
+  /*
+   * Wait until a scheduled group egress-policy re-evaluation has run to
+   * completion, i.e. PeerManagerBase's
+   * egressPolicyUpdateForUpdateGroupsScheduled_ (set when
+   * handleEgressPolicyUpdate schedules the re-eval on asyncScope_, cleared once
+   * it runs) returns to false. Lets a test that applies a policy while a peer
+   * is JOINED_BLOCKED guarantee the re-eval runs before the peer is unblocked,
+   * rather than racing it. Requires friendship (PeerManager_TEST_FRIENDS).
+   * Returns false if the flag is still set after maxRetries.
+   */
+  bool waitForEgressReEvalComplete(int maxRetries = 50);
 
  public:
   /*
@@ -1160,6 +1335,13 @@ class E2ETestFixture : public ::testing::Test {
    */
   std::optional<uint32_t> pendingLocalConfedAsn_;
 
+  /*
+   * Peer-group names supplied via BgpPeerSpec::peerGroupName. Registered in
+   * thriftConfig.peer_groups() by getConfig() so peer-group-level runtime
+   * policy changes (BgpServiceBB::co_setPeerGroupsPolicy) can resolve them.
+   */
+  std::set<std::string> pendingPeerGroupNames_;
+
   // GR convergence override
   std::optional<uint32_t> grConvergenceSecondsOverride_;
 
@@ -1206,6 +1388,11 @@ class E2ETestFixture : public ::testing::Test {
 
   // Blocked peers (for testing backpressure scenarios)
   std::unordered_set<folly::IPAddress> blockedPeers_;
+
+  // Per-peer view of the routes currently advertised to each peer, populated by
+  // recordDrainedRoutes and keyed by peer id. Converges to each peer's
+  // Adj-RIB-Out as UPDATEs are drained (announce sets, withdraw erases).
+  std::unordered_map<BgpPeerId, ReceivedRoutes> drainedRoutesByPeer_;
 
   // Default queue sizes for peers (can be overridden via setDefaultQueueSizes)
   int defaultQueueCapacity_{8};

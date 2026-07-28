@@ -73,6 +73,20 @@ std::shared_ptr<Config> E2ETestFixture::getConfig(
   }
 
   /*
+   * Register peer groups referenced by any peer's peerGroupName so
+   * peer-group-level policy APIs can resolve them.
+   */
+  if (!pendingPeerGroupNames_.empty()) {
+    std::vector<thrift::PeerGroup> peerGroups;
+    for (const auto& name : pendingPeerGroupNames_) {
+      thrift::PeerGroup peerGroup;
+      peerGroup.name() = name;
+      peerGroups.push_back(std::move(peerGroup));
+    }
+    thriftConfig.peer_groups() = std::move(peerGroups);
+  }
+
+  /*
    * Plumb the parent confederation AS into the global config if any peer
    * added via addPeer() asked for it. Required by Config.cpp validation
    * when peer.is_confed_peer=true (see Config.cpp ~line 1015).
@@ -161,6 +175,15 @@ void E2ETestFixture::addPeer(const BgpPeerSpec& spec) {
   /* Route-Reflector client: mark on the thrift::BgpPeer. */
   if (spec.isRrClient) {
     peer.is_rr_client() = true;
+  }
+
+  /*
+   * Peer-group membership: set on the peer and track the group name so
+   * getConfig() registers it in thriftConfig.peer_groups().
+   */
+  if (spec.peerGroupName.has_value()) {
+    peer.peer_group_name() = spec.peerGroupName.value();
+    pendingPeerGroupNames_.insert(spec.peerGroupName.value());
   }
 
   /*
@@ -2101,6 +2124,35 @@ size_t E2ETestFixture::drainPeerQueueCompletely(
       .size();
 }
 
+void E2ETestFixture::recordDrainedRoutes(
+    const BgpPeerId& peerId,
+    int idleRetries,
+    int maxMessages) {
+  auto messages =
+      drainAllOutboundMessagesToOrderedVec(peerId, idleRetries, maxMessages);
+  auto& routes = drainedRoutesByPeer_[peerId];
+  for (const auto& msg : messages) {
+    if (msg.isEoR || !msg.update) {
+      continue;
+    }
+    // All announced prefixes in one UPDATE share its path attributes.
+    const auto& attrs = *msg.update->attrs();
+    for (const auto& prefix : getAnnouncedPrefixes(*msg.update)) {
+      routes[prefix] = attrs;
+    }
+    for (const auto& prefix : getWithdrawnPrefixes(*msg.update)) {
+      routes.erase(prefix);
+    }
+  }
+}
+
+const E2ETestFixture::ReceivedRoutes& E2ETestFixture::receivedRoutes(
+    const BgpPeerId& peerId) const {
+  static const ReceivedRoutes kEmpty;
+  auto it = drainedRoutesByPeer_.find(peerId);
+  return it == drainedRoutesByPeer_.end() ? kEmpty : it->second;
+}
+
 void E2ETestFixture::drainAndClassifyMessages(
     const BgpPeerId& peerId,
     size_t& updateCount,
@@ -3159,6 +3211,21 @@ void E2ETestFixture::triggerRibDumpForPeer(
       peerManager_->processRibDumpReq(adjRib, sendAddPath, sendWithEoR);
     }
   });
+}
+
+bool E2ETestFixture::waitForEgressReEvalComplete(int maxRetries) {
+  if (!peerManager_) {
+    XLOG(ERR, "PeerManagerBase is not initialized");
+    return false;
+  }
+  bool complete = false;
+  WITH_RETRIES_N(maxRetries, {
+    peerManager_->getEventBase().runInEventBaseThreadAndWait([&]() {
+      complete = !peerManager_->egressPolicyUpdateForUpdateGroupsScheduled_;
+    });
+    EXPECT_EVENTUALLY_TRUE(complete);
+  });
+  return complete;
 }
 
 std::optional<E2ETestFixture::PeerQueues> E2ETestFixture::getPeerQueues(
