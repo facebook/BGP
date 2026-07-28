@@ -49,6 +49,15 @@ static const std::string kExitNullPtrLogPrefix = "BgpServiceBaseExitOrNullPtr";
 static const std::string kPeerGroupValidationLogPrefix =
     "BgpServicePeerGroupValidation";
 
+/*
+ * Sentinel returned by the scalar RIB-read handlers (co_getRibVersion /
+ * co_getNumPrefixes) when the value cannot be produced -- session exiting, or
+ * the RIB evb hop timed out / failed. Negative is unambiguous because the real
+ * values are non-negative (0 = empty RIB), matching the negative-as-"no value"
+ * convention of getTimeElapsedSinceLastFibUpdate().
+ */
+static constexpr int64_t kRibReadUnavailable = -1;
+
 TBgpNetwork toBgpNetwork(const TIpPrefix& prefix, const TBgpPath& path) {
   TBgpNetwork network;
   network.prefix() = prefix;
@@ -1956,19 +1965,64 @@ int64_t BgpServiceBase::getTimeElapsedSinceLastFibUpdate() {
   return now - lastFibUpdate;
 }
 
-int64_t BgpServiceBase::getRibVersion() {
-  auto log = LOG_THRIFT_CALL(INFO);
-  return static_cast<int64_t>(rib_.getRibVersion());
+folly::coro::Task<int64_t> BgpServiceBase::co_getRibVersion() {
+  auto log = LOG_THRIFT_CALL(DBG2);
+  if (exitInitiated_) {
+    co_return kRibReadUnavailable;
+  }
+
+  if (!continueExecution(true)) {
+    co_return kRibReadUnavailable;
+  }
+  SCOPE_EXIT {
+    decrRequestsInExecution();
+  };
+
+  auto result = co_await co_runOnEvbWithTimeout(
+      rib_.getEventBase(),
+      [this]() { return rib_.getRibVersion(); },
+      kRibThriftHandlerTimeout);
+
+  if (result.hasValue()) {
+    co_return static_cast<int64_t>(result.value());
+  }
+
+  if (result.exception().is_compatible_with<folly::FutureTimeout>()) {
+    XLOGF(ERR, "getRibVersion timed out — Rib evb unresponsive");
+  } else {
+    XLOGF(ERR, "getRibVersion failed: {}", result.exception().what());
+  }
+  co_return kRibReadUnavailable;
 }
 
-int64_t BgpServiceBase::getNumPrefixes() {
-  auto log = LOG_THRIFT_CALL(INFO);
+folly::coro::Task<int64_t> BgpServiceBase::co_getNumPrefixes() {
+  auto log = LOG_THRIFT_CALL(DBG2);
+  if (exitInitiated_) {
+    co_return kRibReadUnavailable;
+  }
 
-  /*
-   * rib_.getNumPrefixes() reads the RIB-evb-confined ribCounters_ via an evb
-   * hop, so it is safe to call from the thrift handler thread.
-   */
-  return static_cast<int64_t>(rib_.getNumPrefixes());
+  if (!continueExecution(true)) {
+    co_return kRibReadUnavailable;
+  }
+  SCOPE_EXIT {
+    decrRequestsInExecution();
+  };
+
+  auto result = co_await co_runOnEvbWithTimeout(
+      rib_.getEventBase(),
+      [this]() { return rib_.getNumPrefixes(); },
+      kRibThriftHandlerTimeout);
+
+  if (result.hasValue()) {
+    co_return static_cast<int64_t>(result.value());
+  }
+
+  if (result.exception().is_compatible_with<folly::FutureTimeout>()) {
+    XLOGF(ERR, "getNumPrefixes timed out — Rib evb unresponsive");
+  } else {
+    XLOGF(ERR, "getNumPrefixes failed: {}", result.exception().what());
+  }
+  co_return kRibReadUnavailable;
 }
 
 int64_t BgpServiceBase::getProcessUptimeSeconds() {

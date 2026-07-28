@@ -23,6 +23,17 @@
 
 #include <fb303/ThreadCachedServiceData.h>
 
+/*
+ * Grant the exit-sentinel test access to the protected exitInitiated_ flag, so
+ * it can exercise the -1 "unavailable" return of co_getRibVersion /
+ * co_getNumPrefixes without a running RIB evb -- the exit guard short-circuits
+ * before the evb hop.
+ */
+#define BgpServiceBase_TEST_FRIENDS \
+  FRIEND_TEST(                      \
+      BgpServiceBaseTestFixture,    \
+      GetRibVersionAndNumPrefixesReturnNegativeOnExit);
+
 #include "neteng/fboss/bgp/cpp/BgpServiceBase.h"
 #include "neteng/fboss/bgp/cpp/config/ConfigManager.h"
 #include "neteng/fboss/bgp/cpp/peer/PeerManagerBase.h"
@@ -256,26 +267,29 @@ TEST_F(BgpServiceBaseTestFixture, StartSessionNullPtrTest) {
 
 // --- Global summary getter handler tests ---
 
-// The getRibVersion thrift handler reflects the RIB's monotonic version.
-TEST_F(BgpServiceBaseTestFixture, GetRibVersionTest) {
-  EXPECT_EQ(0, service_->getRibVersion());
+/*
+ * co_getRibVersion / co_getNumPrefixes are coroutine handlers that read the RIB
+ * through a timeout-protected evb hop (co_runOnEvbWithTimeout). That hop
+ * requires a running RIB event base, which this MockRib fixture never starts,
+ * so they are exercised in RibTest.GetRibVersionAndNumPrefixesHandlers
+ * (RibFixture: a real RIB evb driven by real route updates) -- mirroring how
+ * co_getRouteFilterPolicy is tested in RibRouteFilterPolicyTest rather than
+ * here.
+ */
 
-  rib_->incrementRibVersion();
-  rib_->incrementRibVersion();
-
-  EXPECT_EQ(2, service_->getRibVersion());
-  // Handler delegates to the RIB getter.
-  EXPECT_EQ(
-      static_cast<int64_t>(rib_->getRibVersion()), service_->getRibVersion());
-}
-
-// An empty RIB reports zero prefixes, and the handler delegates to the RIB's
-// atomic prefix counter. (Count-increases-on-route-injection is covered by the
-// RibStats E2E test, which exercises the real RIB update path.)
-TEST_F(BgpServiceBaseTestFixture, GetNumPrefixesEmptyTest) {
-  EXPECT_EQ(0, service_->getNumPrefixes());
-  EXPECT_EQ(
-      static_cast<int64_t>(rib_->getNumPrefixes()), service_->getNumPrefixes());
+/*
+ * When the session is exiting, the scalar RIB-read handlers short-circuit
+ * before the evb hop and report -1 ("unavailable"), so a client can tell it
+ * apart from a genuinely-empty RIB (which reports 0). This runs on the MockRib
+ * fixture with no RIB evb precisely because the exit guard returns before any
+ * hop -- exercising the sentinel without needing a real evb or a 30s timeout.
+ */
+TEST_F(
+    BgpServiceBaseTestFixture,
+    GetRibVersionAndNumPrefixesReturnNegativeOnExit) {
+  service_->exitInitiated_ = true;
+  EXPECT_EQ(-1, folly::coro::blockingWait(service_->co_getRibVersion()));
+  EXPECT_EQ(-1, folly::coro::blockingWait(service_->co_getNumPrefixes()));
 }
 
 // The getProcessUptimeSeconds handler returns a non-negative value that does

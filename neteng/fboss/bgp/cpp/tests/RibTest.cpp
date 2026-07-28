@@ -1672,6 +1672,54 @@ TEST_F(RibFixture, RibVersionIncrementsOnBestpathChange) {
 }
 
 /*
+ * Test: the co_getRibVersion / co_getNumPrefixes thrift handlers reflect the
+ * live RIB, read through the timeout-protected evb hop (co_runOnEvbWithTimeout,
+ * mirroring co_getRibSummary).
+ *
+ * Uses RibFixture -- a real, running RIB event base plus a real BgpServiceDC --
+ * so the handler's outer evb hop actually completes. The MockRib fixture in
+ * BgpServiceBaseTest cannot exercise these handlers because it never starts the
+ * RIB evb (the hop would stall until the timeout).
+ */
+TEST_F(RibFixture, GetRibVersionAndNumPrefixesHandlers) {
+  EXPECT_CALL(*rib_, prepareFibProgramming_()).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, program_(_)).Times(testing::AnyNumber());
+  EXPECT_CALL(*fib_, updateUnicastRoute_(_, _, _, _, _, _))
+      .Times(testing::AnyNumber());
+
+  // Empty RIB: both handlers report zero through the evb hop.
+  EXPECT_EQ(0, folly::coro::blockingWait(service_->co_getRibVersion()));
+  EXPECT_EQ(0, folly::coro::blockingWait(service_->co_getNumPrefixes()));
+
+  // Send EoR, then drain the initial dump messages.
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendInitialPathComputation();
+  fibFuture.wait();
+  auto msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibInitialAnnouncementStart>(msg));
+  msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
+
+  // Inject one route; synchronize on the emitted announcement before reading.
+  fibFuture = fib_->getFibProgramFuture();
+  sendAnnouncement(
+      PrefixPathIds{{kV6Prefix1, kDefaultPathID}}, injector2_, attr_);
+  fibFuture.wait();
+  msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
+
+  // Each handler delegates to the RIB getter and returns its live value.
+  EXPECT_EQ(
+      static_cast<int64_t>(rib_->getRibVersion()),
+      folly::coro::blockingWait(service_->co_getRibVersion()));
+  EXPECT_GT(folly::coro::blockingWait(service_->co_getRibVersion()), 0);
+  EXPECT_EQ(
+      static_cast<int64_t>(rib_->getNumPrefixes()),
+      folly::coro::blockingWait(service_->co_getNumPrefixes()));
+  EXPECT_EQ(1, folly::coro::blockingWait(service_->co_getNumPrefixes()));
+}
+
+/*
  * Test: RIB version does NOT increment on duplicate/no-op route.
  *
  * When the same route is re-announced without any changes, it should

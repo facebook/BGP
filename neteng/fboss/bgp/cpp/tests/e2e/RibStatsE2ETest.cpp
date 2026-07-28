@@ -56,10 +56,10 @@ class RibStatsE2ETest : public E2ETestFixture {
   }
 
   /*
-   * Thin pass-throughs: RibBase::getNumPrefixes() already dispatches to the RIB
-   * event base internally, and RibBase::getRibVersion() reads an atomic, so
-   * both are race-free to call directly from the test thread -- no outer evb
-   * hop.
+   * Thin pass-throughs: RibBase::getNumPrefixes() and getRibVersion() both
+   * dispatch to the RIB event base internally (getRibVersion reads the
+   * RIB-evb-confined ribVersion_ via that hop), so both are race-free to call
+   * directly from the test thread -- no outer evb hop.
    */
   uint64_t getNumPrefixes() {
     return rib_->getNumPrefixes();

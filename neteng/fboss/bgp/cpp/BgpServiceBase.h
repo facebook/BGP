@@ -116,17 +116,24 @@ class BgpServiceBase
   /*
    * Get the current RIB version. This is a monotonically increasing counter
    * that increments whenever a material routing change occurs (best path
-   * or multipath changes).
+   * or multipath changes). ribVersion_ is confined to the RIB event base, so
+   * this handler reads it through a timeout-protected evb hop
+   * (co_runOnEvbWithTimeout, mirroring co_getRibSummary). Returns -1 if the
+   * value is unavailable (session exiting, or the evb hop timed out / failed);
+   * real versions are non-negative.
    */
-  int64_t getRibVersion() override;
+  folly::coro::Task<int64_t> co_getRibVersion() override;
 
   /*
    * Get the total number of prefixes currently installed in the loc-RIB
-   * (number of RibBase::ribEntries_), read from the RIB's ribCounters_. For
-   * the per-family (IPv4 / IPv6) split, use getRibSummary (surfaced via
+   * (number of RibBase::ribEntries_), read from the RIB's ribCounters_ through
+   * a timeout-protected evb hop (co_runOnEvbWithTimeout, mirroring
+   * co_getRibSummary). Returns -1 if the value is unavailable (session
+   * exiting, or the evb hop timed out / failed); real counts are non-negative.
+   * For the per-family (IPv4 / IPv6) split, use getRibSummary (surfaced via
    * "show bgp table summary").
    */
-  int64_t getNumPrefixes() override;
+  folly::coro::Task<int64_t> co_getNumPrefixes() override;
 
   /*
    * Get the BGP++ process uptime in seconds, sourced from the Watchdog

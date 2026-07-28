@@ -355,15 +355,24 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
   }
 
   /**
-   * Get the current RIB version. This is a monotonically increasing counter
-   * bumped once per prefix at queue-emission time (in
-   * handleFibProgrammedMessage for announcements and prepareFibProgramming for
-   * withdrawals), so a prefix's version reflects the order its entries are
-   * pushed onto ribOutQ_ rather than path-selection order. See the invariant
-   * note in RibBase.cpp for why the stamp is not applied at path selection.
+   * Get the current RIB version -- a monotonically increasing counter bumped
+   * once per prefix at queue-emission time (see incrementRibVersion for the
+   * ordering rules).
+   *
+   * ribVersion_ is confined to the RIB event base: it is written only on the
+   * RIB thread, and its sole cross-thread reader -- the thrift
+   * BgpServiceBase::co_getRibVersion() handler -- reaches it through a
+   * timeout-protected evb hop (co_runOnEvbWithTimeout, like co_getRibSummary);
+   * this getter's own runImmediatelyOrRunInEventBaseThreadAndWait then runs
+   * inline once on that evb. Confining it lets ribVersion_ stay a plain
+   * uint64_t, so the frequent per-prefix bumps on the hot path remain a plain
+   * increment rather than an atomic read-modify-write.
    */
-  uint64_t getRibVersion() const {
-    return ribVersion_.load(std::memory_order_relaxed);
+  uint64_t getRibVersion() {
+    uint64_t version = 0;
+    evb_.runImmediatelyOrRunInEventBaseThreadAndWait(
+        [&]() { version = ribVersion_; });
+    return version;
   }
 
   /**
@@ -391,7 +400,8 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
    */
   uint64_t incrementRibVersion() {
     RibStats::incrementRibTableVersion();
-    return ribVersion_.fetch_add(1, std::memory_order_relaxed) + 1;
+    // Plain increment: ribVersion_ is mutated only on the RIB event base.
+    return ++ribVersion_;
   }
 
   /**
@@ -1131,14 +1141,15 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
   uint32_t ribOutQHighWatermark_{kRibOutQueueSizePauseThreshold};
 
   /*
-   * RIB version counter - monotonically increasing value that increments
-   * whenever a material change occurs (best path or multipath changes).
-   * Used for tracking how caught up each peer is with RIB state.
-   * Written only on the RIB event base (incrementRibVersion); read
-   * cross-thread by the thrift handler (getRibVersion). Atomic so the read is
-   * race-free without dispatching onto the RIB evb.
+   * RIB version counter - monotonically increasing value bumped once per prefix
+   * at queue-emission time (see incrementRibVersion). Used for tracking how
+   * caught up each peer is with RIB state. Written only on the RIB event base
+   * (incrementRibVersion); the sole cross-thread reader (the thrift
+   * getRibVersion handler) hops onto the RIB evb, so a plain uint64_t is
+   * race-free -- no atomic needed, which keeps the per-prefix bumps a plain
+   * increment on the hot path.
    */
-  std::atomic<uint64_t> ribVersion_{0};
+  uint64_t ribVersion_{0};
 
 // per class placeholder for test code injection
 // only need to be setup once here
