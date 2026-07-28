@@ -1241,7 +1241,7 @@ TEST_F(
 }
 
 /**
- * Test: processRibOutAnnouncement processes multiple entries
+ * Test: processRibAnnouncedEntryForGroup processes multiple entries
  */
 TEST_F(AdjRibGroupPackingFixture, ProcessRibOutAnnouncement_MultipleEntries) {
   createAdjRibOutGroup("test_group");
@@ -1275,8 +1275,10 @@ TEST_F(AdjRibGroupPackingFixture, ProcessRibOutAnnouncement_MultipleEntries) {
 
   EXPECT_TRUE(adjRibOutGroup_->getAttrToPrefixMap().empty());
 
-  // Process announcement
-  adjRibOutGroup_->processRibOutAnnouncement(announcement);
+  // Process each entry into the packing list
+  for (const auto& entry : announcement.entries) {
+    adjRibOutGroup_->processRibAnnouncedEntryForGroup(entry);
+  }
 
   // Run event loop to allow async build and send to complete
   runEventLoopUntilIdle();
@@ -2305,16 +2307,16 @@ TEST_F(AdjRibGroupDistributionFixture, ProcessRibAnnouncedEntry) {
 }
 
 /**
- * Test: processRibOutAnnouncement processes multiple entries
+ * Test: processRibAnnouncedEntryForGroup processes multiple entries
  *
- * DISABLED: This test is currently disabled because processRibOutAnnouncement()
- * schedules buildAndSendGroupBgpMessages() asynchronously. The test needs to be
+ * DISABLED: This test is currently disabled because the group schedules
+ * buildAndSendGroupBgpMessages() asynchronously. The test needs to be
  * rewritten using E2ETestFixture to properly validate the end-to-end behavior.
  *
  * TODO: Re-enable this test using E2ETestFixture + AdjRibInUtils to:
  * 1. Set up mock peers with bounded queues
  * 2. Register them with the group
- * 3. Call processRibOutAnnouncement()
+ * 3. Process the announced entries
  * 4. Read from peer queues and verify the BGP UPDATE message contains both
  *    prefixes (10.0.0.0/24 and 20.0.0.0/24)
  * This will provide true end-to-end validation of the group distribution
@@ -2358,7 +2360,9 @@ TEST_F(
 
   EXPECT_TRUE(adjRibOutGroup_->getAttrToPrefixMap().empty());
 
-  adjRibOutGroup_->processRibOutAnnouncement(announcement);
+  for (const auto& entry : announcement.entries) {
+    adjRibOutGroup_->processRibAnnouncedEntryForGroup(entry);
+  }
 
   // Packing list should be drained after buildAndSendGroupBgpMessages
   auto& attrToPrefixMap = adjRibOutGroup_->getAttrToPrefixMap();
@@ -2438,7 +2442,9 @@ TEST_F(AdjRibGroupAddPathFixture, AddPathDisabled_SendsBestpathOnly) {
       0,
       0);
 
-  adjRibOutGroup_->processRibOutAnnouncement(announcement);
+  for (const auto& entry : announcement.entries) {
+    adjRibOutGroup_->processRibAnnouncedEntryForGroup(entry);
+  }
 
   // Run event loop to process async buildAndSendGroupBgpMessages
   evb_->loopOnce();
@@ -2501,7 +2507,9 @@ TEST_F(AdjRibGroupAddPathFixture, AddPathEnabled_SendsAllMultipaths) {
       0,
       0);
 
-  adjRibOutGroup_->processRibOutAnnouncement(announcement);
+  for (const auto& entry : announcement.addPathEntries) {
+    adjRibOutGroup_->processRibAnnouncedEntryForGroup(entry);
+  }
 
   // Run event loop to process async buildAndSendGroupBgpMessages
   evb_->loopOnce();

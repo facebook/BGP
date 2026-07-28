@@ -492,21 +492,21 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
       uint32_t pathId) noexcept;
 
   /*
-   * Shared core: walk ShadowRib and process all entries through
-   * processRibOutAnnouncement(). Used by both initial dump and
-   * policy re-evaluation.
+   * Shared core: walk ShadowRib and process each entry through
+   * processRibAnnouncedEntryForGroup() into the group packing list. Used by
+   * both initial dump and policy re-evaluation.
    * This is not interruptible -- runs synchronously in a single
    * event loop turn with no co_await inside the loop.
-   * @param sendWithEoR - whether to mark the announcement with EoR
+   * @param sendWithEoR - whether to mark the group's pending egress EoR
    */
   void walkAndProcessShadowRib(bool sendWithEoR);
 
   /*
-   * Build initial RIB dump from shadow RIB. Returns lastSeenRibVersion_.
+   * Build initial RIB dump from shadow RIB. Advances lastSeenRibVersion_.
    * @param sendWithEoR - true if the peer still has pending EoRs to send,
    *        false if the peer has already sent EoRs (e.g., group move).
    */
-  uint64_t processRibDumpForGroup(bool sendWithEoR = true);
+  void processRibDumpForGroup(bool sendWithEoR = true);
 
   /*
    * Build initial dump, transition INIT peers to JOINED_RUNNING,
@@ -529,17 +529,9 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   void scheduleInitialDump() noexcept;
 
   /*
-   * Process RibOutAnnouncement for the group - builds group packing list
-   * Similar to AdjRib::processRibOutAnnouncement but operates at group level.
-   *
-   * This builds the group packing list and prepares to send to in-sync peers.
-   */
-  void processRibOutAnnouncement(
-      const RibOutAnnouncement& announcement) noexcept;
-
-  /*
-   * Process individual announced entry for the group.
-   * This is invoked by `processRibOutAnnouncement` as a per-entry method.
+   * Process individual announced entry for the group. Invoked per-entry by
+   * the initial dump / re-eval walk (walkAndProcessShadowRib) and by
+   * processShadowRibEntryChange for incremental change items.
    */
   void processRibAnnouncedEntryForGroup(
       const RibOutAnnouncementEntry& entry) noexcept;
@@ -615,7 +607,7 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   /*
    * Mark every currently in-sync peer as owing the group's pending per-AFI
    * EoRs. Reads the group's egressEoRPending flags (set just before this call
-   * in processRibOutAnnouncement) and sets the matching per-peer
+   * in walkAndProcessShadowRib) and sets the matching per-peer
    * EGRESS_EOR_PENDING flags, which become the single source of truth for
    * what each peer still owes.
    */

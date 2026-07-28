@@ -4570,7 +4570,7 @@ TEST_F(UpdateGroupDetachedPeerTest, DetachSlowPeerSetsEgressEoRWhenFlagIsTrue) {
 
   /*
    * In-sync peers are marked as owing EoR when the EoR becomes owed
-   * (processRibOutAnnouncement); simulate that here. The peer has not committed
+   * (walkAndProcessShadowRib); simulate that here. The peer has not committed
    * its EoR (it is blocked), so it must RETAIN the pending EoR through
    * slow-peer detach -- detach must neither clear nor re-arm it.
    */
@@ -4648,12 +4648,12 @@ TEST_F(
  * during distribution, it inherits the group's pending egress EoR.
  *
  * Flow:
- *   1. walkAndProcessShadowRib(true) populates packing list
- *   2. processRibOutAnnouncement sets the group's per-AFI egress EoR pending
- * and marks every in-sync peer's flags via setEgressEorsPendingSyncPeers
- *   3. buildAndSendGroupBgpMessages(sendWithEoR=true) distributes messages
- *   4. distributeMessageToInSyncPeers finds peer0's queue blocked
- *   5. markPeerBlocked triggers detachSlowPeer(adjRib)
+ *   1. walkAndProcessShadowRib(true) populates the packing list, sets the
+ * group's per-AFI egress EoR pending, and marks every in-sync peer's flags via
+ * setEgressEorsPendingSyncPeers
+ *   2. buildAndSendGroupBgpMessages(sendWithEoR=true) distributes messages
+ *   3. distributeMessageToInSyncPeers finds peer0's queue blocked
+ *   4. markPeerBlocked triggers detachSlowPeer(adjRib)
  */
 TEST_F(UpdateGroupDetachedPeerTest, RibWalkDetachCopiesEgressEoRsPending) {
   /* Build shadow RIB with one entry */
@@ -4741,15 +4741,16 @@ TEST_F(UpdateGroupDetachedPeerTest, RibWalkDetachCopiesEgressEoRsPending) {
   /* Peer should not have egressEoRsPending before rib walk */
   EXPECT_FALSE(adjRib0->egressEoRsPending());
 
-  /* Walk shadow RIB with sendWithEoR=true (initial dump) */
-  group_->walkAndProcessShadowRib(true /* sendWithEoR */);
+  /* Run the initial dump with sendWithEoR=true (walks shadow RIB and schedules
+   * the build+send) */
+  group_->processRibDumpForGroup(true /* sendWithEoR */);
 
   /*
    * Pump the event loop to let buildAndSendGroupBgpMessages run.
    * This will:
    *   1. Try to distribute messages
    *   2. peer0's queue is blocked -> markPeerBlocked -> detachSlowPeer
-   *   3. peer0 was marked as owing EoR at intake (processRibOutAnnouncement)
+   *   3. peer0 was marked as owing EoR at intake (walkAndProcessShadowRib)
    * and never committed it (blocked), so it retains its pending EoR on detach
    */
   evb_->loopOnce();
@@ -5468,7 +5469,7 @@ TEST_F(UpdateGroupDetachLifecycleTest, DetachPeerSetsAllExpectedState) {
   BitmapUtils::setBit(group_->adjRibBlockedBitmap_, 0);
 
   // Set group EoR pending and mark the in-sync peer as owing it, mirroring the
-  // intake marking in processRibOutAnnouncement. adjRib0 has not committed its
+  // intake marking in walkAndProcessShadowRib. adjRib0 has not committed its
   // EoR, so it must retain it across detach (detachPeer must not clear it).
   group_->egressEoRPendingV4_ = true;
   group_->egressEoRPendingV6_ = true;

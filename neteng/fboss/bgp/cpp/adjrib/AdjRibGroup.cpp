@@ -577,14 +577,12 @@ void AdjRibOutGroup::scheduleInitialDump() noexcept {
 }
 
 /*
- * Shared core: walk ShadowRib and process all entries through
- * processRibOutAnnouncement().
+ * Shared core: walk ShadowRib and process each entry through
+ * processRibAnnouncedEntryForGroup() into the group packing list.
  * Used by both initial dump and policy re-evaluation.
  */
 void AdjRibOutGroup::walkAndProcessShadowRib(bool sendWithEoR) {
-  // Build announcement struct, same as PeerManagerBase::processRibDumpReq
-  RibOutAnnouncement announcement;
-  announcement.initialDump = true;
+  size_t processedEntries = 0;
 
   /*
    * Track whether any entry was skipped because it is already pending on this
@@ -623,7 +621,7 @@ void AdjRibOutGroup::walkAndProcessShadowRib(bool sendWithEoR) {
         if (isShadowRibRouteInWithdraw(bestpath->flags)) {
           continue;
         }
-        announcement.entries.emplace_back(
+        RibOutAnnouncementEntry entry(
             prefix,
             kDefaultPathID,
             bestpath->peer,
@@ -637,6 +635,8 @@ void AdjRibOutGroup::walkAndProcessShadowRib(bool sendWithEoR) {
             srEntry.installTimeStamp,
             srEntry.ribVersion,
             bestpath->isPartialDrain);
+        processRibAnnouncedEntryForGroup(entry);
+        ++processedEntries;
       }
     } else {
       // Send out all multipaths with add-path enabled
@@ -645,7 +645,7 @@ void AdjRibOutGroup::walkAndProcessShadowRib(bool sendWithEoR) {
           if (isShadowRibRouteInWithdraw(multipath->flags)) {
             continue;
           }
-          announcement.addPathEntries.emplace_back(
+          RibOutAnnouncementEntry entry(
               prefix,
               multipath->pathIdToSend,
               multipath->peer,
@@ -659,28 +659,34 @@ void AdjRibOutGroup::walkAndProcessShadowRib(bool sendWithEoR) {
               srEntry.installTimeStamp,
               srEntry.ribVersion,
               multipath->isPartialDrain);
+          processRibAnnouncedEntryForGroup(entry);
+          ++processedEntries;
         }
       }
     }
   }
 
-  announcement.sendWithEoR = sendWithEoR;
+  /*
+   * Set the per-AFI egress EoR pending flags, mirroring
+   * AdjRib::handleRibAnnouncedEntries which sets the flags at intake time. Only
+   * the AFIs negotiated by the group are set. Then mark every currently in-sync
+   * peer as owing the same AFIs so the per-peer EGRESS_EOR_PENDING flags are
+   * the single source of truth from this point on.
+   */
+  if (sendWithEoR) {
+    egressEoRPendingV4_ = groupKey_.afiIpv4Negotiated;
+    egressEoRPendingV6_ = groupKey_.afiIpv6Negotiated;
+    setEgressEorsPendingSyncPeers();
+  }
 
   XLOGF(
       INFO,
       "Group {} walkAndProcessShadowRib completed with {} entries "
       "(sendAddPath={}, sendWithEoR={})",
       groupDescriptor_,
-      groupKey_.sendAddPath ? announcement.addPathEntries.size()
-                            : announcement.entries.size(),
+      processedEntries,
       groupKey_.sendAddPath,
       sendWithEoR);
-
-  /*
-   * Process the announcement - this schedules async build and send
-   * via buildAndSendGroupBgpMessages()
-   */
-  processRibOutAnnouncement(announcement);
 
   /*
    * If the dump covered every entry (nothing was skipped because it was already
@@ -708,7 +714,7 @@ void AdjRibOutGroup::walkAndProcessShadowRib(bool sendWithEoR) {
  * Walks shadow RIB, builds RibOutAnnouncement, processes it.
  * Transitions from UNINITIALIZED to WAITING state.
  */
-uint64_t AdjRibOutGroup::processRibDumpForGroup(bool sendWithEoR) {
+void AdjRibOutGroup::processRibDumpForGroup(bool sendWithEoR) {
   XLOGF(
       INFO,
       "Group {} starting initial dump from shadow RIB (sendWithEoR={})",
@@ -721,7 +727,7 @@ uint64_t AdjRibOutGroup::processRibDumpForGroup(bool sendWithEoR) {
         "No shadow RIB reference for group {}, completing dump with empty list",
         groupDescriptor_);
     state_ = UpdateGroupState::IDLE;
-    return lastSeenRibVersion_;
+    return;
   }
 
   /* walkAndProcessShadowRib advances lastSeenRibVersion_ after the full walk.
@@ -734,17 +740,20 @@ uint64_t AdjRibOutGroup::processRibDumpForGroup(bool sendWithEoR) {
    */
   state_ = UpdateGroupState::WAITING;
 
+  // Schedule the single async build+send for the initial dump.
+  asyncScope_.add(
+      folly::coro::co_withExecutor(
+          &evb_, buildAndSendGroupBgpMessages(sendWithEoR)));
+
   initialDumpCompletionTimeMs_ =
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::system_clock::now().time_since_epoch())
           .count();
-
-  return lastSeenRibVersion_;
 }
 
 folly::coro::Task<void>
 AdjRibOutGroup::buildAndScheduleSendInitialDumpFromShadowRib() {
-  auto lastSeenRibVersion = processRibDumpForGroup();
+  processRibDumpForGroup();
 
   if (state_ == UpdateGroupState::IDLE) {
     co_return;
@@ -770,7 +779,7 @@ AdjRibOutGroup::buildAndScheduleSendInitialDumpFromShadowRib() {
           adjRib->getPeerState(),
           PeerUpdateState::JOINED_RUNNING);
       adjRib->setPeerState(PeerUpdateState::JOINED_RUNNING);
-      adjRib->setLastSeenRibVersion(lastSeenRibVersion);
+      adjRib->setLastSeenRibVersion(lastSeenRibVersion_);
     }
   }
 
@@ -862,12 +871,13 @@ void AdjRibOutGroup::processShadowRibEntryChange(
   setLastSeenRibVersion(srEntry.ribVersion);
 
   /*
-   * Convert shadow RIB entry to announcement entries.
-   * Same pattern as AdjRib::processShadowRibEntryChange
+   * Convert shadow RIB entry to announcement entries and feed each directly
+   * into the packing list via processRibAnnouncedEntryForGroup(). Unlike the
+   * initial dump / re-eval walk, an incremental change never owes an EoR, so
+   * there is no RibOutAnnouncement to accumulate -- the send for this batch is
+   * scheduled once by the changeListConsumeTimer_ callback after all consumed
+   * items are drained.
    */
-  RibOutAnnouncement announcement;
-  announcement.initialDump = false;
-
   if (groupKey_.sendAddPath) {
     // Send out all multipaths with add-path enabled
     for (const auto& [_, multipath] : srEntry.multipaths) {
@@ -889,7 +899,7 @@ void AdjRibOutGroup::processShadowRibEntryChange(
         entry.installTimeStamp = srEntry.installTimeStamp;
         entry.ribVersion = srEntry.ribVersion;
         entry.isPartialDrain = multipath->isPartialDrain;
-        announcement.addPathEntries.push_back(entry);
+        processRibAnnouncedEntryForGroup(entry);
       } else if (isShadowRibRouteInWithdraw(multipath->flags)) {
         /*
          * Withdrawal announcements from RIB don't have attrs, however
@@ -934,7 +944,7 @@ void AdjRibOutGroup::processShadowRibEntryChange(
       entry.installTimeStamp = srEntry.installTimeStamp;
       entry.ribVersion = srEntry.ribVersion;
       entry.isPartialDrain = srEntry.bestpath->isPartialDrain;
-      announcement.entries.push_back(entry);
+      processRibAnnouncedEntryForGroup(entry);
     } else if (isShadowRibRouteInWithdraw(srEntry.bestpath->flags)) {
       /*
        * Withdrawal announcements from RIB don't have attrs, however
@@ -958,10 +968,6 @@ void AdjRibOutGroup::processShadowRibEntryChange(
             groupDescriptor_);
       }
     }
-  }
-
-  if (!announcement.entries.empty() || !announcement.addPathEntries.empty()) {
-    processRibOutAnnouncement(announcement);
   }
 }
 
@@ -1090,74 +1096,10 @@ void AdjRibOutGroup::processGroupRibWithdraw(
 }
 
 /*
- * @brief  Process RibOutAnnouncement for the group
- *         Builds group packing list from announcement entries
- *
- * Similar to AdjRib::processRibOutAnnouncement but at group level.
- * This processes each entry and builds the group's attrToPrefixMap_.
- *
- * @param  announcement - RibOutAnnouncement with routes to process
- *
- * @return void
- */
-void AdjRibOutGroup::processRibOutAnnouncement(
-    const RibOutAnnouncement& announcement) noexcept {
-  // Same pattern as AdjRibOut.cpp: select entries based on sendAddPath flag
-  const auto& entries = groupKey_.sendAddPath ? announcement.addPathEntries
-                                              : announcement.entries;
-
-  XLOGF(
-      DBG1,
-      "Group {} processing announcement with {} entries (sendAddPath={})",
-      groupDescriptor_,
-      entries.size(),
-      groupKey_.sendAddPath);
-
-  // Process selected entries
-  for (const auto& entry : entries) {
-    processRibAnnouncedEntryForGroup(entry);
-  }
-
-  /*
-   * Transition to WAITING if we have work to do
-   * State must be READY or IDLE to transition
-   */
-  if ((state_ == UpdateGroupState::READY || state_ == UpdateGroupState::IDLE) &&
-      !attrToPrefixMap_.empty()) {
-    state_ = UpdateGroupState::WAITING;
-    XLOGF(
-        DBG2,
-        "Group {} transitioned to WAITING state with {} attr entries in packing list",
-        groupDescriptor_,
-        attrToPrefixMap_.size());
-  }
-
-  /*
-   * Set the per-AFI egress EoR pending flags before scheduling async send,
-   * mirroring AdjRib::handleRibAnnouncedEntries which sets the flags at intake
-   * time. Only the AFIs negotiated by the group are set. Then mark every
-   * currently in-sync peer as owing the same AFIs so the per-peer
-   * EGRESS_EOR_PENDING flags are the single source of truth from this point on.
-   */
-  if (announcement.sendWithEoR) {
-    egressEoRPendingV4_ = groupKey_.afiIpv4Negotiated;
-    egressEoRPendingV6_ = groupKey_.afiIpv6Negotiated;
-    setEgressEorsPendingSyncPeers();
-  }
-
-  /*
-   * Schedule async build and send - don't block the caller
-   */
-  asyncScope_.add(
-      folly::coro::co_withExecutor(
-          &evb_, buildAndSendGroupBgpMessages(announcement.sendWithEoR)));
-}
-
-/*
  * @brief  Mark every currently in-sync peer as owing the group's pending
  *         per-AFI EoRs.
  *
- * Called at the instant EoR becomes owed (processRibOutAnnouncement), right
+ * Called at the instant EoR becomes owed (walkAndProcessShadowRib), right
  * after the group's egressEoRPending flags are set, so the per-peer
  * EGRESS_EOR_PENDING flags are the single source of truth from this point on.
  * markEgressEoRSent clears a peer's flag the moment its EoR push resolves, so a
@@ -2036,7 +1978,7 @@ folly::coro::Task<void> AdjRibOutGroup::buildAndSendGroupBgpMessages(
  * remain (!egressEoRsPending()) fires onEgressEoRSent on the LAST EoR to land.
  *
  * In-sync peers are marked as owing EoR when the EoR becomes owed
- * (processRibOutAnnouncement), not here, and markEgressEoRSent clears each
+ * (walkAndProcessShadowRib), not here, and markEgressEoRSent clears each
  * peer's flag as its push resolves. The group's own per-AFI
  * flag (cleared after waitForAllPendingPushes) only gates whether this
  * distribution needs to run for this batch of sync peers.
@@ -2047,7 +1989,7 @@ folly::coro::Task<uint32_t> AdjRibOutGroup::distributePendingEoRs() noexcept {
   uint32_t eorMsgCount = 0;
   /*
    * In-sync peers were already marked as owing EoR when the EoR became owed
-   * (processRibOutAnnouncement), and markEgressEoRSent clears each peer's flag
+   * (walkAndProcessShadowRib), and markEgressEoRSent clears each peer's flag
    * as its push resolves, so no marking is needed here -- the per-peer
    * EGRESS_EOR_PENDING flags are the single source of truth.
    */
@@ -3374,7 +3316,7 @@ void AdjRibOutGroup::detachPeer(
 
   /*
    * 8. EoR pending state needs no action here. In-sync peers are marked as
-   * owing EoR when the EoR becomes owed (processRibOutAnnouncement), and
+   * owing EoR when the EoR becomes owed (walkAndProcessShadowRib), and
    * markEgressEoRSent clears each AFI the instant that peer's push resolves, so
    * the peer already carries exactly the AFIs it still owes. Copying the
    * group's coarser "owed to all in-sync peers" flags here would set an AFI
