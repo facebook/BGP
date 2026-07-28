@@ -6004,6 +6004,43 @@ TEST_F(PolicyTest, NsfEncodingSchemeToVectorTest) {
   EXPECT_EQ(5, lengths[4]);
 }
 
+TEST_F(PolicyTest, NsfFpfEncodingSchemeTest) {
+  nsf_policy::NsfTeWeightEncoding encoding;
+  encoding.fpf_l2_encoding() = nsf_policy::NsfFpfL2TeWeightEncoding();
+  encoding.fpf_l2_encoding()->rack_id() = 8;
+  encoding.fpf_l2_encoding()->spine_id() = 16;
+  encoding.fpf_l2_encoding()->remote_rack_capacity() = 8;
+
+  const auto lengths = encodingSchemeToVector(encoding);
+  EXPECT_EQ(std::vector<size_t>({8, 16, 8}), lengths);
+
+  auto encodedLbw = encodeValue(0, 0xab, 0, lengths);
+  encodedLbw = encodeValue(encodedLbw, 0x1234, 1, lengths);
+  encodedLbw = encodeValue(encodedLbw, 0xcd, 2, lengths);
+  EXPECT_EQ(0xcd1234ab, encodedLbw);
+
+  const auto values = decodeValues(encodedLbw, encoding);
+  EXPECT_EQ(0xab, values.at("rack_id"));
+  EXPECT_EQ(0xcd, values.at("remote_rack_capacity"));
+  EXPECT_EQ(0x1234, values.at("spine_id"));
+
+  const auto encodeTerm = createBgpPolicyTerm(
+      "encode-spine-id",
+      "",
+      {},
+      {createBgpPolicyLbwExtCommunityAction(
+          bgp_policy::LbwExtCommunityActionType::ENCODE_SWITCH_ID,
+          encoding,
+          1)},
+      bgp_policy::FlowControlAction::NEXT_TERM);
+  const auto policies = createBgpPolicies("fpf-policy", {encodeTerm});
+  EXPECT_NO_THROW(
+      validateSwitchIdEncoding(policies, {"fpf-policy"}, size_t{65535}));
+  EXPECT_THROW(
+      validateSwitchIdEncoding(policies, {"fpf-policy"}, size_t{65536}),
+      BgpError);
+}
+
 TEST_F(PolicyTest, ValidateSwitchIdEncodingTest) {
   nsf_policy::NsfTeWeightEncoding encoding;
   encoding.l2_encoding() = nsf_policy::NsfL2TeWeightEncoding();
