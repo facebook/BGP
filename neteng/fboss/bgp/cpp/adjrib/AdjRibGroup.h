@@ -126,6 +126,11 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   AdjRibOutGroup(AdjRibOutGroup&&) = delete;
   AdjRibOutGroup& operator=(AdjRibOutGroup&&) = delete;
 
+  // Reset the group's cumulative egress (sent) message counts.
+  void clearEgressMessageCounts() {
+    stats_.clearEgressMessageCounts();
+  }
+
   const AdjRibStats& getStats() const {
     return stats_;
   }

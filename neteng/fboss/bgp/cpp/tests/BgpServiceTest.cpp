@@ -1229,6 +1229,21 @@ TEST_F(BgpServiceTestFixture, GetNexthopInfosAllInvalidTest) {
   ribThread.join();
 }
 
+// Device-wide clearCounters completes cleanly over an empty peer set and
+// exercises the SessionManager (socket tx/rx) + PeerManager (AdjRib/fb303)
+// clear paths through the handler, in both directions.
+TEST_F(BgpServiceTestFixture, ClearCountersTest) {
+  auto peerMgrThread = peerManager_->runInThread();
+  auto sessionMgrThread = sessionMgr_->runInThread();
+
+  folly::coro::blockingWait(service_->co_clearCounters());
+
+  peerManager_->stop();
+  sessionMgr_->stop();
+  peerMgrThread.join();
+  sessionMgrThread.join();
+}
+
 /**
  * [CRF File Mode Tests]
  */

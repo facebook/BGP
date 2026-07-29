@@ -70,6 +70,22 @@ void AdjRibStats::clear() {
   BgpStats::initWellKnownCommunityStats();
 }
 
+void AdjRibStats::clearEgressMessageCounts() {
+  sentUpdateMsgs = 0;
+  sentEndOfRibMsgs = 0;
+  sentAnnouncementsIpv4 = 0;
+  sentAnnouncementsIpv6 = 0;
+  sentWithdrawals = 0;
+}
+
+void AdjRibStats::clearIngressMessageCounts() {
+  recvUpdateMsgs = 0;
+  recvEndOfRibMsgs = 0;
+  recvAnnouncementsIpv4 = 0;
+  recvAnnouncementsIpv6 = 0;
+  recvWithdrawals = 0;
+}
+
 void AdjRibStats::incrementPreFilterDroppedRouteCount() {
   preFilterDroppedRouteCount++;
 }

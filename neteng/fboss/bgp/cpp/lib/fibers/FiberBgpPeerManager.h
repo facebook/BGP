@@ -677,6 +677,17 @@ class FiberBgpPeerManager
 
   MAKE_CORO_FUNCTION(getAllPeerDisplayInfos)
 
+  /*
+   * Reset every peer's socket tx (egress) and rx (ingress) message counters.
+   *
+   * FiberBgpPeer state is single-writer on the I/O (SessionManager) EventBase
+   * (the same invariant that lets sendSocketLoop touch it lock-free), so the
+   * walk over allPeers_ MUST run on evb_. This coroutine hops onto evb_ itself
+   * before mutating peer state, so callers on other threads (e.g. the thrift
+   * handler BgpServiceBase::co_clearCounters) can simply co_await it.
+   */
+  folly::coro::Task<void> co_clearSocketCounters();
+
   std::optional<std::shared_ptr<BgpSessionInfo>> getBgpSessionInfo(
       const BgpPeerId& peerId) const noexcept;
 

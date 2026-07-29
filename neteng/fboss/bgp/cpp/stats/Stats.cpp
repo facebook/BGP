@@ -1285,6 +1285,56 @@ void forEachPeerCounterKey(const std::string& peerIdOdsStr, Fn&& fn) {
   fn(fmt::format(
       kPeerMessagesRecvRouteRefresh, kEbbPlatform, kBgpcppTag, peerIdOdsStr));
 }
+
+// Per-peer EGRESS (sent) message counters only. Used by
+// clearPeerEgressMessageCounters. Does NOT include prefix gauges (which are
+// live state) or recv counters.
+template <typename Fn>
+void forEachPeerEgressMessageKey(const std::string& peerIdOdsStr, Fn&& fn) {
+  fn(fmt::format(
+      kPeerMessagesSentUpdate, kEbbPlatform, kBgpcppTag, peerIdOdsStr));
+  fn(fmt::format(
+      kPeerMessagesSentAnnouncedIpv4, kEbbPlatform, kBgpcppTag, peerIdOdsStr));
+  fn(fmt::format(
+      kPeerMessagesSentAnnouncedIpv6, kEbbPlatform, kBgpcppTag, peerIdOdsStr));
+  fn(fmt::format(
+      kPeerMessagesSentWithdraw, kEbbPlatform, kBgpcppTag, peerIdOdsStr));
+  fn(fmt::format(
+      kPeerMessagesSentOpen, kEbbPlatform, kBgpcppTag, peerIdOdsStr));
+  fn(fmt::format(
+      kPeerMessagesSentNotification, kEbbPlatform, kBgpcppTag, peerIdOdsStr));
+  fn(fmt::format(
+      kPeerMessagesSentKeepAlive, kEbbPlatform, kBgpcppTag, peerIdOdsStr));
+  fn(fmt::format(
+      kPeerMessagesSentEndOfRib, kEbbPlatform, kBgpcppTag, peerIdOdsStr));
+  fn(fmt::format(
+      kPeerMessagesSentRouteRefresh, kEbbPlatform, kBgpcppTag, peerIdOdsStr));
+  fn(fmt::format(
+      kPeerMessagesSentSocketFailure, kEbbPlatform, kBgpcppTag, peerIdOdsStr));
+}
+
+// Per-peer INGRESS (recv) message counters only. Used by
+// clearPeerIngressMessageCounters. Does NOT include prefix gauges or sent
+// counters.
+template <typename Fn>
+void forEachPeerIngressMessageKey(const std::string& peerIdOdsStr, Fn&& fn) {
+  fn(fmt::format(
+      kPeerMessagesRecvUpdate, kEbbPlatform, kBgpcppTag, peerIdOdsStr));
+  fn(fmt::format(
+      kPeerMessagesRecvAnnouncedIpv4, kEbbPlatform, kBgpcppTag, peerIdOdsStr));
+  fn(fmt::format(
+      kPeerMessagesRecvAnnouncedIpv6, kEbbPlatform, kBgpcppTag, peerIdOdsStr));
+  fn(fmt::format(
+      kPeerMessagesRecvWithdraw, kEbbPlatform, kBgpcppTag, peerIdOdsStr));
+  fn(fmt::format(
+      kPeerMessagesRecvOpen, kEbbPlatform, kBgpcppTag, peerIdOdsStr));
+  fn(fmt::format(
+      kPeerMessagesRecvNotification, kEbbPlatform, kBgpcppTag, peerIdOdsStr));
+  fn(fmt::format(
+      kPeerMessagesRecvKeepAlive, kEbbPlatform, kBgpcppTag, peerIdOdsStr));
+  fn(fmt::format(
+      kPeerMessagesRecvRouteRefresh, kEbbPlatform, kBgpcppTag, peerIdOdsStr));
+}
 } // namespace
 
 void initPeerCounters(const std::string& peerIdOdsStr) {
@@ -1299,6 +1349,18 @@ void clearPeerCounters(const std::string& peerIdOdsStr) {
   });
   fb303::ThreadCachedServiceData::get()->clearCounter(
       fmt::format(kPeerStatus, peerIdOdsStr));
+}
+
+void clearPeerEgressMessageCounters(const std::string& peerIdOdsStr) {
+  forEachPeerEgressMessageKey(peerIdOdsStr, [](const std::string& key) {
+    fb303::ThreadCachedServiceData::get()->clearCounter(key);
+  });
+}
+
+void clearPeerIngressMessageCounters(const std::string& peerIdOdsStr) {
+  forEachPeerIngressMessageKey(peerIdOdsStr, [](const std::string& key) {
+    fb303::ThreadCachedServiceData::get()->clearCounter(key);
+  });
 }
 
 void setTotalRcvdPrefixes(uint32_t val) {

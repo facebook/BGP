@@ -304,6 +304,16 @@ class FiberBgpPeer : public std::enable_shared_from_this<FiberBgpPeer>,
     return peeringState_.rxMsgs;
   }
 
+  // Reset the socket tx (egress) message counters. I/O-evb only.
+  void clearTxMessageCounters() {
+    peeringState_.txMsgs = SocketMessageCounters{};
+  }
+
+  // Reset the socket rx (ingress) message counters. I/O-evb only.
+  void clearRxMessageCounters() {
+    peeringState_.rxMsgs = SocketMessageCounters{};
+  }
+
  protected:
   // mutable state of peering session
   PeeringState peeringState_;

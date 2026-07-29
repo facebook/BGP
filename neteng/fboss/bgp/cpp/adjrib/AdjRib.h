@@ -1012,6 +1012,26 @@ class AdjRib : boost::noncopyable,
     return adjRibOutGroup_->getStats().getSentEndOfRibMsgs();
   }
 
+  /**
+   * @brief  Reset cumulative egress (sent) message counts for this peer, and
+   * the shared update-group's count if this peer is a group member. Idempotent
+   * across members (each member clears the shared group's count to 0).
+   */
+  void clearEgressMessageCounts() {
+    stats_.clearEgressMessageCounts();
+    if (adjRibOutGroup_) {
+      adjRibOutGroup_->clearEgressMessageCounts();
+    }
+  }
+
+  /**
+   * @brief  Reset cumulative ingress (recv) message counts for this peer.
+   * Ingress is inherently per-peer (adj-rib-in), so there is no shared group.
+   */
+  void clearIngressMessageCounts() {
+    stats_.clearIngressMessageCounts();
+  }
+
   void processShadowRibEntryChange(ShadowRibEntry& srEntry) noexcept;
 
   /*

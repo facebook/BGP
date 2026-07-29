@@ -140,6 +140,15 @@ class AdjRibStats {
   }
   void incrementSentEndOfRibMsgs(uint64_t bgpMessageCnt);
 
+  // Reset cumulative egress (sent) message counts (update/EoR/announcements/
+  // withdrawals). Does NOT touch the live prefix gauges (postOut...), which
+  // reflect current advertised state rather than deltas.
+  void clearEgressMessageCounts();
+
+  // Reset cumulative ingress (recv) message counts (update/EoR/announcements/
+  // withdrawals). Does NOT touch the live prefix gauges.
+  void clearIngressMessageCounts();
+
   uint64_t getSentAnnouncementsIpv4() const {
     return sentAnnouncementsIpv4;
   }

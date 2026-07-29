@@ -275,6 +275,13 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
           folly::IPAddress,
           std::shared_ptr<nettools::bgplib::BgpPeerDisplayInfo>> allPeers);
 
+  /* Reset per-peer cumulative BGP message counts in both directions (AdjRib
+   * sent/recv + shared update-group sent) and their fb303 keys, across all
+   * peers. Hops onto the PeerManager evb itself, so thrift-handler callers on
+   * other threads can co_await it without blocking. Does not touch live prefix
+   * gauges. */
+  folly::coro::Task<void> co_clearCounters();
+
   /* Get hold timer information on all peers. */
   std::vector<neteng::fboss::bgp::thrift::THoldTimerInfo> getHoldTimerInfos(
       const std::unordered_multimap<

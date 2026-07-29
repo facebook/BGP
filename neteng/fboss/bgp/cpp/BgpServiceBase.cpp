@@ -2925,4 +2925,24 @@ void BgpServiceBase::clearProfilerStats() {
   decrRequestsInExecution();
 }
 
+folly::coro::Task<void> BgpServiceBase::co_clearCounters() {
+  auto log = LOG_THRIFT_CALL(INFO);
+  if (exitInitiated_) {
+    co_return;
+  }
+  if (!continueExecution(true)) {
+    co_return;
+  }
+  SCOPE_EXIT {
+    decrRequestsInExecution();
+  };
+
+  // Data plane: zero each peer's socket tx/rx counters on the I/O evb.
+  co_await sessionMgr_->co_clearSocketCounters();
+
+  // Control plane: zero each AdjRib's + update-group's sent/recv message counts
+  // and their fb303 keys (runs on the PeerManager evb).
+  co_await peerMgr_.co_clearCounters();
+}
+
 } // namespace facebook::bgp

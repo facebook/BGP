@@ -2243,6 +2243,21 @@ FiberBgpPeerManager::getAllPeerDisplayInfos() {
   return allPeersInfo;
 }
 
+folly::coro::Task<void> FiberBgpPeerManager::co_clearSocketCounters() {
+  co_await co_withExecutor(&evb_, [this]() -> folly::coro::Task<void> {
+    for (const auto& [_, peerInfo] : allPeers_) {
+      for (const auto& [_, connectionInfo] : peerInfo->connectionInfos) {
+        if (connectionInfo->activeSessionInfo &&
+            connectionInfo->activeSessionInfo->peer) {
+          connectionInfo->activeSessionInfo->peer->clearTxMessageCounters();
+          connectionInfo->activeSessionInfo->peer->clearRxMessageCounters();
+        }
+      }
+    }
+    co_return;
+  }());
+}
+
 std::optional<std::shared_ptr<BgpSessionInfo>>
 FiberBgpPeerManager::getBgpSessionInfo(const BgpPeerId& peerId) const noexcept {
   const auto& peerAddr = peerId.peerAddr;

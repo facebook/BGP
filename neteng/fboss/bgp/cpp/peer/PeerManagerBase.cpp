@@ -3252,6 +3252,21 @@ bool PeerManagerBase::isPeerDynamic(const folly::IPAddress& peerAddr) {
   return false;
 }
 
+folly::coro::Task<void> PeerManagerBase::co_clearCounters() {
+  co_await folly::coro::co_withExecutor(
+      &getEventBase(), [this]() -> folly::coro::Task<void> {
+        for (auto& [peerId, adjRib] : adjRibs_) {
+          adjRib->clearEgressMessageCounts();
+          adjRib->clearIngressMessageCounts();
+          PeerStats::clearPeerEgressMessageCounters(
+              adjRib->getStats().getPeerIdOdsStr());
+          PeerStats::clearPeerIngressMessageCounters(
+              adjRib->getStats().getPeerIdOdsStr());
+        }
+        co_return;
+      }());
+}
+
 folly::coro::Task<void> PeerManagerBase::updatePeerCounters() {
   if (daemonShutdown_) {
     co_return;

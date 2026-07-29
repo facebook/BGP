@@ -264,6 +264,8 @@ class BgpServiceBase
 
   void clearProfilerStats() override;
 
+  folly::coro::Task<void> co_clearCounters() override;
+
   /**
    * [Health]
    *
