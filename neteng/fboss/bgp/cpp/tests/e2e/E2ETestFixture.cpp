@@ -1200,6 +1200,13 @@ BgpPeerDisplayInfo createDisplayInfo(
   displayInfo.peeringParams.holdTime =
       cfg.holdTime.value_or(std::chrono::seconds(90));
   displayInfo.peeringParams.description = cfg.description.value_or("");
+  /*
+   * Propagate the peer group name (mirrors production
+   * Config::getPeeringParamsHelper, Config.cpp:1153). peerGroupName is part of
+   * the update-group key, so without this every peer keys to "" and distinct
+   * peer groups would collapse into a single update group.
+   */
+  displayInfo.peeringParams.peerGroupName = cfg.peerGroupName;
   displayInfo.peeringParams.isAfiIpv4Configured =
       !cfg.disableIpv4Afi.value_or(false);
   displayInfo.peeringParams.isAfiIpv6Configured =

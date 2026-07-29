@@ -76,9 +76,21 @@ inline constexpr auto kPermitAllPolicyName = "permit-all-continue";
 /* Shared peer-group name used to form a single update group. */
 inline constexpr auto kReEvalPeerGroupName = "reeval-peer-group";
 
+/*
+ * Per-group peer-group name for the multi-group tests. Since peerGroupName is
+ * part of the update-group key, distinct names form distinct update groups.
+ */
+inline std::string reEvalPeerGroupName(int groupIdx) {
+  return fmt::format("reeval-peer-group-{}", groupIdx);
+}
+
 /* Default scale for the group-level re-evaluation scale test. */
 inline constexpr int kNumPeers = 10;
 inline constexpr int kNumRoutes = 100;
+
+/* Multi-group scale: 4 peer groups (= 4 update groups), 10 peers each. */
+inline constexpr int kNumGroups = 4;
+inline constexpr int kPeersPerGroup = 10;
 
 /*
  * Base fixture: SlowPeerTestBase (group-state + backpressure helpers,
@@ -273,6 +285,99 @@ class UpdateGroupPolicyReEvalE2EBase : public SlowPeerTestBase {
   }
 
   /*
+   * The pool of peer specs (kPeerAddr3..kPeerAddr12) shared by the single-group
+   * and multi-group setup helpers. v6 nexthops only exist up to peer 9, so
+   * peers 10-12 reuse kNextHopV6_3 (unused unless v6 routes are advertised).
+   */
+  static std::vector<BgpPeerSpec> allPeerSpecs() {
+    return {
+        kDefaultPeerSpec3,
+        kDefaultPeerSpec4,
+        kDefaultPeerSpec5,
+        {kPeerAsn6, kLocalAddr6, kPeerAddr6, kNextHopV4_6, kNextHopV6_3},
+        {kPeerAsn7, kLocalAddr7, kPeerAddr7, kNextHopV4_7, kNextHopV6_3},
+        {kPeerAsn8, kLocalAddr8, kPeerAddr8, kNextHopV4_8, kNextHopV6_3},
+        {kPeerAsn9, kLocalAddr9, kPeerAddr9, kNextHopV4_9, kNextHopV6_3},
+        {kPeerAsn10, kLocalAddr10, kPeerAddr10, kNextHopV4_10, kNextHopV6_3},
+        {kPeerAsn11, kLocalAddr11, kPeerAddr11, kNextHopV4_11, kNextHopV6_3},
+        {kPeerAsn12, kLocalAddr12, kPeerAddr12, kNextHopV4_12, kNextHopV6_3},
+    };
+  }
+
+  /*
+   * Generate a distinct EBGP peer spec for index i (0-based). Peer i is
+   * 127.(3+i).0.1, so peer 0 == kPeerAddr3 (the address the block/detach tests
+   * target). Addresses/ASNs are synthesized rather than taken from the fixed
+   * pool so the multi-group tests can scale past 10 peers. localAddr is shared
+   * (unused for grouping). Peers are v4-only so each group negotiates a single
+   * AFI and sends exactly one EoR.
+   */
+  static BgpPeerSpec makePeerSpec(int i) {
+    BgpPeerSpec spec;
+    spec.asn = 64541 + i;
+    spec.localAddr = kLocalAddr1;
+    spec.peerAddr = folly::IPAddress(fmt::format("127.{}.0.1", 3 + i));
+    spec.v4Nexthop = folly::IPAddress(fmt::format("127.5.0.{}", 1 + i));
+    spec.v6Nexthop = kEmptyV6Nexthop;
+    spec.disableIpv6Afi = true;
+    return spec;
+  }
+
+  /*
+   * Add numGroups peer groups of peersPerGroup peers each (specs synthesized
+   * via makePeerSpec). Peers in group g are assigned peerGroupName
+   * reEvalPeerGroupName(g); since peerGroupName is part of the update-group
+   * key, each peer group forms its own update group. Brings all peers up,
+   * consumes dual-stack EoRs, waits for JOINED_RUNNING, and returns the
+   * BgpPeerIds grouped by update group (result[g] = peers of group g).
+   */
+  std::vector<std::vector<BgpPeerId>> setupPeersInGroups(
+      int numGroups,
+      int peersPerGroup,
+      int queueCapacity = 8,
+      int queueHighWm = 6,
+      int queueLowWm = 2,
+      bool enableUpdateGroup = true) {
+    const int total = numGroups * peersPerGroup;
+    /* peerAddr third octet is 3 + i, which must stay within a single byte. */
+    EXPECT_LE(total, 250) << "setupPeersInGroups supports at most 250 peers";
+
+    std::vector<folly::IPAddress> peerAddrs;
+    std::vector<std::vector<BgpPeerId>> groups(numGroups);
+    for (int i = 0; i < total; ++i) {
+      auto spec = makePeerSpec(i);
+      const int groupIdx = i / peersPerGroup;
+      spec.peerGroupName = reEvalPeerGroupName(groupIdx);
+      addPeer(spec);
+      peerAddrs.push_back(spec.peerAddr);
+      groups[groupIdx].push_back(
+          BgpPeerId{spec.peerAddr, spec.peerAddr.asV4().toLongHBO()});
+    }
+
+    setupComponentsWithBgpService(
+        queueCapacity, queueHighWm, queueLowWm, enableUpdateGroup);
+
+    for (const auto& peerAddr : peerAddrs) {
+      bringUpPeer(peerAddr);
+    }
+    for (const auto& group : groups) {
+      for (const auto& peerId : group) {
+        sendEoRToPeer(peerId);
+      }
+    }
+    /* Peers are v4-only, so each sends exactly one EoR. */
+    for (const auto& group : groups) {
+      for (const auto& peerId : group) {
+        EXPECT_TRUE(waitForEoR(peerId));
+      }
+    }
+    for (const auto& peerAddr : peerAddrs) {
+      EXPECT_TRUE(waitForPeerState(peerAddr, PeerUpdateState::JOINED_RUNNING));
+    }
+    return groups;
+  }
+
+  /*
    * Add numPeers (up to 10, kPeerAddr3..kPeerAddr12) into a shared peer group
    * with NO per-peer egress policy (so they form one update group and take the
    * group-level re-eval path), bring them up, consume dual-stack EoRs, and wait
@@ -288,18 +393,7 @@ class UpdateGroupPolicyReEvalE2EBase : public SlowPeerTestBase {
       int queueLowWm = 2,
       bool enableUpdateGroup = true,
       bool waitForJoinedRunning = true) {
-    const std::vector<BgpPeerSpec> allSpecs = {
-        kDefaultPeerSpec3,
-        kDefaultPeerSpec4,
-        kDefaultPeerSpec5,
-        {kPeerAsn6, kLocalAddr6, kPeerAddr6, kNextHopV4_6, kNextHopV6_3},
-        {kPeerAsn7, kLocalAddr7, kPeerAddr7, kNextHopV4_7, kNextHopV6_3},
-        {kPeerAsn8, kLocalAddr8, kPeerAddr8, kNextHopV4_8, kNextHopV6_3},
-        {kPeerAsn9, kLocalAddr9, kPeerAddr9, kNextHopV4_9, kNextHopV6_3},
-        {kPeerAsn10, kLocalAddr10, kPeerAddr10, kNextHopV4_10, kNextHopV6_3},
-        {kPeerAsn11, kLocalAddr11, kPeerAddr11, kNextHopV4_11, kNextHopV6_3},
-        {kPeerAsn12, kLocalAddr12, kPeerAddr12, kNextHopV4_12, kNextHopV6_3},
-    };
+    const auto allSpecs = allPeerSpecs();
     EXPECT_LE(numPeers, static_cast<int>(allSpecs.size()))
         << "setupNPeersInGroupJoined supports at most " << allSpecs.size()
         << " peers";
@@ -379,6 +473,25 @@ class UpdateGroupPolicyReEvalE2EBase : public SlowPeerTestBase {
         peerGroupsPolicy;
     peerGroupsPolicy[peerGroupName][direction] = policyName;
 
+    return folly::coro::blockingWait(bgpService_->co_setPeerGroupsPolicy(
+        std::make_unique<decltype(peerGroupsPolicy)>(
+            std::move(peerGroupsPolicy))));
+  }
+
+  /*
+   * Apply the same egress policy to MULTIPLE peer groups in a single
+   * co_setPeerGroupsPolicy RPC -- re-evaluates each named update group, leaving
+   * the others untouched.
+   */
+  neteng::fboss::bgp::thrift::BgpPolicyChangeResult setPeerGroupsPolicy(
+      const std::vector<std::string>& peerGroupNames,
+      const std::string& policyName,
+      bgp_policy::DIRECTION direction = bgp_policy::DIRECTION::OUT) {
+    std::map<std::string, std::map<bgp_policy::DIRECTION, std::string>>
+        peerGroupsPolicy;
+    for (const auto& peerGroupName : peerGroupNames) {
+      peerGroupsPolicy[peerGroupName][direction] = policyName;
+    }
     return folly::coro::blockingWait(bgpService_->co_setPeerGroupsPolicy(
         std::make_unique<decltype(peerGroupsPolicy)>(
             std::move(peerGroupsPolicy))));
@@ -624,6 +737,13 @@ class ConsumerOnChangelistWithOnlyAnnouncements
  */
 class ConsumerOnChangelistWithAnnouncementsWithdrawals
     : public UpdateGroupPolicyReEvalE2EBase {};
+
+/*
+ * Multi-group cases: peers are spread across 4 peer groups (= 4 update groups)
+ * and a single setPeerGroupsPolicy call operates on 2 of the 4 groups; the
+ * other 2 must stay on their original (permit-all) policy.
+ */
+class MultiGroupPolicyReEval : public UpdateGroupPolicyReEvalE2EBase {};
 
 } // namespace bgp
 } // namespace facebook
