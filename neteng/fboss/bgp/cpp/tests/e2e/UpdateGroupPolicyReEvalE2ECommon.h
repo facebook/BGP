@@ -313,7 +313,7 @@ class UpdateGroupPolicyReEvalE2EBase : public SlowPeerTestBase {
    * AFI and sends exactly one EoR.
    */
   static BgpPeerSpec makePeerSpec(int i) {
-    BgpPeerSpec spec;
+    BgpPeerSpec spec{};
     spec.asn = 64541 + i;
     spec.localAddr = kLocalAddr1;
     spec.peerAddr = folly::IPAddress(fmt::format("127.{}.0.1", 3 + i));

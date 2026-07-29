@@ -3014,7 +3014,13 @@ void AdjRibOutGroup::copyGroupFieldsToNewGroup(
     const std::shared_ptr<AdjRibOutGroup>& newGroup) noexcept {
   newGroup->setChangeListTracker(
       changeListTracker_, *addPathConsumerBitmap_, *nonAddPathConsumerBitmap_);
-  newGroup->setState(state_);
+  /*
+   * Don't inherit the source's state: WAITING means a build coroutine is
+   * running on the source, but none runs for newGroup, so inheriting it would
+   * wedge newGroup (its consume timer only builds when READY/IDLE). newGroup
+   * has a non-empty packing list and no builder -- that is READY.
+   */
+  newGroup->setState(UpdateGroupState::READY);
   newGroup->setLastSeenRibVersion(lastSeenRibVersion_);
   newGroup->peeringParams_ = peeringParams_;
   newGroup->mraiInterval_ = mraiInterval_;
