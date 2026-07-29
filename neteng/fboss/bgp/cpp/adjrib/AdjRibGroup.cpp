@@ -1951,19 +1951,32 @@ folly::coro::Task<void> AdjRibOutGroup::buildAndSendGroupBgpMessages(
     }
   }
 
-  /* Distribute pending EoRs after the packing list drains; fold the EoR PDU
-   * count into msgCount so the summary log below reflects total messages. */
+  /* Distribute pending EoRs after the packing list drains. EoR is a distinct
+   * BGP PDU from UPDATE, so keep its count separate from msgCount (which counts
+   * only UPDATE announcements/withdrawals). */
+  uint32_t eorCount = 0;
   if (egressEoRPendingV4_ || egressEoRPendingV6_) {
-    msgCount += co_await distributePendingEoRs();
+    eorCount = co_await distributePendingEoRs();
+  }
+
+  // Group-level control-plane counts of PDUs generated once for this group.
+  // In-sync member peers' per-peer AdjRib counts stay 0 (the PDU is built once
+  // here); getSessionInfo attributes these to each member. UPDATE and EoR are
+  // tracked separately so each converges with its socket-layer counterpart
+  // (txMsgs.update / txMsgs.endOfRib) instead of diverging by the EoR count.
+  stats_.incrementSentUpdateMsgs(msgCount);
+  if (eorCount > 0) {
+    stats_.incrementSentEndOfRibMsgs(eorCount);
   }
 
   XLOGF(
       INFO,
-      "Group {} built and distributed {} BGP messages ({} withdrawals, {} announcements)",
+      "Group {} built and distributed {} BGP messages ({} withdrawals, {} announcements, {} EoRs)",
       groupDescriptor_,
-      msgCount,
+      msgCount + eorCount,
       withdrawPrefixCnt,
-      announcePrefixCnt);
+      announcePrefixCnt,
+      eorCount);
 
   // packingInProgress_ flag will be cleared automatically by RAII guard
 }

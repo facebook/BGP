@@ -3154,6 +3154,9 @@ TEST_F(AdjRibInboundFixture, VerifyStalePathCleanupWithEoR) {
       facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
       EXPECT_EQ(prefixSet1.size(), adjRib_->getStats().getPreInPrefixCount());
       EXPECT_EQ(prefixSet1.size(), adjRib_->getStats().getPostInPrefixCount());
+      // Both received EoR PDUs (v4 + v6) are counted at the control plane; this
+      // converges with the socket-layer socket_rx_eor_msgs.
+      EXPECT_EQ(2, adjRib_->getStats().getRecvEndOfRibMsgs());
       // wait for sometime
       fiberSleepFor(10ms);
       // Terminate the session

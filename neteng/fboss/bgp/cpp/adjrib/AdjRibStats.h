@@ -78,6 +78,13 @@ class AdjRibStats {
   }
   void incrementRecvUpdateMsgs();
 
+  // Control-plane count of EoR PDUs received (a distinct PDU from UPDATE);
+  // converges with the socket-layer socket_rx_eor_msgs.
+  uint64_t getRecvEndOfRibMsgs() const {
+    return recvEndOfRibMsgs;
+  }
+  void incrementRecvEndOfRibMsgs();
+
   uint64_t getRecvAnnouncementsIpv4() const {
     return recvAnnouncementsIpv4;
   }
@@ -124,6 +131,14 @@ class AdjRibStats {
     return sentUpdateMsgs;
   }
   void incrementSentUpdateMsgs(uint64_t bgpMessageCnt);
+
+  // EoR is a distinct BGP PDU from UPDATE; tracked separately so the
+  // control-plane count converges with the socket-layer txMsgs.endOfRib and
+  // stays out of sentUpdateMsgs (which must converge with txMsgs.update).
+  uint64_t getSentEndOfRibMsgs() const {
+    return sentEndOfRibMsgs;
+  }
+  void incrementSentEndOfRibMsgs(uint64_t bgpMessageCnt);
 
   uint64_t getSentAnnouncementsIpv4() const {
     return sentAnnouncementsIpv4;
@@ -265,7 +280,9 @@ class AdjRibStats {
   uint32_t postOutPrefixCountIpv4{0};
   uint32_t postOutPrefixCountIpv6{0};
   uint64_t sentUpdateMsgs{0}; // Number of update messages sent
+  uint64_t sentEndOfRibMsgs{0}; // Number of EoR messages sent (distinct PDU)
   uint64_t recvUpdateMsgs{0}; // Number of update messages recv
+  uint64_t recvEndOfRibMsgs{0}; // Number of EoR messages recv (distinct PDU)
   uint64_t sentAnnouncementsIpv4{0}; // Number of update annoucements sent ipv4
   uint64_t sentAnnouncementsIpv6{0}; // Number of update annoucements sent ipv6
   uint64_t recvAnnouncementsIpv4{0}; // Number of update annoucements recv ipv4

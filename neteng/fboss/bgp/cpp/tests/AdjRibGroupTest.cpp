@@ -2099,6 +2099,52 @@ TEST_F(AdjRibGroupPackingFixture, BuildAndSendGroupBgpMessages_MixedMessages) {
 
   // Packing list should be cleared
   EXPECT_TRUE(adjRibOutGroup_->getAttrToPrefixMap().empty());
+
+  // Group-level control-plane count: 2 UPDATE PDUs generated (1 announcement +
+  // 1 withdrawal). This is attributed to in-sync member peers in
+  // getSessionInfo.
+  EXPECT_EQ(2, adjRibOutGroup_->getStats().getSentUpdateMsgs());
+  // EoR is a distinct PDU; a pure UPDATE flow must not touch the EoR counter.
+  EXPECT_EQ(0, adjRibOutGroup_->getStats().getSentEndOfRibMsgs());
+}
+
+/**
+ * Test: EoR PDUs are counted separately from UPDATE PDUs. When an announcement
+ * requests EoR, the per-AFI EoR PDUs land in sentEndOfRibMsgs (so it converges
+ * with the socket-layer txMsgs.endOfRib) and are NOT folded into sentUpdateMsgs
+ * (which must converge with txMsgs.update).
+ */
+TEST_F(AdjRibGroupPackingFixture, EorCountedSeparatelyFromUpdate) {
+  // Negotiate both AFIs so an EoR is owed per AFI.
+  UpdateGroupKey key;
+  key.afiIpv4Negotiated = true;
+  key.afiIpv6Negotiated = true;
+
+  /*
+   * An initial dump over an empty (but non-null) shadow RIB queues no UPDATE
+   * PDUs while still owing a per-AFI EoR -- exactly the isolation this test
+   * needs.
+   */
+  ShadowRibEntriesMap emptyShadowRib;
+  uint64_t maxRibVersion = 0;
+  adjRibOutGroup_ = std::make_shared<AdjRibOutGroup>(
+      *evb_,
+      "test_group",
+      0,
+      true /* enableUpdateGroup */,
+      key,
+      ShadowRibView{&emptyShadowRib, &maxRibVersion});
+  adjRibOutGroup_->setSyncBitForTesting(0);
+
+  // Request EoR with no queued UPDATEs: only EoR PDUs should be produced.
+  adjRibOutGroup_->processRibDumpForGroup(/*sendWithEoR=*/true);
+  runEventLoopUntilIdle();
+
+  // No UPDATE PDUs were queued, so the UPDATE counter stays 0 — the EoRs are
+  // NOT folded into it (the regression being guarded against).
+  EXPECT_EQ(0, adjRibOutGroup_->getStats().getSentUpdateMsgs());
+  // Both negotiated AFIs (v4 + v6) emit an EoR PDU, counted separately.
+  EXPECT_EQ(2, adjRibOutGroup_->getStats().getSentEndOfRibMsgs());
 }
 
 /**

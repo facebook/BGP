@@ -47,7 +47,9 @@ uint32_t totalVipPrefixesCount = 0;
 
 void AdjRibStats::clear() {
   sentUpdateMsgs = 0;
+  sentEndOfRibMsgs = 0;
   recvUpdateMsgs = 0;
+  recvEndOfRibMsgs = 0;
   sentAnnouncementsIpv4 = 0;
   sentAnnouncementsIpv6 = 0;
   recvAnnouncementsIpv4 = 0;
@@ -105,6 +107,10 @@ void AdjRibStats::incrementRecvUpdateMsgs() {
   PeerStats::addPeerMessagesRecvUpdate(peerIdOdsStr);
 }
 
+void AdjRibStats::incrementRecvEndOfRibMsgs() {
+  recvEndOfRibMsgs++;
+}
+
 void AdjRibStats::incrementRecvAnnouncementsIpv4() {
   recvAnnouncementsIpv4++;
   PeerStats::incrMessageRecvAnnouncedIpv4(peerIdOdsStr);
@@ -136,6 +142,10 @@ void AdjRibStats::incrementIngressRouteFilterDenied() {
 void AdjRibStats::incrementSentUpdateMsgs(uint64_t bgpMessageCnt) {
   sentUpdateMsgs += bgpMessageCnt;
   PeerStats::addPeerMessagesSentUpdate(peerIdOdsStr, bgpMessageCnt);
+}
+
+void AdjRibStats::incrementSentEndOfRibMsgs(uint64_t bgpMessageCnt) {
+  sentEndOfRibMsgs += bgpMessageCnt;
 }
 
 void AdjRibStats::incrementSentAnnouncementsIpv4() {

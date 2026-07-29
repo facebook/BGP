@@ -2124,6 +2124,8 @@ BgpPeerDisplayInfo FiberBgpPeerManager::getEstablishedPeerDisplayInfoHelper(
       sessionInfo->lastResetReason,
       sessionInfo->lastResetTime,
       static_cast<int64_t>(sessionInfo->numResets),
+      establishedSession->peer->getTxMessageCounters(),
+      establishedSession->peer->getRxMessageCounters(),
   };
   info.peeringParams.peerPrefix = std::nullopt;
   return info;
@@ -2201,6 +2203,11 @@ BgpPeerDisplayInfo FiberBgpPeerManager::getActivePeerDisplayInfoHelper(
       peerInfo.numResets = 0;
     }
   } // end of weak_ptr lock(), shared_ptr is destroyed
+
+  peerInfo.txMsgs =
+      connectionInfo->activeSessionInfo->peer->getTxMessageCounters();
+  peerInfo.rxMsgs =
+      connectionInfo->activeSessionInfo->peer->getRxMessageCounters();
 
   return peerInfo;
 }

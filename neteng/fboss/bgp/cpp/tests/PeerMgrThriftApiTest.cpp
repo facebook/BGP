@@ -14,23 +14,28 @@
  * limitations under the License.
  */
 
-#define PeerManager_TEST_FRIENDS               \
-  FRIEND_TEST(                                 \
-      PeerManagerFixtureCanaryKnobTestSuite,   \
-      Exportfb303CounterSessionUpAndDownTest); \
-  FRIEND_TEST(PeerManagerTestFixture, StopPeerToSessionMgrTest);
+#define PeerManager_TEST_FRIENDS                                 \
+  FRIEND_TEST(                                                   \
+      PeerManagerFixtureCanaryKnobTestSuite,                     \
+      Exportfb303CounterSessionUpAndDownTest);                   \
+  FRIEND_TEST(PeerManagerTestFixture, StopPeerToSessionMgrTest); \
+  FRIEND_TEST(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest);
 
 #define AdjRib_TEST_FRIENDS                           \
   friend class PeerManagerFixtureCanaryKnobTestSuite; \
   FRIEND_TEST(                                        \
       PeerManagerFixtureCanaryKnobTestSuite,          \
-      Exportfb303CounterSessionUpAndDownTest);
+      Exportfb303CounterSessionUpAndDownTest);        \
+  FRIEND_TEST(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest);
 
 #define AdjRibStats_TEST_FRIENDS                      \
   friend class PeerManagerFixtureCanaryKnobTestSuite; \
   FRIEND_TEST(                                        \
       PeerManagerFixtureCanaryKnobTestSuite,          \
       Exportfb303CounterSessionUpAndDownTest);
+
+#define AdjRibOutGroup_TEST_FRIENDS \
+  FRIEND_TEST(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest);
 
 #include <fmt/core.h>
 #include <folly/coro/BlockingWait.h>
@@ -555,6 +560,215 @@ TEST_F(PeerManagerTestFixture, GetBgpSummaryTest) {
   mockPeerMgrThread.join();
   sessionMgrThread.join();
   SUCCEED();
+}
+
+// The per-message-type socket tx/rx counts in TBgpSessionDetail come from the
+// I/O (SessionManager) snapshot -- the source of truth for messages actually
+// written to / read from the socket. Inject counts on the snapshot and verify
+// getDetailSessionInfos surfaces them into TBgpSessionDetail.
+TEST_F(PeerManagerTestFixture, GetBgpSessionSocketMessageCountsTest) {
+  auto config = getConfig(
+      true /* includeStaticPeer */,
+      true /* includeDynamicShivPeer */,
+      false /* includeDynamicMonitorPeer */,
+      false /* includeDynamicVipInjectorPeer */,
+      false /* enableStatefulHa */,
+      false /* enableVipServer */);
+
+  auto globalConfig = config->getBgpGlobalConfig();
+  auto configManager = std::make_shared<ConfigManager>(config);
+  auto mockPeerMgr = std::make_shared<MockPeerManager>(
+      configManager, ribInQ_, ribOutQ_, nbrRouteChangeQ_);
+
+  auto sessionMgr = std::make_shared<MockSessionManager>(*globalConfig, false);
+  mockPeerMgr->setSessionManager(sessionMgr);
+
+  auto mockPeerMgrThread = mockPeerMgr->runInThread();
+  auto sessionMgrThread = sessionMgr->runInThread();
+
+  mockPeerMgr->addPeersToSessionMgr();
+
+  // Fetch the I/O-thread snapshot and inject per-type tx/rx socket counts for
+  // staticPeer1_, then render the detail view from the (modified) snapshot.
+  auto allPeers = folly::coro::blockingWait(
+      mockPeerMgr->getSessionManager()->co_getAllPeerDisplayInfos());
+  const auto staticPeer1Addr = folly::IPAddress(*staticPeer1_.peer_addr());
+  for (auto& [addr, info] : allPeers) {
+    if (addr == staticPeer1Addr) {
+      info->txMsgs.open = 1;
+      info->txMsgs.update = 7;
+      info->txMsgs.keepAlive = 3;
+      info->txMsgs.notification = 2;
+      info->txMsgs.routeRefresh = 4;
+      info->txMsgs.endOfRib = 5;
+      info->rxMsgs.open = 10;
+      info->rxMsgs.update = 70;
+      info->rxMsgs.keepAlive = 30;
+      info->rxMsgs.notification = 20;
+      info->rxMsgs.routeRefresh = 40;
+      info->rxMsgs.endOfRib = 50;
+    }
+  }
+  auto sessions = mockPeerMgr->getDetailSessionInfos(allPeers);
+
+  std::optional<TBgpSession> output;
+  for (const auto& session : sessions) {
+    if (session.peer_addr().value() == *staticPeer1_.peer_addr()) {
+      output = session;
+      break;
+    }
+  }
+  ASSERT_TRUE(output);
+  ASSERT_TRUE(output->details().has_value());
+  const auto& d = *output->details();
+  EXPECT_EQ(1, d.socket_tx_open_msgs().value());
+  EXPECT_EQ(7, d.socket_tx_update_msgs().value());
+  EXPECT_EQ(3, d.socket_tx_keepalive_msgs().value());
+  EXPECT_EQ(2, d.socket_tx_notification_msgs().value());
+  EXPECT_EQ(4, d.socket_tx_route_refresh_msgs().value());
+  EXPECT_EQ(5, d.socket_tx_eor_msgs().value());
+  EXPECT_EQ(10, d.socket_rx_open_msgs().value());
+  EXPECT_EQ(70, d.socket_rx_update_msgs().value());
+  EXPECT_EQ(30, d.socket_rx_keepalive_msgs().value());
+  EXPECT_EQ(20, d.socket_rx_notification_msgs().value());
+  EXPECT_EQ(40, d.socket_rx_route_refresh_msgs().value());
+  EXPECT_EQ(50, d.socket_rx_eor_msgs().value());
+
+  mockPeerMgr->stop();
+  sessionMgr->stop();
+  mockPeerMgrThread.join();
+  sessionMgrThread.join();
+}
+
+/*
+ * The control-plane per-message-type counts in TBgpSessionDetail
+ * (adjrib_recv_update_msgs / adjrib_recv_eor_msgs / adjrib_sent_update_msgs /
+ * adjrib_sent_eor_msgs) come from the PeerManager-side AdjRib stats -- the
+ * counterpart to the socket_* counts validated above. The recv side is always
+ * per-peer; the sent side is attributed to the update-group for in-sync members
+ * (JOINED_RUNNING / JOINED_BLOCKED), whose per-peer sent counters stay 0. Drive
+ * known counts into a peer's AdjRib (and its update-group) and verify
+ * getDetailSessionInfos surfaces them into TBgpSessionDetail, exercising both
+ * the per-peer path and the update-group attribution branch.
+ */
+TEST_F(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest) {
+  auto config = getConfig(
+      true /* includeStaticPeer */,
+      true /* includeDynamicShivPeer */,
+      false /* includeDynamicMonitorPeer */,
+      false /* includeDynamicVipInjectorPeer */,
+      false /* enableStatefulHa */,
+      false /* enableVipServer */);
+
+  auto globalConfig = config->getBgpGlobalConfig();
+  auto configManager = std::make_shared<ConfigManager>(config);
+  auto mockPeerMgr = std::make_shared<MockPeerManager>(
+      configManager, ribInQ_, ribOutQ_, nbrRouteChangeQ_);
+
+  auto sessionMgr = std::make_shared<MockSessionManager>(*globalConfig, false);
+  mockPeerMgr->setSessionManager(sessionMgr);
+
+  /*
+   * addPeersToSessionMgr() does not create AdjRibs (those are created on
+   * session establishment), so insert one for staticPeer1_ ourselves.
+   * getDetailSessionInfo keys adjRibs_ with {peerAddr, remoteBgpId}; an
+   * added-but-not-established peer reports remoteBgpId 0 in the display
+   * snapshot, so key on 0.
+   */
+  auto& evb = mockPeerMgr->getEventBase();
+  const auto staticPeer1Addr = folly::IPAddress(*staticPeer1_.peer_addr());
+  const BgpPeerId adjRibKey{staticPeer1Addr, 0};
+  auto adjRib =
+      setupMockAdjRib(evb, adjRibKey, AsNum(kAsn1), sessionTerminateBaton_);
+
+  constexpr uint64_t kPerPeerRecvUpdates = 3;
+  constexpr uint64_t kPerPeerRecvEoRs = 2;
+  constexpr uint64_t kPerPeerSentUpdates = 5;
+  constexpr uint64_t kPerPeerSentEoRs = 1;
+  for (uint64_t i = 0; i < kPerPeerRecvUpdates; ++i) {
+    adjRib->stats_.incrementRecvUpdateMsgs();
+  }
+  for (uint64_t i = 0; i < kPerPeerRecvEoRs; ++i) {
+    adjRib->stats_.incrementRecvEndOfRibMsgs();
+  }
+  adjRib->stats_.incrementSentUpdateMsgs(kPerPeerSentUpdates);
+  adjRib->stats_.incrementSentEndOfRibMsgs(kPerPeerSentEoRs);
+  mockPeerMgr->adjRibs_[adjRibKey] = adjRib;
+
+  /*
+   * The manually-inserted MockAdjRib's stop()/cleanupGrState() may be invoked
+   * during peer-manager shutdown; delegate them to no-op coroutines so awaiting
+   * them does not hit a default-constructed Task.
+   */
+  EXPECT_CALL(*adjRib, stop()).WillRepeatedly([]() -> folly::coro::Task<void> {
+    co_return;
+  });
+  EXPECT_CALL(*adjRib, cleanupGrState(testing::_))
+      .WillRepeatedly([](bool) -> folly::coro::Task<void> { co_return; });
+
+  auto mockPeerMgrThread = mockPeerMgr->runInThread();
+  auto sessionMgrThread = sessionMgr->runInThread();
+  mockPeerMgr->addPeersToSessionMgr();
+
+  auto allPeers = folly::coro::blockingWait(
+      mockPeerMgr->getSessionManager()->co_getAllPeerDisplayInfos());
+
+  auto detailFor =
+      [&](const std::vector<TBgpSession>& sessions) -> TBgpSessionDetail {
+    for (const auto& session : sessions) {
+      if (session.peer_addr().value() == *staticPeer1_.peer_addr()) {
+        EXPECT_TRUE(session.details().has_value());
+        return session.details().value();
+      }
+    }
+    ADD_FAILURE() << "staticPeer1_ session not found";
+    return TBgpSessionDetail{};
+  };
+
+  /*
+   * Phase 1: no update-group attached -> per-peer control-plane counts flow
+   * straight through to the adjrib_* fields (sent side is per-peer).
+   */
+  {
+    auto sessions = mockPeerMgr->getDetailSessionInfos(allPeers);
+    const auto d = detailFor(sessions);
+    EXPECT_EQ(kPerPeerRecvUpdates, d.adjrib_recv_update_msgs().value());
+    EXPECT_EQ(kPerPeerRecvEoRs, d.adjrib_recv_eor_msgs().value());
+    EXPECT_EQ(kPerPeerSentUpdates, d.adjrib_sent_update_msgs().value());
+    EXPECT_EQ(kPerPeerSentEoRs, d.adjrib_sent_eor_msgs().value());
+  }
+
+  /*
+   * Phase 2: peer JOINED_RUNNING in an update-group -> the sent side is
+   * attributed to the group's shared counts, while the recv side stays
+   * per-peer.
+   */
+  folly::EventBase groupEvb;
+  auto group = std::make_shared<AdjRibOutGroup>(groupEvb, "test_group", 1);
+  constexpr uint64_t kGroupSentUpdates = 40;
+  constexpr uint64_t kGroupSentEoRs = 4;
+  group->stats_.incrementSentUpdateMsgs(kGroupSentUpdates);
+  group->stats_.incrementSentEndOfRibMsgs(kGroupSentEoRs);
+  adjRib->setUpdateGroup(group);
+  adjRib->setPeerState(PeerUpdateState::JOINED_RUNNING);
+  {
+    auto sessions = mockPeerMgr->getDetailSessionInfos(allPeers);
+    const auto d = detailFor(sessions);
+    EXPECT_EQ(kPerPeerRecvUpdates, d.adjrib_recv_update_msgs().value());
+    EXPECT_EQ(kPerPeerRecvEoRs, d.adjrib_recv_eor_msgs().value());
+    EXPECT_EQ(kGroupSentUpdates, d.adjrib_sent_update_msgs().value());
+    EXPECT_EQ(kGroupSentEoRs, d.adjrib_sent_eor_msgs().value());
+  }
+
+  // Detach the group before tearing down groupEvb, which must outlive it.
+  folly::coro::blockingWait(group->drainAsyncScope());
+  adjRib->setUpdateGroup(nullptr);
+  group.reset();
+
+  mockPeerMgr->stop();
+  sessionMgr->stop();
+  mockPeerMgrThread.join();
+  sessionMgrThread.join();
 }
 
 // This testlet verify the session detail information retrieve from

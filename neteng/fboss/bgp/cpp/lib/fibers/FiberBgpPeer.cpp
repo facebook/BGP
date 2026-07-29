@@ -649,26 +649,33 @@ void FiberBgpPeer::sendSocketLoop() noexcept {
         msgVal,
         [this](const BgpKeepAlive&) {
           bgp::PeerStats::incrKeepAliveMessagesSent(peerIdOdsStr_);
+          ++peeringState_.txMsgs.keepAlive;
         },
-        [bytesWritten](std::shared_ptr<const BgpUpdate2> const&) {
+        [this, bytesWritten](std::shared_ptr<const BgpUpdate2> const&) {
           bgp::PeerStats::incrUpdateMessagesSent();
           bgp::PeerStats::addUpdateBytesSentToAvg(bytesWritten);
+          ++peeringState_.txMsgs.update;
         },
-        [bytesWritten](const UpdateDescriptor&) {
+        [this, bytesWritten](const UpdateDescriptor&) {
           bgp::PeerStats::incrUpdateMessagesSent();
           bgp::PeerStats::addUpdateBytesSentToAvg(bytesWritten);
+          ++peeringState_.txMsgs.update;
         },
         [this](const BgpOpenMsg&) {
           bgp::PeerStats::incrOpenMessagesSent(peerIdOdsStr_);
+          ++peeringState_.txMsgs.open;
         },
         [this](const BgpEndOfRib&) {
           bgp::PeerStats::incrEndOfRibMessagesSent(peerIdOdsStr_);
+          ++peeringState_.txMsgs.endOfRib;
         },
         [this](const BgpRouteRefresh&) {
           bgp::PeerStats::incrRouteRefreshMessagesSent(peerIdOdsStr_);
+          ++peeringState_.txMsgs.routeRefresh;
         },
         [this](const BgpNotification&) {
           bgp::PeerStats::incrNotificationMessagesSent(peerIdOdsStr_);
+          ++peeringState_.txMsgs.notification;
         },
         [](const auto&) {});
   } // while
@@ -744,10 +751,14 @@ folly::coro::Task<void> FiberBgpPeer::processIngressBgpMessageLoop() noexcept {
       [this](const BgpOpenMsg& msg) -> folly::coro::Task<void> {
         processOpenMsg(msg);
         bgp::PeerStats::addPeerMessagesRecvOpen(peerIdOdsStr_);
+        ++peeringState_.rxMsgs.open;
         co_return;
       },
       [this](std::shared_ptr<const BgpUpdate2> const& msg)
-          -> folly::coro::Task<void> { co_await processBgpUpdateMsg(msg); },
+          -> folly::coro::Task<void> {
+        co_await processBgpUpdateMsg(msg);
+        ++peeringState_.rxMsgs.update;
+      },
       [](const UpdateDescriptor& msg) -> folly::coro::Task<void> {
         // UpdateDescriptor is handled on egress path, not ingress
         // If received on ingress, it's an internal error
@@ -759,19 +770,23 @@ folly::coro::Task<void> FiberBgpPeer::processIngressBgpMessageLoop() noexcept {
       [this](const BgpKeepAlive&) -> folly::coro::Task<void> {
         processKeepAliveMsg();
         bgp::PeerStats::addPeerMessagesRecvKeepAlive(peerIdOdsStr_);
+        ++peeringState_.rxMsgs.keepAlive;
         co_return;
       },
       [this](const BgpEndOfRib& msg) -> folly::coro::Task<void> {
         co_await processBgpEndOfRibMsg(msg);
+        ++peeringState_.rxMsgs.endOfRib;
       },
       [this](const BgpNotification& msg) -> folly::coro::Task<void> {
         processBgpNotificationMsg(msg);
         bgp::PeerStats::addPeerMessagesRecvNotification(peerIdOdsStr_);
+        ++peeringState_.rxMsgs.notification;
         co_return;
       },
       [this](const BgpRouteRefresh& msg) -> folly::coro::Task<void> {
         co_await processBgpRouteRefreshMsg(msg);
         bgp::PeerStats::addPeerMessagesRecvRouteRefresh(peerIdOdsStr_);
+        ++peeringState_.rxMsgs.routeRefresh;
       },
       [this](const FiberSocketError& msg) -> folly::coro::Task<void> {
         processBgpSocketErrorMsg(msg);

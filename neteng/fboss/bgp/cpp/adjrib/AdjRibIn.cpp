@@ -796,7 +796,11 @@ folly::coro::Task<void> AdjRib::processPeerUpdate(
 folly::coro::Task<void> AdjRib::processPeerEoR(
     const nettools::bgplib::BgpEndOfRib& eor) noexcept {
   // EoR is piped to AdjRib and then back to PeerManagerBase to make sure
-  // AdjRib has done processing updates from this peer
+  // AdjRib has done processing updates from this peer.
+  // Count the received EoR PDU (per AFI) so the control-plane count converges
+  // with the socket-layer socket_rx_eor_msgs.
+  stats_.incrementRecvEndOfRibMsgs();
+
   XLOGF(
       DBG1,
       "Received {} EoR family from {}",

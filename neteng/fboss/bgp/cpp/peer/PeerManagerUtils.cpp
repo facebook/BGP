@@ -703,6 +703,32 @@ TBgpSession PeerManagerBase::getDetailSessionInfo(
       tBgpSessionDetail.eor_received_time() =
           adjRibs_.at(bgpPeerId)->eorReceivedTime();
       tBgpSessionDetail.num_of_flaps() = adjRibs_.at(bgpPeerId)->flapCounter();
+
+      // Control-plane per-type message counts (PeerManager / AdjRib), the
+      // counterpart to the socket_* counts below. Recv side is per-peer; the
+      // sent side is attributed to the update-group for in-sync members (whose
+      // per-peer sent counters stay 0), mirroring TBgpSession.sent_update_msgs.
+      const auto& adjRib = adjRibs_.at(bgpPeerId);
+      tBgpSessionDetail.adjrib_recv_update_msgs() =
+          static_cast<int64_t>(stats.getRecvUpdateMsgs());
+      tBgpSessionDetail.adjrib_recv_eor_msgs() =
+          static_cast<int64_t>(stats.getRecvEndOfRibMsgs());
+      tBgpSessionDetail.adjrib_sent_update_msgs() =
+          static_cast<int64_t>(stats.getSentUpdateMsgs());
+      tBgpSessionDetail.adjrib_sent_eor_msgs() =
+          static_cast<int64_t>(stats.getSentEndOfRibMsgs());
+      auto peerState = adjRib->getPeerState();
+      if (peerState == PeerUpdateState::JOINED_RUNNING ||
+          peerState == PeerUpdateState::JOINED_BLOCKED) {
+        if (auto g = adjRib->getUpdateGroupSentUpdateMsgs(); g.has_value()) {
+          tBgpSessionDetail.adjrib_sent_update_msgs() =
+              static_cast<int64_t>(g.value());
+        }
+        if (auto g = adjRib->getUpdateGroupSentEndOfRibMsgs(); g.has_value()) {
+          tBgpSessionDetail.adjrib_sent_eor_msgs() =
+              static_cast<int64_t>(g.value());
+        }
+      }
     }
   }
   // This is mainly for ACTIVE state peers to see how long the TCP socket has
@@ -733,6 +759,32 @@ TBgpSession PeerManagerBase::getDetailSessionInfo(
     }
     nc.add_path() = static_cast<AddPath>(c.sor().value());
     tBgpSessionDetail.add_path_capabilities()->emplace_back(nc);
+  }
+
+  // Layer-2 data-plane: PDUs actually written to / read from the socket, from
+  // the I/O-thread snapshot. These converge with the AdjRib control counts.
+  {
+    const auto& tx = peerInfo->txMsgs;
+    tBgpSessionDetail.socket_tx_open_msgs() = static_cast<int64_t>(tx.open);
+    tBgpSessionDetail.socket_tx_update_msgs() = static_cast<int64_t>(tx.update);
+    tBgpSessionDetail.socket_tx_keepalive_msgs() =
+        static_cast<int64_t>(tx.keepAlive);
+    tBgpSessionDetail.socket_tx_notification_msgs() =
+        static_cast<int64_t>(tx.notification);
+    tBgpSessionDetail.socket_tx_route_refresh_msgs() =
+        static_cast<int64_t>(tx.routeRefresh);
+    tBgpSessionDetail.socket_tx_eor_msgs() = static_cast<int64_t>(tx.endOfRib);
+
+    const auto& rx = peerInfo->rxMsgs;
+    tBgpSessionDetail.socket_rx_open_msgs() = static_cast<int64_t>(rx.open);
+    tBgpSessionDetail.socket_rx_update_msgs() = static_cast<int64_t>(rx.update);
+    tBgpSessionDetail.socket_rx_keepalive_msgs() =
+        static_cast<int64_t>(rx.keepAlive);
+    tBgpSessionDetail.socket_rx_notification_msgs() =
+        static_cast<int64_t>(rx.notification);
+    tBgpSessionDetail.socket_rx_route_refresh_msgs() =
+        static_cast<int64_t>(rx.routeRefresh);
+    tBgpSessionDetail.socket_rx_eor_msgs() = static_cast<int64_t>(rx.endOfRib);
   }
 
   tBgpSession.details() = tBgpSessionDetail;
@@ -919,6 +971,14 @@ TBgpSession PeerManagerBase::getSessionInfo(
           if (groupPrefixCount.has_value()) {
             tBgpSession.postpolicy_sent_prefix_count() =
                 groupPrefixCount.value();
+          }
+          // For in-sync UG peers the UPDATE PDU is generated once at the group,
+          // so attribute the group's generated count to each member (the
+          // per-peer AdjRib count stays 0 for these).
+          auto groupSentUpdateMsgs = adjRib->getUpdateGroupSentUpdateMsgs();
+          if (groupSentUpdateMsgs.has_value()) {
+            tBgpSession.sent_update_msgs() =
+                static_cast<int64_t>(groupSentUpdateMsgs.value());
           }
         }
       }

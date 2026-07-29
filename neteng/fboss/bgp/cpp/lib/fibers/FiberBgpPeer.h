@@ -88,6 +88,15 @@ struct PeeringState {
 
   /* Last epoch time (ms) that sendQueue blocked on a push attempt. */
   uint64_t lastSendQueueBlockTimeMs{0};
+
+  /*
+   * Per-message-type count of BGP messages written to / read from this peer's
+   * socket. Written only on the I/O evb (tx in sendSocketLoop, rx in the
+   * ingress loop); read cross-thread only via the BgpPeerDisplayInfo snapshot
+   * taken on this same evb.
+   */
+  SocketMessageCounters txMsgs;
+  SocketMessageCounters rxMsgs;
 };
 
 class FiberBgpPeer : public std::enable_shared_from_this<FiberBgpPeer>,
@@ -287,6 +296,13 @@ class FiberBgpPeer : public std::enable_shared_from_this<FiberBgpPeer>,
   uint64_t getSendQueueTotalBlockDuration() const;
   uint64_t getLastSendQueueBlockTime() const;
   uint64_t getLastSocketEgressBufferedTime() const;
+
+  const SocketMessageCounters& getTxMessageCounters() const {
+    return peeringState_.txMsgs;
+  }
+  const SocketMessageCounters& getRxMessageCounters() const {
+    return peeringState_.rxMsgs;
+  }
 
  protected:
   // mutable state of peering session
