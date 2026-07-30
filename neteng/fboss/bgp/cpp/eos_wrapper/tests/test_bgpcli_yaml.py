@@ -57,3 +57,16 @@ class BgpCliYamlTest(unittest.TestCase):
         for name, spec in data.items():
             self.assertIsInstance(name, str, f"non-string token key: {name!r}")
             self.assertIsInstance(spec, dict, f"token {name!r} is not a mapping")
+
+    def test_clear_bgpcpp_counters_command_present(self) -> None:
+        # The 'clear bgpcpp counters' command is a Privileged (enable-mode)
+        # entry; assert it parses and its tokens are well-formed so a stray flow
+        # scalar does not silently drop it on the device.
+        cmd = self._load()["commands"]["clearBgpCppCounters"]
+        self.assertEqual("Privileged", cmd["mode"])
+        data = cmd["data"]
+        self.assertIn("counters", data)
+        self.assertIn("<peerAddr>", data)
+        for name, spec in data.items():
+            self.assertIsInstance(name, str, f"non-string token key: {name!r}")
+            self.assertIsInstance(spec, dict, f"token {name!r} is not a mapping")

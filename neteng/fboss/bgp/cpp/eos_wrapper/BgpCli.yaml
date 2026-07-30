@@ -83,3 +83,10 @@ commands:
     outputSchema:
       "$schema": "http://json-schema.org/draft-07/schema"
       type: object
+
+  clearBgpCppCounters:
+    syntax: clear bgpcpp counters <peerAddr>
+    mode: Privileged
+    data:
+      counters: { keyword: { help: Clear BGP message counters for a specific peer } }
+      <peerAddr>: { ipAddress: { help: Peer IP address whose counters to clear } }

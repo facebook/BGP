@@ -12,7 +12,14 @@ import sys
 from itertools import islice
 from subprocess import PIPE
 
+# CliExtension and Tac are Arista EOS on-device runtime modules that are not
+# available to the static type checker (the unit test stubs them at runtime via
+# sys.modules). Suppress the unresolved-import error, matching the convention in
+# nettools/ebb/drain_myself/DrainCli.py.
+# pyrefly: ignore [missing-import]
 import CliExtension
+
+# pyrefly: ignore [missing-import]
 import Tac
 
 
@@ -333,6 +340,29 @@ class ShowBgpcppDrainState(CliExtension.ShowCommandClass):
         run_command(["drain_myself", "show-drain-state"])
 
 
+class ClearBgpCppCounters(CliExtension.CliCommandClass):
+    """EOS 'clear bgpcpp counters <peer>' -> bgpcli clear bgp counters <peer>.
+
+    Clears the per-peer BGP message counters (socket Tx/Rx + AdjRib Sent/Recv).
+    A peer address is required (enforced by the grammar); there is no clear-all
+    form, so no interactive confirmation is needed.
+    """
+
+    def handler(self, ctx):
+        # Tokens 0-2 are 'clear bgpcpp counters'; the remainder is the mandatory
+        # peer IP address. Defensively reject a peerless invocation (the grammar
+        # already requires <peerAddr>) so we never shell out a peerless
+        # 'bgpcli clear bgp counters', which bgpcli rejects.
+        peers = [str(arg) for arg in islice(ctx.args.values(), 3, None)]
+        if not peers:
+            raise ValueError("clear bgpcpp counters requires a peer IP address")
+
+        cmd = ["bgpcli", "--ssl-policy=plaintext", "clear", "bgp", "counters"]
+        cmd.extend(peers)
+
+        run_command(cmd, {"LC_ALL": "C", "CONFIGERATOR_PRETEND_NOT_PROD": "1"})
+
+
 def Plugin(ctx):
     CliExtension.registerCommand("showBgpCpp", ShowBgpCmd, namespace="meta.bgpcli")
     CliExtension.registerCommand(
@@ -340,4 +370,7 @@ def Plugin(ctx):
     )
     CliExtension.registerCommand(
         "showBgpcppDrainState", ShowBgpcppDrainState, namespace="meta.bgpcli"
+    )
+    CliExtension.registerCommand(
+        "clearBgpCppCounters", ClearBgpCppCounters, namespace="meta.bgpcli"
     )
