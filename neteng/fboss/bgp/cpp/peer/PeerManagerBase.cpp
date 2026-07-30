@@ -25,6 +25,7 @@
 #include <folly/Likely.h>
 #include <folly/Overload.h>
 #include <folly/ScopeGuard.h>
+#include <folly/container/F14Set.h>
 #include <folly/coro/CurrentExecutor.h>
 #include <folly/coro/Sleep.h>
 #include <folly/coro/WithCancellation.h>
@@ -3252,10 +3253,16 @@ bool PeerManagerBase::isPeerDynamic(const folly::IPAddress& peerAddr) {
   return false;
 }
 
-folly::coro::Task<void> PeerManagerBase::co_clearCounters() {
+folly::coro::Task<void> PeerManagerBase::co_clearCounters(
+    const std::vector<folly::IPAddress>& peers) {
+  const bool clearAll = peers.empty();
+  const folly::F14FastSet<folly::IPAddress> filter(peers.begin(), peers.end());
   co_await folly::coro::co_withExecutor(
-      &getEventBase(), [this]() -> folly::coro::Task<void> {
+      &getEventBase(), [this, clearAll, filter]() -> folly::coro::Task<void> {
         for (auto& [peerId, adjRib] : adjRibs_) {
+          if (!clearAll && !filter.contains(peerId.peerAddr)) {
+            continue;
+          }
           adjRib->clearEgressMessageCounts();
           adjRib->clearIngressMessageCounts();
           PeerStats::clearPeerEgressMessageCounters(

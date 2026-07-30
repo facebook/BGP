@@ -686,7 +686,8 @@ class FiberBgpPeerManager
    * before mutating peer state, so callers on other threads (e.g. the thrift
    * handler BgpServiceBase::co_clearCounters) can simply co_await it.
    */
-  folly::coro::Task<void> co_clearSocketCounters();
+  folly::coro::Task<void> co_clearSocketCounters(
+      const std::vector<folly::IPAddress>& peers);
 
   std::optional<std::shared_ptr<BgpSessionInfo>> getBgpSessionInfo(
       const BgpPeerId& peerId) const noexcept;

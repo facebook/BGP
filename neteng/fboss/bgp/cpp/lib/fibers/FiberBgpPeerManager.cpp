@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <folly/container/F14Set.h>
 #include <folly/coro/BlockingWait.h>
 #include <atomic>
 
@@ -2243,19 +2244,39 @@ FiberBgpPeerManager::getAllPeerDisplayInfos() {
   return allPeersInfo;
 }
 
-folly::coro::Task<void> FiberBgpPeerManager::co_clearSocketCounters() {
-  co_await co_withExecutor(&evb_, [this]() -> folly::coro::Task<void> {
-    for (const auto& [_, peerInfo] : allPeers_) {
-      for (const auto& [_, connectionInfo] : peerInfo->connectionInfos) {
-        if (connectionInfo->activeSessionInfo &&
-            connectionInfo->activeSessionInfo->peer) {
-          connectionInfo->activeSessionInfo->peer->clearTxMessageCounters();
-          connectionInfo->activeSessionInfo->peer->clearRxMessageCounters();
+folly::coro::Task<void> FiberBgpPeerManager::co_clearSocketCounters(
+    const std::vector<folly::IPAddress>& peers) {
+  const bool clearAll = peers.empty();
+  const folly::F14FastSet<folly::IPAddress> filter(peers.begin(), peers.end());
+  co_await co_withExecutor(
+      &evb_, [this, clearAll, filter]() -> folly::coro::Task<void> {
+        for (const auto& [peerAddr, peerInfo] : allPeers_) {
+          if (!clearAll && !filter.contains(peerAddr)) {
+            continue;
+          }
+          for (const auto& [_, connectionInfo] : peerInfo->connectionInfos) {
+            if (connectionInfo->activeSessionInfo &&
+                connectionInfo->activeSessionInfo->peer) {
+              connectionInfo->activeSessionInfo->peer->clearTxMessageCounters();
+              connectionInfo->activeSessionInfo->peer->clearRxMessageCounters();
+            }
+          }
         }
-      }
-    }
-    co_return;
-  }());
+
+        // Warn on requested peers that matched no known peer, so an operator
+        // typo is not silently masked by the RPC's success response (the CLI
+        // otherwise reports "cleared for <ip>" even when nothing was cleared).
+        if (!clearAll) {
+          for (const auto& requested : filter) {
+            if (!allPeers_.contains(requested)) {
+              XLOG(WARNING)
+                  << "clear bgp counters: requested peer " << requested.str()
+                  << " did not match any known peer; nothing cleared for it";
+            }
+          }
+        }
+        co_return;
+      }());
 }
 
 std::optional<std::shared_ptr<BgpSessionInfo>>

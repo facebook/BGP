@@ -459,10 +459,6 @@ TEST_F(E2EPartialDrainTest, PartialDrainWithMultiplePrefixes) {
   const auto prefixB = folly::IPAddress::createNetwork("10.20.0.0/24");
   const auto prefixC = folly::IPAddress::createNetwork("10.30.0.0/24");
 
-  /* Inject MNH=3 with partial drain for all 3 prefixes */
-  injectPathSelectionPolicy(
-      {prefixA, prefixB, prefixC}, kMnhThreshold, /*enablePartialDrain=*/true);
-
   /* Prefix A: 4 paths (MNH satisfied) */
   addRoute("v4", "10.10.0.0", 24, kPeerAddr3, kNextHopV4_3.str(), "65010");
   addRoute("v4", "10.10.0.0", 24, kPeerAddr4, kNextHopV4_4.str(), "64541");
@@ -481,10 +477,21 @@ TEST_F(E2EPartialDrainTest, PartialDrainWithMultiplePrefixes) {
   ASSERT_TRUE(waitForPathCountInRib("10.30.0.0/24", 2));
 
   /*
-   * Verify partial drain status. waitForPathCountInRib only confirms RIB path
-   * presence; partial-drain status is updated asynchronously by path selection
-   * (especially for prefixes B and C, added last), so retry until it converges
-   * — consistent with the other tests in this file.
+   * Inject the MNH=3 partial-drain policy only after all paths are present, so
+   * the policy change drives a single deterministic recompute over the final
+   * path counts (A=4 satisfied; B=2 and C=2 violating). Injecting before the
+   * routes arrive races the async setPathSelectionPolicy against per-route path
+   * selection -- a route selected before the policy lands is never re-marked,
+   * leaving partial drain stuck at 0 affected -- the same ordering hazard
+   * called out in LiveToPartialDrainToRecover.
+   */
+  injectPathSelectionPolicy(
+      {prefixA, prefixB, prefixC}, kMnhThreshold, /*enablePartialDrain=*/true);
+
+  /*
+   * Partial-drain status is updated asynchronously by the policy-change
+   * recompute, so retry until it converges — consistent with the other tests
+   * in this file.
    */
   WITH_RETRIES_N(50, {
     auto status = getPartialDrainStatus();

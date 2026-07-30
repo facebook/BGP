@@ -2925,7 +2925,25 @@ void BgpServiceBase::clearProfilerStats() {
   decrRequestsInExecution();
 }
 
-folly::coro::Task<void> BgpServiceBase::co_clearCounters() {
+namespace {
+std::vector<folly::IPAddress> toPeerAddrs(
+    const std::vector<std::string>& peers) {
+  std::vector<folly::IPAddress> addrs;
+  addrs.reserve(peers.size());
+  for (const auto& peer : peers) {
+    try {
+      addrs.emplace_back(peer);
+    } catch (const std::exception& e) {
+      throw std::invalid_argument(
+          fmt::format("Invalid peer IP address '{}': {}", peer, e.what()));
+    }
+  }
+  return addrs;
+}
+} // namespace
+
+folly::coro::Task<void> BgpServiceBase::co_clearCounters(
+    std::unique_ptr<std::vector<std::string>> peers) {
   auto log = LOG_THRIFT_CALL(INFO);
   if (exitInitiated_) {
     co_return;
@@ -2937,12 +2955,14 @@ folly::coro::Task<void> BgpServiceBase::co_clearCounters() {
     decrRequestsInExecution();
   };
 
+  const auto peerAddrs = toPeerAddrs(*peers);
+
   // Data plane: zero each peer's socket tx/rx counters on the I/O evb.
-  co_await sessionMgr_->co_clearSocketCounters();
+  co_await sessionMgr_->co_clearSocketCounters(peerAddrs);
 
   // Control plane: zero each AdjRib's + update-group's sent/recv message counts
   // and their fb303 keys (runs on the PeerManager evb).
-  co_await peerMgr_.co_clearCounters();
+  co_await peerMgr_.co_clearCounters(peerAddrs);
 }
 
 } // namespace facebook::bgp

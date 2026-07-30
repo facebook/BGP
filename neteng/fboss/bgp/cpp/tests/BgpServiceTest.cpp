@@ -1236,7 +1236,25 @@ TEST_F(BgpServiceTestFixture, ClearCountersTest) {
   auto peerMgrThread = peerManager_->runInThread();
   auto sessionMgrThread = sessionMgr_->runInThread();
 
-  folly::coro::blockingWait(service_->co_clearCounters());
+  folly::coro::blockingWait(
+      service_->co_clearCounters(std::make_unique<std::vector<std::string>>()));
+
+  peerManager_->stop();
+  sessionMgr_->stop();
+  peerMgrThread.join();
+  sessionMgrThread.join();
+}
+
+// Peer-scoped clearCounters filters to the given IP(s); an address with no
+// matching peer is a no-op and still completes cleanly through both the socket
+// and AdjRib clear paths.
+TEST_F(BgpServiceTestFixture, ClearCountersForPeerTest) {
+  auto peerMgrThread = peerManager_->runInThread();
+  auto sessionMgrThread = sessionMgr_->runInThread();
+
+  folly::coro::blockingWait(service_->co_clearCounters(
+      std::make_unique<std::vector<std::string>>(
+          std::vector<std::string>{"2401:db00::1"})));
 
   peerManager_->stop();
   sessionMgr_->stop();

@@ -280,7 +280,8 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
    * peers. Hops onto the PeerManager evb itself, so thrift-handler callers on
    * other threads can co_await it without blocking. Does not touch live prefix
    * gauges. */
-  folly::coro::Task<void> co_clearCounters();
+  folly::coro::Task<void> co_clearCounters(
+      const std::vector<folly::IPAddress>& peers);
 
   /* Get hold timer information on all peers. */
   std::vector<neteng::fboss::bgp::thrift::THoldTimerInfo> getHoldTimerInfos(

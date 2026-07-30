@@ -264,7 +264,8 @@ class BgpServiceBase
 
   void clearProfilerStats() override;
 
-  folly::coro::Task<void> co_clearCounters() override;
+  folly::coro::Task<void> co_clearCounters(
+      std::unique_ptr<std::vector<std::string>> peers) override;
 
   /**
    * [Health]
