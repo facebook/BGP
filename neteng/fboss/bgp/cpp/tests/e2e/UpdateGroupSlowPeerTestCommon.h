@@ -312,10 +312,26 @@ class SlowPeerTestBase : public UpdateGroupDistributionTestBase {
 
   /*
    * Get update group state for a peer's group.
+   *
+   * Hops to the PeerManagerBase event base before reading state_ — the group
+   * state machine is mutated on the evb (e.g. the change-list consume timer's
+   * transition to WAITING/IDLE and
+   * tryRejoinDetachedPeersOnAllChangesProcessed), so an off-evb read races
+   * those writes under TSan.
    */
   UpdateGroupState getGroupState(const folly::IPAddress& peerAddr) {
-    auto group = getUpdateGroupForPeer(peerAddr);
-    return group ? group->getState() : UpdateGroupState::UNINITIALIZED;
+    if (!peerManager_) {
+      return UpdateGroupState::UNINITIALIZED;
+    }
+    auto& evb = peerManager_->getEventBase();
+    return folly::via(
+               &evb,
+               [this, peerAddr]() -> UpdateGroupState {
+                 auto group = getUpdateGroupForPeer(peerAddr);
+                 return group ? group->getState()
+                              : UpdateGroupState::UNINITIALIZED;
+               })
+        .get();
   }
 
   /*

@@ -490,13 +490,15 @@ void AdjRibOutGroup::createChangeListConsumeTimer() noexcept {
       scheduleChangeListConsumeTimer();
     }
     /* Trigger message building if packing list has entries */
-    if (!attrToPrefixMap_.empty() &&
-        (state_ == UpdateGroupState::READY ||
-         state_ == UpdateGroupState::IDLE)) {
-      state_ = UpdateGroupState::WAITING;
-      asyncScope_.add(
-          folly::coro::co_withExecutor(
-              &evb_, buildAndSendGroupBgpMessages(false)));
+    if (state_ == UpdateGroupState::READY || state_ == UpdateGroupState::IDLE) {
+      if (!attrToPrefixMap_.empty()) {
+        state_ = UpdateGroupState::WAITING;
+        asyncScope_.add(
+            folly::coro::co_withExecutor(
+                &evb_, buildAndSendGroupBgpMessages(false)));
+      } else {
+        tryRejoinDetachedPeersOnAllChangesProcessed();
+      }
     }
   });
 }
@@ -1833,20 +1835,10 @@ folly::coro::Task<void> AdjRibOutGroup::buildAndSendGroupBgpMessages(
     packingInProgress_ = false;
 
     /*
-     * Transition to IDLE if packing list is now empty.
+     * Transition to IDLE and rejoin detached peers if packing list is now
+     * empty.
      */
-    if (attrToPrefixMap_.empty()) {
-      XLOGF_IF(
-          DBG2,
-          state_ != UpdateGroupState::IDLE,
-          "Group {}: State Transition: {} -> IDLE",
-          groupDescriptor_,
-          state_);
-      state_ = UpdateGroupState::IDLE;
-
-      // Check for peers ready to rejoin after PL drain or PL empty.
-      checkAndAcceptReadyToJoinPeers();
-    }
+    tryRejoinDetachedPeersOnAllChangesProcessed();
 
     /*
      * checkAndAcceptReadyToJoinPeers may promote a detached peer, taking
@@ -3510,6 +3502,23 @@ void AdjRibOutGroup::markPeerInSync(
       groupDescriptor_,
       adjRib->getPeerName(),
       bit);
+}
+
+void AdjRibOutGroup::tryRejoinDetachedPeersOnAllChangesProcessed() noexcept {
+  if (!attrToPrefixMap_.empty()) {
+    return;
+  }
+
+  XLOGF_IF(
+      DBG2,
+      state_ != UpdateGroupState::IDLE,
+      "Group {}: State Transition: {} -> IDLE",
+      groupDescriptor_,
+      state_);
+  state_ = UpdateGroupState::IDLE;
+
+  // Check for peers ready to rejoin after PL drain or PL empty.
+  checkAndAcceptReadyToJoinPeers();
 }
 
 /*

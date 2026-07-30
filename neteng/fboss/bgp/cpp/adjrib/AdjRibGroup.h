@@ -966,6 +966,15 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   void checkAndAcceptReadyToJoinPeers() noexcept;
 
   /*
+   * Invoked once the group has processed all pending changes (packing list
+   * empty): transition the group to IDLE and try to rejoin detached peers via
+   * checkAndAcceptReadyToJoinPeers. No-op if the packing list still has
+   * entries. Called from both the change list consume timer callback and the
+   * buildAndSendGroupBgpMessages cleanup guard.
+   */
+  void tryRejoinDetachedPeersOnAllChangesProcessed() noexcept;
+
+  /*
    * Called by a DSP peer that has transitioned to DETACHED_READY_TO_JOIN
    * to proactively trigger its own rejoin without waiting for the next group
    * PL drain. Only accepts the peer if its change list marker matches the
