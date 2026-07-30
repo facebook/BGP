@@ -346,6 +346,13 @@ bool FiberBgpPeer::processBgpNotificationError(const BgpNotificationError& e) {
   // record the reason to reset
   peeringState_.resetReason = ResetReason::NOTIFICATION_RCVD;
 
+  if (*e.notifyMsg.errCode() == BgpNotifErrCode::BN_CEASE &&
+      *e.notifyMsg.errSubCode() ==
+          static_cast<int16_t>(
+              BgpNotifCeaseErrSubCode::BN_CEASE_CONN_COLLISION_RES)) {
+    bgp::PeerStats::incrConnectionCollisionClosedByPeer();
+  }
+
   // not eligible for graceful restart
   return false;
 }
@@ -553,6 +560,10 @@ void FiberBgpPeer::stop(
         static_cast<uint16_t>(*ceaseErrSubCode),
         "Cease Notification",
         ""));
+    if (*ceaseErrSubCode ==
+        BgpNotifCeaseErrSubCode::BN_CEASE_CONN_COLLISION_RES) {
+      bgp::PeerStats::incrConnectionCollisionClosed();
+    }
   }
   errorQueue_.put(BgpSessionStop{gracefulRestart, peerDelete});
 }

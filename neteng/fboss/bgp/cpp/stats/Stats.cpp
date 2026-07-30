@@ -1727,6 +1727,22 @@ void incrEmptyGarWeightsRejects() {
   STATS_empty_gar_weights_rejects.add(1);
 }
 
+DEFINE_timeseries(
+    connection_collision_closed,
+    kConnectionCollisionClosed,
+    fb303::COUNT);
+void incrConnectionCollisionClosed() {
+  STATS_connection_collision_closed.add(1);
+}
+
+DEFINE_timeseries(
+    connection_collision_closed_by_peer,
+    kConnectionCollisionClosedByPeer,
+    fb303::COUNT);
+void incrConnectionCollisionClosedByPeer() {
+  STATS_connection_collision_closed_by_peer.add(1);
+}
+
 } // namespace PeerStats
 
 //------------------------ FsdbStats ------------------------//

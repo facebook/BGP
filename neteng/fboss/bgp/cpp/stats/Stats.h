@@ -1020,6 +1020,20 @@ DECLARE_timeseries(empty_gar_weights_rejects);
 inline constexpr auto kEmptyGarWeightsRejects = "empty_gar_weights_rejects"_fs;
 void incrEmptyGarWeightsRejects();
 
+// Device-level count of connection collisions resolved locally by closing the
+// losing connection (i.e. we sent a BN_CEASE_CONN_COLLISION_RES notification).
+DECLARE_timeseries(connection_collision_closed);
+inline constexpr auto kConnectionCollisionClosed =
+    "connection_collision_closed"_fs;
+void incrConnectionCollisionClosed();
+
+// Device-level count of BN_CEASE connection-collision-resolution NOTIFICATIONs
+// received from peers (i.e. the peer resolved the collision by closing us).
+DECLARE_timeseries(connection_collision_closed_by_peer);
+inline constexpr auto kConnectionCollisionClosedByPeer =
+    "connection_collision_closed_by_peer"_fs;
+void incrConnectionCollisionClosedByPeer();
+
 } // namespace PeerStats
 
 //------------------------ FsdbStats ------------------------//
