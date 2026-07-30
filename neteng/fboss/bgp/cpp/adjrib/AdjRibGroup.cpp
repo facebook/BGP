@@ -478,10 +478,12 @@ void AdjRibOutGroup::createChangeListConsumeTimer() noexcept {
     XLOGF_IF(
         DBG1,
         previousRibVersion != lastSeenRibVersion_,
-        "Group {}: Updating cached RIB version from {} to {}",
+        "Group {}: Updating cached RIB version from {} to {}, state: {} with packing list to send: {}",
         groupDescriptor_,
         previousRibVersion,
-        lastSeenRibVersion_);
+        lastSeenRibVersion_,
+        state_,
+        !attrToPrefixMap_.empty());
 
     /* Keep the group frozen while it has no SYNC peers. */
     if (numInSyncPeers_ > 0) {
@@ -1292,13 +1294,13 @@ void AdjRibOutGroup::processRibAnnouncedEntryForGroup(
         entry.prefix,
         adjRibEntry,
         fmt::format(
-            "Group {} withdrawing {} from [{}]. "
+            "Group {} withdrawing {} learned from [{}]. "
             "Reason: Blocked prefix by policy. (Previously announced to group)",
             groupDescriptor_,
             folly::IPAddress::networkToString(entry.prefix),
             updatePeerIdStr),
         fmt::format(
-            "Group {} ignoring Rib announcement {} from [{}]. "
+            "Group {} ignoring Rib announcement {} learned from [{}]. "
             "Reason: Blocked prefix by policy. (Not previously announced to group)",
             groupDescriptor_,
             folly::IPAddress::networkToString(entry.prefix),
