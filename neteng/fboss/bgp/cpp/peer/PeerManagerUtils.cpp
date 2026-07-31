@@ -180,18 +180,14 @@ std::vector<TUpdateGroupInfo> PeerManagerBase::getUpdateGroupInfo(
       thriftStats.dsp_rejoin_events() = 0;
       thriftStats.lazy_clone_events() = 0;
 
-      // TODO: AdjRibStats tracks sent update messages as a
-      // single counter (getSentUpdateMsgs), not per-AFI. Split by AFI or
-      // remove the per-AFI thrift fields.
+      // The per-AFI group_update_messages_ipv4/ipv6 stay 0: AdjRibStats tracks
+      // sent UPDATE messages as a single counter, not per-AFI.
       thriftStats.group_update_messages_ipv4() = 0;
       thriftStats.group_update_messages_ipv6() = 0;
 
       int64_t inSyncCount = 0;
       int64_t blockedCount = 0;
       std::map<std::string, int64_t> peerStateCounts;
-      int64_t totalAnnouncementsV4 = 0;
-      int64_t totalAnnouncementsV6 = 0;
-      int64_t totalWithdrawals = 0;
       int64_t totalQueueWaitMs = 0;
       int64_t totalQueueBlocks = 0;
       int64_t lastQueueBlockTime = 0;
@@ -220,9 +216,6 @@ std::vector<TUpdateGroupInfo> PeerManagerBase::getUpdateGroupInfo(
         ++peerStateCounts[std::string(magic_enum::enum_name(state))];
 
         const auto& peerStats = adjRib->getStats();
-        totalAnnouncementsV4 += peerStats.getSentAnnouncementsIpv4();
-        totalAnnouncementsV6 += peerStats.getSentAnnouncementsIpv6();
-        totalWithdrawals += peerStats.getSentWithdrawals();
         totalQueueWaitMs += peerStats.getEgressQueueTotalBlockDuration();
         totalQueueBlocks += peerStats.getEgressQueueBackpressuredEvents();
 
@@ -274,16 +267,25 @@ std::vector<TUpdateGroupInfo> PeerManagerBase::getUpdateGroupInfo(
       info.blocked_peer_count() = blockedCount;
       info.peer_state_counts() = std::move(peerStateCounts);
 
-      thriftStats.total_sent_announcements_ipv4() = totalAnnouncementsV4;
-      thriftStats.total_sent_announcements_ipv6() = totalAnnouncementsV6;
-      thriftStats.group_withdrawals() = totalWithdrawals;
+      /* Announcement/withdrawal PDU counts come from the group's own
+       * AdjRibStats: the group builds each UPDATE once for its in-sync members
+       * (whose per-peer counters stay 0), so read the group directly -- uniform
+       * with post_out_prefix_count below. A detached member's independent
+       * per-peer sends are surfaced in its own `show bgp neighbor` detail and
+       * the peer table, not rolled up into the group total. */
+      const auto& groupStats = group->getStats();
+      thriftStats.total_sent_announcement_msgs_ipv4() =
+          static_cast<int64_t>(groupStats.getSentAnnouncementsIpv4());
+      thriftStats.total_sent_announcement_msgs_ipv6() =
+          static_cast<int64_t>(groupStats.getSentAnnouncementsIpv6());
+      thriftStats.total_sent_withdrawal_msgs() =
+          static_cast<int64_t>(groupStats.getSentWithdrawals());
       thriftStats.group_total_queue_wait_ms() = totalQueueWaitMs;
       thriftStats.group_total_queue_blocks() = totalQueueBlocks;
       if (lastQueueBlockTime > 0) {
         thriftStats.last_group_queue_block_time() = lastQueueBlockTime;
       }
 
-      const auto& groupStats = group->getStats();
       thriftStats.post_out_prefix_count() = groupStats.getPostOutPrefixCount();
       thriftStats.post_out_prefix_count_ipv4() =
           groupStats.getPostOutPrefixCountIpv4();
@@ -726,6 +728,23 @@ TBgpSession PeerManagerBase::getDetailSessionInfo(
         }
         if (auto g = adjRib->getUpdateGroupSentEndOfRibMsgs(); g.has_value()) {
           tBgpSessionDetail.adjrib_sent_eor_msgs() =
+              static_cast<int64_t>(g.value());
+        }
+        // The announcement/withdrawal PDUs are likewise generated once at the
+        // group for in-sync members (per-peer counters set above stay 0), so
+        // attribute the group's counts to each member.
+        if (auto g = adjRib->getUpdateGroupSentAnnouncementsIpv4();
+            g.has_value()) {
+          tBgpSessionDetail.sent_update_announcements_ipv4() =
+              static_cast<int64_t>(g.value());
+        }
+        if (auto g = adjRib->getUpdateGroupSentAnnouncementsIpv6();
+            g.has_value()) {
+          tBgpSessionDetail.sent_update_announcements_ipv6() =
+              static_cast<int64_t>(g.value());
+        }
+        if (auto g = adjRib->getUpdateGroupSentWithdrawals(); g.has_value()) {
+          tBgpSessionDetail.sent_update_withdrawals() =
               static_cast<int64_t>(g.value());
         }
       }

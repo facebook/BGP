@@ -2106,6 +2106,50 @@ TEST_F(AdjRibGroupPackingFixture, BuildAndSendGroupBgpMessages_MixedMessages) {
   EXPECT_EQ(2, adjRibOutGroup_->getStats().getSentUpdateMsgs());
   // EoR is a distinct PDU; a pure UPDATE flow must not touch the EoR counter.
   EXPECT_EQ(0, adjRibOutGroup_->getStats().getSentEndOfRibMsgs());
+  // Announcement/withdrawal PDUs are tracked per-AFI on the group (1 IPv4
+  // announcement + 1 IPv4 withdrawal here) and attributed to in-sync members.
+  EXPECT_EQ(1, adjRibOutGroup_->getStats().getSentAnnouncementsIpv4());
+  EXPECT_EQ(0, adjRibOutGroup_->getStats().getSentAnnouncementsIpv6());
+  EXPECT_EQ(1, adjRibOutGroup_->getStats().getSentWithdrawals());
+}
+
+/**
+ * Test: the group tracks announcement PDUs per AFI and withdrawal PDUs,
+ * mirroring the per-peer AdjRibOut counters. An in-sync group builds each
+ * UPDATE once, so these group counters (not the members' zeroed per-peer
+ * counters) are the source of truth surfaced by `show bgp update-group` and
+ * attributed to in-sync members.
+ */
+TEST_F(
+    AdjRibGroupPackingFixture,
+    BuildAndSendGroupBgpMessages_CountsAnnouncementsAndWithdrawalsPerAfi) {
+  UpdateGroupKey key;
+  key.afiIpv4Negotiated = true;
+  key.afiIpv6Negotiated = true;
+  createAdjRibOutGroup("test_group", 0, key);
+
+  // 1 IPv4 announcement, 1 IPv6 announcement, 1 IPv4 withdrawal.
+  adjRibOutGroup_->tryUpdateAttrToPrefixMapForGroup(
+      std::make_pair(kV4Prefix1_, kPlaceholderPathID),
+      nullptr,
+      announcementAttrs_);
+  adjRibOutGroup_->tryUpdateAttrToPrefixMapForGroup(
+      std::make_pair(kV6Prefix1_, kPlaceholderPathID),
+      nullptr,
+      announcementAttrs_);
+  adjRibOutGroup_->tryUpdateAttrToPrefixMapForGroup(
+      std::make_pair(kV4Prefix2_, kPlaceholderPathID),
+      announcementAttrs2_,
+      nullptr);
+
+  folly::coro::blockingWait(adjRibOutGroup_->buildAndSendGroupBgpMessages());
+
+  const auto& stats = adjRibOutGroup_->getStats();
+  EXPECT_EQ(1, stats.getSentAnnouncementsIpv4());
+  EXPECT_EQ(1, stats.getSentAnnouncementsIpv6());
+  EXPECT_EQ(1, stats.getSentWithdrawals());
+  // Announcement + withdrawal PDUs sum to the total UPDATE PDU count.
+  EXPECT_EQ(3, stats.getSentUpdateMsgs());
 }
 
 /**

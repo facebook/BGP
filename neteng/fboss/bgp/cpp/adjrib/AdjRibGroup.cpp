@@ -1929,6 +1929,16 @@ folly::coro::Task<void> AdjRibOutGroup::buildAndSendGroupBgpMessages(
       if (attr) {
         // Announcement
         announcePrefixCnt += update->mpAnnounced()->prefixes()->size();
+
+        /* Group-level count of announcement UPDATE PDUs generated once for this
+         * group, per AFI (one bump per PDU, mirroring the per-peer AdjRibOut
+         * sites). In-sync members' per-peer counters stay 0; getSessionInfo /
+         * getUpdateGroupInfo attribute these to the group's members. */
+        if (afi == nettools::bgplib::BgpUpdateAfi::AFI_IPv4) {
+          stats_.incrementSentAnnouncementsIpv4();
+        } else if (afi == nettools::bgplib::BgpUpdateAfi::AFI_IPv6) {
+          stats_.incrementSentAnnouncementsIpv6();
+        }
       } else {
         // Withdrawal
         if (afi == nettools::bgplib::BgpUpdateAfi::AFI_IPv4) {
@@ -1936,6 +1946,11 @@ folly::coro::Task<void> AdjRibOutGroup::buildAndSendGroupBgpMessages(
         } else if (afi == nettools::bgplib::BgpUpdateAfi::AFI_IPv6) {
           withdrawPrefixCnt += update->mpWithdrawn()->prefixes()->size();
         }
+
+        /* Group-level count of withdrawal UPDATE PDUs generated for this group
+         * (single counter, not per-AFI -- mirrors the per-peer AdjRibOut site).
+         */
+        stats_.incrementSentWithdrawals();
       }
 
       // Distribute to all in-sync peers

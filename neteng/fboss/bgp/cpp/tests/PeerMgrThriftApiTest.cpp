@@ -693,6 +693,19 @@ TEST_F(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest) {
   }
   adjRib->stats_.incrementSentUpdateMsgs(kPerPeerSentUpdates);
   adjRib->stats_.incrementSentEndOfRibMsgs(kPerPeerSentEoRs);
+
+  constexpr uint64_t kPerPeerSentAnnouncementsV4 = 7;
+  constexpr uint64_t kPerPeerSentAnnouncementsV6 = 8;
+  constexpr uint64_t kPerPeerSentWithdrawals = 9;
+  for (uint64_t i = 0; i < kPerPeerSentAnnouncementsV4; ++i) {
+    adjRib->stats_.incrementSentAnnouncementsIpv4();
+  }
+  for (uint64_t i = 0; i < kPerPeerSentAnnouncementsV6; ++i) {
+    adjRib->stats_.incrementSentAnnouncementsIpv6();
+  }
+  for (uint64_t i = 0; i < kPerPeerSentWithdrawals; ++i) {
+    adjRib->stats_.incrementSentWithdrawals();
+  }
   mockPeerMgr->adjRibs_[adjRibKey] = adjRib;
 
   /*
@@ -736,6 +749,14 @@ TEST_F(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest) {
     EXPECT_EQ(kPerPeerRecvEoRs, d.adjrib_recv_eor_msgs().value());
     EXPECT_EQ(kPerPeerSentUpdates, d.adjrib_sent_update_msgs().value());
     EXPECT_EQ(kPerPeerSentEoRs, d.adjrib_sent_eor_msgs().value());
+    // No group yet: announcement/withdrawal PDU counts are per-peer.
+    EXPECT_EQ(
+        kPerPeerSentAnnouncementsV4,
+        d.sent_update_announcements_ipv4().value());
+    EXPECT_EQ(
+        kPerPeerSentAnnouncementsV6,
+        d.sent_update_announcements_ipv6().value());
+    EXPECT_EQ(kPerPeerSentWithdrawals, d.sent_update_withdrawals().value());
   }
 
   /*
@@ -749,6 +770,18 @@ TEST_F(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest) {
   constexpr uint64_t kGroupSentEoRs = 4;
   group->stats_.incrementSentUpdateMsgs(kGroupSentUpdates);
   group->stats_.incrementSentEndOfRibMsgs(kGroupSentEoRs);
+  constexpr uint64_t kGroupSentAnnouncementsV4 = 41;
+  constexpr uint64_t kGroupSentAnnouncementsV6 = 42;
+  constexpr uint64_t kGroupSentWithdrawals = 43;
+  for (uint64_t i = 0; i < kGroupSentAnnouncementsV4; ++i) {
+    group->stats_.incrementSentAnnouncementsIpv4();
+  }
+  for (uint64_t i = 0; i < kGroupSentAnnouncementsV6; ++i) {
+    group->stats_.incrementSentAnnouncementsIpv6();
+  }
+  for (uint64_t i = 0; i < kGroupSentWithdrawals; ++i) {
+    group->stats_.incrementSentWithdrawals();
+  }
   adjRib->setUpdateGroup(group);
   adjRib->setPeerState(PeerUpdateState::JOINED_RUNNING);
   {
@@ -758,6 +791,13 @@ TEST_F(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest) {
     EXPECT_EQ(kPerPeerRecvEoRs, d.adjrib_recv_eor_msgs().value());
     EXPECT_EQ(kGroupSentUpdates, d.adjrib_sent_update_msgs().value());
     EXPECT_EQ(kGroupSentEoRs, d.adjrib_sent_eor_msgs().value());
+    // In-sync member: announcement/withdrawal PDU counts are attributed to the
+    // group's shared counts (the per-peer counters set above are ignored).
+    EXPECT_EQ(
+        kGroupSentAnnouncementsV4, d.sent_update_announcements_ipv4().value());
+    EXPECT_EQ(
+        kGroupSentAnnouncementsV6, d.sent_update_announcements_ipv6().value());
+    EXPECT_EQ(kGroupSentWithdrawals, d.sent_update_withdrawals().value());
   }
 
   // Detach the group before tearing down groupEvb, which must outlive it.

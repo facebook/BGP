@@ -14,8 +14,16 @@
  * limitations under the License.
  */
 
-#define PeerManager_TEST_FRIENDS \
-  FRIEND_TEST(PeerManagerUpdateGroupTestFixture, UpdateGroupConstructionTest);
+#define PeerManager_TEST_FRIENDS                                               \
+  FRIEND_TEST(PeerManagerUpdateGroupTestFixture, UpdateGroupConstructionTest); \
+  FRIEND_TEST(                                                                 \
+      PeerManagerUpdateGroupTestFixture,                                       \
+      GetUpdateGroupInfoSurfacesGroupStats);
+
+#define AdjRibOutGroup_TEST_FRIENDS      \
+  FRIEND_TEST(                           \
+      PeerManagerUpdateGroupTestFixture, \
+      GetUpdateGroupInfoSurfacesGroupStats);
 
 #include <folly/coro/BlockingWait.h>
 #include <folly/fibers/FiberManagerMap.h>
@@ -117,6 +125,67 @@ TEST_F(PeerManagerUpdateGroupTestFixture, UpdateGroupConstructionTest) {
     EXPECT_NE(adjRibOutGroup, updateGroup);
 
     // trigger stop of task
+    cleanUp();
+  });
+  evb.loop();
+  SUCCEED();
+}
+
+/*
+ * getUpdateGroupInfo() surfaces the group's OWN AdjRibStats (announcement /
+ * withdrawal / UPDATE / EoR PDU counts) into TUpdateGroupStats. For in-sync
+ * members the UPDATE is built once at the group, so the members' per-peer
+ * counters stay 0 and the group's counters are the source of truth. This guards
+ * the group-stats -> thrift wiring (previously the announce/withdraw fields
+ * were summed from the zeroed per-peer counters and read 0).
+ */
+TEST_F(
+    PeerManagerUpdateGroupTestFixture,
+    GetUpdateGroupInfoSurfacesGroupStats) {
+  auto& evb = peerMgr_->getEventBase();
+  auto& fm = folly::fibers::getFiberManager(peerMgr_->getEventBase(), options_);
+
+  FiberBgpPeer::ObservableStateT stateEvent{
+      .peerId = kPeerId3,
+      .versionNumber = version_,
+      .sessionInfo = sessionInfo_};
+
+  peerMgr_->ribInitialAnnouncementStarted_ = true;
+  peerMgr_->ribInitialAnnouncementDone_ = true;
+
+  fm.addTask([&] {
+    folly::coro::blockingWait(peerMgr_->sessionEstablished(stateEvent));
+
+    auto adjRib = peerMgr_->adjRibs_.at(kPeerId3);
+    auto updateGroupKey = adjRib->getUpdateGroupKey();
+    // Read the group from the same manager getUpdateGroupInfo() iterates.
+    auto group =
+        peerMgr_->updateGroupManager_->findOrCreateGroup(updateGroupKey);
+    ASSERT_NE(group, nullptr);
+
+    // Inject known group-level counts directly (the send path would set these;
+    // here we set them to keep the test focused on getUpdateGroupInfo wiring).
+    constexpr uint64_t kAnnV4 = 11;
+    constexpr uint64_t kAnnV6 = 12;
+    constexpr uint64_t kWithdrawals = 13;
+    for (uint64_t i = 0; i < kAnnV4; ++i) {
+      group->stats_.incrementSentAnnouncementsIpv4();
+    }
+    for (uint64_t i = 0; i < kAnnV6; ++i) {
+      group->stats_.incrementSentAnnouncementsIpv6();
+    }
+    for (uint64_t i = 0; i < kWithdrawals; ++i) {
+      group->stats_.incrementSentWithdrawals();
+    }
+
+    const auto groupId = static_cast<int64_t>(group->getGroupId());
+    auto infos = peerMgr_->getUpdateGroupInfo(groupId);
+    ASSERT_EQ(1, infos.size());
+    const auto& stats = infos[0].stats().value();
+    EXPECT_EQ(kAnnV4, stats.total_sent_announcement_msgs_ipv4().value());
+    EXPECT_EQ(kAnnV6, stats.total_sent_announcement_msgs_ipv6().value());
+    EXPECT_EQ(kWithdrawals, stats.total_sent_withdrawal_msgs().value());
+
     cleanUp();
   });
   evb.loop();
