@@ -83,7 +83,17 @@ class AdjRibGroupTest : public ::testing::Test {
       uint64_t groupId = 0,
       const UpdateGroupKey& groupKey = UpdateGroupKey{}) {
     adjRibOutGroup_ = std::make_shared<AdjRibOutGroup>(
-        *evb_, groupName, groupId, true /* enableUpdateGroup */, groupKey);
+        *evb_,
+        groupName,
+        groupId,
+        true /* enableUpdateGroup */,
+        groupKey,
+        /*
+         * Null shadow RIB map (tests that need entries pass their own view),
+         * but a real maxRibVersion_ so the change list consume timer can
+         * dereference it.
+         */
+        ShadowRibView{nullptr, &maxRibVersion_});
   }
 
   /**
@@ -144,6 +154,16 @@ class AdjRibGroupTest : public ::testing::Test {
    */
   ConsumerBitmap addPathConsumerBitmap_;
   ConsumerBitmap nonAddPathConsumerBitmap_;
+
+  /*
+   * Stands in for PeerManagerBase's maxRibVersion_, which a group points at
+   * through its ShadowRibView. The change list consume timer callback
+   * dereferences that pointer unconditionally, so any group whose timer can
+   * fire must be given a non-null one -- the ShadowRibView default leaves it
+   * null. Declared after adjRibOutGroup_ so it outlives the group pointing at
+   * it.
+   */
+  uint64_t maxRibVersion_{0};
 };
 
 /**
@@ -302,7 +322,13 @@ TEST_F(AdjRibGroupTest, MultipleGroupsSameTracker) {
   adjRibOutGroup_->registerGroupConsumer();
 
   /* Create second group with same tracker */
-  auto group2 = std::make_shared<AdjRibOutGroup>(*evb_, "group2", 2);
+  auto group2 = std::make_shared<AdjRibOutGroup>(
+      *evb_,
+      "group2",
+      2,
+      true /* enableUpdateGroup */,
+      UpdateGroupKey{},
+      ShadowRibView{nullptr, &maxRibVersion_});
   group2->setChangeListTracker(
       changeListTracker_, addPathConsumerBitmap_, nonAddPathConsumerBitmap_);
   group2->registerGroupConsumer();
@@ -2497,7 +2523,7 @@ class AdjRibGroupAddPathFixture : public AdjRibGroupTest {
         42,
         true /* enableUpdateGroup */,
         groupKey,
-        ShadowRibView{shadowRibEntries, nullptr});
+        ShadowRibView{shadowRibEntries, &maxRibVersion_});
   }
 
   std::shared_ptr<BgpPath> createPath(uint32_t localPref) {

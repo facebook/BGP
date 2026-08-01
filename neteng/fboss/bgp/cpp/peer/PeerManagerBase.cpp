@@ -3177,7 +3177,18 @@ std::shared_ptr<AdjRibOutGroup> PeerManagerBase::createAdjRibOutGroup(
   std::shared_ptr<AdjRibOutGroup> adjRibOutGroup;
 
   XLOGF(INFO, "Create Adjacency Out Group: {}", groupName);
-  adjRibOutGroup = std::make_shared<AdjRibOutGroup>(evb_, groupName);
+  /*
+   * Wire the shadow RIB view so peers on this group (the update-group-disabled
+   * path) can read maxRibVersion after consuming to the end of the change
+   * list, the same way UpdateGroupManager-created groups do.
+   */
+  adjRibOutGroup = std::make_shared<AdjRibOutGroup>(
+      evb_,
+      groupName,
+      0 /* groupId */,
+      false /* enableUpdateGroup */,
+      UpdateGroupKey{},
+      ShadowRibView{&shadowRibEntries_, &maxRibVersion_});
   adjRibOutGroups_.emplace(groupName, adjRibOutGroup);
   BgpStats::incrAdjRibOutGroupsCount();
   return adjRibOutGroup;

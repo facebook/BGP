@@ -1044,6 +1044,23 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   }
 
   /*
+   * PeerManagerBase's max seen RIB version, read through the group's
+   * ShadowRibView. Returns 0 when no shadow RIB is wired in -- callers feed
+   * this to a setLastSeenRibVersion() that only advances, so 0 is a no-op.
+   */
+  uint64_t getShadowRibMaxVersion() const noexcept {
+    if (!maxRibVersion_) {
+      XLOGF_EVERY_MS(
+          ERR,
+          1000000,
+          "Group {}: Unexpected maxRibVersion_ nullptr, cannot report max RIB version",
+          groupDescriptor_);
+      return 0;
+    }
+    return *maxRibVersion_;
+  }
+
+  /*
    * Get read-only access to the peer-to-AdjRib map for CLI/thrift reporting.
    */
   const std::unordered_map<uint64_t, std::shared_ptr<AdjRib>>& getBitToAdjRibs()
@@ -1064,12 +1081,19 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   }
 
   /*
-   * Set the last seen RIB version for this group.
-   * Called after initial dump completes and when consuming change list
-   * updates.
+   * Set the last seen RIB version for this group. Called after initial dump
+   * completes and when consuming change list updates.
+   *
+   * Only ever advances. Egress policy re-eval walks the shadow RIB and jumps
+   * the group to maxRibVersion, then the consume timer iterates a change list
+   * still holding older items -- processShadowRibEntryChange() would otherwise
+   * hand back their lower ribVersions and regress the group. Use
+   * clearLastSeenRibVersion() to reset.
    */
   void setLastSeenRibVersion(uint64_t version) noexcept {
-    lastSeenRibVersion_ = version;
+    if (version > lastSeenRibVersion_) {
+      lastSeenRibVersion_ = version;
+    }
   }
 
   /*

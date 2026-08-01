@@ -1303,6 +1303,17 @@ void AdjRib::activateChangeListConsumer() noexcept {
           // Use iterator-based interface for consuming change items
           auto previousRibVersion = lastSeenRibVersion_;
           changeListConsumer_->iterateChanges();
+          /*
+           * isReady() means the marker reached the end of the change list, so
+           * this peer has seen every item it will be offered and can claim the
+           * RIB's max version. Items its consumer bit was never set on (e.g.
+           * add-path-only changes for a non-add-path peer) are skipped by
+           * markProcessed and would otherwise leave the peer trailing the RIB
+           * forever.
+           */
+          if (changeListConsumer_->isReady()) {
+            setLastSeenRibVersion(adjRibOutGroup_->getShadowRibMaxVersion());
+          }
           if (changeListConsumer_->isStale(kConsumerStalenessThreshold) &&
               !changeListConsumer_->isStalenessLogged()) {
             XLOGF(
@@ -1475,6 +1486,16 @@ bool AdjRib::registerDetachedConsumer(
     auto groupConsumer = adjRibOutGroup_->getChangeListConsumer();
     auto* groupMarker = groupConsumer->getMarker();
     changeListConsumer_->iterateChangesUntilExcluding(groupMarker);
+    /*
+     * isReady() means the marker reached the end of the change list -- only
+     * possible when the group itself had consumed everything (groupMarker was
+     * null), so this peer has seen every item it will be offered and can claim
+     * the RIB's max version. Stopping on a real boundary item is by design and
+     * must keep the per-item version, or the peer would advance past the group.
+     */
+    if (changeListConsumer_->isReady()) {
+      setLastSeenRibVersion(adjRibOutGroup_->getShadowRibMaxVersion());
+    }
     if (changeListConsumer_->isStale(kConsumerStalenessThreshold) &&
         !changeListConsumer_->isStalenessLogged()) {
       XLOGF(

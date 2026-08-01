@@ -465,6 +465,24 @@ void AdjRibOutGroup::createChangeListConsumeTimer() noexcept {
     {
       ScopedProfile profile("AdjRibOutGroup::consumeChangeList");
       changeListConsumer_->iterateChanges();
+      /*
+       * When the group runs iterateChanges, it runs to the end of the
+       * changelist. It is important for us to set the correct rib version
+       * at the end of this call, which is actually the maxRibVersion_
+       * perceived by PeerManager's shadow RIB.
+       *
+       * This is because:
+       *   1. Not all changes from RIB are published to the changelist
+       *   2. Not all changes published to the changelist are for this consumer.
+       *
+       * If we do not have the opportunity to run processChangeItem on
+       * an actual item, then we can only update to the RIB version of
+       * a change item seen by this consumer. This means we do not
+       * reflect that consuming to the end of the changelist will
+       * update the maxRibVersion_ to the latest snapshot of the RIB, which
+       * is undesired.
+       */
+      setLastSeenRibVersion(*maxRibVersion_);
     }
     if (changeListConsumer_->isStale(kConsumerStalenessThreshold) &&
         !changeListConsumer_->isStalenessLogged()) {
