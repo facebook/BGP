@@ -523,19 +523,43 @@ TModuleHealthReport HealthValidator::checkGlobalConvergence() {
         msg));
   }
 
-  /* 1.3.5 All init phases completed in order */
+  /* 1.3.5 All init phases completed in canonical order.
+   *
+   * The full BgpInitializationEvent sequence is validated in enum order, which
+   * is its intended chronological order. Absent events are skipped rather than
+   * treated as end-of-sequence: some phases are legitimately absent -- e.g.
+   * FSDB_SUBSCRIBED fires only on the DC agent, ALL_EOR_RECEIVED and
+   * EOR_TIMER_EXPIRED are alternative convergence triggers (typically only one
+   * occurs), and any tail event is missing while initialization is still in
+   * progress. Only events that actually fired are compared pairwise, so ANY
+   * out-of-order timestamp is flagged generically -- including an
+   * ALL_EOR_RECEIVED that lands after the EoR timer forced convergence (and
+   * after INITIALIZED).
+   *
+   * An inversion is FAIL, not WARN: it means the daemon marked INITIALIZED and
+   * programmed FIB before a peer's routes were in, then that peer's EoR arrived
+   * late -- a real convergence-correctness violation. A clean forced
+   * convergence (EoR timer fired, no peer ever caught up) produces no inversion
+   * and stays PASS here; that softer signal is surfaced as WARN by the
+   * INIT_TIMEOUT / EOR_RECEIVED checks instead. */
   {
     using BgpInitEvent = neteng::fboss::bgp::thrift::BgpInitializationEvent;
     std::vector<BgpInitEvent> expectedOrder = {
         BgpInitEvent::INITIALIZING,
         BgpInitEvent::AGENT_CONFIGURED,
+        BgpInitEvent::FSDB_SUBSCRIBED,
         BgpInitEvent::PEER_INFO_LOADED,
+        BgpInitEvent::ALL_EOR_RECEIVED,
+        BgpInitEvent::EOR_TIMER_EXPIRED,
         BgpInitEvent::RIB_COMPUTED,
+        BgpInitEvent::FIB_SYNCED,
+        BgpInitEvent::EOR_SENT,
         BgpInitEvent::INITIALIZED,
     };
 
     bool ordered = true;
     int64_t prevTime = -1;
+    std::optional<BgpInitEvent> prevEvent;
     std::string detail;
     for (const auto& event : expectedOrder) {
       auto counter = getCounter(
@@ -543,19 +567,22 @@ TModuleHealthReport HealthValidator::checkGlobalConvergence() {
               kInitEventCounterFormat,
               apache::thrift::util::enumNameSafe(event)));
       if (!counter.has_value()) {
-        /* Event not yet reached — ok if later events also missing */
-        break;
+        /* Event absent (skipped phase, alternate EoR trigger, or init still in
+         * progress) -- skip it and keep validating the events that did fire. */
+        continue;
       }
       if (*counter < prevTime) {
         ordered = false;
         detail = fmt::format(
-            "{} time ({}ms) < previous ({}ms)",
+            "out-of-order: {} ({}ms) occurred after {} ({}ms)",
+            apache::thrift::util::enumNameSafe(*prevEvent),
+            prevTime,
             apache::thrift::util::enumNameSafe(event),
-            *counter,
-            prevTime);
+            *counter);
         break;
       }
       prevTime = *counter;
+      prevEvent = event;
     }
 
     std::string initPhasesMsg = ordered
@@ -564,7 +591,7 @@ TModuleHealthReport HealthValidator::checkGlobalConvergence() {
     checks.emplace_back(makeResult(
         HealthCheckId::GLOBAL_CONVERGENCE_INIT_PHASES,
         HealthCheckCategory::GLOBAL_CONVERGENCE,
-        ordered ? HealthCheckStatus::PASS : HealthCheckStatus::WARN,
+        ordered ? HealthCheckStatus::PASS : HealthCheckStatus::FAIL,
         initPhasesMsg));
   }
 

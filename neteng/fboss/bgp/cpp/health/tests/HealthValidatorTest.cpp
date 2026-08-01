@@ -496,6 +496,76 @@ CO_TEST_F(HealthValidatorTest, Convergence_InitPhases_Pass) {
   EXPECT_EQ(*check->status(), HealthCheckStatus::PASS);
 }
 
+CO_TEST_F(HealthValidatorTest, Convergence_InitPhases_LateEorAfterTimer_Fail) {
+  /* EoR timer forced convergence at 120979ms and INITIALIZED published 1ms
+   * later; ALL_EOR_RECEIVED did not land until 446272ms -- ~5.4 min after the
+   * timer and after INITIALIZED. The daemon programmed FIB before a peer's
+   * routes were in, so this out-of-order inversion is a FAIL. */
+  setCounter("initialization.INITIALIZING.duration_ms", 1);
+  setCounter("initialization.AGENT_CONFIGURED.duration_ms", 43);
+  setCounter("initialization.PEER_INFO_LOADED.duration_ms", 69);
+  setCounter("initialization.ALL_EOR_RECEIVED.duration_ms", 446272);
+  setCounter("initialization.EOR_TIMER_EXPIRED.duration_ms", 120979);
+  setCounter("initialization.RIB_COMPUTED.duration_ms", 120979);
+  setCounter("initialization.FIB_SYNCED.duration_ms", 120980);
+  setCounter("initialization.EOR_SENT.duration_ms", 120980);
+  setCounter("initialization.INITIALIZED.duration_ms", 120980);
+
+  auto report = co_await validator_->generateReport();
+  auto* check =
+      findCheck(report, HealthCheckId::GLOBAL_CONVERGENCE_INIT_PHASES);
+  EXPECT_NE(check, nullptr);
+  if (!check) {
+    co_return;
+  }
+  EXPECT_EQ(*check->status(), HealthCheckStatus::FAIL);
+}
+
+CO_TEST_F(HealthValidatorTest, Convergence_InitPhases_NaturalEor_Pass) {
+  /* Healthy convergence: all EoR received (300ms) before RIB computation, no
+   * EoR timer expiry. Full event sequence is monotonic. */
+  setCounter("initialization.INITIALIZING.duration_ms", 0);
+  setCounter("initialization.AGENT_CONFIGURED.duration_ms", 100);
+  setCounter("initialization.PEER_INFO_LOADED.duration_ms", 200);
+  setCounter("initialization.ALL_EOR_RECEIVED.duration_ms", 300);
+  setCounter("initialization.RIB_COMPUTED.duration_ms", 400);
+  setCounter("initialization.FIB_SYNCED.duration_ms", 500);
+  setCounter("initialization.EOR_SENT.duration_ms", 600);
+  setCounter("initialization.INITIALIZED.duration_ms", 700);
+
+  auto report = co_await validator_->generateReport();
+  auto* check =
+      findCheck(report, HealthCheckId::GLOBAL_CONVERGENCE_INIT_PHASES);
+  EXPECT_NE(check, nullptr);
+  if (!check) {
+    co_return;
+  }
+  EXPECT_EQ(*check->status(), HealthCheckStatus::PASS);
+}
+
+CO_TEST_F(HealthValidatorTest, Convergence_InitPhases_TimerForcedNoEor_Pass) {
+  /* Timer forced convergence and ALL_EOR_RECEIVED never fired. The events that
+   * did fire are still monotonic, so ordering is clean -- the never-received
+   * EoR is the EOR_RECEIVED check's concern, not this ordering check. */
+  setCounter("initialization.INITIALIZING.duration_ms", 0);
+  setCounter("initialization.AGENT_CONFIGURED.duration_ms", 100);
+  setCounter("initialization.PEER_INFO_LOADED.duration_ms", 200);
+  setCounter("initialization.EOR_TIMER_EXPIRED.duration_ms", 300);
+  setCounter("initialization.RIB_COMPUTED.duration_ms", 300);
+  setCounter("initialization.FIB_SYNCED.duration_ms", 301);
+  setCounter("initialization.EOR_SENT.duration_ms", 301);
+  setCounter("initialization.INITIALIZED.duration_ms", 301);
+
+  auto report = co_await validator_->generateReport();
+  auto* check =
+      findCheck(report, HealthCheckId::GLOBAL_CONVERGENCE_INIT_PHASES);
+  EXPECT_NE(check, nullptr);
+  if (!check) {
+    co_return;
+  }
+  EXPECT_EQ(*check->status(), HealthCheckStatus::PASS);
+}
+
 /* ── SESSION_MANAGER checks ── */
 
 CO_TEST_F(HealthValidatorTest, Session_Established_Pass) {
