@@ -80,6 +80,20 @@ class HealthValidator {
   evaluatePrefixLimitDrops(
       const std::vector<neteng::fboss::bgp::thrift::TBgpSession>& sessions);
 
+  /*
+   * Classify RIB_ORIGINATED_ROUTES by comparing how many routes the RIB
+   * actually originated against how many the config declares (networks4 +
+   * networks6, the source of truth). The count itself is irrelevant -- zero is
+   * valid (e.g. a backbone router with no network statements); only config-vs-
+   * RIB agreement matters. A shortfall means a configured origination was not
+   * realized in the RIB (invalid origin value, or a network's policy rejecting
+   * it) and is a FAIL. `configured` == nullopt (config unavailable) -> SKIPPED.
+   * Pure and static so it can be unit tested without a live RIB or config.
+   */
+  static neteng::fboss::bgp::thrift::HealthCheckStatus classifyOriginatedRoutes(
+      int64_t originated,
+      std::optional<int64_t> configured);
+
  protected:
   using THealthCheckResult = neteng::fboss::bgp::thrift::THealthCheckResult;
   using TModuleHealthReport = neteng::fboss::bgp::thrift::TModuleHealthReport;

@@ -1149,6 +1149,21 @@ folly::coro::Task<TModuleHealthReport> HealthValidator::checkPeerManager() {
   co_return report;
 }
 
+HealthCheckStatus HealthValidator::classifyOriginatedRoutes(
+    int64_t originated,
+    std::optional<int64_t> configured) {
+  if (!configured.has_value()) {
+    /* Config unavailable -- cannot compare against the source of truth. */
+    return HealthCheckStatus::SKIPPED;
+  }
+  /* Zero originated is valid when zero is configured (e.g. a backbone router
+   * with no network statements). A shortfall means a configured origination
+   * was dropped by the RIB (invalid origin value, or a network's policy
+   * rejecting it). */
+  return (originated == *configured) ? HealthCheckStatus::PASS
+                                     : HealthCheckStatus::FAIL;
+}
+
 /* ────────────────────────────────────────────────────────────────
  * RIB checks (doc 1.6.x)
  * ──────────────────────────────────────────────────────────────── */
@@ -1174,14 +1189,65 @@ folly::coro::Task<TModuleHealthReport> HealthValidator::checkRib() {
           kHealthCheckModuleTimeout);
 
       if (result.hasValue()) {
-        int64_t count = static_cast<int64_t>(result.value().size());
-        bool passed = (count > 0);
+        int64_t originated = static_cast<int64_t>(result.value().size());
+
+        /* Source of truth: how many prefixes the config declares for
+         * origination (networks4 + networks6). v4/v6 CIDR keys are disjoint, so
+         * the two sizes sum to the merged local-route count that populates the
+         * RIB. nullopt when config is unavailable. */
+        std::optional<int64_t> configured;
+        if (configManager_) {
+          /* Guard every hop: getConfig() and getBgpGlobalConfig() can each
+           * return null (mirrors the null-check pattern used elsewhere in this
+           * file). If either is null, leave `configured` unset so the check
+           * reports SKIPPED rather than crashing the daemon. */
+          auto config = configManager_->getConfig();
+          if (config && config->getBgpGlobalConfig()) {
+            auto globalConfig = config->getBgpGlobalConfig();
+            configured = static_cast<int64_t>(
+                globalConfig->networksV4.size() +
+                globalConfig->networksV6.size());
+          }
+        }
+
+        auto status = classifyOriginatedRoutes(originated, configured);
+        std::string message;
+        if (!configured.has_value()) {
+          message = fmt::format(
+              "originatedRoutes = {} (config unavailable, not verified)",
+              originated);
+        } else if (status == HealthCheckStatus::PASS) {
+          message = fmt::format(
+              "originatedRoutes = {} (matches configured)", originated);
+        } else if (originated < *configured) {
+          message = fmt::format(
+              "originatedRoutes = {} but configured = {} ({} configured "
+              "route(s) not realized in RIB -- invalid origin or policy "
+              "rejection)",
+              originated,
+              *configured,
+              *configured - originated);
+        } else {
+          /* originated > configured: the RIB advertises more local routes than
+           * config declares -- unexpected, since localRoutes_ is built from
+           * config. Flag it without a misleading negative shortfall count. */
+          message = fmt::format(
+              "originatedRoutes = {} exceeds configured = {} ({} unexpected "
+              "route(s) in RIB not declared in config)",
+              originated,
+              *configured,
+              originated - *configured);
+        }
+
         checks.emplace_back(makeResult(
             HealthCheckId::RIB_ORIGINATED_ROUTES,
             HealthCheckCategory::RIB,
-            passed ? HealthCheckStatus::PASS : HealthCheckStatus::FAIL,
-            fmt::format("originatedRoutes = {}", count),
-            static_cast<double>(count)));
+            status,
+            message,
+            static_cast<double>(originated),
+            configured.has_value()
+                ? std::optional<double>(static_cast<double>(*configured))
+                : std::nullopt));
       } else if (result.exception()
                      .is_compatible_with<folly::FutureTimeout>()) {
         checks.emplace_back(makeResult(

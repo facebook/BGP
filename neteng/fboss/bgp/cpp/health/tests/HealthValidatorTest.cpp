@@ -818,6 +818,47 @@ CO_TEST_F(HealthValidatorTest, Rib_OriginatedRoutes_Error_NoRib) {
   EXPECT_EQ(*check->status(), HealthCheckStatus::FAIL);
 }
 
+TEST_F(HealthValidatorTest, ClassifyOriginatedRoutes_ConfigMatch_Pass) {
+  /* Count magnitude is irrelevant; only config-vs-RIB agreement matters. Zero
+   * configured and zero originated -> PASS (e.g. a backbone router with no
+   * network statements). */
+  EXPECT_EQ(
+      HealthValidator::classifyOriginatedRoutes(
+          /*originated=*/0, /*configured=*/0),
+      HealthCheckStatus::PASS);
+  EXPECT_EQ(
+      HealthValidator::classifyOriginatedRoutes(
+          /*originated=*/5, /*configured=*/5),
+      HealthCheckStatus::PASS);
+}
+
+TEST_F(HealthValidatorTest, ClassifyOriginatedRoutes_ConfigMismatch_Fail) {
+  /* The RIB realized fewer routes than config declares -> a configured
+   * origination was dropped (invalid origin value or policy rejection) -> FAIL,
+   * regardless of whether the realized count is non-zero or zero. */
+  EXPECT_EQ(
+      HealthValidator::classifyOriginatedRoutes(
+          /*originated=*/3, /*configured=*/5),
+      HealthCheckStatus::FAIL);
+  EXPECT_EQ(
+      HealthValidator::classifyOriginatedRoutes(
+          /*originated=*/0, /*configured=*/5),
+      HealthCheckStatus::FAIL);
+  /* Overshoot (more originated than configured) is also a mismatch -> FAIL. */
+  EXPECT_EQ(
+      HealthValidator::classifyOriginatedRoutes(
+          /*originated=*/7, /*configured=*/5),
+      HealthCheckStatus::FAIL);
+}
+
+TEST_F(HealthValidatorTest, ClassifyOriginatedRoutes_NoConfig_Skipped) {
+  /* Config unavailable -> cannot verify against the source of truth. */
+  EXPECT_EQ(
+      HealthValidator::classifyOriginatedRoutes(
+          /*originated=*/7, std::nullopt),
+      HealthCheckStatus::SKIPPED);
+}
+
 CO_TEST_F(HealthValidatorTest, Rib_PathSelection_Pass) {
   setCounter("bgpd.rib.fullSyncPathSelectionTimeMs.p99.60", 1000);
 
