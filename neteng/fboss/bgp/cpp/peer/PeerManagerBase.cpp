@@ -1407,6 +1407,23 @@ PeerManagerBase::handleBufferedRibDumpsForDetachedPeers() {
    */
   XLOG(INFO, "Handling all buffered RibDumpReqs for detached peers");
 
+  /*
+   * Clear the scheduled flag however this coroutine leaves, not just on the
+   * normal path. maybeBufferRibDumpReq only schedules a drain when the flag is
+   * false, so if the loop below unwinds --
+   * processRibDumpReqWithCancellationCoro is not noexcept and runs a full
+   * ShadowRib walk with policy evaluation -- a flag left set means no drain is
+   * ever scheduled again and every peer that comes up afterwards is buffered
+   * and never served. Peers still buffered when that happens are picked up by
+   * the next maybeBufferRibDumpReq.
+   *
+   * Mirrors the clearFlagGuard on egressPolicyUpdateForUpdateGroupsScheduled_
+   * in processUpdateGroupsEgressPolicyReevaluation, which guards the same
+   * flag-gated-rescheduling pattern.
+   */
+  auto clearScheduledGuard =
+      folly::makeGuard([this]() noexcept { handleRibDumpsScheduled_ = false; });
+
   /**
    * Drain the buffered RibDumpReqs one at a time, co_awaiting each per-peer
    * dump inline so they run sequentially. The sleep between dumps paces the
@@ -1426,7 +1443,6 @@ PeerManagerBase::handleBufferedRibDumpsForDetachedPeers() {
         std::chrono::milliseconds(1));
   }
 
-  handleRibDumpsScheduled_ = false;
   co_return;
 }
 
