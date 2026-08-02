@@ -3059,8 +3059,19 @@ void AdjRibOutGroup::copyGroupFieldsToNewGroup(
    * running on the source, but none runs for newGroup, so inheriting it would
    * wedge newGroup (its consume timer only builds when READY/IDLE). newGroup
    * has a non-empty packing list and no builder -- that is READY.
+   *
+   * UNINITIALIZED is the one state that must carry over. It means the source
+   * has not run its initial dump yet, so newGroup inherits an empty packing
+   * list and peers still in PeerUpdateState::INIT. scheduleInitialDump() only
+   * runs for an UNINITIALIZED group, and the dump it starts is the only code
+   * that moves those peers to JOINED_RUNNING and arms the egress EoR flags --
+   * so forcing READY here would leave them advertised nothing, with an EoR
+   * that never comes, for the life of the session.
    */
-  newGroup->setState(UpdateGroupState::READY);
+  newGroup->setState(
+      state_ == UpdateGroupState::UNINITIALIZED
+          ? UpdateGroupState::UNINITIALIZED
+          : UpdateGroupState::READY);
   newGroup->setLastSeenRibVersion(lastSeenRibVersion_);
   newGroup->peeringParams_ = peeringParams_;
   newGroup->mraiInterval_ = mraiInterval_;

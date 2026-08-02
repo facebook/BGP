@@ -21,18 +21,20 @@
  * https://docs.google.com/document/d/1XLc3-u0Wx7jTivHVz0tJd-PJ4NKtlPixyitfhD069Iw
  */
 
-#define PeerManager_TEST_FRIENDS                   \
-  friend class UpdateGroupPolicyReEvalUTBase;      \
-  FRIEND_TEST(                                     \
-      UpdateGroupsEgressReEvalTest,                \
-      PolicyUpdateDuringGroupDestroyIsNotDropped); \
-  FRIEND_TEST(                                     \
-      UpdateGroupsEgressReEvalTest,                \
+#define PeerManager_TEST_FRIENDS                                             \
+  friend class UpdateGroupPolicyReEvalUTBase;                                \
+  FRIEND_TEST(SplitToGroup, SplitBeforeInitialDumpKeepsTargetUninitialized); \
+  FRIEND_TEST(                                                               \
+      UpdateGroupsEgressReEvalTest,                                          \
+      PolicyUpdateDuringGroupDestroyIsNotDropped);                           \
+  FRIEND_TEST(                                                               \
+      UpdateGroupsEgressReEvalTest,                                          \
       BufferedRibDumpRemovedBeforeSessionTerminateDrain);
 
 #define AdjRib_TEST_FRIENDS friend class UpdateGroupPolicyReEvalUTBase;
 
 #define AdjRibOutGroup_TEST_FRIENDS                                           \
+  FRIEND_TEST(SplitToGroup, SplitBeforeInitialDumpKeepsTargetUninitialized);  \
   FRIEND_TEST(SplitToGroup, CopiesGroupFields);                               \
   FRIEND_TEST(SplitToGroup, ClonesPackingList);                               \
   FRIEND_TEST(SplitToGroup, MovesJoinedRunningPeer);                          \
@@ -412,6 +414,70 @@ TEST_F(SplitToGroup, CopiesGroupFields) {
       consumer->deregisterFromTracker();
     }
     targetGroup->resetChangeListConsumer();
+  });
+
+  tearDown(ctx);
+}
+
+/*
+ * A split that happens before the source group has run its initial dump must
+ * leave the new group UNINITIALIZED. scheduleInitialDump() only runs for an
+ * UNINITIALIZED group, and the dump it starts is the only code that moves INIT
+ * peers to JOINED_RUNNING and arms the egress EoR flags -- so a new group
+ * forced to READY never dumps, and the peers it took never receive the RIB or
+ * an egress EoR.
+ */
+TEST_F(SplitToGroup, SplitBeforeInitialDumpKeepsTargetUninitialized) {
+  /*
+   * No sendInitialRibDump() here: the fixture publishes routes into the shadow
+   * RIB but leaves every group UNINITIALIZED, which is exactly the boot window
+   * this test needs.
+   */
+  auto ctx = setUp(2);
+  auto peerId0 = makePeerId(0);
+  auto& evb = ctx.peerMgr->getEventBase();
+
+  std::shared_ptr<AdjRibOutGroup> targetGroup;
+  evb.runInEventBaseThreadAndWait([&]() {
+    auto& adjRib0 = ctx.adjRibs.at(peerId0);
+    auto sourceGroup = adjRib0->getUpdateGroup();
+    ASSERT_NE(sourceGroup, nullptr);
+    ASSERT_EQ(sourceGroup->getState(), UpdateGroupState::UNINITIALIZED);
+    ASSERT_EQ(adjRib0->getPeerState(), PeerUpdateState::INIT);
+
+    /*
+     * Build the target the way the production split does (the peer manager's
+     * egress re-evaluation), so it gets the shadow RIB view its initial dump
+     * walks.
+     */
+    auto newKey = sourceGroup->getGroupKey();
+    newKey.egressPolicyName = kPNamePermitAll;
+    targetGroup = ctx.peerMgr->updateGroupManager_->findOrCreateGroup(newKey);
+    ASSERT_NE(targetGroup, sourceGroup);
+
+    sourceGroup->splitToNewGroup(targetGroup, {adjRib0});
+
+    EXPECT_EQ(targetGroup->getState(), UpdateGroupState::UNINITIALIZED)
+        << "target was forced out of UNINITIALIZED, so scheduleInitialDump() "
+           "is a no-op for it and the peers it took never get the RIB";
+  });
+
+  /*
+   * Drive the dump through the state-gated entry point production uses, not by
+   * calling the builder directly. The dump coroutine has no suspension points,
+   * so one round trip through the event base runs it to completion -- this is
+   * ordering, not timing.
+   */
+  evb.runInEventBaseThreadAndWait(
+      [&]() { targetGroup->scheduleInitialDump(); });
+  flushEventBase(ctx);
+
+  evb.runInEventBaseThreadAndWait([&]() {
+    EXPECT_EQ(
+        ctx.adjRibs.at(peerId0)->getPeerState(),
+        PeerUpdateState::JOINED_RUNNING)
+        << "peer stayed in INIT: the target group never ran its initial dump, "
+           "so it is advertised nothing and is owed an EoR that never comes";
   });
 
   tearDown(ctx);
