@@ -970,6 +970,115 @@ TEST_P(GroupWithNoSyncPeersE2ETest, DepASelfPromotesAfterFrozenGroupUnblock) {
   XLOGF(INFO, "=== TEST PASSED: DepASelfPromotesAfterFrozenGroupUnblock ===");
 }
 
+/*
+ * A blocking DSP goes DOWN before it can rejoin: the group must not stay stuck.
+ *
+ * handleNoSyncPeers refuses to promote while numPeersDetachedAfterJoin_ > 0: a
+ * peer that detached AFTER joining still shares the group's entries, and
+ * promoting a diverged DEP-A ahead of it would delete group-only entries and
+ * corrupt that peer's pending rejoin. One sharing DSP is therefore enough to
+ * keep a group with no sync peers frozen even with 8 promotable DEP-A members
+ * waiting in DETACHED_READY_TO_JOIN.
+ *
+ * Removing the blocker must resolve it: bringing the DSP down before it ever
+ * rejoins decrements the counter in removePeer(), and unregisterPeer() then
+ * calls recoverIfNoSyncPeers(), so that very pass must promote a waiting peer.
+ * If the bookkeeping ever leaked the group would stay frozen forever with
+ * promotable peers available, which is the failure this guards against.
+ */
+TEST_P(GroupWithNoSyncPeersE2ETest, BlockingDspDownLetsDrjPeerBePromoted) {
+  XLOGF(INFO, "=== TEST: BlockingDspDownLetsDrjPeerBePromoted ===");
+
+  setupPolicies();
+  const auto allSpecs = allPeerSpecs();
+  for (int i = 0; i < kNumPeers; ++i) {
+    setQueueSizeForPeer(
+        allSpecs[i].peerAddr, /*capacity=*/3, /*highWm=*/2, /*lowWm=*/0);
+  }
+
+  auto peerIds = setupNPeersInGroupJoined(
+      kNumPeers,
+      /*queueCapacity=*/10,
+      /*queueHighWm=*/8,
+      /*queueLowWm=*/2);
+  const auto& stallPeer = peerIds[0];
+  const auto& dspPeer = peerIds[1];
+  std::vector<BgpPeerId> drjPeers(peerIds.begin() + 2, peerIds.end());
+
+  publishNextRound();
+  drainAll(peerIds);
+
+  /*
+   * Slow-peer detach peer 1 FIRST, while the block-count threshold is still
+   * low: it detaches AFTER joining, so it carries a non-zero
+   * detachedRibVersion and is the sharing DSP that will block promotion. The
+   * flap below raises the threshold group-wide, so nothing else can detach.
+   */
+  std::string detachRoundComm;
+  std::vector<BgpPeerId> others(peerIds.begin() + 2, peerIds.end());
+  others.push_back(stallPeer);
+  detachPeersBlocked({dspPeer}, others, &detachRoundComm);
+  ASSERT_TRUE(isPeerDetached(dspPeer.peerAddr));
+
+  /* Flap the other 8 into DEP-A behind the stalled group. */
+  std::string roundComm;
+  flapPeersIntoDepA(
+      stallPeer,
+      drjPeers,
+      /*returnBlocked=*/{},
+      /*extraRounds=*/2,
+      &roundComm);
+  drainUntil(
+      drjPeers,
+      [&]() {
+        return allPeersInState(
+            drjPeers, PeerUpdateState::DETACHED_READY_TO_JOIN);
+      },
+      "peers never parked at DETACHED_READY_TO_JOIN",
+      40);
+  /*
+   * The standoff under test is "promotable DEP-A peers held back by ONE sharing
+   * DSP", so the sharing count must come from dspPeer alone.
+   */
+  for (const auto& peerId : drjPeers) {
+    EXPECT_TRUE(isDetachedOnRegistration(peerId.peerAddr))
+        << "peer " << peerId.peerAddr.str() << " is not a DEP-A";
+    EXPECT_EQ(getPeerDetachedRibVersion(peerId.peerAddr), 0u)
+        << "peer " << peerId.peerAddr.str() << " detached after joining";
+  }
+  EXPECT_EQ(getNumPeersDetachedAfterJoin(drjPeers[0].peerAddr), 1u)
+      << "only the sharing DSP should count as detached after joining";
+  expectAllAheadOfGroup(drjPeers);
+
+  /* Hold the ordinary rejoin path so handleNoSyncPeers decides what happens. */
+  for (const auto& peerId : drjPeers) {
+    testOnlyDeferDrjAcceptance(peerId.peerAddr, true);
+  }
+
+  /* Last sync peer down: the sharing DSP keeps the group frozen. */
+  bringDownPeer(stallPeer.peerAddr);
+  EXPECT_EQ(getNumInSyncPeers(drjPeers[0].peerAddr), 0u)
+      << "the sharing DSP should have blocked promotion, leaving it frozen";
+  EXPECT_TRUE(isPeerDetached(dspPeer.peerAddr))
+      << "the DSP must still be detached -- it must not have rejoined";
+
+  /* Remove the blocker before it ever rejoins. */
+  bringDownPeer(dspPeer.peerAddr);
+  EXPECT_EQ(getNumInSyncPeers(drjPeers[0].peerAddr), 1u)
+      << "group is stuck: no DRJ peer was promoted after the blocking DSP left";
+  EXPECT_EQ(getGroupMemberCount(drjPeers[0].peerAddr), drjPeers.size());
+
+  /* Release the hold: the rest rejoin and the group serves a fresh round. */
+  for (const auto& peerId : drjPeers) {
+    testOnlyDeferDrjAcceptance(peerId.peerAddr, false);
+  }
+  const auto postRecoveryRoundComm = publishNextRound();
+  expectAllPeersConverged(drjPeers, postRecoveryRoundComm);
+  EXPECT_EQ(getNumInSyncPeers(drjPeers[0].peerAddr), drjPeers.size());
+
+  XLOGF(INFO, "=== TEST PASSED: BlockingDspDownLetsDrjPeerBePromoted ===");
+}
+
 INSTANTIATE_TEST_SUITE_P(
     SerializationModes,
     GroupWithNoSyncPeersE2ETest,
