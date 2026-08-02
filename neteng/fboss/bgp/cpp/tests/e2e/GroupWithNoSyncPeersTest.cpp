@@ -46,6 +46,45 @@ namespace bgp {
 class GroupWithNoSyncPeersE2ETest : public UpdateGroupPolicyReEvalE2EBase {
  protected:
   /*
+   * Add numPeers peers to one peer group and build the components, but bring up
+   * only the first numInitial of them. The rest are brought up later with
+   * bringUpLatePeer(): because the group is already initialized by then, a late
+   * joiner registers as DETACHED_INIT_DUMP with DETACHED_ON_REGISTRATION and
+   * detachedRibVersion == 0 -- i.e. a DEP-A, which is what the
+   * promoteDetachedPeerToSync path requires (it only runs when no peer detached
+   * after joining).
+   */
+  std::vector<BgpPeerId> setupGroupDeferredJoin(
+      int numPeers,
+      int numInitial,
+      int queueCapacity,
+      int queueHighWm,
+      int queueLowWm) {
+    const auto allSpecs = allPeerSpecs();
+    EXPECT_LE(numPeers, static_cast<int>(allSpecs.size()));
+    std::vector<BgpPeerId> peerIds;
+    for (int i = 0; i < numPeers; ++i) {
+      auto spec = allSpecs[i];
+      spec.peerGroupName = kReEvalPeerGroupName;
+      addPeer(spec);
+      peerIds.push_back(
+          BgpPeerId{spec.peerAddr, spec.peerAddr.asV4().toLongHBO()});
+    }
+    setupComponentsWithBgpService(
+        queueCapacity, queueHighWm, queueLowWm, /*enableUpdateGroup=*/true);
+    for (int i = 0; i < numInitial; ++i) {
+      bringUpPeer(peerIds[i].peerAddr);
+      sendEoRToPeer(peerIds[i]);
+      /* Dual-stack peers send two EoRs. */
+      EXPECT_TRUE(waitForEoR(peerIds[i]));
+      EXPECT_TRUE(waitForEoR(peerIds[i]));
+      EXPECT_TRUE(waitForPeerState(
+          peerIds[i].peerAddr, PeerUpdateState::JOINED_RUNNING));
+    }
+    return peerIds;
+  }
+
+  /*
    * Publish the whole route set again as the next "round", returning the round
    * community to verify against. LOCAL_PREF alone is invisible to these eBGP
    * peers, so bumping it produces no re-advertisement at all; the round
@@ -1077,6 +1116,169 @@ TEST_P(GroupWithNoSyncPeersE2ETest, BlockingDspDownLetsDrjPeerBePromoted) {
   EXPECT_EQ(getNumInSyncPeers(drjPeers[0].peerAddr), drjPeers.size());
 
   XLOGF(INFO, "=== TEST PASSED: BlockingDspDownLetsDrjPeerBePromoted ===");
+}
+
+/*
+ * The only surviving member is pinned in DETACHED_INIT_DUMP when the last sync
+ * peer goes down, so nothing is promotable and the group freezes. Releasing the
+ * pin lets its dump finish; it reaches DETACHED_READY_TO_JOIN and promotes
+ * itself, and the group serves again.
+ *
+ * handleNoSyncPeers treats DETACHED_INIT_DUMP and DETACHED_BLOCKED alike (both
+ * are simply "not DRJ"), so the freeze and the self-promotion are the same
+ * branches DepASelfPromotesAfterFrozenGroupUnblock covers. What is specific
+ * here is the INIT DUMP lifecycle: the peer's dump has not been produced at all
+ * when the group loses its last sync peer, and it must still be able to
+ * complete -- and promote -- against a group whose packing list was cleared and
+ * whose consume timer was cancelled.
+ */
+TEST_P(GroupWithNoSyncPeersE2ETest, DetachedInitDumpPeerPromotesAfterRelease) {
+  XLOGF(INFO, "=== TEST: DetachedInitDumpPeerPromotesAfterRelease ===");
+
+  setupPolicies();
+  auto peerIds = setupGroupDeferredJoin(
+      kNumPeers,
+      /*numInitial=*/9,
+      /*queueCapacity=*/10,
+      /*queueHighWm=*/8,
+      /*queueLowWm=*/2);
+  std::vector<BgpPeerId> initialPeers(peerIds.begin(), peerIds.begin() + 9);
+  const auto& didPeer = peerIds[9];
+
+  publishNextRound();
+  drainAll(initialPeers);
+
+  /*
+   * Pin the peer in DETACHED_INIT_DUMP. testOnlyDeferInitDump looks the peer up
+   * by its AdjRib, which only exists once it has been up, so the peer joins
+   * first and is then dropped, pinned and reconnected -- the reconnect
+   * registers into the already-initialized group and stalls in DID.
+   */
+  bringUpLatePeer(didPeer);
+  ASSERT_TRUE(
+      waitForPeerState(didPeer.peerAddr, PeerUpdateState::JOINED_RUNNING));
+  recordDrainedRoutes(didPeer);
+  bringDownPeer(didPeer.peerAddr);
+  unblockPeer(didPeer.peerAddr, /*maxRetries=*/0);
+  testOnlyDeferInitDump(didPeer.peerAddr, true);
+  bringUpPeer(didPeer.peerAddr);
+  sendEoRToPeer(didPeer);
+  ASSERT_TRUE(waitForPeerState(
+      didPeer.peerAddr,
+      PeerUpdateState::DETACHED_INIT_DUMP,
+      /*maxRetries=*/30));
+
+  /* Last sync peers down: the DID peer is not promotable, so the group freezes.
+   */
+  drainAll(initialPeers);
+  bringDownPeers(initialPeers);
+  EXPECT_EQ(getNumInSyncPeers(didPeer.peerAddr), 0u);
+  EXPECT_EQ(getGroupMemberCount(didPeer.peerAddr), 1u);
+  EXPECT_NE(getPeerState(didPeer.peerAddr), PeerUpdateState::DOWN);
+
+  /*
+   * Run the RIB past the frozen group BEFORE releasing the pin. A frozen group
+   * cannot advance its own marker, so the dump this peer finally produces
+   * snapshots a strictly higher version -- which is what makes it a DEP-A ahead
+   * of the group and sends transitionPeerUpdateState down the self-promotion
+   * branch. Without this the dump lands level with the group, isReadyToRejoin
+   * Group() is true, and the peer is quietly accepted by maybeAcceptDSPPeer
+   * instead: the group would stay frozen waiting for an ahead peer that never
+   * arrives, and this case would silently duplicate the DSP collapse one.
+   */
+  const auto frozenVersion = getGroupRibVersion(didPeer.peerAddr);
+  publishNextRound();
+  WITH_RETRIES_N(
+      10, { EXPECT_EVENTUALLY_TRUE(rib_->getRibVersion() > frozenVersion); });
+
+  /* Release the pin: the dump completes and the peer promotes itself. */
+  testOnlyDeferInitDump(didPeer.peerAddr, false);
+  drainUntil(
+      {didPeer},
+      [&]() {
+        return getPeerState(didPeer.peerAddr) ==
+            PeerUpdateState::JOINED_RUNNING;
+      },
+      "peer never reached JOINED_RUNNING",
+      60);
+  EXPECT_TRUE(
+      waitForPeerState(didPeer.peerAddr, PeerUpdateState::JOINED_RUNNING))
+      << "the DETACHED_INIT_DUMP peer did not promote itself after release";
+
+  /*
+   * The group adopted the promoted peer's change-list position. A frozen group
+   * cannot move on its own, so a marker past the frozen one can only have come
+   * from promoteDetachedPeerToSync -- which is what separates self-promotion
+   * from the peer merely being collapsed back in at the group's own marker.
+   */
+  EXPECT_GT(getGroupRibVersion(didPeer.peerAddr), frozenVersion)
+      << "the group's marker did not advance to the promoted peer's, so the "
+         "peer was accepted by collapse rather than promoting itself";
+
+  /* The recovered group serves a fresh round. */
+  const auto postRecoveryRoundComm = publishNextRound();
+  expectAllPeersConverged({didPeer}, postRecoveryRoundComm);
+
+  XLOGF(INFO, "=== TEST PASSED: DetachedInitDumpPeerPromotesAfterRelease ===");
+}
+
+/*
+ * The group loses its ONLY member, so it is left with no members at all rather
+ * than with detached ones: recoverIfNoSyncPeers is a no-op because it requires
+ * getMemberCount() > 0, so none of the promotion paths run. unregisterPeer
+ * deregisters the group from the changeListTracker and drains its async scope.
+ *
+ * What must then happen is that the emptied group is NOT reused: the next peer
+ * to establish gets a brand new update group container of its own, with its own
+ * group-level initial dump, and is served normally. This is the case the
+ * promotion tests cannot reach -- every one of them keeps at least one detached
+ * member, so their group always survives to be recovered.
+ */
+TEST_P(GroupWithNoSyncPeersE2ETest, LastMemberDownGivesNextPeerNewGroup) {
+  XLOGF(INFO, "=== TEST: LastMemberDownGivesNextPeerNewGroup ===");
+
+  setupPolicies();
+  const auto allSpecs = allPeerSpecs();
+  /* Tiny queue + blocked from the start so the initial dump cannot drain. */
+  setQueueSizeForPeer(
+      allSpecs[0].peerAddr, /*capacity=*/3, /*highWm=*/2, /*lowWm=*/0);
+
+  auto peerIds = setupGroupDeferredJoin(
+      kNumPeers,
+      /*numInitial=*/0,
+      /*queueCapacity=*/10,
+      /*queueHighWm=*/8,
+      /*queueLowWm=*/2);
+  const auto& soleMember = peerIds[0];
+
+  /* Routes exist before the peer joins, so its group dump has work to do. */
+  publishNextRound();
+
+  /* Bring the sole member up blocked so its queue backs the dump up. */
+  bringUpPeerBlocked(soleMember.peerAddr);
+  sendEoRToPeer(soleMember);
+  peerManager_->getEventBase().runInEventBaseThreadAndWait([]() {});
+
+  /* Take it down: the group is left with no members at all. */
+  unblockPeer(soleMember.peerAddr, /*maxRetries=*/0);
+  bringDownPeer(soleMember.peerAddr);
+  EXPECT_EQ(getPeerState(soleMember.peerAddr), PeerUpdateState::DOWN);
+  EXPECT_EQ(getGroupMemberCount(soleMember.peerAddr), 0u);
+
+  /*
+   * A later peer must get its OWN new group rather than the emptied one, and
+   * be served by it. Asserting on the group pointer is what makes "new
+   * container" observable: peer state alone looks identical either way.
+   */
+  auto* const emptiedGroup = getUpdateGroupForPeer(soleMember.peerAddr).get();
+  bringUpLatePeer(peerIds[1]);
+  EXPECT_NE(getUpdateGroupForPeer(peerIds[1].peerAddr).get(), emptiedGroup)
+      << "the new peer reused the emptied update group instead of forming its "
+         "own";
+  const auto roundComm = publishNextRound();
+  expectAllPeersConverged({peerIds[1]}, roundComm);
+
+  XLOGF(INFO, "=== TEST PASSED: LastMemberDownGivesNextPeerNewGroup ===");
 }
 
 INSTANTIATE_TEST_SUITE_P(
