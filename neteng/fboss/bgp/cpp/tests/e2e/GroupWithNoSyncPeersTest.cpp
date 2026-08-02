@@ -46,6 +46,43 @@ namespace bgp {
 class GroupWithNoSyncPeersE2ETest : public UpdateGroupPolicyReEvalE2EBase {
  protected:
   /*
+   * Assert a set of peers matches an egress policy on BOTH sides: the RIB-OUT
+   * and the routes they actually received. Used by the multi-group cases to
+   * check that the operated group moved to the new policy while the untouched
+   * groups stayed on permit-all.
+   */
+  void expectPolicyOnPeers(
+      const std::vector<BgpPeerId>& peerIds,
+      const std::string& policyName) {
+    for (const auto& peerId : peerIds) {
+      waitForRibOutAdvertisedCount(peerId.peerAddr, kNumRoutes);
+      expectRibOutForPolicy(peerId.peerAddr, policyName, kNumRoutes);
+      expectReceivedRoutesForPolicy(peerId, policyName, injectedPrefixes_);
+    }
+  }
+
+  /* Every peer outside the given group index. */
+  static std::vector<BgpPeerId> peersOutsideGroup(
+      const std::vector<std::vector<BgpPeerId>>& groups,
+      size_t skipGroupIdx) {
+    std::vector<BgpPeerId> others;
+    for (size_t g = 0; g < groups.size(); ++g) {
+      if (g == skipGroupIdx) {
+        continue;
+      }
+      others.insert(others.end(), groups[g].begin(), groups[g].end());
+    }
+    return others;
+  }
+
+  /* Drain every peer in every group once. */
+  void drainAllGroups(const std::vector<std::vector<BgpPeerId>>& groups) {
+    for (const auto& group : groups) {
+      drainAll(group);
+    }
+  }
+
+  /*
    * Add numPeers peers to one peer group and build the components, but bring up
    * only the first numInitial of them. The rest are brought up later with
    * bringUpLatePeer(): because the group is already initialized by then, a late
@@ -894,27 +931,13 @@ TEST_P(GroupWithNoSyncPeersE2ETest, DepAPromotedWhenLastSyncPeerDown) {
       40);
   expectAllAheadOfGroup(readyLateJoiners);
 
-  /*
-   * Hold the ordinary rejoin path. Bringing the blocked peer down unwinds the
-   * group's suspended send, whose exit guard runs
-   * checkAndAcceptReadyToJoinPeers and would accept these peers before
-   * recoverIfNoSyncPeers ever sees zero sync peers. That pass skips peers with
-   * DRJ acceptance deferred; handleNoSyncPeers' DEP-A branch does not.
-   */
-  for (const auto& peerId : readyLateJoiners) {
-    testOnlyDeferDrjAcceptance(peerId.peerAddr, true);
-  }
-
   /* Last sync peer down: one ready DEP-A is promoted in place. */
   bringDownPeer(blockedSyncPeer.peerAddr);
   EXPECT_EQ(getGroupMemberCount(peerIds[1].peerAddr), lateJoiners.size());
   EXPECT_EQ(getNumInSyncPeers(peerIds[1].peerAddr), 1u)
       << "exactly one DEP-A should have been promoted to carry the group";
 
-  /* Release the hold and unblock the 9th: everyone rejoins. */
-  for (const auto& peerId : readyLateJoiners) {
-    testOnlyDeferDrjAcceptance(peerId.peerAddr, false);
-  }
+  /* Unblock the 9th: everyone rejoins. */
   unblockPeersRecording({peerIds[9]});
 
   /* The recovered group serves a fresh round to every surviving peer. */
@@ -1279,6 +1302,564 @@ TEST_P(GroupWithNoSyncPeersE2ETest, LastMemberDownGivesNextPeerNewGroup) {
   expectAllPeersConverged({peerIds[1]}, roundComm);
 
   XLOGF(INFO, "=== TEST PASSED: LastMemberDownGivesNextPeerNewGroup ===");
+}
+
+/*
+ * C1: an egress policy re-evaluation lands on a group that is ALREADY frozen
+ * (members, but no in-sync peer).
+ *
+ * 4 peer groups of 10; only group 0 is operated on. Group 0 is first driven to
+ * zero sync peers (5 members slow-peer detached, the other 5 brought DOWN), so
+ * it is frozen. The MODIFY/APPEND policy is then applied to group 0's peer
+ * group. With no in-sync peers the group walk still refreshes the group's
+ * RIB-OUT but writes no packing list, each detached member is re-evaluated
+ * inline, and the re-eval sweep tries to promote (nothing is promotable yet, so
+ * the group stays frozen). Unblocking the detached members then promotes one
+ * and the rest rejoin, and the whole group must converge on the NEW policy
+ * while the three untouched groups stay on permit-all.
+ */
+TEST_P(GroupWithNoSyncPeersE2ETest, PolicyReEvalOnFrozenGroupThenPromotion) {
+  XLOGF(INFO, "=== TEST: PolicyReEvalOnFrozenGroupThenPromotion ===");
+
+  setupPolicies();
+  /* Tiny queues on the 5 peers of group 0 that will detach. */
+  for (int i = 0; i < 5; ++i) {
+    setQueueSizeForPeer(
+        makePeerSpec(i).peerAddr, /*capacity=*/3, /*highWm=*/2, /*lowWm=*/0);
+  }
+  auto groups = setupPeersInGroups(
+      kNumGroups,
+      kPeersPerGroup,
+      /*queueCapacity=*/10,
+      /*queueHighWm=*/8,
+      /*queueLowWm=*/2);
+  ASSERT_EQ(groups.size(), static_cast<size_t>(kNumGroups));
+
+  const auto& operatedGroup = groups[0];
+  std::vector<BgpPeerId> detachedPeers(
+      operatedGroup.begin(), operatedGroup.begin() + 5);
+  std::vector<BgpPeerId> downPeers(
+      operatedGroup.begin() + 5, operatedGroup.end());
+  const auto untouchedPeers = peersOutsideGroup(groups, 0);
+
+  publishNextRound();
+  drainAllGroups(groups);
+
+  /* Freeze group 0: detach 5, bring the other 5 down. */
+  std::string roundComm;
+  detachPeersBlocked(detachedPeers, downPeers, &roundComm);
+  drainAll(downPeers);
+  drainAll(untouchedPeers);
+  bringDownPeers(downPeers);
+  EXPECT_EQ(getNumInSyncPeers(detachedPeers[0].peerAddr), 0u);
+
+  /* Apply MODIFY/APPEND to the frozen group's peer group only. */
+  const auto result =
+      setPeerGroupPolicy(reEvalPeerGroupName(0), kMatchModifyAppendPolicyName);
+  EXPECT_EQ(
+      result,
+      neteng::fboss::bgp::thrift::BgpPolicyChangeResult::POLICIES_APPLIED);
+  ASSERT_TRUE(waitForEgressReEvalComplete());
+
+  /* Unblock the detached members: one is promoted and the rest rejoin. */
+  unblockPeersRecording(detachedPeers);
+  drainUntil(
+      detachedPeers,
+      [&]() {
+        return allPeersInState(detachedPeers, PeerUpdateState::JOINED_RUNNING);
+      },
+      "peers never returned to JOINED_RUNNING",
+      60);
+  EXPECT_EQ(getNumInSyncPeers(detachedPeers[0].peerAddr), detachedPeers.size());
+
+  /*
+   * Republish so the recovered group distributes under the new policy, then
+   * check both sides for every peer: group 0 on APPEND, the rest on permit-all.
+   */
+  publishNextRound();
+  drainAllGroups(groups);
+  /*
+   * Second pass over the recovered group: drainAllGroups walks group 0
+   * first, so deliveries that land while the other groups are being
+   * drained are only recorded here.
+   */
+  drainAll(detachedPeers);
+  expectPolicyOnPeers(detachedPeers, kMatchModifyAppendPolicyName);
+  expectPolicyOnPeers(untouchedPeers, kPermitAllPolicyName);
+
+  XLOGF(INFO, "=== TEST PASSED: PolicyReEvalOnFrozenGroupThenPromotion ===");
+}
+
+/*
+ * C2: the reverse ordering of C1 -- the group first loses its sync peers and is
+ * recovered, and only THEN is the egress policy changed. Whatever the group is
+ * serving from afterwards is the recovered members' view rather than one the
+ * group built itself, so the point of these cases is that a re-evaluation
+ * applied later still reaches every member, while the three untouched groups
+ * stay on permit-all. One flavour per recovery mechanism, mirroring the
+ * single-group A cases.
+ *
+ * Note the mechanisms differ in whether handleNoSyncPeers runs at all. DFPs are
+ * merged by checkAndAcceptReadyToJoinPeers off the send guard as the last sync
+ * peer departs, so that flavour never logs a freeze; the DSP and DEP-A ones do
+ * reach zero sync peers and recover from there.
+ *
+ * This first flavour also covers a PARTIALLY recovered group: only 2 of the 5
+ * detached members are released before the re-evaluation, so BOTH halves of the
+ * re-eval run in the same pass. The group RIB walk covers the 2 in-sync members
+ * ("for 2 in-sync peers"), while each of the 3 still-DETACHED_BLOCKED members
+ * is re-evaluated individually (PeerManagerBase: "Re-evaluating detached
+ * peer"), which runs its processRibDumpReq and rebuilds its RIB-OUT under the
+ * new policy even though it cannot drain. Releasing them afterwards must
+ * therefore deliver the already-re-evaluated routes, and all 5 must end up
+ * identical on the wire.
+ */
+TEST_P(GroupWithNoSyncPeersE2ETest, PolicyReEvalAfterDepBRecovery) {
+  XLOGF(INFO, "=== TEST: PolicyReEvalAfterDepBRecovery ===");
+
+  setupPolicies();
+  for (int i = 0; i < 5; ++i) {
+    setQueueSizeForPeer(
+        makePeerSpec(i).peerAddr, /*capacity=*/3, /*highWm=*/2, /*lowWm=*/0);
+  }
+  auto groups = setupPeersInGroups(
+      kNumGroups,
+      kPeersPerGroup,
+      /*queueCapacity=*/10,
+      /*queueHighWm=*/8,
+      /*queueLowWm=*/2);
+  const auto& operatedGroup = groups[0];
+  std::vector<BgpPeerId> detachedPeers(
+      operatedGroup.begin(), operatedGroup.begin() + 5);
+  std::vector<BgpPeerId> downPeers(
+      operatedGroup.begin() + 5, operatedGroup.end());
+  /*
+   * Only these 2 are recovered before the re-evaluation. The other 3 stay
+   * DETACHED_BLOCKED across it, so the group is re-evaluated while it is part
+   * in-sync and part detached -- the walk covers the 2 sync members while the
+   * 3 detached ones have to pick the new policy up when they rejoin.
+   */
+  std::vector<BgpPeerId> recoveredPeers(
+      detachedPeers.begin(), detachedPeers.begin() + 2);
+  std::vector<BgpPeerId> stillDetachedPeers(
+      detachedPeers.begin() + 2, detachedPeers.end());
+  const auto untouchedPeers = peersOutsideGroup(groups, 0);
+
+  publishNextRound();
+  drainAllGroups(groups);
+
+  /* Freeze group 0 with all 5 detached. */
+  std::string roundComm;
+  detachPeersBlocked(detachedPeers, downPeers, &roundComm);
+  drainAll(downPeers);
+  drainAll(untouchedPeers);
+  bringDownPeers(downPeers);
+  EXPECT_EQ(getNumInSyncPeers(detachedPeers[0].peerAddr), 0u);
+
+  /* Recover exactly 2 of them; the other 3 stay blocked and un-promoted. */
+  unblockPeersRecording(recoveredPeers);
+  drainUntil(
+      recoveredPeers,
+      [&]() {
+        return allPeersInState(recoveredPeers, PeerUpdateState::JOINED_RUNNING);
+      },
+      "the two recovered peers never returned to JOINED_RUNNING",
+      60);
+  EXPECT_EQ(getNumInSyncPeers(detachedPeers[0].peerAddr), recoveredPeers.size())
+      << "only the two unblocked members should have rejoined";
+  for (const auto& peerId : stillDetachedPeers) {
+    ASSERT_TRUE(isPeerDetached(peerId.peerAddr))
+        << "peer " << peerId.peerAddr.str()
+        << " rejoined early; the re-eval must run while it is still detached";
+  }
+
+  /*
+   * detachPeersBlocked left the block-count threshold at 1 for these peers,
+   * which is what detached them in the first place. Raise it now they are back:
+   * the re-evaluation re-advertises every route, and into a cap-3 queue that
+   * would immediately detach them a second time -- shrinking the in-sync set
+   * under the walk rather than testing the walk.
+   */
+  for (const auto& peerId : recoveredPeers) {
+    setSlowPeerThresholds(
+        peerId.peerAddr,
+        std::chrono::milliseconds(600000),
+        1000000,
+        std::chrono::milliseconds(600000));
+  }
+
+  /* Re-evaluate with 2 members in sync and 3 still detached. */
+  const auto result =
+      setPeerGroupPolicy(reEvalPeerGroupName(0), kMatchModifyAppendPolicyName);
+  EXPECT_EQ(
+      result,
+      neteng::fboss::bgp::thrift::BgpPolicyChangeResult::POLICIES_APPLIED);
+  ASSERT_TRUE(waitForEgressReEvalComplete());
+  EXPECT_EQ(getNumInSyncPeers(detachedPeers[0].peerAddr), recoveredPeers.size())
+      << "the re-eval must not have promoted the still-blocked members";
+
+  /*
+   * The detached members were re-evaluated in place, so their RIB-OUT already
+   * carries the new policy while they are still blocked and cannot drain a
+   * single byte of it. Asserting this BEFORE releasing them is what separates
+   * "re-evaluated in place" from "re-evaluated on rejoin" -- checking only
+   * after release would pass either way.
+   */
+  for (const auto& peerId : stillDetachedPeers) {
+    ASSERT_TRUE(isPeerDetached(peerId.peerAddr))
+        << "peer " << peerId.peerAddr.str() << " must still be detached here";
+    expectRibOutForPolicy(
+        peerId.peerAddr, kMatchModifyAppendPolicyName, kNumRoutes);
+  }
+
+  /* Release the remaining 3: the re-evaluated routes are delivered. */
+  unblockPeersRecording(stillDetachedPeers);
+  drainUntil(
+      detachedPeers,
+      [&]() {
+        return allPeersInState(detachedPeers, PeerUpdateState::JOINED_RUNNING);
+      },
+      "the late-released peers never returned to JOINED_RUNNING",
+      60);
+  EXPECT_EQ(getNumInSyncPeers(detachedPeers[0].peerAddr), detachedPeers.size());
+
+  publishNextRound();
+  drainAllGroups(groups);
+  /*
+   * Second pass over the recovered group: drainAllGroups walks group 0
+   * first, so deliveries that land while the other groups are being
+   * drained are only recorded here.
+   */
+  drainAll(detachedPeers);
+  expectPolicyOnPeers(detachedPeers, kMatchModifyAppendPolicyName);
+  expectPolicyOnPeers(untouchedPeers, kPermitAllPolicyName);
+
+  XLOGF(INFO, "=== TEST PASSED: PolicyReEvalAfterDepBRecovery ===");
+}
+
+TEST_P(GroupWithNoSyncPeersE2ETest, PolicyReEvalAfterDspCollapseRecovery) {
+  XLOGF(INFO, "=== TEST: PolicyReEvalAfterDspCollapseRecovery ===");
+
+  setupPolicies();
+  for (int i = 0; i < 2; ++i) {
+    setQueueSizeForPeer(
+        makePeerSpec(i).peerAddr, /*capacity=*/3, /*highWm=*/2, /*lowWm=*/0);
+  }
+  auto groups = setupPeersInGroups(
+      kNumGroups,
+      kPeersPerGroup,
+      /*queueCapacity=*/10,
+      /*queueHighWm=*/8,
+      /*queueLowWm=*/2);
+  const auto& operatedGroup = groups[0];
+  std::vector<BgpPeerId> dspPeers(
+      operatedGroup.begin(), operatedGroup.begin() + 2);
+  std::vector<BgpPeerId> downPeers(
+      operatedGroup.begin() + 2, operatedGroup.end());
+  const auto untouchedPeers = peersOutsideGroup(groups, 0);
+
+  publishNextRound();
+  drainAllGroups(groups);
+
+  /* Detach the two, then park them at DRJ with acceptance held. */
+  std::string roundComm;
+  detachPeersBlocked(dspPeers, downPeers, &roundComm);
+  for (const auto& peerId : dspPeers) {
+    testOnlyDeferDrjAcceptance(peerId.peerAddr, true);
+  }
+  unblockPeersRecording(dspPeers);
+  drainUntil(
+      dspPeers,
+      [&]() {
+        return allPeersInState(
+            dspPeers, PeerUpdateState::DETACHED_READY_TO_JOIN);
+      },
+      "peers never parked at DETACHED_READY_TO_JOIN",
+      40);
+
+  /* Group 0 loses its remaining sync peers, then the DSPs collapse back in. */
+  drainAll(downPeers);
+  drainAll(untouchedPeers);
+  bringDownPeers(downPeers);
+  EXPECT_EQ(getNumInSyncPeers(dspPeers[0].peerAddr), 0u);
+  for (const auto& peerId : dspPeers) {
+    testOnlyDeferDrjAcceptance(peerId.peerAddr, false);
+  }
+  for (const auto& peerId : dspPeers) {
+    EXPECT_TRUE(
+        waitForPeerState(peerId.peerAddr, PeerUpdateState::JOINED_RUNNING));
+  }
+
+  /* Policy change after the recovery. */
+  const auto result =
+      setPeerGroupPolicy(reEvalPeerGroupName(0), kMatchModifyAppendPolicyName);
+  EXPECT_EQ(
+      result,
+      neteng::fboss::bgp::thrift::BgpPolicyChangeResult::POLICIES_APPLIED);
+  ASSERT_TRUE(waitForEgressReEvalComplete());
+
+  publishNextRound();
+  drainAllGroups(groups);
+  /*
+   * Second pass over the recovered group: drainAllGroups walks group 0
+   * first, so deliveries that land while the other groups are being
+   * drained are only recorded here.
+   */
+  drainAll(dspPeers);
+  expectPolicyOnPeers(dspPeers, kMatchModifyAppendPolicyName);
+  expectPolicyOnPeers(untouchedPeers, kPermitAllPolicyName);
+
+  XLOGF(INFO, "=== TEST PASSED: PolicyReEvalAfterDspCollapseRecovery ===");
+}
+
+TEST_P(GroupWithNoSyncPeersE2ETest, PolicyReEvalAfterDfpRecovery) {
+  XLOGF(INFO, "=== TEST: PolicyReEvalAfterDfpRecovery ===");
+
+  setupPolicies();
+  /*
+   * isDFP() requires the candidates' detachedRibVersion to still equal both
+   * their own and the GROUP's lastSeenRibVersion, and the group's packing list
+   * to be non-empty. Peer 2 is therefore a deliberately DEEPER-queued holder:
+   * the candidates block early in a round and are detached, and the holder only
+   * crosses its watermark later in the SAME round, pinning the group's send --
+   * and so its marker -- for the rest of the test. Everyone else gets a deep
+   * queue so the 20-UPDATE round below cannot back them up too.
+   */
+  for (int i = 0; i < 2; ++i) {
+    setQueueSizeForPeer(
+        makePeerSpec(i).peerAddr, /*capacity=*/3, /*highWm=*/2, /*lowWm=*/0);
+  }
+  setQueueSizeForPeer(
+      makePeerSpec(2).peerAddr, /*capacity=*/20, /*highWm=*/15, /*lowWm=*/0);
+  auto groups = setupPeersInGroups(
+      kNumGroups,
+      kPeersPerGroup,
+      /*queueCapacity=*/100,
+      /*queueHighWm=*/80,
+      /*queueLowWm=*/2);
+  const auto& operatedGroup = groups[0];
+  std::vector<BgpPeerId> dfpPeers(
+      operatedGroup.begin(), operatedGroup.begin() + 2);
+  const auto& holder = operatedGroup[2];
+  std::vector<BgpPeerId> drainablePeers(
+      operatedGroup.begin() + 3, operatedGroup.end());
+  const auto untouchedPeers = peersOutsideGroup(groups, 0);
+
+  publishNextRound();
+  drainAllGroups(groups);
+
+  /*
+   * Slow-peer auto-detach stays disabled: the block-count threshold lives on
+   * the GROUP, so any value low enough to detach the candidates also detaches
+   * the holder. The candidates are detached explicitly instead.
+   */
+  setSlowPeerThresholds(
+      holder.peerAddr,
+      std::chrono::milliseconds(600000),
+      1000000,
+      std::chrono::milliseconds(600000));
+
+  /* One round split across 20 attribute groups blocks candidates then holder.
+   */
+  blockPeer(holder.peerAddr);
+  for (const auto& peerId : dfpPeers) {
+    blockPeer(peerId.peerAddr);
+  }
+  const auto roundComm = publishNextRound(kNumRoutes, /*numAttrBuckets=*/20);
+  for (const auto& peerId : dfpPeers) {
+    ASSERT_TRUE(waitForPeerQueueBlocked(peerId))
+        << "DFP candidate " << peerId.peerAddr.str() << " never filled up";
+  }
+  for (const auto& peerId : dfpPeers) {
+    detachBlockedPeerDirectly(peerId.peerAddr);
+  }
+  for (const auto& peerId : dfpPeers) {
+    ASSERT_TRUE(
+        waitForPeerState(peerId.peerAddr, PeerUpdateState::DETACHED_BLOCKED));
+  }
+
+  /* With the candidates gone the group resumes the REST of the same round,
+   * which is what finally blocks the holder. */
+  {
+    std::vector<BgpPeerId> toDrain(drainablePeers);
+    toDrain.insert(toDrain.end(), untouchedPeers.begin(), untouchedPeers.end());
+    drainUntil(
+        toDrain,
+        [&]() {
+          return getPeerState(holder.peerAddr) ==
+              PeerUpdateState::JOINED_BLOCKED;
+        },
+        "holder never blocked on the remainder of the detach round",
+        40);
+  }
+  ASSERT_FALSE(isPeerDetached(holder.peerAddr))
+      << "the holder must stay in sync to keep the group's packing list "
+         "non-empty";
+
+  /*
+   * NOTHING IS PUBLISHED from here on, and DRJ acceptance is NOT deferred:
+   * consuming another round would move the candidates past their
+   * detachedRibVersion and fail isDFP(), and deferring would make the send
+   * guard's checkAndAcceptReadyToJoinPeers skip them -- either one silently
+   * turns this into the DSP collapse case.
+   */
+  unblockPeersRecording(dfpPeers);
+  drainUntil(
+      dfpPeers,
+      [&]() {
+        return allPeersInState(
+            dfpPeers, PeerUpdateState::DETACHED_READY_TO_JOIN);
+      },
+      "peers never parked at DETACHED_READY_TO_JOIN",
+      40);
+  for (const auto& peerId : dfpPeers) {
+    ASSERT_TRUE(isDetachedFastPeer(peerId.peerAddr))
+        << "peer " << peerId.peerAddr.str()
+        << " parked at DRJ as a DSP, not a DFP -- the group or the peer moved "
+           "after the detach";
+  }
+
+  /* Everything else in group 0 goes down, holder LAST and still blocked. */
+  drainAll(drainablePeers);
+  bringDownPeers(drainablePeers);
+  ASSERT_TRUE(
+      allPeersInState(dfpPeers, PeerUpdateState::DETACHED_READY_TO_JOIN))
+      << "the DFPs must still be detached when the last sync peer goes down";
+  bringDownPeer(holder.peerAddr);
+  EXPECT_EQ(getNumInSyncPeers(dfpPeers[0].peerAddr), dfpPeers.size())
+      << "the DFPs were not accepted back when the last sync peer went down";
+  for (const auto& peerId : dfpPeers) {
+    EXPECT_TRUE(
+        waitForPeerState(peerId.peerAddr, PeerUpdateState::JOINED_RUNNING));
+  }
+
+  /* Policy change after the recovery. */
+  const auto result =
+      setPeerGroupPolicy(reEvalPeerGroupName(0), kMatchModifyAppendPolicyName);
+  EXPECT_EQ(
+      result,
+      neteng::fboss::bgp::thrift::BgpPolicyChangeResult::POLICIES_APPLIED);
+  ASSERT_TRUE(waitForEgressReEvalComplete());
+
+  publishNextRound();
+  drainAllGroups(groups);
+  /*
+   * Second pass over the recovered group: drainAllGroups walks group 0
+   * first, so deliveries that land while the other groups are being
+   * drained are only recorded here.
+   */
+  drainAll(dfpPeers);
+  expectPolicyOnPeers(dfpPeers, kMatchModifyAppendPolicyName);
+  expectPolicyOnPeers(untouchedPeers, kPermitAllPolicyName);
+
+  XLOGF(INFO, "=== TEST PASSED: PolicyReEvalAfterDfpRecovery ===");
+}
+
+/*
+ * C2 flavour 4: DEP-A promotion, then the policy change.
+ *
+ * The A4a shape inside a 4-group setup. Group 0's members are all blocked so
+ * one of them can be pinned at JOINED_BLOCKED and the group stops consuming the
+ * change list; the other 9 are flapped while extra rounds run the RIB ahead of
+ * the group, so they come back as DEP-A (ahead of the group, nothing detached
+ * after joining). Taking the pinned peer down promotes one DEP-A in place --
+ * its RIB-OUT becomes the group's truth -- and only AFTER that recovery is
+ * MODIFY/APPEND applied, to prove the re-evaluation still reaches a group whose
+ * truth came from a promoted peer.
+ */
+TEST_P(GroupWithNoSyncPeersE2ETest, PolicyReEvalAfterDepAPromotionRecovery) {
+  XLOGF(INFO, "=== TEST: PolicyReEvalAfterDepAPromotionRecovery ===");
+
+  setupPolicies();
+  /* Every member of group 0 must be able to sit at JOINED_BLOCKED. */
+  for (int i = 0; i < kPeersPerGroup; ++i) {
+    setQueueSizeForPeer(
+        makePeerSpec(i).peerAddr, /*capacity=*/3, /*highWm=*/2, /*lowWm=*/0);
+  }
+
+  auto groups = setupPeersInGroups(
+      kNumGroups,
+      kPeersPerGroup,
+      /*queueCapacity=*/10,
+      /*queueHighWm=*/8,
+      /*queueLowWm=*/2);
+  const auto& operatedGroup = groups[0];
+  const auto& blockedSyncPeer = operatedGroup[0];
+  std::vector<BgpPeerId> lateJoiners(
+      operatedGroup.begin() + 1, operatedGroup.end());
+  std::vector<BgpPeerId> readyLateJoiners(
+      operatedGroup.begin() + 1, operatedGroup.begin() + 9);
+  const auto untouchedPeers = peersOutsideGroup(groups, 0);
+
+  publishNextRound();
+  drainAllGroups(groups);
+
+  /*
+   * Flap group 0's other 9 members into DEP-A, draining the other groups so
+   * they stay healthy through the extra rounds. Peer 9 returns blocked.
+   */
+  std::string roundComm;
+  flapPeersIntoDepA(
+      blockedSyncPeer,
+      lateJoiners,
+      /*returnBlocked=*/{operatedGroup[9]},
+      /*extraRounds=*/2,
+      &roundComm,
+      untouchedPeers,
+      /*singleEoR=*/true);
+  expectAllDepA(lateJoiners);
+  {
+    std::vector<BgpPeerId> toDrain(readyLateJoiners);
+    toDrain.insert(toDrain.end(), untouchedPeers.begin(), untouchedPeers.end());
+    drainUntil(
+        toDrain,
+        [&]() {
+          return allPeersInState(
+              readyLateJoiners, PeerUpdateState::DETACHED_READY_TO_JOIN);
+        },
+        "peers never parked at DETACHED_READY_TO_JOIN",
+        40);
+  }
+  expectAllAheadOfGroup(readyLateJoiners);
+
+  /* Hold the ordinary rejoin path so the DEP-A promotion branch is reached. */
+  for (const auto& peerId : readyLateJoiners) {
+    testOnlyDeferDrjAcceptance(peerId.peerAddr, true);
+  }
+
+  /* Last sync peer down: one DEP-A is promoted in place. */
+  bringDownPeer(blockedSyncPeer.peerAddr);
+  EXPECT_EQ(getNumInSyncPeers(operatedGroup[1].peerAddr), 1u)
+      << "exactly one DEP-A should have been promoted to carry the group";
+
+  /* Finish the recovery: the rest rejoin and the blocked one is released. */
+  for (const auto& peerId : readyLateJoiners) {
+    testOnlyDeferDrjAcceptance(peerId.peerAddr, false);
+  }
+  unblockPeersRecording({operatedGroup[9]});
+
+  /*
+   * Change the policy now that a promoted DEP-A carries the group.
+   */
+  const auto result =
+      setPeerGroupPolicy(reEvalPeerGroupName(0), kMatchModifyAppendPolicyName);
+  EXPECT_EQ(
+      result,
+      neteng::fboss::bgp::thrift::BgpPolicyChangeResult::POLICIES_APPLIED);
+  ASSERT_TRUE(waitForEgressReEvalComplete());
+
+  publishNextRound();
+  drainAllGroups(groups);
+  /*
+   * Second pass over the recovered group: drainAllGroups walks group 0
+   * first, so deliveries that land while the other groups are being
+   * drained are only recorded here.
+   */
+  drainAll(lateJoiners);
+  expectPolicyOnPeers(lateJoiners, kMatchModifyAppendPolicyName);
+  expectPolicyOnPeers(untouchedPeers, kPermitAllPolicyName);
+
+  XLOGF(INFO, "=== TEST PASSED: PolicyReEvalAfterDepAPromotionRecovery ===");
 }
 
 INSTANTIATE_TEST_SUITE_P(
