@@ -4406,7 +4406,6 @@ PeerManagerBase::processUpdateGroupsEgressPolicyReevaluation() {
 }
 
 void PeerManagerBase::handleEgressPolicyUpdate() {
-  XLOGF(INFO, "handleEgressPolicyUpdate called");
   if (enableUpdateGroup_) {
     /*
      * egressPolicyUpdateForUpdateGroupsScheduled_ stays true while a
