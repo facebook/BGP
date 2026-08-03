@@ -952,15 +952,22 @@ void Config::populateConfigDatabase(
             setting->enable_dynamic_policy_evaluation()) {
       enableDynamicPolicyEvaluation = *dynamicPolicyEvaluationFlag;
     }
-    if (auto updateGroupFlag = setting->enable_update_group()) {
-      enableUpdateGroup = *updateGroupFlag;
-    }
-    if (auto regexes = setting->include_interface_regexes()) {
-      includeInterfaceRegexes = *regexes;
-    }
     if (auto egressBackPressureFlag =
             setting->enable_egress_queue_backpressure()) {
       enableEgressQueueBackpressure = *egressBackPressureFlag;
+    }
+    if (auto updateGroupFlag = setting->enable_update_group()) {
+      enableUpdateGroup = *updateGroupFlag;
+      if (enableUpdateGroup) {
+        /*
+         * Egress queue backpressure must be enabled if update group
+         * is enabled.
+         */
+        enableEgressQueueBackpressure = true;
+      }
+    }
+    if (auto regexes = setting->include_interface_regexes()) {
+      includeInterfaceRegexes = *regexes;
     }
     if (auto optimizedGRFlag = setting->enable_optimized_GR()) {
       enableOptimizedGR = *optimizedGRFlag;
