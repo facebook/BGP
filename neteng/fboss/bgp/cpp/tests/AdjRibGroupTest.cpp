@@ -4069,7 +4069,9 @@ TEST_F(AdjRibGroupTest, GroupLabelIncludesV4Only) {
   key.afiIpv6Negotiated = false;
   key.extNhEncodingCapable = false;
   createAdjRibOutGroup("test", 2, key);
-  EXPECT_EQ(adjRibOutGroup_->getGroupDescriptor(), "2(EB-FA-OUT/v4)");
+  EXPECT_EQ(
+      adjRibOutGroup_->getGroupDescriptor(),
+      "2(EB-FA-OUT/v4,peerOverride=false)");
 }
 
 TEST_F(AdjRibGroupTest, GroupLabelIncludesV6Only) {
@@ -4079,7 +4081,9 @@ TEST_F(AdjRibGroupTest, GroupLabelIncludesV6Only) {
   key.afiIpv6Negotiated = true;
   key.extNhEncodingCapable = false;
   createAdjRibOutGroup("test", 3, key);
-  EXPECT_EQ(adjRibOutGroup_->getGroupDescriptor(), "3(EB-FA-OUT/v6)");
+  EXPECT_EQ(
+      adjRibOutGroup_->getGroupDescriptor(),
+      "3(EB-FA-OUT/v6,peerOverride=false)");
 }
 
 TEST_F(AdjRibGroupTest, GroupLabelIncludesV4V6) {
@@ -4089,7 +4093,9 @@ TEST_F(AdjRibGroupTest, GroupLabelIncludesV4V6) {
   key.afiIpv6Negotiated = true;
   key.extNhEncodingCapable = false;
   createAdjRibOutGroup("test", 4, key);
-  EXPECT_EQ(adjRibOutGroup_->getGroupDescriptor(), "4(EB-FA-OUT/v4v6)");
+  EXPECT_EQ(
+      adjRibOutGroup_->getGroupDescriptor(),
+      "4(EB-FA-OUT/v4v6,peerOverride=false)");
 }
 
 TEST_F(AdjRibGroupTest, GroupLabelIncludesV4OverV6) {
@@ -4099,7 +4105,9 @@ TEST_F(AdjRibGroupTest, GroupLabelIncludesV4OverV6) {
   key.afiIpv6Negotiated = false;
   key.extNhEncodingCapable = true;
   createAdjRibOutGroup("test", 5, key);
-  EXPECT_EQ(adjRibOutGroup_->getGroupDescriptor(), "5(EB-FA-OUT/v4ov6)");
+  EXPECT_EQ(
+      adjRibOutGroup_->getGroupDescriptor(),
+      "5(EB-FA-OUT/v4ov6,peerOverride=false)");
 }
 
 TEST_F(AdjRibGroupTest, GroupLabelIncludesV4V6WithV4OverV6) {
@@ -4109,7 +4117,9 @@ TEST_F(AdjRibGroupTest, GroupLabelIncludesV4V6WithV4OverV6) {
   key.afiIpv6Negotiated = true;
   key.extNhEncodingCapable = true;
   createAdjRibOutGroup("test", 6, key);
-  EXPECT_EQ(adjRibOutGroup_->getGroupDescriptor(), "6(EB-FA-OUT/v4v6+v4ov6)");
+  EXPECT_EQ(
+      adjRibOutGroup_->getGroupDescriptor(),
+      "6(EB-FA-OUT/v4v6+v4ov6,peerOverride=false)");
 }
 
 TEST_F(AdjRibGroupTest, GroupLabelNoAfiNegotiated) {
@@ -4119,7 +4129,22 @@ TEST_F(AdjRibGroupTest, GroupLabelNoAfiNegotiated) {
   key.afiIpv6Negotiated = false;
   key.extNhEncodingCapable = false;
   createAdjRibOutGroup("test", 7, key);
-  EXPECT_EQ(adjRibOutGroup_->getGroupDescriptor(), "7(EB-FA-OUT/none)");
+  EXPECT_EQ(
+      adjRibOutGroup_->getGroupDescriptor(),
+      "7(EB-FA-OUT/none,peerOverride=false)");
+}
+
+TEST_F(AdjRibGroupTest, GroupLabelIncludesPeerOverride) {
+  UpdateGroupKey key;
+  key.egressPolicyName = "EB-FA-OUT";
+  key.afiIpv4Negotiated = true;
+  key.afiIpv6Negotiated = true;
+  key.extNhEncodingCapable = false;
+  key.peerOverride = true;
+  createAdjRibOutGroup("test", 8, key);
+  EXPECT_EQ(
+      adjRibOutGroup_->getGroupDescriptor(),
+      "8(EB-FA-OUT/v4v6,peerOverride=true)");
 }
 
 TEST_F(

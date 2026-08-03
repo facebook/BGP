@@ -100,10 +100,11 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
         groupKey_(groupKey),
         groupDescriptor_(
             fmt::format(
-                "{}({}/{})",
+                "{}({}/{},peerOverride={})",
                 groupId,
                 groupKey.egressPolicyName.value_or(""),
-                buildAfiLabel(groupKey))),
+                buildAfiLabel(groupKey),
+                groupKey.peerOverride)),
         shadowRibEntries_(shadowRib.first),
         maxRibVersion_(shadowRib.second),
         policyManager_(std::move(policyManager)),

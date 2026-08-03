@@ -4382,6 +4382,12 @@ PeerManagerBase::processUpdateGroupsEgressPolicyReevaluation() {
           group->getGroupDescriptor(),
           group->getNumInSyncPeers());
       group->scheduleChangeListConsumeTimer();
+    } else {
+      XLOGF(
+          INFO,
+          "Group {}: Paused for no-sync-peer recovery with {} detached peers after policy re-evaluation",
+          group->getGroupDescriptor(),
+          group->getDetachedPeers().size());
     }
   }
   /*
