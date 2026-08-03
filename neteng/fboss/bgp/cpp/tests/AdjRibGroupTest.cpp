@@ -16,26 +16,29 @@
 
 #include <gtest/gtest.h>
 
-#define AdjRibOutGroup_TEST_FRIENDS                                        \
-  friend class AdjRibGroupTest;                                            \
-  friend class AdjRibGroupPackingFixture;                                  \
-  friend class AdjRibGroupRibOutEntryFixture;                              \
-  friend class AdjRibGroupWithdrawalFixture;                               \
-  friend class AdjRibGroupDistributionFixture;                             \
-  friend class AdjRibGroupPolicyFixture;                                   \
-  friend class AdjRibGroupAddPathFixture;                                  \
-  FRIEND_TEST(                                                             \
-      AdjRibGroupTest,                                                     \
-      BuildAndSendGroupBgpMessages_EmptyPackingListEmitsRejoinLogs);       \
-  FRIEND_TEST(                                                             \
-      AdjRibGroupTest,                                                     \
-      BuildAndSendGroupBgpMessages_NoSyncPeersDoesNotRestartConsumeTimer); \
-  FRIEND_TEST(                                                             \
-      AdjRibGroupTest,                                                     \
-      BuildAndSendGroupBgpMessages_SyncPeerRestartsConsumeTimer);          \
-  FRIEND_TEST(                                                             \
-      AdjRibGroupPackingFixture,                                           \
-      ProcessRibAnnouncedEntryForGroup_NoEgressPolicyWithPolicyManagerDoesNotCrash);
+#define AdjRibOutGroup_TEST_FRIENDS                                                  \
+  friend class AdjRibGroupTest;                                                      \
+  friend class AdjRibGroupPackingFixture;                                            \
+  friend class AdjRibGroupRibOutEntryFixture;                                        \
+  friend class AdjRibGroupWithdrawalFixture;                                         \
+  friend class AdjRibGroupDistributionFixture;                                       \
+  friend class AdjRibGroupPolicyFixture;                                             \
+  friend class AdjRibGroupAddPathFixture;                                            \
+  FRIEND_TEST(                                                                       \
+      AdjRibGroupTest,                                                               \
+      BuildAndSendGroupBgpMessages_EmptyPackingListEmitsRejoinLogs);                 \
+  FRIEND_TEST(                                                                       \
+      AdjRibGroupTest,                                                               \
+      BuildAndSendGroupBgpMessages_NoSyncPeersDoesNotRestartConsumeTimer);           \
+  FRIEND_TEST(                                                                       \
+      AdjRibGroupTest,                                                               \
+      BuildAndSendGroupBgpMessages_SyncPeerRestartsConsumeTimer);                    \
+  FRIEND_TEST(                                                                       \
+      AdjRibGroupPackingFixture,                                                     \
+      ProcessRibAnnouncedEntryForGroup_NoEgressPolicyWithPolicyManagerDoesNotCrash); \
+  FRIEND_TEST(                                                                       \
+      AdjRibGroupTest,                                                               \
+      MovePeerMaterializedPathEntries_PeerOwnedPathNotOverwritten);
 
 #include <folly/coro/BlockingWait.h>
 #include <folly/io/async/EventBase.h>
@@ -487,6 +490,61 @@ TEST_F(AdjRibGroupTest, ResolveLiteEntryForPeer_VersionGatedSharing) {
       peerEntry,
       adjRibOutGroup_->resolveLiteEntryForPeer(
           ownerMap, peerKey, kGroupEntryVersion + 1000));
+}
+
+/**
+ * Test: moving a peer to another group must not overwrite a path the peer has
+ * already diverged on. movePeers materializes the peer's full RIB-OUT under its
+ * own owner key in the new group, copying across the shared group entries it
+ * was still using -- but divergence is per (prefix, pathId), so a path the peer
+ * owns is not shared regardless of the group entry's version, and copying the
+ * group's version over it would silently revert that path's attributes.
+ */
+TEST_F(
+    AdjRibGroupTest,
+    MovePeerMaterializedPathEntries_PeerOwnedPathNotOverwritten) {
+  UpdateGroupKey key = createDefaultGroupKey();
+  key.sendAddPath = true;
+  createAdjRibOutGroup("source_group", 42, key);
+
+  const folly::CIDRNetwork prefix{folly::IPAddress("10.0.0.0"), 24};
+  const auto groupOwnerKey = adjRibOutGroup_->getGroupOwnerKey();
+  auto adjRib = createMinimalAdjRib(1);
+  const auto peerOwnerKey = adjRib->getPeerOwnerKey();
+
+  /*
+   * The peer detached at v120 and owns pathId 1. The group's pathId 1 predates
+   * the detach (v100), so it still passes the shared-entry version gate -- the
+   * peer simply does not use it, because it has its own. pathId 2 is group-only
+   * and shared, so it must still be carried across.
+   */
+  adjRib->setDetachedRibVersion(120);
+  auto* groupPath1 = adjRibOutGroup_->addToPathTree(
+      adjRibOutGroup_->PathTree_, prefix, groupOwnerKey, /*pathId=*/1);
+  groupPath1->setRibVersion(100);
+  auto* groupPath2 = adjRibOutGroup_->addToPathTree(
+      adjRibOutGroup_->PathTree_, prefix, groupOwnerKey, /*pathId=*/2);
+  groupPath2->setRibVersion(110);
+  auto* peerPath1 = adjRibOutGroup_->addToPathTree(
+      adjRibOutGroup_->PathTree_, prefix, peerOwnerKey, /*pathId=*/1);
+  peerPath1->setRibVersion(150);
+
+  auto targetGroup = std::make_shared<AdjRibOutGroup>(
+      *evb_, "target_group", 43, true /* enableUpdateGroup */, key);
+
+  adjRibOutGroup_->movePeerMaterializedRibOutPathEntries({adjRib}, targetGroup);
+
+  auto* movedPath1 = targetGroup->getFromPathTree(
+      targetGroup->PathTree_, prefix, peerOwnerKey, /*pathId=*/1);
+  ASSERT_NE(movedPath1, nullptr);
+  EXPECT_EQ(movedPath1->getRibVersion(), 150u)
+      << "the group's shared pathId 1 overwrote the peer's own diverged entry";
+
+  /* The group-only shared path is still materialized for the peer. */
+  auto* movedPath2 = targetGroup->getFromPathTree(
+      targetGroup->PathTree_, prefix, peerOwnerKey, /*pathId=*/2);
+  ASSERT_NE(movedPath2, nullptr);
+  EXPECT_EQ(movedPath2->getRibVersion(), 110u);
 }
 
 /**

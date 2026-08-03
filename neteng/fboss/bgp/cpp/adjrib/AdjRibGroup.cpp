@@ -2763,27 +2763,50 @@ void AdjRibOutGroup::movePeerMaterializedRibOutPathEntries(
       auto peerOwnerKey = adjRib->getPeerOwnerKey();
       auto detachedRibVersion = adjRib->getDetachedRibVersion();
 
-      // Move the peer's own entries to the new group, then delete from old.
-      auto entryItr = ownerMap.find(peerOwnerKey);
-      if (entryItr != ownerMap.end()) {
-        for (auto& [pathId, entry] : entryItr->second) {
+      // Move the peer's own entries to the new group.
+      auto peerEntryItr = ownerMap.find(peerOwnerKey);
+      bool peerOwnsEntry = peerEntryItr != ownerMap.end();
+      if (peerOwnsEntry) {
+        for (auto& [pathId, entry] : peerEntryItr->second) {
           newGroup->copyEntryForOwner(
               prefix, pathId, peerOwnerKey, entry.get());
           movedCount++;
         }
-        ownerMap.erase(entryItr);
       }
 
-      // Copy shared group entries the peer was using before detachment.
+      /*
+       * Copy the shared group entries the peer was using before detachment,
+       * skipping any pathId the peer already owns. Divergence is per (prefix,
+       * pathId), so a path the peer diverged on is not shared no matter what
+       * the group entry's version says, and copyEntryForOwner overwrites --
+       * without this skip the group's attributes would silently replace the
+       * peer's own entry that was just moved. Mirrors shouldClonePathForPeer,
+       * which tests peer ownership before the version gate, and the LiteTree
+       * counterpart, which skips the shared copy once it has moved a peer
+       * entry.
+       */
       auto groupItr = ownerMap.find(groupOwnerKey);
       if (groupItr != ownerMap.end()) {
         for (auto& [pathId, entry] : groupItr->second) {
+          const bool peerOwnsPath = peerOwnsEntry &&
+              peerEntryItr->second.find(pathId) != peerEntryItr->second.end();
+          if (peerOwnsPath) {
+            continue;
+          }
           if (isEntryShared(detachedRibVersion, entry->getRibVersion())) {
             newGroup->copyEntryForOwner(
                 prefix, pathId, peerOwnerKey, entry.get());
             copiedCount++;
           }
         }
+      }
+
+      /*
+       * Erase the peer's entries last: the shared-entry loop above needs them
+       * to tell which pathIds the peer already owns.
+       */
+      if (peerEntryItr != ownerMap.end()) {
+        ownerMap.erase(peerEntryItr);
       }
     }
 
