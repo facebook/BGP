@@ -1284,6 +1284,78 @@ TEST_F(ConfigManagerFileTestFixture, SplitConfigPolicyFieldsStrippedFromFile) {
   EXPECT_TRUE(foundUpdatedPeer);
 }
 
+// Test that policy body fields are stripped from written config file in
+// split-config mode (separate policy file via ConfigManager::setPolicyConfig)
+TEST_F(
+    ConfigManagerFileTestFixture,
+    SplitConfigPolicyFieldsStrippedInProductionOrder) {
+  // Add policy body fields to defaultConfig_
+  BgpCommunity community;
+  community.name() = "TEST_COMMUNITY";
+  community.communities() = {"65000:1"};
+  defaultConfig_.communities() = {community};
+
+  BgpLocalPref localpref;
+  localpref.localpref() = 200;
+  localpref.name() = "TEST_LOCALPREF";
+  defaultConfig_.localprefs() = {localpref};
+
+  // Write policy file for split-config
+  auto policyFilePath = testDir_ / "test_policy.json";
+  thrift::BgpConfig policyConfig;
+  policyConfig.communities().copy_from(defaultConfig_.communities());
+  policyConfig.localprefs().copy_from(defaultConfig_.localprefs());
+  std::string policyStr =
+      apache::thrift::SimpleJSONSerializer::serialize<std::string>(
+          policyConfig);
+  folly::writeFileAtomic(policyFilePath.string(), policyStr);
+
+  writeInitialConfigToFile();
+  auto config = std::make_shared<Config>(defaultConfig_);
+
+  // construct the ConfigManager first, load the policy file
+  // afterwards (the reverse of SplitConfigPolicyFieldsStrippedFromFile). The
+  // split-config decision is passed explicitly, mirroring the entrypoints.
+  ConfigManager configManager(
+      config, configFilePath_.string(), /*splitConfigPolicy=*/true);
+  config->setPolicyConfigFromFile(policyFilePath.string());
+
+  // Verify split-config mode is active and policy body is merged
+  ASSERT_TRUE(config->splitConfigPolicy());
+  ASSERT_FALSE(config->getConfig().communities()->empty());
+
+  // Trigger a runtime config update
+  auto policyMap =
+      createConfigManagerPolicyMap({{kPeerAddr3.str(), "UPDATED_POLICY", ""}});
+  auto updatedConfig = configManager.updatePeerPolicies(*policyMap);
+  ASSERT_NE(updatedConfig, nullptr);
+
+  // Read written config file
+  std::string fileContent;
+  ASSERT_TRUE(folly::readFile(configFilePath_.string().c_str(), fileContent));
+  auto deserializedConfig =
+      apache::thrift::SimpleJSONSerializer::deserialize<thrift::BgpConfig>(
+          fileContent);
+
+  // Policy body fields must be stripped from written file
+  EXPECT_TRUE(deserializedConfig.communities()->empty());
+  EXPECT_TRUE(deserializedConfig.localprefs()->empty());
+  EXPECT_TRUE(
+      !deserializedConfig.policies().has_value() ||
+      deserializedConfig.policies()->bgp_policy_statements()->empty());
+
+  // Settings data (peer policy names) must still be present
+  bool foundUpdatedPeer = false;
+  for (const auto& peer : *deserializedConfig.peers()) {
+    if (*peer.peer_addr() == kPeerAddr3.str()) {
+      EXPECT_EQ(*peer.ingress_policy_name(), "UPDATED_POLICY");
+      foundUpdatedPeer = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(foundUpdatedPeer);
+}
+
 /******************************************************************************
  *      END   -   Split Config Policy Stripping Tests                         *
  ******************************************************************************/

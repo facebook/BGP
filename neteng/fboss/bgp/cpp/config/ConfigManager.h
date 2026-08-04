@@ -17,6 +17,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <set>
 #include <tuple>
 #include "configerator/structs/neteng/bgp_policy/thrift/gen-cpp2/bgp_policy_types.h"
@@ -35,10 +36,22 @@ namespace facebook::bgp {
  */
 class ConfigManager {
  public:
+  /*
+   * Pass splitConfigPolicy = true when bgpd was started with a --policy file.
+   * The policy body (communities, localprefs, policies) then belongs to that
+   * file, so it is removed from the config before the config is written to
+   * disk.
+   *
+   * If it is left unset, the value is read from
+   * initialConfig->splitConfigPolicy().
+   */
   explicit ConfigManager(
       std::shared_ptr<const Config> initialConfig,
-      std::string configFilePath = "")
-      : splitConfigPolicy_(initialConfig->splitConfigPolicy()),
+      std::string configFilePath = "",
+      std::optional<bool> splitConfigPolicy = std::nullopt)
+      : splitConfigPolicy_(
+            splitConfigPolicy.has_value() ? *splitConfigPolicy
+                                          : initialConfig->splitConfigPolicy()),
         config_(std::make_pair(std::move(initialConfig), 0)),
         configFilePath_(std::move(configFilePath)) {}
 
