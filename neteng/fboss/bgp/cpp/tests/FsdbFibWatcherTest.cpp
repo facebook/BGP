@@ -289,6 +289,107 @@ CO_TEST_F(FsdbFibWatcherTest, MarkNeedsReconcileEmptyIsNoop) {
   co_await watcher->co_markNeedsReconcile();
 }
 
+CO_TEST_F(FsdbFibWatcherTest, ReconcileKeepsStillReachableNexthopWithoutChurn) {
+  /*
+   * On FSDB reconnect, co_markNeedsReconcile() must NOT eagerly mark reachable
+   * nexthops unreachable. A still-reachable nexthop stays reachable across the
+   * reconcile — no transient withdrawal / route churn — and the next snapshot
+   * merely confirms it.
+   */
+  auto subMgr = std::make_shared<fboss::fsdb::FsdbCowStateSubManager>(
+      fboss::fsdb::SubscriptionOptions("test"),
+      fboss::utils::ConnectionOptions("::1", 0));
+  auto watcher =
+      std::make_shared<FsdbFibWatcher>(nexthopCache_, ribInQ_, &evb_, subMgr);
+  watcher->registerPeers({kPeerV4});
+  evb_.loopOnce();
+
+  // Nexthop becomes reachable via FIB.
+  co_await watcher->co_processFibUpdate(
+      fboss::fsdb::FsdbCowStateSubManager::SubUpdate{
+          makeCowDataWithRoute("10.0.0.1/32", /*isV4=*/true, {42}),
+          {},
+          {{"10.0.0.1/32"}},
+          std::nullopt,
+          std::nullopt,
+          /*streamRevision=*/std::nullopt});
+  EXPECT_TRUE(
+      nexthopCache_->registerAndGetNexthopStatus(kPeerV4).isReachable());
+
+  // Reconnect: arming the reconcile must not touch reachability (the old
+  // clear-then-rebuild marked it unreachable here, causing a transient
+  // withdrawal).
+  co_await watcher->co_markNeedsReconcile();
+  EXPECT_TRUE(
+      nexthopCache_->registerAndGetNexthopStatus(kPeerV4).isReachable());
+
+  // The reconcile snapshot confirms the nexthop is still reachable.
+  co_await watcher->co_processFibUpdate(
+      fboss::fsdb::FsdbCowStateSubManager::SubUpdate{
+          makeCowDataWithRoute("10.0.0.1/32", /*isV4=*/true, {42}),
+          {},
+          {},
+          std::nullopt,
+          std::nullopt,
+          /*streamRevision=*/std::nullopt});
+  EXPECT_TRUE(
+      nexthopCache_->registerAndGetNexthopStatus(kPeerV4).isReachable());
+}
+
+CO_TEST_F(FsdbFibWatcherTest, ReconcileWithdrawsNexthopGoneWhileDisconnected) {
+  /*
+   * A nexthop whose FIB route disappeared while FSDB was disconnected is
+   * withdrawn by the reconcile diff, while an unchanged nexthop stays
+   * reachable.
+   */
+  auto subMgr = std::make_shared<fboss::fsdb::FsdbCowStateSubManager>(
+      fboss::fsdb::SubscriptionOptions("test"),
+      fboss::utils::ConnectionOptions("::1", 0));
+  auto watcher =
+      std::make_shared<FsdbFibWatcher>(nexthopCache_, ribInQ_, &evb_, subMgr);
+  watcher->registerPeers({kPeerV4, kPeerV6});
+  evb_.loopOnce();
+
+  // Both nexthops reachable via FIB.
+  co_await watcher->co_processFibUpdate(
+      fboss::fsdb::FsdbCowStateSubManager::SubUpdate{
+          makeCowDataWithRoute("10.0.0.1/32", /*isV4=*/true, {42}),
+          {},
+          {{"10.0.0.1/32"}},
+          std::nullopt,
+          std::nullopt,
+          /*streamRevision=*/std::nullopt});
+  co_await watcher->co_processFibUpdate(
+      fboss::fsdb::FsdbCowStateSubManager::SubUpdate{
+          makeCowDataWithRoute("fdad:500::d:0/128", /*isV4=*/false, {7}),
+          {},
+          {{"fdad:500::d:0/128"}},
+          std::nullopt,
+          std::nullopt,
+          /*streamRevision=*/std::nullopt});
+  EXPECT_TRUE(
+      nexthopCache_->registerAndGetNexthopStatus(kPeerV4).isReachable());
+  EXPECT_TRUE(
+      nexthopCache_->registerAndGetNexthopStatus(kPeerV6).isReachable());
+
+  // Reconnect; the fresh snapshot has only the V4 route (V6 route removed while
+  // disconnected). Reconcile keeps V4 and withdraws V6.
+  co_await watcher->co_markNeedsReconcile();
+  co_await watcher->co_processFibUpdate(
+      fboss::fsdb::FsdbCowStateSubManager::SubUpdate{
+          makeCowDataWithRoute("10.0.0.1/32", /*isV4=*/true, {42}),
+          {},
+          {},
+          std::nullopt,
+          std::nullopt,
+          /*streamRevision=*/std::nullopt});
+
+  EXPECT_TRUE(
+      nexthopCache_->registerAndGetNexthopStatus(kPeerV4).isReachable());
+  EXPECT_FALSE(
+      nexthopCache_->registerAndGetNexthopStatus(kPeerV6).isReachable());
+}
+
 TEST_F(FsdbFibWatcherTest, StopIsIdempotent) {
   /**
    * stop() should be safe to call multiple times and should not crash.
@@ -408,7 +509,12 @@ CO_TEST_F(FsdbFibWatcherTest, ProcessFibUpdateSingleNexthopWithCost) {
   auto cowData = makeCowDataWithRoute("10.0.0.1/32", /*isV4=*/true, {42});
   co_await watcher->co_processFibUpdate(
       fboss::fsdb::FsdbCowStateSubManager::SubUpdate{
-          cowData, {}, {{"10.0.0.1/32"}}, std::nullopt, std::nullopt});
+          cowData,
+          {},
+          {{"10.0.0.1/32"}},
+          std::nullopt,
+          std::nullopt,
+          /*streamRevision=*/std::nullopt});
 
   auto status = nexthopCache_->registerAndGetNexthopStatus(kPeerV4);
   EXPECT_TRUE(status.isReachable());
@@ -432,7 +538,12 @@ CO_TEST_F(FsdbFibWatcherTest, ProcessFibUpdateMultipleNexthopsMinCost) {
       makeCowDataWithRoute("10.0.0.1/32", /*isV4=*/true, {100, 50, 200});
   co_await watcher->co_processFibUpdate(
       fboss::fsdb::FsdbCowStateSubManager::SubUpdate{
-          cowData, {}, {{"10.0.0.1/32"}}, std::nullopt, std::nullopt});
+          cowData,
+          {},
+          {{"10.0.0.1/32"}},
+          std::nullopt,
+          std::nullopt,
+          /*streamRevision=*/std::nullopt});
 
   auto status = nexthopCache_->registerAndGetNexthopStatus(kPeerV4);
   EXPECT_TRUE(status.isReachable());
@@ -456,7 +567,12 @@ CO_TEST_F(FsdbFibWatcherTest, ProcessFibUpdateNexthopWithoutCost) {
       makeCowDataWithRoute("10.0.0.1/32", /*isV4=*/true, {std::nullopt});
   co_await watcher->co_processFibUpdate(
       fboss::fsdb::FsdbCowStateSubManager::SubUpdate{
-          cowData, {}, {{"10.0.0.1/32"}}, std::nullopt, std::nullopt});
+          cowData,
+          {},
+          {{"10.0.0.1/32"}},
+          std::nullopt,
+          std::nullopt,
+          /*streamRevision=*/std::nullopt});
 
   auto status = nexthopCache_->registerAndGetNexthopStatus(kPeerV4);
   EXPECT_EQ(std::nullopt, status.getIgpCost());
@@ -479,7 +595,12 @@ CO_TEST_F(FsdbFibWatcherTest, ProcessFibUpdateMixedCostNexthopsV6) {
       "fdad:500::d:0/128", /*isV4=*/false, {100, std::nullopt, 30});
   co_await watcher->co_processFibUpdate(
       fboss::fsdb::FsdbCowStateSubManager::SubUpdate{
-          cowData, {}, {{"fdad:500::d:0/128"}}, std::nullopt, std::nullopt});
+          cowData,
+          {},
+          {{"fdad:500::d:0/128"}},
+          std::nullopt,
+          std::nullopt,
+          /*streamRevision=*/std::nullopt});
 
   auto status = nexthopCache_->registerAndGetNexthopStatus(kPeerV6);
   EXPECT_TRUE(status.isReachable());
@@ -503,7 +624,12 @@ CO_TEST_F(FsdbFibWatcherTest, ProcessFibUpdateBecameUnreachable) {
   auto cowData1 = makeCowDataWithRoute("10.0.0.1/32", /*isV4=*/true, {42});
   co_await watcher->co_processFibUpdate(
       fboss::fsdb::FsdbCowStateSubManager::SubUpdate{
-          cowData1, {}, {{"10.0.0.1/32"}}, std::nullopt, std::nullopt});
+          cowData1,
+          {},
+          {{"10.0.0.1/32"}},
+          std::nullopt,
+          std::nullopt,
+          /*streamRevision=*/std::nullopt});
 
   auto status1 = nexthopCache_->registerAndGetNexthopStatus(kPeerV4);
   EXPECT_TRUE(status1.isReachable());
@@ -512,7 +638,12 @@ CO_TEST_F(FsdbFibWatcherTest, ProcessFibUpdateBecameUnreachable) {
   auto cowData2 = makeCowDataWithoutRoute();
   co_await watcher->co_processFibUpdate(
       fboss::fsdb::FsdbCowStateSubManager::SubUpdate{
-          cowData2, {}, {{"10.0.0.1/32"}}, std::nullopt, std::nullopt});
+          cowData2,
+          {},
+          {{"10.0.0.1/32"}},
+          std::nullopt,
+          std::nullopt,
+          /*streamRevision=*/std::nullopt});
 
   auto status2 = nexthopCache_->registerAndGetNexthopStatus(kPeerV4);
   EXPECT_FALSE(status2.isReachable());
@@ -536,7 +667,12 @@ CO_TEST_F(FsdbFibWatcherTest, ProcessFibUpdateCostChangeWhileReachable) {
   auto cowData1 = makeCowDataWithRoute("10.0.0.1/32", /*isV4=*/true, {42});
   co_await watcher->co_processFibUpdate(
       fboss::fsdb::FsdbCowStateSubManager::SubUpdate{
-          cowData1, {}, {{"10.0.0.1/32"}}, std::nullopt, std::nullopt});
+          cowData1,
+          {},
+          {{"10.0.0.1/32"}},
+          std::nullopt,
+          std::nullopt,
+          /*streamRevision=*/std::nullopt});
 
   auto status1 = nexthopCache_->registerAndGetNexthopStatus(kPeerV4);
   EXPECT_TRUE(status1.isReachable());
@@ -545,7 +681,12 @@ CO_TEST_F(FsdbFibWatcherTest, ProcessFibUpdateCostChangeWhileReachable) {
   auto cowData2 = makeCowDataWithRoute("10.0.0.1/32", /*isV4=*/true, {100});
   co_await watcher->co_processFibUpdate(
       fboss::fsdb::FsdbCowStateSubManager::SubUpdate{
-          cowData2, {}, {{"10.0.0.1/32"}}, std::nullopt, std::nullopt});
+          cowData2,
+          {},
+          {{"10.0.0.1/32"}},
+          std::nullopt,
+          std::nullopt,
+          /*streamRevision=*/std::nullopt});
 
   auto status2 = nexthopCache_->registerAndGetNexthopStatus(kPeerV4);
   EXPECT_TRUE(status2.isReachable());
@@ -568,7 +709,12 @@ CO_TEST_F(FsdbFibWatcherTest, ProcessFibUpdateCostRemovedWhileReachable) {
   auto cowData1 = makeCowDataWithRoute("10.0.0.1/32", /*isV4=*/true, {42});
   co_await watcher->co_processFibUpdate(
       fboss::fsdb::FsdbCowStateSubManager::SubUpdate{
-          cowData1, {}, {{"10.0.0.1/32"}}, std::nullopt, std::nullopt});
+          cowData1,
+          {},
+          {{"10.0.0.1/32"}},
+          std::nullopt,
+          std::nullopt,
+          /*streamRevision=*/std::nullopt});
 
   auto status1 = nexthopCache_->registerAndGetNexthopStatus(kPeerV4);
   EXPECT_TRUE(status1.isReachable());
@@ -578,7 +724,12 @@ CO_TEST_F(FsdbFibWatcherTest, ProcessFibUpdateCostRemovedWhileReachable) {
       makeCowDataWithRoute("10.0.0.1/32", /*isV4=*/true, {std::nullopt});
   co_await watcher->co_processFibUpdate(
       fboss::fsdb::FsdbCowStateSubManager::SubUpdate{
-          cowData2, {}, {{"10.0.0.1/32"}}, std::nullopt, std::nullopt});
+          cowData2,
+          {},
+          {{"10.0.0.1/32"}},
+          std::nullopt,
+          std::nullopt,
+          /*streamRevision=*/std::nullopt});
 
   auto status2 = nexthopCache_->registerAndGetNexthopStatus(kPeerV4);
   EXPECT_EQ(std::nullopt, status2.getIgpCost());
@@ -601,7 +752,12 @@ CO_TEST_F(FsdbFibWatcherTest, ProcessFibUpdateUnreachableCostIsNullopt) {
   auto cowData1 = makeCowDataWithRoute("10.0.0.1/32", /*isV4=*/true, {99});
   co_await watcher->co_processFibUpdate(
       fboss::fsdb::FsdbCowStateSubManager::SubUpdate{
-          cowData1, {}, {{"10.0.0.1/32"}}, std::nullopt, std::nullopt});
+          cowData1,
+          {},
+          {{"10.0.0.1/32"}},
+          std::nullopt,
+          std::nullopt,
+          /*streamRevision=*/std::nullopt});
 
   auto status1 = nexthopCache_->registerAndGetNexthopStatus(kPeerV4);
   EXPECT_TRUE(status1.isReachable());
@@ -610,7 +766,12 @@ CO_TEST_F(FsdbFibWatcherTest, ProcessFibUpdateUnreachableCostIsNullopt) {
   auto cowData2 = makeCowDataWithoutRoute();
   co_await watcher->co_processFibUpdate(
       fboss::fsdb::FsdbCowStateSubManager::SubUpdate{
-          cowData2, {}, {{"10.0.0.1/32"}}, std::nullopt, std::nullopt});
+          cowData2,
+          {},
+          {{"10.0.0.1/32"}},
+          std::nullopt,
+          std::nullopt,
+          /*streamRevision=*/std::nullopt});
 
   auto status2 = nexthopCache_->registerAndGetNexthopStatus(kPeerV4);
   EXPECT_FALSE(status2.isReachable());

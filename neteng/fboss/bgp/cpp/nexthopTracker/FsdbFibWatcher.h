@@ -124,17 +124,20 @@ class FsdbFibWatcher : public std::enable_shared_from_this<FsdbFibWatcher> {
    * because no subscribed prefix token will match.
    *
    * No notification for a prefix means the route does not exist yet.
-   * As notifications arrive, nexthop status is updated. On reconnect,
-   * markNeedsReconcile() clears all reachable state so status is rebuilt
-   * purely from new notifications.
+   * As notifications arrive, nexthop status is updated. After a reconnect
+   * (co_markNeedsReconcile), the next update reconciles against the full
+   * snapshot, pushing only reachability deltas.
    **/
   folly::coro::Task<void> co_processFibUpdate(
       fboss::fsdb::FsdbCowStateSubManager::SubUpdate update);
 
   /**
-   * Reset all reachable nexthops to unreachable. Called from the FSDB
-   * connection state callback on (re)connect so that reachability is
-   * rebuilt purely from new FSDB notifications.
+   * Arm a full reconcile against the next FSDB snapshot. Called from the FSDB
+   * connection state callback on (re)connect: the next co_processFibUpdate
+   * diffs every subscribed prefix's reachability against reachableNexthops_
+   * and pushes only the deltas, so still-reachable nexthops are never
+   * transiently marked unreachable — an FSDB restart under a live bgpd does
+   * not churn/withdraw their routes.
    **/
   folly::coro::Task<void> co_markNeedsReconcile();
 
@@ -240,6 +243,14 @@ class FsdbFibWatcher : public std::enable_shared_from_this<FsdbFibWatcher> {
    * shared sub manager).
    **/
   bool pathsAdded_{false};
+
+  /**
+   * Set on (re)connect by co_markNeedsReconcile(). When true, the next
+   * co_processFibUpdate reconciles reachability against the full snapshot
+   * (diff vs reachableNexthops_) instead of the event-driven per-updatedPath
+   * scan, so an FSDB restart does not churn still-reachable nexthops.
+   **/
+  bool needsReconcile_{false};
 
   std::shared_ptr<NexthopCache> nexthopCache_;
   nettools::bgplib::MonitoredBackPressuredQueue<RibInMessage>& ribInQ_;

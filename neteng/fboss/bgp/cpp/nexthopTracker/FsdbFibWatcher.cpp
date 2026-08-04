@@ -266,41 +266,24 @@ folly::coro::Task<void> FsdbFibWatcher::co_updateCacheAndPushToRib(
 }
 
 folly::coro::Task<void> FsdbFibWatcher::co_markNeedsReconcile() {
-  if (reachableNexthops_.empty()) {
-    XLOG(
-        INFO,
-        "[FsdbFibWatcher] Reconnect: no previously reachable nexthops to"
-        " clear");
-    co_return;
-  }
-  XLOGF(
-      INFO,
-      "[FsdbFibWatcher] Reconnect: clearing {} reachable nexthops —"
-      " will rebuild from notifications",
-      reachableNexthops_.size());
+  /*
+   * Arm a full reconcile against the next snapshot instead of eagerly clearing
+   * reachable state. co_processFibUpdate then diffs every subscribed prefix's
+   * reachability against reachableNexthops_ and pushes only the deltas, so a
+   * still-reachable nexthop is never transiently marked unreachable — an FSDB
+   * restart under a live bgpd does not churn/withdraw its routes. Genuinely
+   * gone nexthops (routes removed while disconnected) are withdrawn by the
+   * reconcile diff.
+   */
+  needsReconcile_ = true;
   FsdbStats::incrFsdbNhtDisconnects();
   FsdbStats::setFsdbNhtConnected(0);
-  std::vector<NexthopStatus> batchUpdates;
-  for (const auto& ip : reachableNexthops_) {
-    batchUpdates.emplace_back(
-        ip,
-        /*isReachable=*/false,
-        /*igpCost=*/std::nullopt,
-        /*isConnected=*/std::nullopt,
-        /*excludeNexthopWithoutCost=*/false);
-  }
-  reachableNexthops_.clear();
-
-  auto result = co_await co_awaitTry(co_updateCacheAndPushToRib(batchUpdates));
-  if (result.hasException<folly::OperationCancelled>()) {
-    co_yield folly::coro::co_error(std::move(result).exception());
-  }
-  if (result.hasException()) {
-    XLOGF(
-        ERR,
-        "[FsdbFibWatcher] co_markNeedsReconcile failed: {}",
-        result.exception().what());
-  }
+  XLOGF(
+      INFO,
+      "[FsdbFibWatcher] Reconnect: reconcile armed ({} nexthops currently"
+      " reachable)",
+      reachableNexthops_.size());
+  co_return;
 }
 
 std::optional<uint32_t> FsdbFibWatcher::lookupIgpCostFromRoute(
@@ -465,72 +448,164 @@ std::pair<bool, std::optional<uint32_t>> FsdbFibWatcher::routeExistsInCowTree(
   return {false, std::nullopt};
 }
 
+namespace {
+/*
+ * Emit a single nexthop reachability delta shared by co_processFibUpdate's
+ * reconcile and event-driven branches: bump the transition stat, queue a
+ * NexthopStatus, and log. wasReachable is the pre-update reachability; the
+ * reachable/unreachable counter is bumped only on a genuine transition. In
+ * reconcile mode (isReconcile=true) only genuine transitions are logged -- that
+ * branch visits every subscribed prefix, so logging steady nexthops on each
+ * reconnect would be noise; the event-driven branch also logs same-state cost
+ * updates. The reachability-set bookkeeping (reachableNexthops_ vs the
+ * reconcile's newReachable) stays with each branch.
+ */
+void emitReachabilityUpdate(
+    const folly::IPAddress& peerAddr,
+    bool exists,
+    const std::optional<uint32_t>& igpCost,
+    bool wasReachable,
+    bool isReconcile,
+    std::vector<NexthopStatus>& batchUpdates) {
+  const char* const logPrefix = isReconcile ? "Reconcile: " : "";
+  if (exists) {
+    if (!wasReachable) {
+      FsdbStats::incrFsdbNhtNexthopReachable();
+    }
+    batchUpdates.emplace_back(
+        peerAddr,
+        /*isReachable=*/true,
+        igpCost,
+        /*isConnected=*/std::nullopt,
+        /*excludeNexthopWithoutCost=*/false);
+    if (!wasReachable || !isReconcile) {
+      XLOGF(
+          INFO,
+          "[FsdbFibWatcher] {}Nexthop {}: {} igpCost={}",
+          logPrefix,
+          peerAddr.str(),
+          wasReachable ? "cost update" : "became reachable",
+          igpCost ? fmt::format("{}", *igpCost) : "none");
+    }
+  } else {
+    if (wasReachable) {
+      FsdbStats::incrFsdbNhtNexthopUnreachable();
+    }
+    batchUpdates.emplace_back(
+        peerAddr,
+        /*isReachable=*/false,
+        /*igpCost=*/std::nullopt,
+        /*isConnected=*/std::nullopt,
+        /*excludeNexthopWithoutCost=*/false);
+    if (wasReachable || !isReconcile) {
+      XLOGF(
+          INFO,
+          "[FsdbFibWatcher] {}Nexthop unreachable: {} igpCost=none",
+          logPrefix,
+          peerAddr.str());
+    }
+  }
+}
+} // namespace
+
 folly::coro::Task<void> FsdbFibWatcher::co_processFibUpdate(
     fboss::fsdb::FsdbCowStateSubManager::SubUpdate update) {
   /**
-   * Purely event-driven: scan updatedPath tokens for subscribed prefix
-   * strings. Struct fields use numeric thrift IDs, but map keys (like
-   * "fdad:500::d:0/128") appear as literal string tokens. Match these
-   * against subscribedPrefixes_ to find affected peers.
+   * Two update modes:
+   *  - Event-driven (steady state): scan updatedPath tokens for subscribed
+   *    prefix strings. Struct fields use numeric thrift IDs, but map keys (like
+   *    "fdad:500::d:0/128") appear as literal string tokens. Match these
+   *    against subscribedPrefixes_ to find affected peers and update status.
+   *  - Reconcile (first update after a (re)connect, when needsReconcile_ is
+   *    armed by co_markNeedsReconcile): recompute reachability for every
+   *    subscribed prefix against the full snapshot and emit only the delta vs
+   *    reachableNexthops_, so a still-reachable nexthop is never transiently
+   *    withdrawn (no route churn on an FSDB restart).
    *
-   * No notification for a prefix means the route does not exist (peer is
-   * unreachable). As notifications arrive, we update nexthop status.
-   * On reconnect, markNeedsReconcile() clears all reachable state so
-   * status is rebuilt purely from new notifications.
+   * No notification / no route for a prefix means the peer is unreachable.
    **/
   FsdbStats::setFsdbNhtConnected(1);
   std::vector<NexthopStatus> batchUpdates;
 
-  for (const auto& pathTokens : update.updatedPaths) {
-    for (const auto& token : pathTokens) {
-      auto it = subscribedPrefixes_.find(token);
-      if (it == subscribedPrefixes_.end()) {
-        continue;
-      }
-      const auto& [peerAddr, isV4] = it->second;
-      const auto& prefixStr = it->first;
+  if (needsReconcile_) {
+    /*
+     * First update after (re)connect: reconcile against the full snapshot.
+     * Recompute reachability for every subscribed prefix and emit only the
+     * delta vs reachableNexthops_. NexthopCache dedups unchanged status, so a
+     * still-reachable, same-cost nexthop yields no RIB update (no churn); only
+     * nexthops that actually changed (newly reachable/unreachable, or cost
+     * changed while disconnected) reach the RIB.
+     */
+    folly::F14FastSet<folly::IPAddress> newReachable;
+    newReachable.reserve(subscribedPrefixes_.size());
+    /*
+     * subscribedPrefixes_ is keyed by a host prefix derived 1:1 from the
+     * nexthop, so each peerAddr appears in exactly one entry (each peer visited
+     * once). reachableNexthops_ still holds the pre-reconcile state during the
+     * loop -- it is replaced only after -- so contains() detects genuine
+     * transitions.
+     */
+    for (const auto& [prefixStr, peerInfo] : subscribedPrefixes_) {
+      const auto& peerAddr = peerInfo.first;
+      const bool isV4 = peerInfo.second;
       auto [exists, igpCost] =
           routeExistsInCowTree(prefixStr, isV4, update.data);
-      bool wasReachable = reachableNexthops_.contains(peerAddr);
-
+      const bool wasReachable = reachableNexthops_.contains(peerAddr);
       if (exists) {
-        if (!wasReachable) {
-          reachableNexthops_.insert(peerAddr);
-          FsdbStats::incrFsdbNhtNexthopReachable();
-        }
-        batchUpdates.emplace_back(
-            peerAddr,
-            /*isReachable=*/true,
-            igpCost,
-            /*isConnected=*/std::nullopt,
-            /*excludeNexthopWithoutCost=*/false);
-        XLOGF(
-            INFO,
-            "[FsdbFibWatcher] Nexthop {}: {} igpCost={}",
-            wasReachable ? "cost update" : "became reachable",
-            peerAddr.str(),
-            igpCost ? fmt::format("{}", *igpCost) : "none");
-      } else {
-        if (wasReachable) {
-          reachableNexthops_.erase(peerAddr);
-          FsdbStats::incrFsdbNhtNexthopUnreachable();
-        }
-        batchUpdates.emplace_back(
-            peerAddr,
-            /*isReachable=*/false,
-            /*igpCost=*/std::nullopt,
-            /*isConnected=*/std::nullopt,
-            /*excludeNexthopWithoutCost=*/false);
-        XLOGF(
-            INFO,
-            "[FsdbFibWatcher] Nexthop unreachable: {} igpCost=none",
-            peerAddr.str());
+        newReachable.insert(peerAddr);
+      } else if (!wasReachable) {
+        // Still absent and never reachable: nothing to emit.
+        continue;
       }
-      break; // found the relevant token, done with this path
+      emitReachabilityUpdate(
+          peerAddr,
+          exists,
+          igpCost,
+          wasReachable,
+          /*isReconcile=*/true,
+          batchUpdates);
+    }
+    reachableNexthops_ = std::move(newReachable);
+    /*
+     * Clear needsReconcile_ only after the reconcile completes successfully. If
+     * the loop above throws, the flag stays armed so the next
+     * co_processFibUpdate retries the reconcile rather than silently taking the
+     * event-driven branch with stale reachability.
+     */
+    needsReconcile_ = false;
+    XLOGF(
+        INFO,
+        "[FsdbFibWatcher] Reconcile: {} nexthops reachable after snapshot",
+        reachableNexthops_.size());
+  } else {
+    for (const auto& pathTokens : update.updatedPaths) {
+      for (const auto& token : pathTokens) {
+        auto it = subscribedPrefixes_.find(token);
+        if (it == subscribedPrefixes_.end()) {
+          continue;
+        }
+        const auto& [peerAddr, isV4] = it->second;
+        const auto& prefixStr = it->first;
+        auto [exists, igpCost] =
+            routeExistsInCowTree(prefixStr, isV4, update.data);
+        const bool wasReachable = reachableNexthops_.contains(peerAddr);
+        if (exists) {
+          reachableNexthops_.insert(peerAddr);
+        } else {
+          reachableNexthops_.erase(peerAddr);
+        }
+        emitReachabilityUpdate(
+            peerAddr,
+            exists,
+            igpCost,
+            wasReachable,
+            /*isReconcile=*/false,
+            batchUpdates);
+        break; // found the relevant token, done with this path
+      }
     }
   }
 
-  XLOG(INFO, "batchUpdates", batchUpdates.size());
   if (!batchUpdates.empty()) {
     XLOGF(
         INFO,
