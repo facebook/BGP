@@ -828,11 +828,18 @@ bool RibFixture::isFsdbSyncerStarted() const {
   return started;
 }
 
-bool RibFixture::isFirstNdpSignalSent() const {
-  bool sent = false;
+bool RibFixture::isRibEoRReceived() const {
+  bool received = false;
   rib_->evb_.runInEventBaseThreadAndWait(
-      [this, &sent]() { sent = rib_->firstNdpSignalSent_; });
-  return sent;
+      [this, &received]() { received = rib_->ribEoRReceived_; });
+  return received;
+}
+
+bool RibFixture::isInitialPathComputationPending() const {
+  bool pending = false;
+  rib_->evb_.runInEventBaseThreadAndWait(
+      [this, &pending]() { pending = rib_->pendingInitialPathComputation_; });
+  return pending;
 }
 
 void RibFixture::waitForFsdbPublisherConnected() {
@@ -859,8 +866,9 @@ void RibFixture::sendRouteFilterPolicySet(TRouteFilterPolicy policy) {
   rib_->setRouteFilterPolicy(std::make_unique<TRouteFilterPolicy>(policy));
 }
 
-void RibFixture::sendInitialPathComputation() {
-  ribInQ_.forcePush(RibInInitialPathComputation());
+void RibFixture::sendInitialPathComputation(
+    std::chrono::milliseconds nexthopResolutionTimeout) {
+  ribInQ_.forcePush(RibInInitialPathComputation(nexthopResolutionTimeout));
 }
 
 void RibFixture::sendAnnouncement(

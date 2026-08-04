@@ -380,7 +380,9 @@ class RibFixture : public testing::Test {
       rib_policy::TPathSelectionPolicy policy);
 
   void sendRouteFilterPolicySet(rib_policy::TRouteFilterPolicy policy);
-  void sendInitialPathComputation();
+  void sendInitialPathComputation(
+      std::chrono::milliseconds nexthopResolutionTimeout =
+          std::chrono::milliseconds(0));
   void sendAnnouncement(
       const PrefixPathIds& pfxPathIds,
       const TinyPeerInfo& peer,
@@ -420,10 +422,11 @@ class RibFixture : public testing::Test {
   void setUpFsdb();
   void completeFibProgrammingPass(bool fullSync);
   bool isFsdbSyncerStarted() const;
-  // True after RibBase::processNexthopResolutionUpdate has pushed the
-  // RibOutNexthopResolutionReceived signal to PeerManagerBase (one-shot per
-  // daemon lifetime).
-  bool isFirstNdpSignalSent() const;
+  // True once Rib has run its initial path computation (initial full-sync).
+  bool isRibEoRReceived() const;
+  // True while Rib has deferred its initial path computation waiting for all
+  // registered nexthops to resolve.
+  bool isInitialPathComputationPending() const;
   void waitForFsdbPublisherConnected();
   // Check if best path computation and FIB programming is paused
   bool isBestPathAndFibProgrammingPaused() const;

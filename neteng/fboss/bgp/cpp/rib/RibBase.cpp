@@ -202,6 +202,10 @@ RibBase::RibBase(
   fibBatchTimer_ = folly::AsyncTimeout::make(
       evb_, [this]() noexcept { prepareFibProgramming(); });
 
+  // bounds the deferred initial full-sync's wait for nexthop resolution
+  nexthopResolutionTimer_ = folly::AsyncTimeout::make(
+      evb_, [this]() noexcept { onNexthopResolutionTimeout(); });
+
   XLOGF(
       INFO,
       "Created Rib with fibBatchTime_= {}ms, computeUcmpFromLbwComm:{}",
@@ -210,6 +214,16 @@ RibBase::RibBase(
 }
 
 RibBase::~RibBase() {
+  /*
+   * Cancel the nexthop-resolution timer so its callback (which captures `this`)
+   * cannot fire after destruction. It is armed only while a deferred initial
+   * full-sync is pending; without this, tearing down RibBase with that wait
+   * outstanding could invoke onNexthopResolutionTimeout() on a destroyed
+   * object (use-after-free).
+   */
+  if (nexthopResolutionTimer_) {
+    nexthopResolutionTimer_->cancelTimeout();
+  }
   // reset the batch list
   fibBatchList_.clear();
 }
@@ -581,8 +595,9 @@ folly::coro::Task<void> RibBase::processRibInMsgLoop() noexcept {
         [this](const RibInWithdrawal& withdrawal) {
           processRibInWithdrawal(withdrawal.peer, withdrawal.pfxPathIds);
         },
-        [this](const RibInInitialPathComputation& /* not used */) {
-          processRibInInitialPathComputation();
+        [this](const RibInInitialPathComputation& initialPathComputation) {
+          processRibInInitialPathComputation(
+              initialPathComputation.nexthopResolutionTimeout);
         },
         [this](const RibInNexthopUpdate& nexthopUpdate) {
           processRibInNexthopUpdate(nexthopUpdate);
@@ -869,7 +884,8 @@ RibBase::processSingleRibInUpdate(
   return {};
 }
 
-void RibBase::processRibInInitialPathComputation() noexcept {
+void RibBase::processRibInInitialPathComputation(
+    std::chrono::milliseconds nexthopResolutionTimeout) noexcept {
   XLOG(INFO, "Processing RibInInitialPathComputation");
 
   // avoid duplicate initial full-sync to program FIB
@@ -880,12 +896,49 @@ void RibBase::processRibInInitialPathComputation() noexcept {
     return;
   }
 
+  /*
+   * Nexthop-resolution-gated startup: by the time this message is dequeued,
+   * every route announcement enqueued ahead of it (e.g. GR-replayed routes) is
+   * already processed, so nexthopInfoMap_ holds the complete set of nexthops.
+   * Defer the initial full-sync (and arm nexthopResolutionTimer_ for the
+   * remaining budget) until isInitialPathComputationReady(): all registered
+   * nexthops resolved AND, when conditional local routes exist, the first
+   * NexthopResolutionUpdate has been processed so those routes are advertised.
+   * This prevents the sync from wiping FIB routes whose nexthops FSDB has not
+   * resolved yet, as well as GR-retained conditional routes. The sync resumes
+   * from maybeRunPendingInitialPathComputation() once ready, or from
+   * onNexthopResolutionTimeout() on expiry. A zero timeout (no nexthop tracking
+   * and no conditional routes, or PeerMgr's EoR timer already expired) runs the
+   * sync immediately.
+   */
+  if (nexthopResolutionTimeout > std::chrono::milliseconds(0) &&
+      !isInitialPathComputationReady()) {
+    pendingInitialPathComputation_ = true;
+    nexthopResolutionTimer_->scheduleTimeout(nexthopResolutionTimeout);
+    XLOGF(
+        INFO,
+        "[Initialization] Deferring initial path computation up to {}ms: "
+        "nexthop resolution / conditional routes not ready yet.",
+        nexthopResolutionTimeout.count());
+    return;
+  }
+
+  runInitialPathComputation();
+}
+
+void RibBase::runInitialPathComputation() noexcept {
+  pendingInitialPathComputation_ = false;
+  // stop the resolution timer so none is live when the full-sync runs
+  nexthopResolutionTimer_->cancelTimeout();
+
   // fib batch process list must be empty right now
   CHECK(fibBatchList_.empty());
 
-  // set one-time flag before prepareFibProgramming so that subclass
-  // hooks (called during prepareFibProgramming) can check
-  // ribEoRReceived_ as a precondition
+  /*
+   * set one-time flag before prepareFibProgramming so that subclass
+   * hooks (called during prepareFibProgramming) can check
+   * ribEoRReceived_ as a precondition
+   */
   ribEoRReceived_ = true;
 
   // best path selection + notify programming FIB
@@ -903,6 +956,57 @@ void RibBase::processRibInInitialPathComputation() noexcept {
 
   // Schedule periodic task to monitor route churn
   asyncScope_.add(co_withExecutor(&evb_, monitorRouteChurn()));
+}
+
+void RibBase::maybeRunPendingInitialPathComputation() noexcept {
+  if (!pendingInitialPathComputation_) {
+    /* Already past the initial path computation stage; nothing pending. */
+    return;
+  }
+  if (!isInitialPathComputationReady()) {
+    /* Not yet ready (nexthop resolution / conditional routes); skip for now. */
+    return;
+  }
+  XLOG(
+      INFO,
+      "[Initialization] Nexthop resolution / conditional routes ready; running "
+      "deferred initial path computation.");
+  runInitialPathComputation();
+}
+
+void RibBase::onNexthopResolutionTimeout() noexcept {
+  if (!pendingInitialPathComputation_) {
+    return;
+  }
+  XLOG(
+      ERR,
+      "[Initialization] Timed out waiting for nexthop resolution; running "
+      "initial path computation with unresolved nexthops.");
+  runInitialPathComputation();
+}
+
+bool RibBase::areAllRegisteredNexthopsResolved() const noexcept {
+  for (const auto& [nexthop, nexthopInfo] : nexthopInfoMap_) {
+    if (!nexthopInfo.isResolvedForSelection()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool RibBase::isInitialPathComputationReady() const noexcept {
+  /*
+   * Two independent preconditions gate the initial full-sync:
+   *  - Nexthop tracking: every registered nexthop is resolved. Vacuously true
+   *    when tracking is off (nexthopInfoMap_ is empty).
+   *  - Conditional local routes: the first NexthopResolutionUpdate has been
+   *    processed, so conditional routes have been advertised into ribEntries_
+   *    and won't be wiped by the initial syncFib. This is independent of
+   *    nexthop tracking -- processNexthopResolutionUpdate runs whenever FSDB
+   *    delivers neighbor/FIB updates, even with tracking disabled.
+   */
+  return areAllRegisteredNexthopsResolved() &&
+      (!hasConditionalLocalRoutes() || firstNexthopResolutionProcessed_);
 }
 
 /**
@@ -1199,14 +1303,22 @@ void RibBase::processRibInNexthopUpdate(
   }
 
   if (needPathSelection) {
-    // Schedule FIB programming timer which on expiry performs best-path
-    // computation and Fib programming
+    /*
+     * Schedule FIB programming timer which on expiry performs best-path
+     * computation and Fib programming
+     */
     XLOGF(
         DBG1,
         "Nexthop update for [{}] is triggering best-path computation and FIB programming",
         folly::join(", ", triggeringNexthops));
     schedulePrepareFibProgrammingTimer();
   }
+
+  /*
+   * Reachability just changed: if the initial path computation was deferred
+   * waiting on nexthop resolution, run it now that this may have completed.
+   */
+  maybeRunPendingInitialPathComputation();
 }
 
 folly::coro::Task<void> RibBase::monitorRouteChurn() noexcept {
@@ -3042,6 +3154,20 @@ NexthopInfo* FOLLY_NULLABLE RibBase::getNexthopInfo(
   // For announcements, get or create the NexthopInfo
   if (attrs) {
     const auto& nexthop = attrs->getNexthop();
+    /*
+     * Skip the unspecified nexthop (::/0.0.0.0). Locally-originated and
+     * aggregate routes (via kV4LocalPeerInfo) carry this next-hop-self
+     * placeholder: it is never a resolvable FSDB FIB entry, is never subscribed
+     * for tracking, and never gates selection (local routes are always
+     * isResolvedForSelection()). Registering it would leave a permanently
+     * unreachable NexthopInfo that never resolves -- which would stall the
+     * initial-path-computation nexthop-resolution gate
+     * (areAllRegisteredNexthopsResolved). Conditional local routes carry a
+     * real, non-zero nexthop and remain tracked.
+     */
+    if (nexthop.isZero()) {
+      return nullptr;
+    }
     auto it = nexthopInfoMap_.find(nexthop);
     if (it != nexthopInfoMap_.end()) {
       XLOGF(
@@ -3098,20 +3224,16 @@ NexthopInfo* FOLLY_NULLABLE RibBase::getNexthopInfo(
 
     /*
      * First time this nexthop is seen in RIB-IN: queue it for FSDB tracking
-     * (de-duped via requestedNexthops_). Flushed per RIB-IN batch.
-     *
-     * Skip the unspecified nexthop (::/0.0.0.0): locally-originated and
-     * aggregate routes (processed via kV4LocalPeerInfo) carry a null nexthop,
-     * which is not a resolvable FSDB FIB entry and must not be subscribed.
-     * Note: conditional local routes carry a real (non-zero) nexthop and are
-     * intentionally still tracked.
+     * (de-duped via requestedNexthops_). Flushed per RIB-IN batch. The
+     * unspecified nexthop (::/0.0.0.0) never reaches here -- it is skipped
+     * above and never registered/tracked.
      */
     if (nexthopSubscribeRequester_) {
       /*
        * Only when RIB-IN-driven tracking is enabled (DC). On EBB the requester
        * is unset, so the checks below are skipped entirely.
        */
-      if (!nexthop.isZero() && requestedNexthops_.insert(nexthop).second) {
+      if (requestedNexthops_.insert(nexthop).second) {
         pendingNexthopSubscriptions_.push_back(nexthop);
       }
     }

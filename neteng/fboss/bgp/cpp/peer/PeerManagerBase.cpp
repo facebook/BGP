@@ -145,7 +145,7 @@ PeerManagerBase::PeerManagerBase(
       minSessionRetryDur_(minSessionRetryDur),
       maxSessionRetryDur_(maxSessionRetryDur),
       maxSessionDampenDur_(maxSessionDampenDur),
-      nexthopResolutionReceived_(!requireNexthopResolution),
+      requireNexthopResolution_(requireNexthopResolution),
       switchLimitConfig_(
           configManager_->getConfig()->getBgpSwitchLimitConfig()) {
   // Sanity check
@@ -337,6 +337,7 @@ void PeerManagerBase::createInitializedMaxWaitTimer() noexcept {
 void PeerManagerBase::createAndScheduleTimers() noexcept {
   createEorTimer();
   createInitializedMaxWaitTimer();
+  eorTimerArmedAt_ = std::chrono::steady_clock::now();
   scheduleTimer(eorTimer_, "EoR timer", eorWaitDuration_);
 }
 
@@ -986,9 +987,6 @@ folly::coro::Task<void> PeerManagerBase::processRibOutMsgLoop() noexcept {
 
           ribInitialAnnouncementStarted_ = true;
           maybeMarkInitialized();
-        },
-        [this](const RibOutNexthopResolutionReceived&) {
-          handleRibOutNexthopResolutionReceived();
         });
   }
   co_return;
@@ -2479,6 +2477,59 @@ void PeerManagerBase::notifyRibInitialPathComputation(
   }
 
   ribInitPathComputationNotified_ = true;
+
+  /*
+   * Budget RIB may spend waiting for all registered nexthops to resolve before
+   * its initial full-sync, so the sync does not wipe FIB routes whose nexthops
+   * FSDB has not resolved yet (e.g. a coordinated FSDB+bgpd restart). It is the
+   * REMAINING time in the single eor_time_s budget when all peer EoRs were
+   * received (eor_time_s minus the time already elapsed since the EoR timer was
+   * armed).
+   *
+   * Why bound it by the remaining budget rather than start a fresh timer in
+   * RIB: eor_time_s is one overall startup-convergence deadline, and the
+   * timers that protect us are sized against that single budget -- most
+   * importantly the peers' and the warm-booted agent's graceful-restart hold
+   * timers (bgpd must program FIB and send EoR before GR hold expires, else the
+   * GR-retained routes are purged). The PeerManager EoR wait and RIB's
+   * nexthop-resolution wait therefore have to fit inside eor_time_s *together*.
+   * If RIB instead waited an extra, independent eor_time_s on top of the EoR
+   * wait, total convergence could roughly double and overrun those GR holds:
+   * peers/agent would purge the GR-retained routes and FIB programming would
+   * slip past the deadline -- the exact route loss this gate exists to prevent.
+   * Capping at the leftover keeps (EoR wait + nexthop-resolution wait) <=
+   * eor_time_s.
+   *
+   * Zero means RIB computes immediately: nexthop tracking is not in effect, or
+   * the EoR timer already expired (timerFired) and is forcing computation, so
+   * there is no budget left to wait on.
+   */
+  auto nexthopResolutionTimeout = std::chrono::milliseconds(0);
+  if (requireNexthopResolution_ && !timerFired) {
+    if (eorTimerArmedAt_ == std::chrono::steady_clock::time_point{}) {
+      /*
+       * The EoR timer was never armed (createAndScheduleTimers() not called).
+       * Expected only for direct unit-test calls; in production the timer is
+       * always armed before EoR processing, so warn loudly to surface a real
+       * "timer never armed" regression rather than silently masking it. Fall
+       * back to the full budget instead of letting a bogus "elapsed since
+       * epoch" clamp the timeout to 0 and defeat the nexthop-resolution gate.
+       */
+      XLOG(WARNING)
+          << "notifyRibInitialPathComputation: eorTimerArmedAt_ unset; "
+             "falling back to full EoR budget for nexthop-resolution timeout";
+      nexthopResolutionTimeout =
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              eorWaitDuration_);
+    } else {
+      const auto elapsed = std::chrono::steady_clock::now() - eorTimerArmedAt_;
+      nexthopResolutionTimeout = std::max(
+          std::chrono::milliseconds(0),
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              eorWaitDuration_ - elapsed));
+    }
+  }
+
   /*
    * Use forcePush instead of fiberPush to avoid blocking the EventBase
    * thread. fiberPush uses folly::fibers::Semaphore::wait() which requires
@@ -2491,22 +2542,26 @@ void PeerManagerBase::notifyRibInitialPathComputation(
    * (guarded by ribInitPathComputationNotified_), not a data-path operation
    * at scale.
    */
-  ribInQ_.forcePush(RibInInitialPathComputation());
+  ribInQ_.forcePush(RibInInitialPathComputation(nexthopResolutionTimeout));
   eorTimerExpired_ = timerFired;
   BgpStats::setEorTimerExpired(timerFired);
 
-  // Once we've notified RIB to program FIB, we are not in restarting mode
-  // anymore.  Let sessionMgr know about this so that it can set GR
-  // Capability accordingly
+  /*
+   * Once we've notified RIB to program FIB, we are not in restarting mode
+   * anymore.  Let sessionMgr know about this so that it can set GR
+   * Capability accordingly
+   */
   sessionMgr_->setRestartingState(false);
 
   // Reset EoR timer since either we 1) received all EoRs, or 2) timed out
   eorTimer_.reset();
 
-  // Start the max-cap countdown for INITIALIZED signal publication (the last
-  // line of defense in case bad peers never send egressEoR). scheduleTimer()
-  // is a no-op if the timer is null (notify reached without run(), e.g. direct
-  // unit-test calls) where there is no event loop to fire it anyway.
+  /*
+   * Start the max-cap countdown for INITIALIZED signal publication (the last
+   * line of defense in case bad peers never send egressEoR). scheduleTimer()
+   * is a no-op if the timer is null (notify reached without run(), e.g. direct
+   * unit-test calls) where there is no event loop to fire it anyway.
+   */
   scheduleTimer(
       initializedMaxWaitTimer_,
       "initialized max-wait timer",
@@ -2581,21 +2636,6 @@ void PeerManagerBase::checkAndNotifyAllEoRReceived() noexcept {
   BgpStats::logInitializationEvent(
       "PeerManager", BgpInitializationEvent::ALL_EOR_RECEIVED);
 
-  // Defer notifyRibInitialPathComputation until NDP signal also arrives.
-  maybeNotifyRibInitialPathComputation();
-}
-
-void PeerManagerBase::handleRibOutNexthopResolutionReceived() noexcept {
-  if (nexthopResolutionReceived_) {
-    // Defensive: RIB only pushes this signal once per daemon lifetime, but
-    // tolerate repeats.
-    return;
-  }
-  nexthopResolutionReceived_ = true;
-  XLOG(
-      INFO,
-      "[Initialization] Received RibOutNexthopResolutionReceived signal "
-      "from RIB; NDP precondition satisfied for initial path computation.");
   maybeNotifyRibInitialPathComputation();
 }
 
@@ -2603,13 +2643,11 @@ void PeerManagerBase::maybeNotifyRibInitialPathComputation() noexcept {
   if (ribInitPathComputationNotified_) {
     return;
   }
-  if (!allPeerEorsReceived_ || !nexthopResolutionReceived_) {
+  if (!allPeerEorsReceived_) {
     XLOGF(
         DBG1,
-        "Deferring notifyRibInitialPathComputation: allPeerEorsReceived={}, "
-        "nexthopResolutionReceived={}",
-        allPeerEorsReceived_,
-        nexthopResolutionReceived_);
+        "Deferring notifyRibInitialPathComputation: allPeerEorsReceived={}",
+        allPeerEorsReceived_);
     return;
   }
   notifyRibInitialPathComputation(/*timerFired=*/false);

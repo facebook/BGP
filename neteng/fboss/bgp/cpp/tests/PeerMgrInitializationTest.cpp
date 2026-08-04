@@ -24,10 +24,7 @@
       InitializedSignalWithoutIngressEoRTest);                                 \
   FRIEND_TEST(PeerManagerInitializationTestFixture, ProcessAdjRibMsgLoopTest); \
   FRIEND_TEST(                                                                 \
-      PeerManagerInitializationTestFixture, InitializedSignalPublicationTest); \
-  FRIEND_TEST(                                                                 \
-      PeerManagerInitializationTestFixture,                                    \
-      InitialPathComputationDeferredUntilNexthopResolutionReceived);
+      PeerManagerInitializationTestFixture, InitializedSignalPublicationTest);
 
 #include <folly/fibers/FiberManagerMap.h>
 #include <gmock/gmock.h>
@@ -433,10 +430,8 @@ TEST_F(PeerManagerInitializationTestFixture, InitializedSignalPublicationTest) {
 
     // make sure EoR will be sent finally without waiting for eorTimer
     // (120sec) expiration. PM is constructed with the default
-    // requireNexthopResolution=false, so the NDP precondition is already
-    // satisfied; see
-    // InitialPathComputationDeferredUntilNexthopResolutionReceived for explicit
-    // coverage of the gating behavior when it is opted in.
+    // requireNexthopResolution=false, so RIB computes immediately; the
+    // nexthop-resolution gating (when opted in) is covered in RibTest.
     facebook::fb303::ThreadCachedServiceData::getShared()->getCounters(
         counters);
     EXPECT_TRUE(mockPeerMgr->ribInitPathComputationNotified_);
@@ -492,64 +487,15 @@ TEST_F(PeerManagerInitializationTestFixture, InitializedSignalPublicationTest) {
 }
 
 /*
- * Exercises the NDP precondition on the EOR-driven initial-path-computation
- * notify path. PM is constructed with the default requireNexthopResolution=
- * false (gate pre-satisfied) — the rest of the suite relies on this default
- * because PM-only tests don't run a real RIB to emit the NDP signal. This
- * test explicitly enables the gate by flipping nexthopResolutionReceived_
- * back to false so we can verify that all-EORs-received alone is NOT
- * sufficient to fire notifyRibInitialPathComputation, and that the
- * subsequent RibOutNexthopResolutionReceived signal opens the gate. This
- * is the only test that exercises the conditional-routes gating mechanism.
+ * Note: the nexthop-resolution gating for the initial path computation now
+ * lives entirely in RIB (RibBase::processRibInInitialPathComputation defers the
+ * initial full-sync until all registered nexthops resolve, bounded by the
+ * remaining EoR budget PeerManagerBase passes in RibInInitialPathComputation).
+ * See RibTest's InitialPathComputationDefersUntilNexthopResolved /
+ * InitialPathComputationRunsImmediatelyWithZeroTimeout for that coverage.
+ * PeerManagerBase's own responsibility — triggering the computation once all
+ * peer EoRs are received — is covered by the BasicInitializationFlow test
+ * above.
  */
-TEST_F(
-    PeerManagerInitializationTestFixture,
-    InitialPathComputationDeferredUntilNexthopResolutionReceived) {
-  auto mockPeerMgr = setupMockPeerManager(
-      true /* includeStaticPeer */, true /* includeDynamicShivPeer */);
-  setupMockSessionManager(mockPeerMgr);
-  auto sessionMgr = mockPeerMgr->getSessionManager();
-
-  // Enable the NDP gate for this test (default ctor sets it pre-satisfied
-  // because conditional routes are only present on a small subset of
-  // production DC devices, so the gate is opt-in).
-  mockPeerMgr->nexthopResolutionReceived_ = false;
-
-  mockPeerMgr->addPeersToSessionMgr();
-
-  auto& fm =
-      folly::fibers::getFiberManager(mockPeerMgr->getEventBase(), options_);
-  auto fiber = fm.addTaskFuture([&] {
-    // Send EORs from all configured peers.
-    AdjRib::ObservableMessageT EoRFromPeer1{kPeerId3, AdjRib::EoR{}};
-    folly::coro::blockingWait(
-        mockPeerMgr->processAdjRibEvent(std::move(EoRFromPeer1)));
-    AdjRib::ObservableMessageT EoRFromPeer2{kPeerId4, AdjRib::EoR{}};
-    folly::coro::blockingWait(
-        mockPeerMgr->processAdjRibEvent(std::move(EoRFromPeer2)));
-
-    // All EORs received, but NDP signal hasn't arrived — notify must NOT
-    // have fired.
-    EXPECT_TRUE(mockPeerMgr->allPeerEorsReceived_);
-    EXPECT_FALSE(mockPeerMgr->nexthopResolutionReceived_);
-    EXPECT_FALSE(mockPeerMgr->ribInitPathComputationNotified_);
-
-    // Now simulate the RIB→PM signal. The gate should open and notify fires.
-    mockPeerMgr->handleRibOutNexthopResolutionReceived();
-
-    EXPECT_TRUE(mockPeerMgr->nexthopResolutionReceived_);
-    EXPECT_TRUE(mockPeerMgr->ribInitPathComputationNotified_);
-  });
-
-  auto peerMgrThread = mockPeerMgr->runInThread();
-  auto sessionMgrThread = sessionMgr->runInThread();
-
-  std::move(fiber).get();
-
-  mockPeerMgr->stop();
-  sessionMgr->stop();
-  peerMgrThread.join();
-  sessionMgrThread.join();
-}
 
 } // namespace facebook::bgp

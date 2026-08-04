@@ -180,8 +180,7 @@ void AdjRib::processRibMessage(const RibOutMessage& ribMsg) noexcept {
       },
       [](const ShadowRibOutAnnouncement&) {},
       [](const ShadowRibOutWithdrawal&) {},
-      [](const RibInitialAnnouncementStart& /* unused*/) {},
-      [](const RibOutNexthopResolutionReceived& /* unused*/) {});
+      [](const RibInitialAnnouncementStart& /* unused*/) {});
 
   if (!enableEgressQueueBackpressure_) {
     attrToPrefixMap_.clear();

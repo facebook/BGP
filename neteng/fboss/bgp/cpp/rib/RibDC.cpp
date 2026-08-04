@@ -566,12 +566,11 @@ void RibDC::createFib() {
 void RibDC::processNexthopResolutionUpdate(
     const NexthopResolutionUpdate& nexthopResolutionUpdate) noexcept {
   /*
-   * Process conditional-route advertisements/withdrawals first (if any),
-   * THEN push the one-shot RibOutNexthopResolutionReceived signal to
-   * PeerManagerBase. The post-processing push ordering is what guarantees that
-   * conditional routes are in ribEntries_ before PeerManagerBase triggers the
-   * initial path computation — preventing the initial syncFib from wiping
-   * GR-retained conditional routes in FibAgent on BGP daemon restart.
+   * Process conditional-route advertisements/withdrawals first (if any), THEN
+   * re-evaluate the deferred initial path computation. This ordering guarantees
+   * that conditional routes are in ribEntries_ before the initial syncFib runs,
+   * preventing it from wiping GR-retained conditional routes in FibAgent on BGP
+   * daemon restart.
    */
   if (!conditionalLocalRoutes_.empty()) {
     processConditionalRoutesForNexthops(
@@ -595,14 +594,21 @@ void RibDC::processNexthopResolutionUpdate(
         });
   }
 
-  if (!firstNdpSignalSent_) {
-    firstNdpSignalSent_ = true;
-    XLOG(
-        INFO,
-        "First NexthopResolutionUpdate processed; "
-        "signaling PeerManagerBase via RibOutNexthopResolutionReceived");
-    ribOutQ_.push(RibOutNexthopResolutionReceived{});
-  }
+  /*
+   * The first NexthopResolutionUpdate has now been processed: conditional
+   * routes (if any) are advertised into ribEntries_, so it is safe for the
+   * initial full-sync to run without wiping them. This gates
+   * isInitialPathComputationReady() for the conditional-routes case,
+   * independent of nexthop tracking.
+   */
+  firstNexthopResolutionProcessed_ = true;
+
+  /*
+   * This update may have completed the initial-path-computation preconditions
+   * (nexthop resolution and/or conditional-route advertisement); run the
+   * deferred computation if it was waiting on this.
+   */
+  maybeRunPendingInitialPathComputation();
 }
 
 bool RibDC::publishPartialDrainState() {

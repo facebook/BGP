@@ -758,7 +758,60 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
   void processRibInWithdrawal(
       const TinyPeerInfo& peer,
       const PrefixPathIds& pfxPathIds) noexcept;
-  void processRibInInitialPathComputation() noexcept;
+  /*
+   * Handle the RibInInitialPathComputation trigger. When
+   * nexthopResolutionTimeout is non-zero and not all registered nexthops are
+   * resolved yet, defer the initial full-sync (set
+   * pendingInitialPathComputation_) and arm nexthopResolutionTimer_ for that
+   * duration; the sync then runs from maybeRunPendingInitialPathComputation()
+   * once resolution completes, or from onNexthopResolutionTimeout() if the
+   * timer fires first. A zero timeout runs the sync immediately.
+   */
+  void processRibInInitialPathComputation(
+      std::chrono::milliseconds nexthopResolutionTimeout) noexcept;
+
+  /*
+   * Best-path selection + initial full-sync to FIB, RIB_COMPUTED logging, and
+   * route-churn monitor scheduling. Cancels nexthopResolutionTimer_ first so no
+   * timer is live when the full-sync runs.
+   */
+  void runInitialPathComputation() noexcept;
+
+  /*
+   * Run the deferred initial path computation if it is pending and all
+   * registered nexthops have since become resolved. Called after nexthop
+   * reachability changes.
+   */
+  void maybeRunPendingInitialPathComputation() noexcept;
+
+  /*
+   * nexthopResolutionTimer_ callback: the wait for nexthop resolution hit its
+   * max-cap; run the deferred initial path computation regardless.
+   */
+  void onNexthopResolutionTimeout() noexcept;
+
+  /*
+   * Whether every nexthop currently registered in nexthopInfoMap_ is resolved.
+   *
+   * Interim semantics: "resolved" means resolved AND reachable
+   * (isResolvedForSelection()). A genuinely unreachable nexthop therefore holds
+   * the initial computation until the PeerManagerBase EoR timer forces it.
+   * TODO: relax to "verdict received" (reachable OR definitively unreachable)
+   * once NexthopStatus can distinguish "pending / never heard from FSDB" from
+   * "heard: unreachable", so a legitimately-down nexthop no longer forces a
+   * full eor_time_s wait at startup.
+   */
+  bool areAllRegisteredNexthopsResolved() const noexcept;
+
+  /*
+   * Whether the initial full-sync may run: all registered nexthops resolved
+   * (areAllRegisteredNexthopsResolved) AND, when conditional local routes
+   * exist, the first NexthopResolutionUpdate has been processed
+   * (firstNexthopResolutionProcessed_) so those routes are advertised before
+   * the sync. The conditional-routes precondition is independent of nexthop
+   * tracking.
+   */
+  bool isInitialPathComputationReady() const noexcept;
   void processPauseBestPathAndFibProgramming(
       const PauseBestPathAndFibProgramming&
           pauseBestPathAndFibProgramming) noexcept;
@@ -780,9 +833,10 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
    * @brief Process nexthop resolution updates from NeighborWatcher
    * @details Virtual hook called from the RibInMessage dispatch loop when a
    * NexthopResolutionUpdate arrives. Default is a no-op; subclasses that
-   * originate conditional routes override to advertise/withdraw prefixes
-   * from conditionalLocalRoutes_ and emit the one-shot
-   * RibOutNexthopResolutionReceived signal to PeerManagerBase.
+   * originate conditional routes override to advertise/withdraw prefixes from
+   * conditionalLocalRoutes_. The initial full-sync is gated separately inside
+   * RIB (see processRibInInitialPathComputation), so this hook emits no
+   * cross-component signal.
    * @param nexthopResolutionUpdate The update message containing both resolved
    * and unresolved nexthop ips
    */
@@ -1064,6 +1118,31 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
    */
   bool initialEorSent_{false};
   bool ribEoRReceived_{false};
+
+  /*
+   * Set when a RibInInitialPathComputation with a non-zero
+   * nexthopResolutionTimeout arrives but not all registered nexthops are
+   * resolved yet. The initial full-sync is held off and run later by
+   * maybeRunPendingInitialPathComputation() once nexthop resolution completes,
+   * or by onNexthopResolutionTimeout() if nexthopResolutionTimer_ fires first.
+   * RIB-thread only.
+   */
+  bool pendingInitialPathComputation_{false};
+
+  /*
+   * Set once the first NexthopResolutionUpdate has been processed (conditional
+   * local routes, if any, advertised into ribEntries_). Gates the initial
+   * full-sync when hasConditionalLocalRoutes() so the sync does not wipe
+   * GR-retained conditional routes — see isInitialPathComputationReady().
+   * RIB-thread only.
+   */
+  bool firstNexthopResolutionProcessed_{false};
+
+  /*
+   * Bounds the deferred initial full-sync's wait for nexthop resolution. Armed
+   * with the remaining EoR budget carried in RibInInitialPathComputation.
+   */
+  std::unique_ptr<folly::AsyncTimeout> nexthopResolutionTimer_;
 
   /*
    * Flag to track if a FIB sync request was received while best-path

@@ -49,8 +49,25 @@ struct RibInWithdrawal {
       : peer(peer), pfxPathIds(pfxPathIds) {}
 };
 
-// One-time signal from PeerMgr to Rib to start best-path computation
-struct RibInInitialPathComputation {};
+/*
+ * Signal from PeerMgr to Rib to start best-path computation.
+ *
+ * nexthopResolutionTimeout is how long Rib may wait for all registered nexthops
+ * to resolve before running the initial full-sync, so the sync does not wipe
+ * FIB routes whose nexthops FSDB has not resolved yet (e.g. a coordinated
+ * FSDB+bgpd restart). It is the time left in PeerMgr's EoR budget (eor_time_s)
+ * when all peer EoRs were received. Zero means compute immediately without
+ * waiting: nexthop tracking is not in effect, or PeerMgr's EoR timer already
+ * expired (budget exhausted) and is forcing computation.
+ */
+struct RibInInitialPathComputation {
+  std::chrono::milliseconds nexthopResolutionTimeout{0};
+
+  RibInInitialPathComputation() = default;
+  explicit RibInInitialPathComputation(
+      std::chrono::milliseconds nexthopResolutionTimeout)
+      : nexthopResolutionTimeout(nexthopResolutionTimeout) {}
+};
 
 // Get full dump from Rib for newly established peers from PeerMgr to Rib
 struct RibDumpReq {
@@ -425,27 +442,11 @@ using ShadowRibEntry = ShadowRibOutAnnouncementEntry;
  */
 struct RibInitialAnnouncementStart {};
 
-/*
- * One-shot control signal pushed by RIB to PeerManagerBase once the first
- * NeighborWatcher NexthopResolutionUpdate has been observed AND any
- * resulting conditional-route advertisements / withdrawals have been applied
- * to ribEntries_. PeerManagerBase uses this signal as one of two preconditions
- * (the other being all peer EORs received) before notifying RIB to start
- * initial path computation. This ordering guarantees that conditional
- * routes are present in RIB before the initial syncFib runs, preventing
- * FibAgent from wiping GR-retained conditional routes on BGP daemon
- * restart.
- *
- * Pushed at most once per BGP daemon lifetime.
- */
-struct RibOutNexthopResolutionReceived {};
-
 using RibOutMessage = std::variant<
     RibOutAnnouncement,
     RibOutWithdrawal,
     ShadowRibOutAnnouncement,
     ShadowRibOutWithdrawal,
-    RibInitialAnnouncementStart,
-    RibOutNexthopResolutionReceived>;
+    RibInitialAnnouncementStart>;
 
 } // namespace facebook::bgp

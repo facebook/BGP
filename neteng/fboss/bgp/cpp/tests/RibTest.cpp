@@ -3931,9 +3931,6 @@ TEST_F(RibWithLocalRouteFixture, RouteAggregationPromotion) {
       [&](const ShadowRibOutAnnouncement& /* unused */) { return false; },
       [&](const ShadowRibOutWithdrawal& /* unused */) { return false; },
       [&](const RibInitialAnnouncementStart& /* unused */) { return false; },
-      [&](const RibOutNexthopResolutionReceived& /* unused */) {
-        return false;
-      },
       [&](const RibOutWithdrawal& /* unused */) { return false; },
       [&](const RibOutAnnouncement& announcement) {
         EXPECT_EQ(7, announcement.entries.size());
@@ -6023,9 +6020,6 @@ TEST_F(RibFixture, LbwCommunityForward) {
         [&](const ShadowRibOutAnnouncement& /* unused */) { return false; },
         [&](const ShadowRibOutWithdrawal& /* unused */) { return false; },
         [&](const RibInitialAnnouncementStart& /* unused */) { return false; },
-        [&](const RibOutNexthopResolutionReceived& /* unused */) {
-          return false;
-        },
         [&](const RibOutWithdrawal& /* unused */) { return false; },
         [&](const RibOutAnnouncement& announcement) {
           EXPECT_EQ(1, announcement.entries.size());
@@ -6111,9 +6105,6 @@ TEST_F(RibFixture, LbwCommunitySuppression1) {
         [&](const ShadowRibOutAnnouncement& /* unused */) { return false; },
         [&](const ShadowRibOutWithdrawal& /* unused */) { return false; },
         [&](const RibInitialAnnouncementStart& /* unused */) { return false; },
-        [&](const RibOutNexthopResolutionReceived& /* unused */) {
-          return false;
-        },
         [&](const RibOutWithdrawal& /* unused */) { return false; },
         [&](const RibOutAnnouncement& announcement) {
           EXPECT_EQ(1, announcement.entries.size());
@@ -6199,9 +6190,6 @@ TEST_F(RibFixture, LbwCommunitySuppression2) {
         [&](const ShadowRibOutAnnouncement& /* unused */) { return false; },
         [&](const ShadowRibOutWithdrawal& /* unused */) { return false; },
         [&](const RibInitialAnnouncementStart& /* unused */) { return false; },
-        [&](const RibOutNexthopResolutionReceived& /* unused */) {
-          return false;
-        },
         [&](const RibOutWithdrawal& /* unused */) { return false; },
         [&](const RibOutAnnouncement& announcement) {
           EXPECT_EQ(1, announcement.entries.size());
@@ -7944,59 +7932,166 @@ TEST_F(RibFixture, ReplacePathSelectionPolicyLoggingTest) {
 }
 
 /*
- * Verify that RibBase::processNexthopResolutionUpdate pushes the one-shot
- * RibOutNexthopResolutionReceived signal to ribOutQ_ on the first NDP, and
- * that subsequent NDPs do not re-push it. The signal is what unblocks
- * PeerManagerBase's deferred RibInInitialPathComputation under the new
- * two-precondition gating (see PeerManagerBase tests for the PM-side coverage).
+ * With nexthop tracking, the initial full-sync is deferred until all registered
+ * nexthops resolve (bounded by nexthopResolutionTimeout), so it does not wipe
+ * FIB routes whose nexthops FSDB has not resolved yet. Resolving the nexthop
+ * runs the deferred computation.
  */
-TEST_F(RibFixture, FirstNdpSignalPushedOnceWithoutConditionalRoutes) {
-  // No conditional routes: signal still fires on first NDP so PM can proceed.
-  EXPECT_FALSE(isFirstNdpSignalSent());
-  EXPECT_EQ(0, ribOutQ_.size());
+TEST_F(
+    RibNexthopTrackingFixture,
+    InitialPathComputationDefersUntilNexthopResolved) {
+  // Register a route whose nexthop (kPeerAddr1) is not yet resolved.
+  auto prefix1 = folly::IPAddress::createNetwork("1::/64");
+  auto attrs1 =
+      std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
+  attrs1->setNexthop(kPeerAddr1);
+  attrs1->publish();
+  sendAnnouncement(PrefixPathIds{{prefix1, kDefaultPathID}}, iBgpPeer_, attrs1);
 
-  sendNexthopResolutionUpdate(NexthopResolutionUpdate{{}, {}});
+  // Trigger with a long resolution timeout while kPeerAddr1 is unresolved: the
+  // initial full-sync must be deferred, not run.
+  sendInitialPathComputation(std::chrono::seconds(60));
   WITH_RETRIES_N_TIMED(100, std::chrono::milliseconds(10), {
-    ASSERT_EVENTUALLY_TRUE(isFirstNdpSignalSent());
-    ASSERT_EVENTUALLY_EQ(1, ribOutQ_.size());
+    ASSERT_EVENTUALLY_TRUE(isInitialPathComputationPending());
   });
-  auto msg = folly::coro::blockingWait(ribOutQ_.pop());
-  EXPECT_TRUE(std::holds_alternative<RibOutNexthopResolutionReceived>(msg));
-  EXPECT_EQ(0, ribOutQ_.size());
+  EXPECT_FALSE(isRibEoRReceived());
 
-  // Second NDP must not re-push (signal is one-shot per daemon lifetime).
-  // Follow the existing "verify-no-event" idiom in this file (e.g., line
-  // ~518) and re-check ribOutQ_.size() several times to give the rib evb
-  // a chance to process the second NDP.
-  sendNexthopResolutionUpdate(NexthopResolutionUpdate{{}, {}});
-  REPEAT_N(10, { EXPECT_EQ(0, ribOutQ_.size()); });
-  EXPECT_TRUE(isFirstNdpSignalSent());
+  // Resolving the nexthop runs the deferred computation.
+  auto fibFuture = fib_->getFibProgramFuture();
+  updateCacheAndNotifyRib({NexthopStatus(kPeerAddr1, true, 100)});
+  fibFuture.wait();
+  WITH_RETRIES_N_TIMED(100, std::chrono::milliseconds(10), {
+    ASSERT_EVENTUALLY_TRUE(isRibEoRReceived());
+    ASSERT_EVENTUALLY_FALSE(isInitialPathComputationPending());
+  });
+  EXPECT_NE(nullptr, rib_->getBestPath(prefix1));
 }
 
+/*
+ * A zero nexthopResolutionTimeout runs the initial full-sync immediately even
+ * with unresolved nexthops (nexthop tracking off, or PeerMgr's EoR timer
+ * already expired and forcing computation as the max-cap fallback).
+ */
+TEST_F(
+    RibNexthopTrackingFixture,
+    InitialPathComputationRunsImmediatelyWithZeroTimeout) {
+  auto prefix1 = folly::IPAddress::createNetwork("1::/64");
+  auto attrs1 =
+      std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
+  attrs1->setNexthop(kPeerAddr1);
+  attrs1->publish();
+  sendAnnouncement(PrefixPathIds{{prefix1, kDefaultPathID}}, iBgpPeer_, attrs1);
+
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendInitialPathComputation(std::chrono::milliseconds(0));
+  fibFuture.wait();
+  EXPECT_TRUE(isRibEoRReceived());
+  EXPECT_FALSE(isInitialPathComputationPending());
+}
+
+/*
+ * A route with an unspecified (::) nexthop -- e.g. locally-originated /
+ * next-hop-self -- must not be registered for nexthop tracking, so it cannot
+ * hold the initial-path-computation resolution gate (it never resolves via
+ * FSDB). Resolving the one real nexthop must complete the gate.
+ */
+TEST_F(
+    RibNexthopTrackingFixture,
+    UnspecifiedNexthopDoesNotStallInitialPathComputation) {
+  // Route with an unspecified (::) nexthop -- must not be tracked.
+  auto prefixSelf = folly::IPAddress::createNetwork("3::/64");
+  auto attrsSelf =
+      std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
+  attrsSelf->setNexthop(folly::IPAddress("::"));
+  attrsSelf->publish();
+  sendAnnouncement(
+      PrefixPathIds{{prefixSelf, kDefaultPathID}}, iBgpPeer_, attrsSelf);
+
+  // Route with a real nexthop that needs FSDB resolution.
+  auto prefix1 = folly::IPAddress::createNetwork("1::/64");
+  auto attrs1 =
+      std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
+  attrs1->setNexthop(kPeerAddr1);
+  attrs1->publish();
+  sendAnnouncement(PrefixPathIds{{prefix1, kDefaultPathID}}, iBgpPeer_, attrs1);
+
+  // Gate with a long timeout while kPeerAddr1 is unresolved -> deferred.
+  sendInitialPathComputation(std::chrono::seconds(60));
+  WITH_RETRIES_N_TIMED(100, std::chrono::milliseconds(10), {
+    ASSERT_EVENTUALLY_TRUE(isInitialPathComputationPending());
+  });
+
+  // Resolving ONLY the real nexthop completes the gate: the unspecified ::
+  // nexthop is not tracked, so it does not hold the computation.
+  auto fibFuture = fib_->getFibProgramFuture();
+  updateCacheAndNotifyRib({NexthopStatus(kPeerAddr1, true, 100)});
+  fibFuture.wait();
+  WITH_RETRIES_N_TIMED(100, std::chrono::milliseconds(10), {
+    ASSERT_EVENTUALLY_TRUE(isRibEoRReceived());
+    ASSERT_EVENTUALLY_FALSE(isInitialPathComputationPending());
+  });
+}
+
+/*
+ * Conditional local routes are advertised when their nexthop resolves via a
+ * NexthopResolutionUpdate (after the initial full-sync has run).
+ */
 TEST_F(
     RibWithLocalRouteFixture,
-    FirstNdpSignalPushedAfterConditionalRoutesAdvertised) {
+    ConditionalRouteAdvertisedOnNexthopResolution) {
   setUpRibAndFib(getConditionalLocalRoutes());
   rib_->setFibBatchTime(milliseconds(8));
 
-  // Send EOR first so best-path computation runs when the route is added.
   auto fibFuture = fib_->getFibProgramFuture();
   sendInitialPathComputation();
   fibFuture.wait();
 
-  EXPECT_FALSE(isFirstNdpSignalSent());
+  // Conditional route is absent until its nexthop resolves.
+  EXPECT_EQ(nullptr, rib_->getBestPath(kV4Prefix1));
 
-  // NDP resolves the conditional route's nexthop.
+  // NDP resolves the conditional route's nexthop -> route advertised.
   fibFuture = fib_->getFibProgramFuture();
   sendNexthopResolutionUpdate(
       NexthopResolutionUpdate{{kV4Nexthop1}, {} /* unresolved */});
   fibFuture.wait();
-
-  // Both observable post-conditions: signal sent AND conditional route in RIB.
-  // The ordering guarantee (route advertised before signal pushed) is
-  // structural in the code — see processNexthopResolutionUpdate.
   WITH_RETRIES_N_TIMED(100, std::chrono::milliseconds(10), {
-    ASSERT_EVENTUALLY_TRUE(isFirstNdpSignalSent());
+    ASSERT_EVENTUALLY_NE(nullptr, rib_->getBestPath(kV4Prefix1));
+  });
+}
+
+/*
+ * Regression guard: with conditional local routes but nexthop tracking OFF, the
+ * initial full-sync must still be deferred until the first
+ * NexthopResolutionUpdate advertises the conditional routes -- otherwise the
+ * sync runs first and wipes GR-retained conditional routes. (nexthopInfoMap_ is
+ * empty here, so the deferral is driven purely by hasConditionalLocalRoutes(),
+ * independent of tracking.)
+ */
+TEST_F(
+    RibWithLocalRouteFixture,
+    InitialPathComputationDefersForConditionalRoutesWithoutTracking) {
+  setUpRibAndFib(getConditionalLocalRoutes());
+  rib_->setFibBatchTime(milliseconds(8));
+
+  // Trigger with a resolution budget; the conditional routes must hold the
+  // initial full-sync until they are advertised.
+  sendInitialPathComputation(std::chrono::seconds(60));
+  WITH_RETRIES_N_TIMED(100, std::chrono::milliseconds(10), {
+    ASSERT_EVENTUALLY_TRUE(isInitialPathComputationPending());
+  });
+  EXPECT_FALSE(isRibEoRReceived());
+  // Conditional route not yet advertised, and the sync has not run.
+  EXPECT_EQ(nullptr, rib_->getBestPath(kV4Prefix1));
+
+  // First NexthopResolutionUpdate advertises the conditional route -> the
+  // deferred initial full-sync runs and includes it.
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendNexthopResolutionUpdate(
+      NexthopResolutionUpdate{{kV4Nexthop1}, {} /* unresolved */});
+  fibFuture.wait();
+  WITH_RETRIES_N_TIMED(100, std::chrono::milliseconds(10), {
+    ASSERT_EVENTUALLY_TRUE(isRibEoRReceived());
+    ASSERT_EVENTUALLY_FALSE(isInitialPathComputationPending());
     ASSERT_EVENTUALLY_NE(nullptr, rib_->getBestPath(kV4Prefix1));
   });
 }

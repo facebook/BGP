@@ -116,13 +116,13 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
       MonitoredMPMCQueue<RibOutMessage>& ribOutQ,
       std::optional<MonitoredMPMCQueue<NeighborWatcherMessage>>&
           nbrRouteChangeQ,
-      // When true (DC production): defer notifyRibInitialPathComputation
-      // until both all-peer-EORs AND the RibOutNexthopResolutionReceived
-      // signal from RIB are observed — required for switches with
-      // conditional routes so the initial syncFib doesn't wipe FibAgent's
-      // GR-retained conditional routes. When false (default — EBB
-      // production, PM-only tests, e2e tests with TestRib): the NDP
-      // precondition is pre-satisfied at construction.
+      // When true (DC production): notifyRibInitialPathComputation carries the
+      // remaining EoR budget to RIB as a nexthop-resolution timeout, so RIB
+      // defers its initial full-sync until all registered nexthops resolve or
+      // that budget expires — preventing the initial syncFib from wiping
+      // FibAgent's GR-retained routes whose nexthops FSDB has not resolved yet.
+      // When false (default — EBB production, PM-only tests, e2e tests with
+      // TestRib): the timeout is zero, so RIB computes immediately.
       bool requireNexthopResolution = false,
       std::chrono::milliseconds minConnRetryDur_ =
           std::chrono::milliseconds(FLAGS_min_conn_retry_time_ms),
@@ -896,19 +896,12 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   // and notify RIB if not already notified
   void checkAndNotifyAllEoRReceived() noexcept;
 
-  // Called from the ribOutQ_ processing loop when the
-  // RibOutNexthopResolutionReceived signal arrives from RIB. Marks the
-  // NDP-received precondition as satisfied and notifies RIB to start
-  // initial path computation if all peer EORs have also been received.
-  // See `nexthopResolutionReceived_` / `allPeerEorsReceived_` for the
-  // two-precondition gating rationale (prevents the initial syncFib from
-  // wiping FibAgent's GR-retained conditional routes).
-  void handleRibOutNexthopResolutionReceived() noexcept;
-
-  // Calls notifyRibInitialPathComputation only when both peer EORs and the
-  // NeighborWatcher initial-sync signal have been observed. The eorTimer_
-  // callback bypasses this helper and calls notifyRibInitialPathComputation
-  // directly with timerFired=true as the unconditional max-cap.
+  /*
+   * Triggers RIB initial path computation once all peer EORs are received. The
+   * eorTimer_ callback bypasses this helper and calls
+   * notifyRibInitialPathComputation directly with timerFired=true as the
+   * unconditional max-cap.
+   */
   void maybeNotifyRibInitialPathComputation() noexcept;
 
   // Util function to check if all EoR sent to expected peers
@@ -1265,30 +1258,29 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   bool eorTimerExpired_{false};
 
   /*
-   * Two preconditions for notifying RIB to start initial path computation.
-   * notifyRibInitialPathComputation(timerFired=false) is only sent when both
-   * flags are true; the eorTimer_ callback bypasses these and fires
-   * unconditionally as the max-cap fallback.
-   *
-   * Set on the PeerManagerBase evb thread:
-   *  - allPeerEorsReceived_: flipped inside checkAndNotifyAllEoRReceived
-   *    after all expected static + dynamic peers have sent EOR.
-   *  - nexthopResolutionReceived_: flipped by the
-   *    RibOutNexthopResolutionReceived signal pushed by RIB after the first
-   *    NexthopResolutionUpdate has been processed (conditional routes
-   *    advertised, if any).
-   *
-   * The NDP precondition prevents the initial syncFib from running before
-   * conditional routes are in RIB, which would otherwise wipe FibAgent's
-   * GR-retained conditional routes on BGP daemon restart.
+   * Flipped inside checkAndNotifyAllEoRReceived after all expected static +
+   * dynamic peers have sent EOR. Gates the trigger to RIB for initial path
+   * computation (notifyRibInitialPathComputation).
    */
   bool allPeerEorsReceived_{false};
-  // Initial value derived from PeerManagerBase's requireNexthopResolution ctor
-  // parameter: false → gate pre-satisfied at construction (EBB / tests
-  // without a real NDP source — the default). true → gate enabled, flipped
-  // when the RibOutNexthopResolutionReceived signal arrives from RIB (DC
-  // production where conditional routes exist).
-  bool nexthopResolutionReceived_;
+
+  /*
+   * When true (DC with nexthop tracking / conditional routes), the initial
+   * path computation trigger sent to RIB carries a non-zero
+   * nexthopResolutionTimeout (the remaining eor_time_s budget), so RIB defers
+   * its initial full-sync until all registered nexthops resolve — bounded by
+   * that budget — and does not wipe FIB routes whose nexthops FSDB has not
+   * resolved yet. When false (EBB, tests, DC without tracking/conditional
+   * routes), the trigger carries a zero timeout and RIB computes immediately.
+   */
+  const bool requireNexthopResolution_{false};
+
+  /*
+   * steady_clock time at which eorTimer_ was armed (PEER_INFO_LOADED). Used to
+   * compute the remaining eor_time_s budget handed to RIB as
+   * nexthopResolutionTimeout when all peer EoRs are received.
+   */
+  std::chrono::steady_clock::time_point eorTimerArmedAt_{};
 
   // One-time flag, marked when safe mode is triggered
   folly::not_null_shared_ptr<std::atomic<bool>> isSafeModeOn_ =

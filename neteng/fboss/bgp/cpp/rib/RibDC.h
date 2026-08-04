@@ -376,14 +376,6 @@ class RibDC : public RibBase {
 
   bool fsdbSyncerStarted_{false};
 
-  /*
-   * One-shot flag: set true after the first NexthopResolutionUpdate has been
-   * processed (and any conditional routes advertised). Used to suppress
-   * repeat pushes of the RibOutNexthopResolutionReceived signal to
-   * PeerManagerBase — PeerManagerBase only needs the first one to satisfy its
-   * NDP-received precondition for sending RibInInitialPathComputation.
-   */
-  bool firstNdpSignalSent_{false};
   std::unique_ptr<folly::AsyncTimeout> routeAttributePolicyTimer_;
 
   /*
