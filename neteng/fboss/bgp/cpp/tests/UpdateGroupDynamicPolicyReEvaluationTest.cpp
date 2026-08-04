@@ -534,13 +534,23 @@ TEST_F(
     adjRib->activateDetachedModeProcessing();
   });
 
-  // Phase 5: Pump the evb so sendBgpUpdates runs. isDFP() triggers
-  // transition to DETACHED_READY_TO_JOIN with cancelled packing timers.
-  evb.runInEventBaseThreadAndWait([&]() {
-    auto& adjRib = ctx.adjRib1;
-    EXPECT_EQ(adjRib->getPeerState(), PeerUpdateState::DETACHED_READY_TO_JOIN);
-    EXPECT_TRUE(adjRib->isAdjRibFlagSet(AdjRib::IS_DETACHED_FAST_PEER));
-    EXPECT_FALSE(adjRib->changeListConsumeTimer_->isScheduled());
+  // Phase 5: Wait for sendBgpUpdates to run. isDFP() triggers transition to
+  // DETACHED_READY_TO_JOIN with cancelled packing timers.
+  //
+  // activateDetachedModeProcessing only enqueues sendBgpUpdates on the async
+  // scope, and that coroutine suspends (co_safe_point, waitForQueueSpace,
+  // sendPendingEoRs) before reaching transitionPeerUpdateState at the end. A
+  // single evb turn is therefore not enough to observe the transition -- retry
+  // until it lands.
+  WITH_RETRIES({
+    evb.runInEventBaseThreadAndWait([&]() {
+      auto& adjRib = ctx.adjRib1;
+      EXPECT_EVENTUALLY_EQ(
+          adjRib->getPeerState(), PeerUpdateState::DETACHED_READY_TO_JOIN);
+      EXPECT_EVENTUALLY_TRUE(
+          adjRib->isAdjRibFlagSet(AdjRib::IS_DETACHED_FAST_PEER));
+      EXPECT_EVENTUALLY_FALSE(adjRib->changeListConsumeTimer_->isScheduled());
+    });
   });
 
   // Phase 6: Call processRibDumpReq — walks the ShadowRib, calls
