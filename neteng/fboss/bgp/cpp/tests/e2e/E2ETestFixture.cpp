@@ -16,6 +16,7 @@
 
 #include "neteng/fboss/bgp/cpp/tests/e2e/E2ETestFixture.h"
 
+#include <fmt/core.h>
 #include <folly/container/small_vector.h>
 #include <folly/coro/Baton.h>
 #include <folly/coro/BlockingWait.h>
@@ -1050,6 +1051,15 @@ void E2ETestFixture::createRib(
       INFO,
       "Nexthop tracking: {}",
       enableNexthopTracking ? "enabled" : "disabled");
+
+  /*
+   * The rib policy files default to fixed paths shared by every bgp test
+   * process on the host. The RIB reads the state file and installs it as the
+   * bootstrap path selection policy, so give each fixture its own pair.
+   */
+  FLAGS_rp_state_file = (ribPolicyDir_.path() / "rp_state.txt").string();
+  FLAGS_rp_change_history_file =
+      (ribPolicyDir_.path() / "rp_change_history.txt").string();
 
   // Store the nexthop tracking setting so it can be reused by createPeerManager
   enableNexthopTracking_ = enableNexthopTracking;

@@ -34,6 +34,7 @@
 
 #include <folly/coro/BlockingWait.h>
 #include <folly/logging/xlog.h>
+#include <folly/testing/TestUtil.h>
 
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
 #include "neteng/fboss/bgp/cpp/common/RibMessage.h"
@@ -1350,6 +1351,12 @@ class E2ETestFixture : public ::testing::Test {
 
   // Per-peer GR restart time advertised in negotiated capabilities
   std::optional<uint16_t> peerGrRestartTimeSeconds_;
+
+  /*
+   * Owns this fixture's RIB policy files, and removes them when the fixture
+   * dies. See createRib() for why the default paths cannot be used.
+   */
+  folly::test::TemporaryDirectory ribPolicyDir_{"bgp_e2e_rp"};
 
   // Dynamically added peers (via addPeer)
   std::vector<thrift::BgpPeer> peers_;

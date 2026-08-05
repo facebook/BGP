@@ -150,6 +150,12 @@ class E2EPartialDrainTest : public E2ETestFixture {
   /*
    * Inject a PathSelectionPolicy with MNH threshold and partial drain flag.
    * Applies to the given list of prefixes.
+   *
+   * setPathSelectionPolicy() only enqueues; the RIB installs the policy on its
+   * own event base. Block until the RIB reports it back, so whatever the
+   * caller does next runs against the injected policy. A policy the RIB
+   * declines to install fails here and names the cause, instead of surfacing
+   * later as a bestpath or drain status that never converges.
    */
   void injectPathSelectionPolicy(
       const std::vector<folly::CIDRNetwork>& prefixes,
@@ -158,10 +164,15 @@ class E2EPartialDrainTest : public E2ETestFixture {
     TPathSelector tPathSelector;
     tPathSelector.bgp_native_path_selection_min_nexthop() = mnhThreshold;
     tPathSelector.drain_on_min_nexthop_violation() = enablePartialDrain;
+    auto tPolicy =
+        createTPathSelectionPolicyWithPathSelector(prefixes, tPathSelector);
+    const auto expected = PathSelectionPolicy{tPolicy}.toThrift();
     dcRib()->setPathSelectionPolicy(
-        std::make_unique<TPathSelectionPolicy>(
-            createTPathSelectionPolicyWithPathSelector(
-                prefixes, tPathSelector)));
+        std::make_unique<TPathSelectionPolicy>(tPolicy));
+    WITH_RETRIES_N_TIMED(100, std::chrono::milliseconds(20), {
+      EXPECT_EVENTUALLY_TRUE(dcRib()->getPathSelectionPolicy() == expected)
+          << "RIB never installed the injected PathSelectionPolicy";
+    });
   }
 
   /*
@@ -331,8 +342,6 @@ TEST_F(E2EPartialDrainTest, LiveToPartialDrainToRecover) {
     EXPECT_EVENTUALLY_FALSE(*status3.is_partially_drained())
         << "Phase 3: MNH recovered, partial drain should be inactive";
   });
-
-  XLOG(INFO, "=== LiveToPartialDrainToRecover PASSED ===");
 }
 
 /*
@@ -378,8 +387,6 @@ TEST_F(E2EPartialDrainTest, StrictMnhStillWithdraws) {
     EXPECT_EVENTUALLY_FALSE(*status.is_partially_drained())
         << "Strict MNH: partial drain should NOT be active";
   });
-
-  XLOG(INFO, "=== StrictMnhStillWithdraws PASSED ===");
 }
 
 /*
@@ -435,8 +442,6 @@ TEST_F(E2EPartialDrainTest, RollbackPartialDrainConfig) {
     EXPECT_EVENTUALLY_FALSE(*status2.is_partially_drained())
         << "Phase 2: Partial drain should be inactive after rollback";
   });
-
-  XLOG(INFO, "=== RollbackPartialDrainConfig PASSED ===");
 }
 
 /*
@@ -514,8 +519,6 @@ TEST_F(E2EPartialDrainTest, PartialDrainWithMultiplePrefixes) {
   auto bestpathC = getBestPath(prefixC);
   EXPECT_NE(bestpathC, nullptr)
       << "Prefix C: bestpath retained under partial drain";
-
-  XLOG(INFO, "=== PartialDrainWithMultiplePrefixes PASSED ===");
 }
 
 /*
@@ -581,8 +584,6 @@ TEST_F(E2EPartialDrainTest, DrainCommunityAttachedOnPartialDrain) {
   EXPECT_TRUE(foundDrainCommunity)
       << "peer7 never received an update for 10.4.0.0/24 carrying drain "
          "community 65446:10";
-
-  XLOG(INFO, "=== DrainCommunityAttachedOnPartialDrain PASSED ===");
 }
 
 /*
@@ -669,8 +670,6 @@ TEST_F(E2EPartialDrainTest, DrainCommunityRemovedOnRecover) {
   }
   EXPECT_TRUE(foundRecoveryUpdate)
       << "peer7 never received a post-recovery update for 10.5.0.0/24";
-
-  XLOG(INFO, "=== DrainCommunityRemovedOnRecover PASSED ===");
 }
 
 /*
@@ -745,8 +744,6 @@ TEST_F(E2EPartialDrainTest, DrainCommunityWithCommunityBlindEgressPolicy) {
   EXPECT_TRUE(foundDrainCommunity)
       << "peer7 (community-blind egress policy) never received 10.11.0.0/24 "
          "carrying drain community 65446:10 -- egress policy cache collision";
-
-  XLOG(INFO, "=== DrainCommunityWithCommunityBlindEgressPolicy PASSED ===");
 }
 
 /*
@@ -821,8 +818,6 @@ TEST_F(E2EPartialDrainAddPathTest, AddPathSendDrainPropagation) {
   EXPECT_TRUE(foundDrainOnAddPath)
       << "Add-path peer7 never received an update for 10.6.0.0/24 carrying "
          "drain community 65446:10";
-
-  XLOG(INFO, "=== AddPathSendDrainPropagation PASSED ===");
 }
 
 /*
@@ -902,8 +897,6 @@ TEST_F(E2EPartialDrainTest, PartialDrainWithdrawAffectedPeerMidDrain) {
         transitionCountAfterFirstDrain + 1)
         << "Final drop should bump device-level transition counter";
   });
-
-  XLOG(INFO, "=== PartialDrainWithdrawAffectedPeerMidDrain PASSED ===");
 }
 
 /*
@@ -1000,8 +993,6 @@ TEST_F(E2EPartialDrainTest, TransitionCountOnlyOnDeviceFlip) {
     EXPECT_EVENTUALLY_EQ(*status.partial_drain_transition_count(), 2)
         << "Last prefix exiting drain (device flips) must bump count";
   });
-
-  XLOG(INFO, "=== TransitionCountOnlyOnDeviceFlip PASSED ===");
 }
 
 } // namespace bgp

@@ -21,6 +21,7 @@
 
 #include <fb303/FollyLoggingHandler.h>
 #include <fb303/ServiceData.h>
+#include <fmt/core.h>
 #include <folly/FileUtil.h>
 #include <folly/ScopeGuard.h>
 #include <folly/coro/BlockingWait.h>
@@ -31,6 +32,7 @@
 #include <folly/logging/LoggerDB.h>
 #include <folly/logging/test/TestLogHandler.h>
 #include <folly/test/JsonTestUtil.h>
+#include <folly/testing/TestUtil.h>
 #include <thrift/lib/cpp2/protocol/Serializer.h>
 #include <thrift/lib/cpp2/util/ScopedServerInterfaceThread.h>
 
@@ -56,6 +58,15 @@ class BgpServiceTestFixture : public ::testing::Test {
   void SetUp() override {
     // rib and peerManager are not tested in the tests
     // so it is fine to keep invalid references in services_ for now
+
+    /*
+     * The rib policy files default to fixed paths shared by every bgp test
+     * process on the host. MockRib reads the state file and installs it as the
+     * bootstrap rib policy, so give each fixture its own pair.
+     */
+    FLAGS_rp_state_file = (ribPolicyDir_.path() / "rp_state.txt").string();
+    FLAGS_rp_change_history_file =
+        (ribPolicyDir_.path() / "rp_change_history.txt").string();
 
     // config
     config_ = createConfig();
@@ -103,6 +114,8 @@ class BgpServiceTestFixture : public ::testing::Test {
   std::shared_ptr<Config> config_;
   std::unique_ptr<Watchdog> watchdog_;
   std::shared_ptr<MockSessionManager> sessionMgr_;
+  /* Owns this fixture's rib policy files; removed when the fixture dies. */
+  folly::test::TemporaryDirectory ribPolicyDir_{"bgp_svc_rp"};
 
  private:
   /*

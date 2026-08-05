@@ -669,9 +669,10 @@ void RibFixture::createGlobalConfig(
       false, // enableOptimizedGR
       false); // enablePolicyDefaultAction
 
-  // make unique file name to avoid multi-job stress run collision
-  FLAGS_rp_state_file =
-      fmt::format("/dev/shm/bgp_rp_state_{}.txt", folly::Random::rand32());
+  /* Own the rib policy files so a concurrent stress job cannot collide. */
+  FLAGS_rp_state_file = (ribPolicyDir_.path() / "rp_state.txt").string();
+  FLAGS_rp_change_history_file =
+      (ribPolicyDir_.path() / "rp_change_history.txt").string();
 }
 
 Config RibFixture::config() const {
@@ -740,6 +741,7 @@ void RibFixture::TearDown() {
   rib_->stop();
   ribThread_.join();
   boost::filesystem::remove(FLAGS_rp_state_file);
+  boost::filesystem::remove(FLAGS_rp_change_history_file);
 
   // stop sessionMgr_ before peerManager_
   sessionMgr_.reset();

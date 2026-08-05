@@ -24,6 +24,7 @@
 #include <gmock/gmock.h>
 
 #include <folly/IPAddress.h>
+#include <folly/testing/TestUtil.h>
 
 #include "configerator/structs/neteng/config/gen-cpp2/routing_policy_types.h"
 #include "configerator/structs/neteng/fboss/bgp/gen-cpp2/bgp_config_types.h"
@@ -580,6 +581,8 @@ class RibFixture : public testing::Test {
  private:
   gflags::FlagSaver flagSaver_;
   MockFib::NexthopInfoMap nexthopInfoMap_;
+  /* Owns this fixture's rib policy files; removed when the fixture dies. */
+  folly::test::TemporaryDirectory ribPolicyDir_{"bgp_rib_rp"};
 };
 
 class RibWithLocalRouteFixture : public RibFixture {
