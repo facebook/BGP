@@ -314,6 +314,84 @@ TEST_F(AdjRibEntryFixture, StaleBitAccessorTest) {
   EXPECT_FALSE(entry.isStale());
 }
 
+// Add-path GR old-path-id ownership accessors (flags_ bit 2 +
+// oldPathId_)
+TEST_F(AdjRibEntryFixture, OldPathIdOwnershipAccessors) {
+  AdjRibEntry entry(1);
+
+  // No old-path-id ownership by default.
+  EXPECT_FALSE(entry.hasOldPathId());
+
+  // Presence is tracked by the flag bit, so ids 0 and UINT32_MAX (both valid
+  // path ids) round-trip correctly.
+  entry.setOldPathId(0);
+  EXPECT_TRUE(entry.hasOldPathId());
+  EXPECT_EQ(entry.getOldPathId(), 0u);
+
+  entry.setOldPathId(UINT32_MAX);
+  EXPECT_TRUE(entry.hasOldPathId());
+  EXPECT_EQ(entry.getOldPathId(), UINT32_MAX);
+
+  // Ownership is independent of the stale bit (guards against a whole-byte
+  // clobber of flags_).
+  entry.setStale(true);
+  EXPECT_TRUE(entry.hasOldPathId());
+  EXPECT_TRUE(entry.isStale());
+
+  entry.clearOldPathId();
+  EXPECT_FALSE(entry.hasOldPathId());
+  EXPECT_TRUE(entry.isStale());
+}
+
+// Add-path GR pending-op accessors (flags_ bits 3-4)
+TEST_F(AdjRibEntryFixture, PendingOpAccessors) {
+  AdjRibEntry entry(1);
+
+  // Defaults to None.
+  EXPECT_EQ(entry.getPendingOp(), AdjRibEntry::PendingOp::None);
+
+  entry.setPendingOp(AdjRibEntry::PendingOp::Announce);
+  EXPECT_EQ(entry.getPendingOp(), AdjRibEntry::PendingOp::Announce);
+
+  // Re-derivation overwrites the 2-bit field cleanly (no bit leakage).
+  entry.setPendingOp(AdjRibEntry::PendingOp::Withdraw);
+  EXPECT_EQ(entry.getPendingOp(), AdjRibEntry::PendingOp::Withdraw);
+
+  // Pending op is independent of the stale / nexthopSetByPolicy / old-path-id
+  // bits packed into the same byte.
+  entry.setStale(true);
+  entry.setNexthopSetByPolicy(true);
+  entry.setOldPathId(7);
+  EXPECT_EQ(entry.getPendingOp(), AdjRibEntry::PendingOp::Withdraw);
+  EXPECT_TRUE(entry.isStale());
+  EXPECT_TRUE(entry.isNexthopSetByPolicy());
+  EXPECT_TRUE(entry.hasOldPathId());
+
+  entry.setPendingOp(AdjRibEntry::PendingOp::None);
+  EXPECT_EQ(entry.getPendingOp(), AdjRibEntry::PendingOp::None);
+  EXPECT_TRUE(entry.isStale());
+  EXPECT_TRUE(entry.hasOldPathId());
+}
+
+// clearAddPathGrState clears ONLY the RIB-IN-only add-path GR marker bits.
+TEST_F(AdjRibEntryFixture, ClearAddPathGrStateClearsOnlyMarkerBits) {
+  AdjRibEntry entry(1);
+  entry.setStale(true);
+  entry.setNexthopSetByPolicy(true);
+  entry.setOldPathId(42);
+  entry.setPendingOp(AdjRibEntry::PendingOp::Withdraw);
+
+  entry.clearAddPathGrState();
+
+  // Add-path GR marker state is gone...
+  EXPECT_FALSE(entry.hasOldPathId());
+  EXPECT_EQ(entry.getOldPathId(), 0u);
+  EXPECT_EQ(entry.getPendingOp(), AdjRibEntry::PendingOp::None);
+  // ...but stale / nexthopSetByPolicy survive.
+  EXPECT_TRUE(entry.isStale());
+  EXPECT_TRUE(entry.isNexthopSetByPolicy());
+}
+
 TEST_F(AdjRibEntryFixture, RibVersionDefaultsToZero) {
   AdjRibEntry entry(/* pathId */ 0);
   EXPECT_EQ(entry.getRibVersion(), 0);

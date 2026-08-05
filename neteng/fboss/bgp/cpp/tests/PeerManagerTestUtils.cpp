@@ -996,7 +996,8 @@ void PeerManagerTestFixture::runEoRTest(
             [&](PauseBestPathAndFibProgramming /* unused */) {},
             [&](ResumeBestPathAndFibProgramming /* unused */) {},
             [&](const RibInNexthopUpdate& /* unused */) {},
-            [&](const NexthopResolutionUpdate& /* unused */) {});
+            [&](const NexthopResolutionUpdate& /* unused */) {},
+            [&](const RibInAddPathGrUpdate& /* unused */) {});
                             // Exit when EoR is received and all expected
                             // announcements have arrived. Note: stop() calls
                             // markDaemonShutdown() which skips sending

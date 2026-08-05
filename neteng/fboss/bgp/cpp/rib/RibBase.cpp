@@ -615,6 +615,9 @@ folly::coro::Task<void> RibBase::processRibInMsgLoop() noexcept {
         },
         [this](const NexthopResolutionUpdate& nexthopResolutionUpdate) {
           processNexthopResolutionUpdate(nexthopResolutionUpdate);
+        },
+        [](const RibInAddPathGrUpdate& /* addPathGrUpdate */) {
+          // RibInAddPathGrUpdate unimplemented
         });
   }
 }

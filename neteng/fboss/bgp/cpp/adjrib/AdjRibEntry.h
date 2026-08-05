@@ -33,13 +33,34 @@ extern PostPolicyResultCacheT postPolicyResultCache_;
 // Adjacency Rib entry
 struct AdjRibEntry {
   // Bitmap flags for AdjRibEntry state
-  // Bit 0: isStale - Marked for session down with GR
-  // Bits 1-7: Reserved for future use
+  // Bit 0:    isStale - Marked for session down with GR
+  // Bit 1:    nexthopSetByPolicy - egress SetNexthop action fired (CLI display)
+  // Bit 2:    hasOldPathId - RIB-IN only: oldPathId_ holds a path id this
+  //           entry took over during an add-path graceful restart
+  // Bits 3-4: pendingOp - RIB-IN only: which operation this entry contributes
+  //           when the restart flushes (PendingOp: none | announce | withdraw)
+  // Bits 5-7: Reserved for future use
   uint8_t flags_{0};
 
-  // Flag bit positions
+  // Which RIB operation an entry contributes when an add-path restart flushes.
+  enum class PendingOp : uint8_t {
+    None = 0,
+    Announce = 1,
+    Withdraw = 2,
+  };
+
+  // Flag bit positions / masks
   static constexpr uint8_t kStaleBit = 0;
   static constexpr uint8_t kNexthopSetByPolicyBit = 1;
+  static constexpr uint8_t kHasOldPathIdBit = 2;
+  static constexpr uint8_t kPendingOpShift = 3;
+  static constexpr uint8_t kPendingOpValueMask = 0x3; // 2 bits: flags_ bits 3-4
+  /*
+   * Markers that belong to RIB-IN only. copyEntryForOwner() strips them so a
+   * RIB-OUT clone cannot inherit them.
+   */
+  static constexpr uint8_t kRibInOnlyFlagsMask =
+      (1 << kHasOldPathIdBit) | (kPendingOpValueMask << kPendingOpShift);
 
   bool isStale() const {
     return (flags_ & (1 << kStaleBit)) != 0;
@@ -77,6 +98,50 @@ struct AdjRibEntry {
     } else {
       flags_ &= ~(1 << kNexthopSetByPolicyBit);
     }
+  }
+
+  /*
+   * Add-path graceful-restart markers. RIB-IN only: they are working state for
+   * one restart, never copied to a RIB-OUT clone and never serialized.
+   *
+   * oldPathId_ holds a path id already installed in the RIB that this entry has
+   * taken over from its matching stale twin. Presence is a flag bit rather than
+   * a sentinel value, because 0 and UINT32_MAX are both valid path ids.
+   */
+  bool hasOldPathId() const {
+    return (flags_ & (1 << kHasOldPathIdBit)) != 0;
+  }
+
+  // Only meaningful when hasOldPathId().
+  uint32_t getOldPathId() const {
+    return oldPathId_;
+  }
+
+  void setOldPathId(uint32_t oldPathId) {
+    oldPathId_ = oldPathId;
+    flags_ |= (1 << kHasOldPathIdBit);
+  }
+
+  void clearOldPathId() {
+    oldPathId_ = 0;
+    flags_ &= ~(1 << kHasOldPathIdBit);
+  }
+
+  // Which operation this entry contributes when the restart flushes.
+  PendingOp getPendingOp() const {
+    return static_cast<PendingOp>(
+        (flags_ >> kPendingOpShift) & kPendingOpValueMask);
+  }
+
+  void setPendingOp(PendingOp op) {
+    flags_ = (flags_ & ~(kPendingOpValueMask << kPendingOpShift)) |
+        (static_cast<uint8_t>(op) << kPendingOpShift);
+  }
+
+  // Clears both markers. Idempotent.
+  void clearAddPathGrState() {
+    oldPathId_ = 0;
+    flags_ &= ~kRibInOnlyFlagsMask;
   }
 
   explicit AdjRibEntry(uint32_t pathId) : pathId_(pathId) {}
@@ -170,6 +235,15 @@ struct AdjRibEntry {
   PostPolicyResultT postPolicyResult_;
 
   uint32_t pathId_{kDefaultPathID};
+
+  /*
+   * Path id this entry has taken over from its stale twin; valid only when
+   * hasOldPathId() (flags_ bit 2) is set.
+   * Placed immediately after pathId_ so it occupies the 4 bytes of padding that
+   * already followed it: sizeof(AdjRibEntry) stays 80 and per-entry RIB memory
+   * is unchanged.
+   */
+  uint32_t oldPathId_{0};
 
   // last modified time in microseconds since epoch
   int64_t lastUpdateRcvdUsec_{0};

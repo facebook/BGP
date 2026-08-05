@@ -138,6 +138,52 @@ struct NexthopResolutionUpdate {
   const std::vector<folly::IPAddress> unresolved;
 };
 
+/**
+ * @brief One path id assignment inside a PrefixPathIdBatch.
+ * @details Set oldPathId to move an already-installed path to a new id. Leave
+ * it unset to install a new path at newPathId.
+ */
+struct PathIdEntry {
+  // Installed path id to move from. Unset means this is a new install.
+  std::optional<uint32_t> oldPathId;
+  // Path id received on the current session.
+  uint32_t newPathId{0};
+  // Post-policy attributes the RIB stores for the path.
+  std::shared_ptr<const BgpPath> attrs;
+};
+
+/**
+ * @brief Everything the RIB must do to one prefix for one peer, applied as a
+ * unit.
+ * @details Producers must place a prefix in exactly one batch, and must account
+ * for every already-installed path id exactly once: either move it through an
+ * entry's oldPathId, or list it in withdrawals. The RIB applies each batch on
+ * its own through the ordinary incremental path.
+ */
+struct PrefixPathIdBatch {
+  folly::CIDRNetwork prefix;
+  // Installed path ids to remove.
+  std::vector<uint32_t> withdrawals;
+  // Paths the prefix should end up with.
+  std::vector<PathIdEntry> entries;
+};
+
+/**
+ * @brief Per-peer add-path path id batches, sent to the RIB after a peer
+ * completes a graceful restart.
+ * @param peer: the peer that restarted
+ * @param batches: whole-prefix batches, at most one per prefix
+ */
+struct RibInAddPathGrUpdate {
+  TinyPeerInfo peer;
+  std::vector<PrefixPathIdBatch> batches;
+
+  RibInAddPathGrUpdate(
+      TinyPeerInfo peer,
+      std::vector<PrefixPathIdBatch> batches)
+      : peer(std::move(peer)), batches(std::move(batches)) {}
+};
+
 using RibInMessage = std::variant<
     RibInAnnouncement,
     RibInWithdrawal,
@@ -145,7 +191,8 @@ using RibInMessage = std::variant<
     PauseBestPathAndFibProgramming,
     ResumeBestPathAndFibProgramming,
     RibInNexthopUpdate,
-    NexthopResolutionUpdate>;
+    NexthopResolutionUpdate,
+    RibInAddPathGrUpdate>;
 
 struct RibOutAnnouncementEntry {
   // v4 or v6 prefix

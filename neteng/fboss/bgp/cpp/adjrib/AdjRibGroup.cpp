@@ -3951,7 +3951,9 @@ AdjRibEntry* AdjRibOutGroup::copyEntryForOwner(
     const AdjRibEntry* entryToCopy) noexcept {
   auto newEntry = addRibEntry(prefix, effectiveOwnerKey, pathId);
 
-  newEntry->flags_ = entryToCopy->flags_;
+  // Strip RIB-IN-only add-path GR marker bits: a RIB-OUT clone must never
+  // inherit old-path-id ownership or a pending op from the source entry.
+  newEntry->flags_ = entryToCopy->flags_ & ~AdjRibEntry::kRibInOnlyFlagsMask;
   newEntry->setPreOut(entryToCopy->getPreOut());
   newEntry->setPostAttr(entryToCopy->getPostAttr());
   if (entryToCopy->getPostOutPolicy()) {
