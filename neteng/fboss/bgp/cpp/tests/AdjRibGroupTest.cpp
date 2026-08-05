@@ -2946,7 +2946,7 @@ TEST_F(AdjRibGroupPackingFixture, GroupStateTransitions) {
 /*
  * ============================================================================
  * Detached Peer Termination Tests
- * Tests for cleanUpDetachedRibEntries() cleanup logic
+ * Tests for cleanUpPeerRibOut() cleanup logic
  * ============================================================================
  */
 

@@ -113,7 +113,10 @@
       SyncPeerDownSubtractsGroupShareFromGlobal);                              \
   FRIEND_TEST(                                                                 \
       UpdateGroupDetachLifecycleTest,                                          \
-      DetachedPeerDownSubtractsOwnShareFromGlobal);
+      DetachedPeerDownSubtractsOwnShareFromGlobal);                            \
+  FRIEND_TEST(                                                                 \
+      UpdateGroupDetachLifecycleTest,                                          \
+      UnregisterDetachedAddPathPeerDecrementsMixedOwnershipPathCounts);
 
 #define AdjRibOutGroup_TEST_FRIENDS                                            \
   friend class UpdateGroupDetachedPeerTest;                                    \
@@ -4217,6 +4220,83 @@ TEST_F(
 }
 
 /*
+ * Add-path variant of the above, with both ownerships on the SAME prefix.
+ * Divergence is per (prefix, pathId), so a detached peer can own a lazy clone
+ * of one pathId while still sharing the group's other pathId at that prefix.
+ * Cleanup must settle both -- decrementing only the paths the peer owns leaks
+ * the shared ones out of the peer's counts and out of the global total.
+ */
+TEST_F(
+    UpdateGroupDetachLifecycleTest,
+    UnregisterDetachedAddPathPeerDecrementsMixedOwnershipPathCounts) {
+  auto adjRib0 = createAndRegisterPeer(0);
+  auto adjRib1 = createAndRegisterPeer(1);
+  // Keep the group non-frozen after adjRib0 is removed.
+  setUpJoinedRunningPeer(adjRib1, 1);
+  group_->setLastSeenRibVersion(200);
+  adjRib0->sendAddPath_ = true;
+
+  auto groupOwnerKey = group_->getGroupOwnerKey();
+  auto peerOwnerKey = adjRib0->getPeerOwnerKey();
+  auto attrs = std::make_shared<BgpPath>(*buildBgpPathFields(1, 1, 0, 0));
+
+  /*
+   * One prefix, two paths. The group re-announced pathId 1 after the peer
+   * detached at v100, which lazily cloned the pre-mutation entry under the
+   * peer's own key and left the group's copy at v150. pathId 2 was untouched
+   * (v5 <= 100), so the peer still shares it.
+   */
+  auto* groupPath1 = group_->addToPathTree(
+      group_->PathTree_, kV4Prefix1, groupOwnerKey, /*pathId=*/1);
+  groupPath1->setPostAttr(attrs);
+  groupPath1->setRibVersion(150);
+  auto* groupPath2 = group_->addToPathTree(
+      group_->PathTree_, kV4Prefix1, groupOwnerKey, /*pathId=*/2);
+  groupPath2->setPostAttr(attrs);
+  groupPath2->setRibVersion(5);
+  auto* peerPath1 = group_->addToPathTree(
+      group_->PathTree_, kV4Prefix1, peerOwnerKey, /*pathId=*/1);
+  peerPath1->setPostAttr(attrs);
+  peerPath1->setRibVersion(100);
+
+  group_->markPeerDetached(adjRib0);
+  adjRib0->setPeerState(PeerUpdateState::DETACHED_RUNNING);
+  adjRib0->setDetachedRibVersion(100);
+  // Balances the decrement deactivateDetachedModeProcessing does on unregister.
+  group_->incrementPeersDetachedAfterJoin();
+
+  // The peer advertised both paths: its own pathId 1 and the shared pathId 2.
+  auto totalSentBefore = totalSentPrefixCount;
+  adjRib0->incrementPostOutPrefixCount(true /* isIpv4 */);
+  adjRib0->incrementPostOutPrefixCount(true /* isIpv4 */);
+  adjRib0->incrementPreOutPrefixCount(true /* isIpv4 */);
+  adjRib0->incrementPreOutPrefixCount(true /* isIpv4 */);
+  ASSERT_EQ(adjRib0->getStats().getPostOutPrefixCount(), 2);
+  ASSERT_EQ(adjRib0->getStats().getPreOutPrefixCount(), 2);
+  ASSERT_EQ(totalSentPrefixCount, totalSentBefore + 2);
+
+  group_->unregisterPeer(adjRib0);
+
+  EXPECT_EQ(adjRib0->getStats().getPostOutPrefixCount(), 0)
+      << "the shared pathId at the same prefix as the peer's own clone was "
+         "not decremented";
+  EXPECT_EQ(adjRib0->getStats().getPreOutPrefixCount(), 0);
+  EXPECT_EQ(totalSentPrefixCount, totalSentBefore)
+      << "the peer's share of the shared pathId leaked into the global total";
+
+  // The peer's clone is erased; the group keeps both of its own paths.
+  EXPECT_EQ(
+      group_->getFromPathTree(group_->PathTree_, kV4Prefix1, peerOwnerKey, 1),
+      nullptr);
+  EXPECT_NE(
+      group_->getFromPathTree(group_->PathTree_, kV4Prefix1, groupOwnerKey, 1),
+      nullptr);
+  EXPECT_NE(
+      group_->getFromPathTree(group_->PathTree_, kV4Prefix1, groupOwnerKey, 2),
+      nullptr);
+}
+
+/*
  * Peer detaches as slow peer. Consumer has pending CL items to process
  * → peer is DSP → starts timer-driven CL consumption loop.
  */
@@ -5249,7 +5329,7 @@ TEST_F(
   EXPECT_EQ(adjRib0->getStats().getPostOutPrefixCount(), 4);
   EXPECT_EQ(totalSentPrefixCount, totalSentBefore + 7);
 
-  /* Detached peer goes down: cleanUpDetachedRibEntries settles its own
+  /* Detached peer goes down: cleanUpPeerRibOut settles its own
    * contribution -- the per-peer kV4Prefix4 entry it erases plus the 3 shared
    * group entries it advertised -- so the global drops by all 4. */
   group_->unregisterPeer(adjRib0);

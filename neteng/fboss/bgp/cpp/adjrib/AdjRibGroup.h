@@ -768,11 +768,11 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   /*
    * Erase a detached peer's diverged per-peer RIB-OUT entries from the
    * group's trees; group-owned entries the peer still shares are left in
-   * place (only counted for logging). Must be called before removePeer()
-   * clears the bit.
+   * place, still serving the group's other members. Either way the peer's
+   * egress prefix counts are settled for every entry it advertised. Must be
+   * called before removePeer() clears the bit.
    */
-  void cleanUpDetachedRibEntries(
-      const std::shared_ptr<AdjRib>& adjRib) noexcept;
+  void cleanUpPeerRibOut(const std::shared_ptr<AdjRib>& adjRib) noexcept;
 
   /*
    * High-level method that transfers per-peer RIB-OUT entries for a set of

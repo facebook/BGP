@@ -2499,7 +2499,7 @@ void AdjRibOutGroup::unregisterPeer(
         adjRib->getPeerName(),
         bit);
     /*
-     * cleanUpDetachedRibEntries removes the detached peer's own advertisements
+     * cleanUpPeerRibOut removes the detached peer's own advertisements
      * from both its per-container counts and the global totalSentPrefixCount as
      * it walks the peer's entries -- it is the single accounting point for a
      * departing detached peer (the AdjRib::sessionTerminated teardown loop
@@ -2507,7 +2507,7 @@ void AdjRibOutGroup::unregisterPeer(
      * entries are erased). It must run before deactivateDetachedModeProcessing,
      * which zeroes the detachedRibVersion the shared-entry check relies on.
      */
-    cleanUpDetachedRibEntries(adjRib);
+    cleanUpPeerRibOut(adjRib);
     adjRib->deactivateDetachedModeProcessing();
   } else if (isPeerInSync(bit)) {
     /*
@@ -2584,21 +2584,27 @@ void AdjRibOutGroup::unregisterPeer(
 /*
  * Erase a detached peer's diverged (lazily-cloned) per-peer RIB-OUT entries
  * from the group's trees.
- * Either way the peer's own prefix counts are decremented (preOutPrefixCount,
- * plus postOutPrefixCount when the entry was advertised): the peer's counts
- * were seeded from the group at detach (copyEgressPrefixCountsFrom) and it
- * advertised both its diverged and its shared entries, so all of them must be
- * settled here. Erasing the per-peer entries also makes
- * AdjRib::sessionTerminated's teardown decrement a no-op, so this is the single
- * place those counts are settled. For diverged entries (peer owner key): erased
- * from the tree. For shared entries (group owner key, ribVersion <=
- * detachedRibVersion): left in place — they remain owned by the group, still
- * serving its other members.
+ * Every entry the peer advertised has its prefix counts decremented
+ * (preOutPrefixCount, plus postOutPrefixCount when the entry was advertised):
+ * the peer's counts were seeded from the group at detach
+ * (copyEgressPrefixCountsFrom) and it advertised both its diverged and its
+ * shared entries, so all of them must be settled here. Erasing the per-peer
+ * entries also makes AdjRib::sessionTerminated's teardown decrement a no-op, so
+ * this is the single place those counts are settled. For diverged entries (peer
+ * owner key): erased from the tree. For shared entries (group owner key,
+ * ribVersion <= detachedRibVersion): left in place — they remain owned by the
+ * group, still serving its other members.
+ *
+ * With add-path the two are not mutually exclusive: divergence is per (prefix,
+ * pathId), so one prefix can hold both peer-owned paths and group paths the
+ * peer still shares, and both have to be settled. The Lite tree has no such
+ * mix — one entry per owner per prefix, and the peer's own supersedes the
+ * group's.
  *
  * Must be called after capturing detachedRibVersion but before removePeer()
  * clears the peer's bit position.
  */
-void AdjRibOutGroup::cleanUpDetachedRibEntries(
+void AdjRibOutGroup::cleanUpPeerRibOut(
     const std::shared_ptr<AdjRib>& adjRib) noexcept {
   auto peerOwnerKey = adjRib->getPeerOwnerKey();
   auto groupOwnerKey = getGroupOwnerKey();
@@ -2613,13 +2619,50 @@ void AdjRibOutGroup::cleanUpDetachedRibEntries(
     for (auto itr = PathTree_.begin(); itr != PathTree_.end(); ++itr) {
       auto& ownerMap = itr->value();
       auto peerIt = ownerMap.find(peerOwnerKey);
-      if (peerIt != ownerMap.end()) {
+      auto groupIt = ownerMap.find(groupOwnerKey);
+      const bool peerOwnsEntry = peerIt != ownerMap.end();
+      if (!peerOwnsEntry && groupIt == ownerMap.end()) {
+        continue;
+      }
+      bool isV4 = itr.ipAddress().isV4();
+
+      /*
+       * Divergence is per (prefix, pathId), so one node can hold both
+       * peer-owned paths and group paths the peer still shares. Settle both --
+       * mirroring resolvePathEntriesForPeer, the canonical answer to "what did
+       * this peer advertise at this prefix" -- otherwise a mixed node leaks the
+       * shared paths' counts. The shared loop runs before the peer entries are
+       * erased because it needs the peer's pathIds to tell which group paths
+       * the peer diverged from.
+       */
+      if (groupIt != ownerMap.end()) {
+        for (const auto& [pathId, entry] : groupIt->second) {
+          if (peerOwnsEntry &&
+              peerIt->second.find(pathId) != peerIt->second.end()) {
+            continue;
+          }
+          if (isEntryShared(detachedRibVersion, entry->getRibVersion())) {
+            /*
+             * The peer advertised this shared (group-owned) entry too -- its
+             * counts were seeded from the group at detach
+             * (copyEgressPrefixCountsFrom) -- so decrement them even though
+             * the entry stays owned by the group.
+             */
+            if (entry->getPostAttr()) {
+              adjRib->decrementPostOutPrefixCount(isV4);
+            }
+            adjRib->decrementPreOutPrefixCount(isV4);
+            sharedCount++;
+          }
+        }
+      }
+
+      if (peerOwnsEntry) {
         /*
          * Decrement the peer's own prefix counts for each per-peer entry we
          * erase. AdjRib::sessionTerminated's teardown loop would otherwise do
          * this, but it becomes a no-op once these per-peer entries are gone.
          */
-        bool isV4 = itr.ipAddress().isV4();
         for (const auto& [_, entry] : peerIt->second) {
           if (entry->getPostAttr()) {
             adjRib->decrementPostOutPrefixCount(isV4);
@@ -2630,26 +2673,6 @@ void AdjRibOutGroup::cleanUpDetachedRibEntries(
         deletedCount++;
         if (ownerMap.empty()) {
           emptyPathNodes.push_back(itr);
-        }
-      } else {
-        auto groupIt = ownerMap.find(groupOwnerKey);
-        if (groupIt != ownerMap.end()) {
-          bool isV4 = itr.ipAddress().isV4();
-          for (const auto& [_, entry] : groupIt->second) {
-            if (isEntryShared(detachedRibVersion, entry->getRibVersion())) {
-              /*
-               * The peer advertised this shared (group-owned) entry too -- its
-               * counts were seeded from the group at detach
-               * (copyEgressPrefixCountsFrom) -- so decrement them even though
-               * the entry stays owned by the group.
-               */
-              if (entry->getPostAttr()) {
-                adjRib->decrementPostOutPrefixCount(isV4);
-              }
-              adjRib->decrementPreOutPrefixCount(isV4);
-              sharedCount++;
-            }
-          }
         }
       }
     }

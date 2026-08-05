@@ -826,7 +826,7 @@ folly::coro::Task<void> AdjRib::sessionTerminated(
    * update groups are disabled. With update groups enabled this AdjRib owns no
    * entries under its peer owner key -- in-sync peers share the group owner
    * key, and a detached peer's per-peer entries are erased by
-   * AdjRibOutGroup::cleanUpDetachedRibEntries on unregister. The global
+   * AdjRibOutGroup::cleanUpPeerRibOut on unregister. The global
    * totalSentPrefixCount is likewise reconciled in
    * AdjRibOutGroup::unregisterPeer (by the group's postOutPrefixCount for
    * in-sync peers, or the peer's own for detached peers). Running this loop
