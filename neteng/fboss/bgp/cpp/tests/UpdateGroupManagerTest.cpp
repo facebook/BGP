@@ -289,6 +289,67 @@ TEST_F(UpdateGroupManagerTest, MaybeDestroyUpdateGroupsSkipsNonEmptyGroups) {
   EXPECT_FALSE(manager.hasGroup(emptyKey2));
 }
 
+TEST_F(UpdateGroupManagerTest, MaybeDestroyUpdateGroupsFreesPinnedRibOut) {
+  folly::EventBase evb;
+  UpdateGroupManager manager(evb, UpdateGroupConfig{});
+
+  auto key = createTestKey();
+  auto group = manager.findOrCreateGroup(key);
+
+  nettools::bgplib::MonitoredBackPressuredQueue<RibInMessage> ribInQ{
+      nettools::bgplib::kMaxIngressQueueSize};
+  MonitoredMPMCQueue<AdjRib::ObservableMessageT> observerQ;
+  auto peerId = nettools::bgplib::BgpPeerId(
+      folly::IPAddress("10.0.0.1"),
+      folly::IPAddressV4("255.0.0.1").toLongHBO());
+  auto adjRib = std::make_shared<AdjRib>(
+      peerId,
+      PeeringParams(),
+      evb,
+      ribInQ,
+      observerQ,
+      std::make_shared<folly::coro::Baton>(),
+      nullptr,
+      std::make_shared<std::atomic<bool>>(false));
+
+  adjRib->setUpdateGroup(group);
+  group->registerPeer(adjRib);
+
+  // Materialize a group-owned RIB-OUT entry.
+  const auto kV4Prefix = folly::IPAddress::createNetwork("10.1.0.0/24");
+  group->addToLiteTree(
+      group->LiteTree_, kV4Prefix, group->getGroupOwnerKey(), kDefaultPathID);
+  ASSERT_EQ(1, group->LiteTree_.size());
+
+  /*
+   * Session goes down without the peer being deleted, so the AdjRib survives.
+   * Unregistering must drop its reference to the group, or the departed last
+   * member would pin the emptied group -- and its whole RIB-OUT -- until it
+   * re-establishes.
+   */
+  std::weak_ptr<AdjRibOutGroup> weakGroup = group;
+  group->unregisterPeer(adjRib);
+  folly::coro::blockingWait(manager.maybeDestroyUpdateGroups({group}));
+
+  EXPECT_EQ(0, manager.getGroupCount());
+  EXPECT_EQ(nullptr, adjRib->getUpdateGroup());
+
+  /*
+   * The down peer still answers the CLI/thrift reads that walk every AdjRib in
+   * adjRibs_ regardless of session state, and reports an empty RIB-OUT.
+   */
+  EXPECT_TRUE(adjRib->getAllPrefixes().empty());
+  EXPECT_EQ(nullptr, adjRib->getRibEntry(/*ingress=*/false, kV4Prefix));
+  EXPECT_EQ("", adjRib->getAdjRibOutGroupName());
+
+  /*
+   * Nothing keeps the emptied group alive once this scope's own reference
+   * goes: the retained AdjRib is not an owner, so the RIB-OUT is reclaimed.
+   */
+  group.reset();
+  EXPECT_TRUE(weakGroup.expired());
+}
+
 TEST_F(UpdateGroupManagerTest, SetUpdateGroupState) {
   folly::EventBase evb;
   UpdateGroupManager manager(evb, UpdateGroupConfig{});

@@ -343,12 +343,7 @@ TEST_F(SplitToGroup, CopiesGroupFields) {
      * faithful clone must match what UpdateGroupManager::findOrCreateGroup
      * builds.
      */
-    auto targetGroup = std::make_shared<AdjRibOutGroup>(
-        evb,
-        "split_target",
-        sourceGroup->getGroupId() + 1,
-        /*enableUpdateGroup=*/true,
-        sourceGroup->getGroupKey());
+    auto targetGroup = makeSplitTargetGroup(ctx, evb, sourceGroup);
     sourceGroup->splitToNewGroup(targetGroup, {adjRib0});
 
     /*
@@ -511,12 +506,7 @@ TEST_F(SplitToGroup, ClonesPackingList) {
     sourceGroup->attrToPrefixMap_.clear();
     sourceGroup->attrToPrefixMap_[key] = prefixes;
 
-    auto targetGroup = std::make_shared<AdjRibOutGroup>(
-        evb,
-        "split_target",
-        sourceGroup->getGroupId() + 1,
-        /*enableUpdateGroup=*/true,
-        sourceGroup->getGroupKey());
+    auto targetGroup = makeSplitTargetGroup(ctx, evb, sourceGroup);
     sourceGroup->splitToNewGroup(targetGroup, {adjRib0});
 
     /*
@@ -580,12 +570,7 @@ TEST_F(SplitToGroup, MovesJoinedRunningPeer) {
     ribOutBefore =
         serializeSharedRibOutTreesGroupKeyNormalized(sourceGroup, ownerKey);
 
-    auto targetGroup = std::make_shared<AdjRibOutGroup>(
-        evb,
-        "split_target",
-        sourceGroup->getGroupId() + 1,
-        /*enableUpdateGroup=*/true,
-        sourceGroup->getGroupKey());
+    auto targetGroup = makeSplitTargetGroup(ctx, evb, sourceGroup);
     sourceGroup->splitToNewGroup(targetGroup, {adjRib});
 
     // Re-homed into the new group; peer 0 stays behind.
@@ -650,12 +635,7 @@ TEST_F(SplitToGroup, CopiesEgressPrefixCountsToNewGroup) {
 
     const auto globalBefore = totalSentPrefixCount;
 
-    auto targetGroup = std::make_shared<AdjRibOutGroup>(
-        evb,
-        "split_target",
-        sourceGroup->getGroupId() + 1,
-        /*enableUpdateGroup=*/true,
-        sourceGroup->getGroupKey());
+    auto targetGroup = makeSplitTargetGroup(ctx, evb, sourceGroup);
     sourceGroup->splitToNewGroup(targetGroup, {adjRib});
 
     /* New group inherits the counts; source group's counts are unchanged. */
@@ -705,12 +685,7 @@ TEST_F(SplitToGroup, MovesJoinedBlockedPeer) {
     ribOutBefore =
         serializeSharedRibOutTreesGroupKeyNormalized(sourceGroup, ownerKey);
 
-    auto targetGroup = std::make_shared<AdjRibOutGroup>(
-        evb,
-        "split_target",
-        sourceGroup->getGroupId() + 1,
-        /*enableUpdateGroup=*/true,
-        sourceGroup->getGroupKey());
+    auto targetGroup = makeSplitTargetGroup(ctx, evb, sourceGroup);
     sourceGroup->splitToNewGroup(targetGroup, {adjRib});
 
     EXPECT_EQ(adjRib->getUpdateGroup(), targetGroup);
@@ -779,12 +754,7 @@ TEST_F(SplitToGroup, SplitBlockedPeerDrainWaitsInBuildAndSendGroupMessages) {
     auto& adjRib = ctx.adjRibs.at(peerId1);
     auto sourceGroup = adjRib->getUpdateGroup();
 
-    targetGroup = std::make_shared<AdjRibOutGroup>(
-        evb,
-        "split_target",
-        sourceGroup->getGroupId() + 1,
-        /*enableUpdateGroup=*/true,
-        sourceGroup->getGroupKey());
+    targetGroup = makeSplitTargetGroup(ctx, evb, sourceGroup);
     sourceGroup->splitToNewGroup(targetGroup, {adjRib});
 
     /*
@@ -897,12 +867,7 @@ TEST_F(SplitToGroup, SplitBlockedPeerDrainNoInSyncPeerDoesNotReschedule) {
     auto& adjRib = ctx.adjRibs.at(peerId1);
     auto sourceGroup = adjRib->getUpdateGroup();
 
-    targetGroup = std::make_shared<AdjRibOutGroup>(
-        evb,
-        "split_target",
-        sourceGroup->getGroupId() + 1,
-        /*enableUpdateGroup=*/true,
-        sourceGroup->getGroupKey());
+    targetGroup = makeSplitTargetGroup(ctx, evb, sourceGroup);
     sourceGroup->splitToNewGroup(targetGroup, {adjRib});
 
     ASSERT_TRUE(targetGroup->hasBlockedPeers());
@@ -1001,12 +966,7 @@ TEST_F(SplitToGroup, MovesDetachedBlockedPeer) {
     ribOutBefore =
         serializeSharedRibOutTreesGroupKeyNormalized(sourceGroup, ownerKey);
 
-    auto targetGroup = std::make_shared<AdjRibOutGroup>(
-        evb,
-        "split_target",
-        sourceGroup->getGroupId() + 1,
-        /*enableUpdateGroup=*/true,
-        sourceGroup->getGroupKey());
+    auto targetGroup = makeSplitTargetGroup(ctx, evb, sourceGroup);
     sourceGroup->splitToNewGroup(targetGroup, {adjRib});
 
     EXPECT_EQ(adjRib->getUpdateGroup(), targetGroup);
@@ -1062,12 +1022,7 @@ TEST_F(SplitToGroup, MovesDetachedReadyToJoinPeer) {
     ribOutBefore =
         serializeSharedRibOutTreesGroupKeyNormalized(sourceGroup, ownerKey);
 
-    auto targetGroup = std::make_shared<AdjRibOutGroup>(
-        evb,
-        "split_target",
-        sourceGroup->getGroupId() + 1,
-        /*enableUpdateGroup=*/true,
-        sourceGroup->getGroupKey());
+    auto targetGroup = makeSplitTargetGroup(ctx, evb, sourceGroup);
     sourceGroup->splitToNewGroup(targetGroup, {adjRib});
 
     EXPECT_EQ(adjRib->getUpdateGroup(), targetGroup);
@@ -1129,12 +1084,7 @@ TEST_F(SplitToGroup, MovesDetachedInitDumpPeer) {
     ribOutBefore =
         serializeSharedRibOutTreesGroupKeyNormalized(sourceGroup, ownerKey);
 
-    auto targetGroup = std::make_shared<AdjRibOutGroup>(
-        evb,
-        "split_target",
-        sourceGroup->getGroupId() + 1,
-        /*enableUpdateGroup=*/true,
-        sourceGroup->getGroupKey());
+    auto targetGroup = makeSplitTargetGroup(ctx, evb, sourceGroup);
     sourceGroup->splitToNewGroup(targetGroup, {adjRib});
 
     EXPECT_EQ(adjRib->getUpdateGroup(), targetGroup);
@@ -1213,12 +1163,7 @@ TEST_F(SplitToGroup, MovesMultiplePeersAtOnce) {
     peer2SourceBefore =
         serializeSharedRibOutTreesGroupKeyNormalized(sourceGroup, ownerKey2);
 
-    auto targetGroup = std::make_shared<AdjRibOutGroup>(
-        evb,
-        "split_target",
-        sourceGroup->getGroupId() + 1,
-        /*enableUpdateGroup=*/true,
-        sourceGroup->getGroupKey());
+    auto targetGroup = makeSplitTargetGroup(ctx, evb, sourceGroup);
     sourceGroup->splitToNewGroup(targetGroup, {adjRib1, adjRib2});
 
     // Both peers re-homed into the new group; peer 0 stays behind.

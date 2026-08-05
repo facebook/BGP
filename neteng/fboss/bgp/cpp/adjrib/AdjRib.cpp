@@ -400,6 +400,15 @@ AdjRibEntry* FOLLY_NULLABLE AdjRib::getRibEntry(
     bool ingress,
     const CIDRNetwork& prefix,
     uint32_t pathId) noexcept {
+  /*
+   * A peer unregistered from its update group owns no RIB-OUT entries
+   * (AdjRibOutGroup::unregisterPeer clears the group). Needed because the
+   * thrift attribute-stats walk queries every AdjRib in adjRibs_, including
+   * peers retained while down.
+   */
+  if (!ingress && !adjRibOutGroup_) {
+    return nullptr;
+  }
   bool addPath = false;
 
   /*
@@ -470,10 +479,13 @@ std::vector<CIDRNetwork> AdjRib::getAllPrefixes() noexcept {
     size += adjRibInLiteTree_.size();
   }
 
-  if (sendAddPath_) {
-    size += adjRibOutGroup_->PathTree_.size();
-  } else {
-    size += adjRibOutGroup_->LiteTree_.size();
+  /*
+   * A peer unregistered from its update group owns no RIB-OUT entries; only
+   * its AdjRibIn prefixes remain. See AdjRibOutGroup::unregisterPeer.
+   */
+  if (adjRibOutGroup_) {
+    size += sendAddPath_ ? adjRibOutGroup_->PathTree_.size()
+                         : adjRibOutGroup_->LiteTree_.size();
   }
 
   prefixes.reserve(size);
@@ -492,25 +504,27 @@ std::vector<CIDRNetwork> AdjRib::getAllPrefixes() noexcept {
     }
   }
 
-  if (sendAddPath_) {
-    for (auto itr = adjRibOutGroup_->PathTree_.begin();
-         itr != adjRibOutGroup_->PathTree_.end();
-         itr++) {
-      auto ownerItr = itr->value().find(getPeerOwnerKey());
-      if (ownerItr == itr->value().end()) {
-        continue;
+  if (adjRibOutGroup_) {
+    if (sendAddPath_) {
+      for (auto itr = adjRibOutGroup_->PathTree_.begin();
+           itr != adjRibOutGroup_->PathTree_.end();
+           itr++) {
+        auto ownerItr = itr->value().find(getPeerOwnerKey());
+        if (ownerItr == itr->value().end()) {
+          continue;
+        }
+        prefixesSet.emplace(itr.ipAddress(), itr.masklen());
       }
-      prefixesSet.emplace(itr.ipAddress(), itr.masklen());
-    }
-  } else {
-    for (auto itr = adjRibOutGroup_->LiteTree_.begin();
-         itr != adjRibOutGroup_->LiteTree_.end();
-         itr++) {
-      auto ownerItr = itr->value().find(getPeerOwnerKey());
-      if (ownerItr == itr->value().end()) {
-        continue;
+    } else {
+      for (auto itr = adjRibOutGroup_->LiteTree_.begin();
+           itr != adjRibOutGroup_->LiteTree_.end();
+           itr++) {
+        auto ownerItr = itr->value().find(getPeerOwnerKey());
+        if (ownerItr == itr->value().end()) {
+          continue;
+        }
+        prefixesSet.emplace(itr.ipAddress(), itr.masklen());
       }
-      prefixesSet.emplace(itr.ipAddress(), itr.masklen());
     }
   }
 
@@ -1658,6 +1672,19 @@ void AdjRib::scheduleSlowPeerDurationTimer(
     slowPeerDurationTimer_ = folly::AsyncTimeout::make(evb, [self]() noexcept {
       uint64_t bit = self->getGroupBitPosition();
       auto& group = self->adjRibOutGroup_;
+      /*
+       * A peer unregistered from its group has nothing to detach from
+       * (AdjRibOutGroup::unregisterPeer clears the group). removePeer()
+       * destroys this timer before that happens, so this is belt-and-braces
+       * against a future reordering inside unregisterPeer.
+       */
+      if (!group) {
+        XLOGF(
+            WARN,
+            "Peer {}: slow peer duration timer fired with no update group, skipping",
+            self->getPeerName());
+        return;
+      }
       XLOGF(
           INFO,
           "Group {}: Peer at bit {} exceeded block duration threshold",

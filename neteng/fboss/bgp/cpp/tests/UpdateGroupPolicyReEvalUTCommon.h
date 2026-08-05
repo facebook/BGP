@@ -150,6 +150,29 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
     int ribBaseVersion{0};
   };
 
+  /*
+   * Build a splitToNewGroup target the way
+   * UpdateGroupManager::findOrCreateGroup builds a group. splitToNewGroup
+   * copies only operational state, so whatever the constructor wires has to be
+   * passed here or the clone is not faithful: the shadow RIB view (read by the
+   * change list consume timer the split registers on the target) and the policy
+   * manager.
+   */
+  std::shared_ptr<AdjRibOutGroup> makeSplitTargetGroup(
+      TestContext& ctx,
+      folly::EventBase& evb,
+      const std::shared_ptr<AdjRibOutGroup>& sourceGroup) {
+    return std::make_shared<AdjRibOutGroup>(
+        evb,
+        "split_target",
+        sourceGroup->getGroupId() + 1,
+        /*enableUpdateGroup=*/true,
+        sourceGroup->getGroupKey(),
+        ShadowRibView{
+            &ctx.peerMgr->shadowRibEntries_, &ctx.peerMgr->maxRibVersion_},
+        ctx.peerMgr->getPolicyManager());
+  }
+
   std::shared_ptr<AdjRib> setupAdjRibWithPeerGroup(
       folly::EventBase& evb,
       const nettools::bgplib::BgpPeerId& peerId,

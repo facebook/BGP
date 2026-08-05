@@ -75,6 +75,12 @@ void AdjRib::getNetworks(
       // With update groups, an in-sync peer's RIB-OUT entries live under the
       // group owner key; resolve the entry visible to this peer (peer-owned,
       // shared group, or omitted) via the version-gated resolver.
+      //
+      // A peer unregistered from its update group (session down) has no
+      // RIB-OUT left to report. See AdjRibOutGroup::unregisterPeer.
+      if (!adjRibOutGroup_) {
+        break;
+      }
       const auto sharingVersion = getRibOutSharingVersion();
       if (!sendAddPath_) {
         for (auto itr = adjRibOutGroup_->LiteTree_.begin();
@@ -158,6 +164,12 @@ void AdjRib::getNetworks2(
       // With update groups, an in-sync peer's RIB-OUT entries live under the
       // group owner key; resolve the entry visible to this peer (peer-owned,
       // shared group, or omitted) via the version-gated resolver.
+      //
+      // A peer unregistered from its update group (session down) has no
+      // RIB-OUT left to report. See AdjRibOutGroup::unregisterPeer.
+      if (!adjRibOutGroup_) {
+        break;
+      }
       const auto sharingVersion = getRibOutSharingVersion();
       if (!sendAddPath_) {
         for (auto itr = adjRibOutGroup_->LiteTree_.begin();
@@ -354,6 +366,12 @@ void AdjRib::getDryRunNetworks(
       // With update groups, an in-sync peer's RIB-OUT entries live under the
       // group owner key; resolve the entry visible to this peer (peer-owned,
       // shared group, or omitted) via the version-gated resolver.
+      //
+      // A peer unregistered from its update group (session down) has no
+      // RIB-OUT left to report. See AdjRibOutGroup::unregisterPeer.
+      if (!adjRibOutGroup_) {
+        break;
+      }
       const auto sharingVersion = getRibOutSharingVersion();
       for (auto itr = adjRibOutGroup_->LiteTree_.begin();
            itr != adjRibOutGroup_->LiteTree_.end();

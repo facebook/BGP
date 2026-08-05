@@ -2561,6 +2561,21 @@ void AdjRibOutGroup::unregisterPeer(
       bit);
 
   /*
+   * Drop the peer's reference to this group. removePeer already severed
+   * group -> AdjRib; without this the AdjRib -> group edge survives, and since
+   * a session going down without the peer being deleted (hold timer,
+   * NOTIFICATION, TCP reset, graceful restart) keeps the AdjRib in
+   * PeerManagerBase::adjRibs_, a departed last member would pin the whole group
+   * until it re-establishes. The caller holds its own shared_ptr across
+   * maybeDestroyUpdateGroups, so this does not destroy the group here.
+   *
+   * The AdjRib keeps serving CLI/thrift reads while it is down, so every
+   * egress accessor that reaches into the group tolerates a null group and
+   * reports an empty RIB-OUT -- which is what a peer with no update group has.
+   */
+  adjRib->setUpdateGroup(nullptr);
+
+  /*
    * Note: We don't call maybeDestroyUpdateGroup() here because
    * the group might still have other members.
    */

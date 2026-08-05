@@ -159,9 +159,10 @@ TEST_P(UpdateGroupSlowPeerDetectionTest, PeerDown_Unblock) {
 
 /*
  * P-DOWN x E-SLOW-DUR
- * N/A — timer should not exist for DOWN peer. Verify that setting
- * slow peer thresholds on a DOWN peer doesn't cause a crash and
- * the peer stays DOWN. Group continues functioning.
+ * N/A — timer should not exist for DOWN peer. A DOWN peer is unregistered
+ * from its update group and drops its reference to it, so there is nothing
+ * for slow peer detection to run against. Group continues functioning for
+ * the remaining peer.
  */
 TEST_P(UpdateGroupSlowPeerDetectionTest, PeerDown_SlowDur) {
   XLOG(INFO, "=== TEST: PeerDown_SlowDur ===");
@@ -193,16 +194,19 @@ TEST_P(UpdateGroupSlowPeerDetectionTest, PeerDown_SlowDur) {
   EXPECT_TRUE(waitForPeerState(kPeerAddr3, PeerUpdateState::DOWN));
 
   /*
-   * Set slow peer thresholds on a DOWN peer — should be harmless.
-   * The duration timer should not exist for a DOWN peer.
+   * AdjRibOutGroup::unregisterPeer drops the peer's reference to its group,
+   * so a DOWN peer has no group at all -- there is nothing to configure slow
+   * peer thresholds on, and hence no duration timer. Read on the PeerManager
+   * evb so this is serialized against the unregister that cleared it.
    */
-  setSlowPeerThresholds(
-      kPeerAddr3,
-      std::chrono::milliseconds(1000),
-      1,
-      std::chrono::milliseconds(1000));
+  auto& pmEvb = peerManager_->getEventBase();
+  auto groupAfterDown =
+      folly::via(&pmEvb, [this]() -> std::shared_ptr<AdjRibOutGroup> {
+        return getUpdateGroupForPeer(kPeerAddr3);
+      }).get();
+  EXPECT_EQ(groupAfterDown, nullptr);
 
-  /* Peer3 stays DOWN — threshold setting is no-op for DOWN peer */
+  /* Peer3 stays DOWN */
   ASSERT_TRUE(waitForPeerState(kPeerAddr3, PeerUpdateState::DOWN));
 
   /* Peer4 unaffected — inject a route to confirm group still works */
