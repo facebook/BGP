@@ -3602,11 +3602,18 @@ void AdjRibOutGroup::tryRejoinDetachedPeersOnAllChangesProcessed() noexcept {
  * collapse verification.
  */
 void AdjRibOutGroup::checkAndAcceptReadyToJoinPeers() noexcept {
-  XLOGF(
+  /*
+   * This runs on every change-list consume tick (~mraiInterval_) for any group
+   * with in-sync peers, so log only when there is actually something to check.
+   * Otherwise this DBG1 line spams once per group per tick with
+   * "Skipping 0 detached peers to try rejoin". Mirrors the gated follow-up
+   * logs below (the function is a no-op when detachedPeers_ is empty).
+   */
+  XLOGF_IF(
       DBG1,
-      "Group {}: {} {} detached peers to try rejoin",
+      !detachedPeers_.empty(),
+      "Group {}: Checking {} detached peers to try rejoin",
       groupDescriptor_,
-      detachedPeers_.empty() ? "Skipping" : "Checking",
       detachedPeers_.size());
 
   std::vector<std::shared_ptr<AdjRib>> dfpPeers;

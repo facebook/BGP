@@ -26,7 +26,7 @@
   friend class AdjRibGroupAddPathFixture;                                            \
   FRIEND_TEST(                                                                       \
       AdjRibGroupTest,                                                               \
-      BuildAndSendGroupBgpMessages_EmptyPackingListEmitsRejoinLogs);                 \
+      BuildAndSendGroupBgpMessages_EmptyPackingListRejoinLogGating);                 \
   FRIEND_TEST(                                                                       \
       AdjRibGroupTest,                                                               \
       BuildAndSendGroupBgpMessages_NoSyncPeersDoesNotRestartConsumeTimer);           \
@@ -4149,7 +4149,7 @@ TEST_F(AdjRibGroupTest, GroupLabelIncludesPeerOverride) {
 
 TEST_F(
     AdjRibGroupTest,
-    BuildAndSendGroupBgpMessages_EmptyPackingListEmitsRejoinLogs) {
+    BuildAndSendGroupBgpMessages_EmptyPackingListRejoinLogGating) {
   createAdjRibOutGroup("test_group");
   auto& messages = subscribeToLogMessages("", folly::LogLevel::DBG2);
 
@@ -4175,17 +4175,19 @@ TEST_F(
   }
   EXPECT_TRUE(foundStateTransitionLog);
 
-  // With no detached peers, checkAndAcceptReadyToJoinPeers should log
-  // "No detached peers to try rejoin"
-  bool foundNoDetachedPeersLog = false;
+  // With no detached peers, checkAndAcceptReadyToJoinPeers must NOT emit a
+  // rejoin log line. The DBG1 log is gated on a non-empty detached set to
+  // avoid per-tick spam (it previously logged "Skipping 0 detached peers to
+  // try rejoin" on every consume tick).
+  bool foundRejoinLog = false;
   for (const auto& [msg, _] : messages) {
-    if (msg.getMessage().find("Skipping 0 detached peers to try rejoin") !=
+    if (msg.getMessage().find("detached peers to try rejoin") !=
         std::string::npos) {
-      foundNoDetachedPeersLog = true;
+      foundRejoinLog = true;
       break;
     }
   }
-  EXPECT_TRUE(foundNoDetachedPeersLog);
+  EXPECT_FALSE(foundRejoinLog);
 
   // Now add a detached peer and call again to verify the other log line
   messages.clear();
