@@ -104,32 +104,6 @@ void initCounters() {
   fb303::ThreadCachedServiceData::get()->setCounter(kDsfFastTearDownCount, 0);
   fb303::ThreadCachedServiceData::get()->addStatExportType(
       kDsfFastTearDownCount, fb303::SUM);
-  fb303::ThreadCachedServiceData::get()->setCounter(kSetPeersPolicySuccess, 0);
-  fb303::ThreadCachedServiceData::get()->addStatExportType(
-      kSetPeersPolicySuccess, fb303::SUM);
-  fb303::ThreadCachedServiceData::get()->setCounter(kSetPeersPolicyFailure, 0);
-  fb303::ThreadCachedServiceData::get()->addStatExportType(
-      kSetPeersPolicyFailure, fb303::SUM);
-  fb303::ThreadCachedServiceData::get()->setCounter(
-      kSetPeerGroupsPolicySuccess, 0);
-  fb303::ThreadCachedServiceData::get()->addStatExportType(
-      kSetPeerGroupsPolicySuccess, fb303::SUM);
-  fb303::ThreadCachedServiceData::get()->setCounter(
-      kSetPeerGroupsPolicyFailure, 0);
-  fb303::ThreadCachedServiceData::get()->addStatExportType(
-      kSetPeerGroupsPolicyFailure, fb303::SUM);
-  fb303::ThreadCachedServiceData::get()->setCounter(
-      kUnsetPeersPolicySuccess, 0);
-  fb303::ThreadCachedServiceData::get()->addStatExportType(
-      kUnsetPeersPolicySuccess, fb303::SUM);
-  fb303::ThreadCachedServiceData::get()->setCounter(
-      kUnsetPeersPolicyFailure, 0);
-  fb303::ThreadCachedServiceData::get()->addStatExportType(
-      kUnsetPeersPolicyFailure, fb303::SUM);
-  fb303::ThreadCachedServiceData::get()->setCounter(kAddPeersSuccess, 0);
-  fb303::ThreadCachedServiceData::get()->setCounter(kAddPeersRejected, 0);
-  fb303::ThreadCachedServiceData::get()->setCounter(kDelPeersSuccess, 0);
-  fb303::ThreadCachedServiceData::get()->setCounter(kDelPeersRejected, 0);
   fb303::ThreadCachedServiceData::get()->setCounter(
       kDeduplicatedAttributesTotal, 0);
   fb303::ThreadCachedServiceData::get()->setCounter(
@@ -512,52 +486,6 @@ void setPeerManagerReachesInitializedTimeout(bool reachesTimeout) {
       kInitializedTimeout, reachesTimeout ? 1 : 0);
 }
 
-void incrAddPeersSuccess() {
-  fb303::ThreadCachedServiceData::get()->incrementCounter(kAddPeersSuccess, 1);
-}
-
-void incrAddPeersRejected() {
-  fb303::ThreadCachedServiceData::get()->incrementCounter(kAddPeersRejected, 1);
-}
-
-void incrDelPeersSuccess() {
-  fb303::ThreadCachedServiceData::get()->incrementCounter(kDelPeersSuccess, 1);
-}
-
-void incrDelPeersRejected() {
-  fb303::ThreadCachedServiceData::get()->incrementCounter(kDelPeersRejected, 1);
-}
-
-void incrSetPeersPolicySuccess() {
-  fb303::ThreadCachedServiceData::get()->incrementCounter(
-      kSetPeersPolicySuccess, 1);
-}
-
-void incrSetPeersPolicyFailure() {
-  fb303::ThreadCachedServiceData::get()->incrementCounter(
-      kSetPeersPolicyFailure, 1);
-}
-
-void incrSetPeerGroupsPolicySuccess() {
-  fb303::ThreadCachedServiceData::get()->incrementCounter(
-      kSetPeerGroupsPolicySuccess, 1);
-}
-
-void incrSetPeerGroupsPolicyFailure() {
-  fb303::ThreadCachedServiceData::get()->incrementCounter(
-      kSetPeerGroupsPolicyFailure, 1);
-}
-
-void incrUnsetPeersPolicySuccess() {
-  fb303::ThreadCachedServiceData::get()->incrementCounter(
-      kUnsetPeersPolicySuccess, 1);
-}
-
-void incrUnsetPeersPolicyFailure() {
-  fb303::ThreadCachedServiceData::get()->incrementCounter(
-      kUnsetPeersPolicyFailure, 1);
-}
-
 void incPassiveRejectLocalAddrMismatch() {
   fb303::ThreadCachedServiceData::get()->incrementCounter(
       kPassiveRejectLocalAddrMismatch, 1);
@@ -716,7 +644,6 @@ void initCounters() {
 
 DEFINE_timeseries(rfPolicyRcvd, kRfPolicyRcvd, fb303::COUNT);
 DEFINE_timeseries(rfPolicyUpdate, kRfPolicyUpdate, fb303::COUNT);
-DEFINE_timeseries(unsupportedPolicyMsg, kUnsupportedPolicyMsg, fb303::COUNT);
 DEFINE_timeseries(ribPolicyMsgEnqueued, kRibPolicyMsgEnqueued, fb303::COUNT);
 DEFINE_timeseries(ribPolicyMsgCoalesced, kRibPolicyMsgCoalesced, fb303::COUNT);
 DEFINE_timeseries(ribPolicyMsgPurged, kRibPolicyMsgPurged, fb303::COUNT);

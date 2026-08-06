@@ -96,24 +96,6 @@ constexpr auto kIsSafeModeOn = "bgpd.isSafeModeOn"_fs;
 constexpr auto kThriftReject = "bgpd.thriftReject"_fs;
 constexpr auto kThriftSuspend = "bgpd.thriftSuspend"_fs;
 
-// Dynamic policy API success/failure counters
-constexpr auto kSetPeersPolicySuccess = "bgpd.setPeersPolicy.success"_fs;
-constexpr auto kSetPeersPolicyFailure = "bgpd.setPeersPolicy.failure"_fs;
-constexpr auto kSetPeerGroupsPolicySuccess =
-    "bgpd.setPeerGroupsPolicy.success"_fs;
-constexpr auto kSetPeerGroupsPolicyFailure =
-    "bgpd.setPeerGroupsPolicy.failure"_fs;
-constexpr auto kUnsetPeersPolicySuccess = "bgpd.unsetPeersPolicy.success"_fs;
-constexpr auto kUnsetPeersPolicyFailure = "bgpd.unsetPeersPolicy.failure"_fs;
-
-// addPeers thrift API counters
-constexpr auto kAddPeersSuccess = "bgpd.addPeers.success"_fs;
-constexpr auto kAddPeersRejected = "bgpd.addPeers.rejected"_fs;
-
-// delPeers thrift API counters
-constexpr auto kDelPeersSuccess = "bgpd.delPeers.success"_fs;
-constexpr auto kDelPeersRejected = "bgpd.delPeers.rejected"_fs;
-
 /*
  * Watchdog related counters
  */
@@ -366,18 +348,6 @@ inline const auto kDynamicPeersCount =
 void incrDynamicPeersCount();
 void decrDynamicPeersCount(uint32_t count = 1);
 
-// Increment dynamic policy API success/failure counters
-void incrAddPeersSuccess();
-void incrAddPeersRejected();
-void incrDelPeersSuccess();
-void incrDelPeersRejected();
-void incrSetPeersPolicySuccess();
-void incrSetPeersPolicyFailure();
-void incrSetPeerGroupsPolicySuccess();
-void incrSetPeerGroupsPolicyFailure();
-void incrUnsetPeersPolicySuccess();
-void incrUnsetPeersPolicyFailure();
-
 // Number of passive connections rejected due to local address mismatch
 inline const auto kPassiveRejectLocalAddrMismatch =
     fmt::format("{}.session.passiveRejectLocalAddrMismatch", kBgpcppTag);
@@ -577,12 +547,6 @@ DECLARE_timeseries(rfPolicyRcvd);
 // total number of route filter policy updates
 inline constexpr auto kRfPolicyUpdate = "bgpd.ribPolicy.numUpdatedRfPolicy";
 DECLARE_timeseries(rfPolicyUpdate);
-
-// unexpected CTE/CPS policy message received on a platform that does not
-// support it (e.g., BB receiving a RouteAttributePolicySetMsg)
-inline constexpr auto kUnsupportedPolicyMsg =
-    "bgpd.ribPolicy.numUnsupportedPolicyMsg";
-DECLARE_timeseries(unsupportedPolicyMsg);
 
 // total rib policy messages enqueued onto the coalescing queue (all kinds)
 inline constexpr auto kRibPolicyMsgEnqueued = "bgpd.ribPolicy.numEnqueuedMsg";

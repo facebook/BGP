@@ -857,6 +857,8 @@ install(
     PATTERN "facebook" EXCLUDE
     # RibBB lives in cpp/rib/ (not facebook/) but is BB-only.
     PATTERN "RibBB.h" EXCLUDE
+    # StatsBB is linked only into the Meta-internal backbone binary.
+    PATTERN "StatsBB.h" EXCLUDE
     # NetlinkWrapper.h pulls openr/messaging + openr/nl, neither vendored.
     PATTERN "NetlinkWrapper.h" EXCLUDE
 )

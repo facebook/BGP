@@ -1,0 +1,75 @@
+/*
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#pragma once
+
+#include <folly/FixedString.h>
+
+#include <fb303/ThreadCachedServiceData.h>
+#include <fb303/detail/QuantileStatWrappers.h>
+
+namespace facebook::bgp {
+using folly::string_literals::operator""_fs;
+
+namespace BgpStatsBB {
+
+// Dynamic policy API success/failure counters
+constexpr auto kSetPeersPolicySuccess = "bgpd.setPeersPolicy.success"_fs;
+constexpr auto kSetPeersPolicyFailure = "bgpd.setPeersPolicy.failure"_fs;
+constexpr auto kSetPeerGroupsPolicySuccess =
+    "bgpd.setPeerGroupsPolicy.success"_fs;
+constexpr auto kSetPeerGroupsPolicyFailure =
+    "bgpd.setPeerGroupsPolicy.failure"_fs;
+constexpr auto kUnsetPeersPolicySuccess = "bgpd.unsetPeersPolicy.success"_fs;
+constexpr auto kUnsetPeersPolicyFailure = "bgpd.unsetPeersPolicy.failure"_fs;
+
+// addPeers thrift API counters
+constexpr auto kAddPeersSuccess = "bgpd.addPeers.success"_fs;
+constexpr auto kAddPeersRejected = "bgpd.addPeers.rejected"_fs;
+
+// delPeers thrift API counters
+constexpr auto kDelPeersSuccess = "bgpd.delPeers.success"_fs;
+constexpr auto kDelPeersRejected = "bgpd.delPeers.rejected"_fs;
+
+void initCounters();
+
+// Increment dynamic policy API success/failure counters
+void incrAddPeersSuccess();
+void incrAddPeersRejected();
+void incrDelPeersSuccess();
+void incrDelPeersRejected();
+void incrSetPeersPolicySuccess();
+void incrSetPeersPolicyFailure();
+void incrSetPeerGroupsPolicySuccess();
+void incrSetPeerGroupsPolicyFailure();
+void incrUnsetPeersPolicySuccess();
+void incrUnsetPeersPolicyFailure();
+
+} // namespace BgpStatsBB
+
+namespace RibStatsBB {
+
+// unexpected CTE/CPS policy message received on a platform that does not
+// support it (e.g., BB receiving a RouteAttributePolicySetMsg)
+inline constexpr auto kUnsupportedPolicyMsg =
+    "bgpd.ribPolicy.numUnsupportedPolicyMsg";
+DECLARE_timeseries(unsupportedPolicyMsg);
+
+} // namespace RibStatsBB
+
+void initStatsBB();
+
+} // namespace facebook::bgp

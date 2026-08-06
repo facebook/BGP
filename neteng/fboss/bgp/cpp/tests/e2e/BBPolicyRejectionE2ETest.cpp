@@ -33,7 +33,7 @@
 #include <folly/logging/xlog.h>
 
 #include "fboss/lib/CommonUtils.h"
-#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBB.h"
 #include "neteng/fboss/bgp/cpp/tests/e2e/E2ETestFixture.h"
 
 using namespace facebook::bgp;
@@ -55,7 +55,7 @@ class BBPolicyRejectionE2ETest : public E2ETestFixture {
         [] { fb303::ThreadCachedServiceData::get()->publishStats(); });
     auto tcData = fb303::ThreadCachedServiceData::get();
     const std::string key =
-        std::string(RibStats::kUnsupportedPolicyMsg) + ".count.60";
+        std::string(RibStatsBB::kUnsupportedPolicyMsg) + ".count.60";
     return tcData->hasCounter(key) ? tcData->getCounter(key) : 0;
   }
 };
