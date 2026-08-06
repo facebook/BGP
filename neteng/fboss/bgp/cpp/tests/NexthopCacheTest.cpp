@@ -27,7 +27,7 @@
 #include "neteng/fboss/bgp/cpp/nexthopTracker/NexthopCache.h"
 #include "neteng/fboss/bgp/cpp/nexthopTracker/NexthopStatus.h"
 #include "neteng/fboss/bgp/cpp/nexthopTracker/Utils.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "neteng/fboss/bgp/cpp/tests/Utils.h"
 #include "neteng/fboss/bgp/cpp/watchdog/MonitoredQueue.h"
 

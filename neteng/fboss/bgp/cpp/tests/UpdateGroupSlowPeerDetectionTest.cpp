@@ -29,7 +29,7 @@
 #include "neteng/fboss/bgp/cpp/changeTracker/ConsumerBitmap.h"
 #include "neteng/fboss/bgp/cpp/changeTracker/TrackableObject.h"
 #include "neteng/fboss/bgp/cpp/common/RibMessage.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "neteng/fboss/bgp/cpp/tests/Utils.h"
 
 namespace facebook::bgp {

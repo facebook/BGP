@@ -21,7 +21,7 @@
 
 #include "fb303/ServiceData.h"
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 
 using facebook::neteng::fboss::bgp::thrift::BgpInitializationEvent;
 
@@ -1017,52 +1017,6 @@ TEST(StatsTest, AttributeSizeTest) {
   }
 }
 
-TEST(StatsTest, AddPeersCounterTest) {
-  auto counters = fb303::ThreadCachedServiceData::getShared();
-
-  // Validate the counters don't exist before initialization.
-  EXPECT_FALSE(counters->hasCounter(BgpStats::kAddPeersSuccess));
-  EXPECT_FALSE(counters->hasCounter(BgpStats::kAddPeersRejected));
-
-  // Validate the counters exist after initialization and start at 0.
-  BgpStats::initCounters();
-  EXPECT_TRUE(counters->hasCounter(BgpStats::kAddPeersSuccess));
-  EXPECT_TRUE(counters->hasCounter(BgpStats::kAddPeersRejected));
-  EXPECT_EQ(0, counters->getCounter(BgpStats::kAddPeersSuccess));
-  EXPECT_EQ(0, counters->getCounter(BgpStats::kAddPeersRejected));
-
-  // Validate the counters increment correctly.
-  BgpStats::incrAddPeersSuccess();
-  BgpStats::incrAddPeersSuccess();
-  BgpStats::incrAddPeersRejected();
-  fb303::ThreadCachedServiceData::get()->publishStats();
-  EXPECT_EQ(2, counters->getCounter(BgpStats::kAddPeersSuccess));
-  EXPECT_EQ(1, counters->getCounter(BgpStats::kAddPeersRejected));
-}
-
-TEST(StatsTest, DelPeersCounterTest) {
-  auto counters = fb303::ThreadCachedServiceData::getShared();
-
-  // Validate the counters don't exist before initialization.
-  EXPECT_FALSE(counters->hasCounter(BgpStats::kDelPeersSuccess));
-  EXPECT_FALSE(counters->hasCounter(BgpStats::kDelPeersRejected));
-
-  // Validate the counters exist after initialization and start at 0.
-  BgpStats::initCounters();
-  EXPECT_TRUE(counters->hasCounter(BgpStats::kDelPeersSuccess));
-  EXPECT_TRUE(counters->hasCounter(BgpStats::kDelPeersRejected));
-  EXPECT_EQ(0, counters->getCounter(BgpStats::kDelPeersSuccess));
-  EXPECT_EQ(0, counters->getCounter(BgpStats::kDelPeersRejected));
-
-  // Validate the counters increment correctly.
-  BgpStats::incrDelPeersSuccess();
-  BgpStats::incrDelPeersSuccess();
-  BgpStats::incrDelPeersRejected();
-  fb303::ThreadCachedServiceData::get()->publishStats();
-  EXPECT_EQ(2, counters->getCounter(BgpStats::kDelPeersSuccess));
-  EXPECT_EQ(1, counters->getCounter(BgpStats::kDelPeersRejected));
-}
-
 TEST(StatsTest, PeerPolicyRejectIncrTest) {
   PeerStats::initCounters();
   {
@@ -1220,35 +1174,6 @@ TEST(StatsTest, SlowPeerDetectionCountTest) {
   EXPECT_EQ(3, tcData->getCounter(sum3600Key));
 }
 
-TEST(StatsTest, DynamicPolicyApiCountersTest) {
-  BgpStats::initCounters();
-
-  auto tcData = fb303::ThreadCachedServiceData::get();
-
-  EXPECT_EQ(0, tcData->getCounter(BgpStats::kSetPeersPolicySuccess));
-  EXPECT_EQ(0, tcData->getCounter(BgpStats::kSetPeersPolicyFailure));
-  EXPECT_EQ(0, tcData->getCounter(BgpStats::kSetPeerGroupsPolicySuccess));
-  EXPECT_EQ(0, tcData->getCounter(BgpStats::kSetPeerGroupsPolicyFailure));
-  EXPECT_EQ(0, tcData->getCounter(BgpStats::kUnsetPeersPolicySuccess));
-  EXPECT_EQ(0, tcData->getCounter(BgpStats::kUnsetPeersPolicyFailure));
-
-  BgpStats::incrSetPeersPolicySuccess();
-  BgpStats::incrSetPeersPolicyFailure();
-  BgpStats::incrSetPeersPolicyFailure();
-  BgpStats::incrSetPeerGroupsPolicySuccess();
-  BgpStats::incrSetPeerGroupsPolicyFailure();
-  BgpStats::incrUnsetPeersPolicySuccess();
-  BgpStats::incrUnsetPeersPolicySuccess();
-  BgpStats::incrUnsetPeersPolicyFailure();
-  tcData->publishStats();
-
-  EXPECT_EQ(1, tcData->getCounter(BgpStats::kSetPeersPolicySuccess));
-  EXPECT_EQ(2, tcData->getCounter(BgpStats::kSetPeersPolicyFailure));
-  EXPECT_EQ(1, tcData->getCounter(BgpStats::kSetPeerGroupsPolicySuccess));
-  EXPECT_EQ(1, tcData->getCounter(BgpStats::kSetPeerGroupsPolicyFailure));
-  EXPECT_EQ(2, tcData->getCounter(BgpStats::kUnsetPeersPolicySuccess));
-  EXPECT_EQ(1, tcData->getCounter(BgpStats::kUnsetPeersPolicyFailure));
-}
 TEST(StatsTest, PeerMessagesSentCountersTest) {
   const std::string peerId = "10.0.0.1";
   PeerStats::initPeerCounters(peerId);
@@ -1504,60 +1429,6 @@ TEST(StatsTest, ClearPeerCountersTest) {
   EXPECT_FALSE(tcData->hasCounter(updateKey));
   EXPECT_FALSE(tcData->hasCounter(recvUpdateKey));
 }
-TEST(StatsTest, FsdbNhtInitCounterTest) {
-  auto counters = fb303::ThreadCachedServiceData::getShared();
-
-  FsdbStats::initCounters();
-
-  /*
-   * Timeseries counters must be published under the correct key prefix
-   * (not the bare symbol name). Verify correct keys exist and bare names
-   * do not.
-   */
-  EXPECT_FALSE(counters->hasCounter("fsdbNhtNexthopReachable.count"));
-  EXPECT_FALSE(counters->hasCounter("fsdbNhtNexthopUnreachable.count"));
-  EXPECT_FALSE(counters->hasCounter("fsdbNhtDisconnects.count"));
-
-  EXPECT_EQ(
-      0, counters->getCounter(FsdbStats::kFsdbNhtNexthopReachable + ".count"));
-  EXPECT_EQ(
-      0,
-      counters->getCounter(FsdbStats::kFsdbNhtNexthopReachable + ".count.60"));
-  EXPECT_EQ(
-      0,
-      counters->getCounter(FsdbStats::kFsdbNhtNexthopUnreachable + ".count"));
-  EXPECT_EQ(
-      0,
-      counters->getCounter(
-          FsdbStats::kFsdbNhtNexthopUnreachable + ".count.60"));
-  EXPECT_EQ(0, counters->getCounter(FsdbStats::kFsdbNhtDisconnects + ".count"));
-  EXPECT_EQ(
-      0, counters->getCounter(FsdbStats::kFsdbNhtDisconnects + ".count.60"));
-  EXPECT_EQ(-1, counters->getCounter(FsdbStats::kFsdbNhtConnected));
-}
-
-TEST(StatsTest, FsdbNhtCounterIncrementTest) {
-  FsdbStats::initCounters();
-  auto tcData = fb303::ThreadCachedServiceData::get();
-
-  FsdbStats::incrFsdbNhtNexthopReachable();
-  FsdbStats::incrFsdbNhtNexthopReachable();
-  FsdbStats::incrFsdbNhtNexthopUnreachable();
-  FsdbStats::incrFsdbNhtDisconnects();
-  FsdbStats::setFsdbNhtConnected(1);
-  tcData->publishStats();
-
-  EXPECT_EQ(
-      2, tcData->getCounter(FsdbStats::kFsdbNhtNexthopReachable + ".count"));
-  EXPECT_EQ(
-      1, tcData->getCounter(FsdbStats::kFsdbNhtNexthopUnreachable + ".count"));
-  EXPECT_EQ(1, tcData->getCounter(FsdbStats::kFsdbNhtDisconnects + ".count"));
-  EXPECT_EQ(1, tcData->getCounter(FsdbStats::kFsdbNhtConnected));
-
-  FsdbStats::setFsdbNhtConnected(0);
-  tcData->publishStats();
-  EXPECT_EQ(0, tcData->getCounter(FsdbStats::kFsdbNhtConnected));
-}
 
 TEST(StatsTest, NhtCacheInitCounterTest) {
   RibStats::initCounters();
@@ -1593,6 +1464,76 @@ TEST(StatsTest, NhtCacheCounterIncrementTest) {
       2, tcData->getCounter(RibStats::kNhtCacheNexthopReachable + ".count"));
   EXPECT_EQ(
       1, tcData->getCounter(RibStats::kNhtCacheNexthopUnreachable + ".count"));
+}
+
+TEST(StatsTest, AddPeersCounterTest) {
+  auto counters = fb303::ThreadCachedServiceData::getShared();
+
+  EXPECT_FALSE(counters->hasCounter(BgpStats::kAddPeersSuccess));
+  EXPECT_FALSE(counters->hasCounter(BgpStats::kAddPeersRejected));
+
+  BgpStats::initCounters();
+  EXPECT_TRUE(counters->hasCounter(BgpStats::kAddPeersSuccess));
+  EXPECT_TRUE(counters->hasCounter(BgpStats::kAddPeersRejected));
+  EXPECT_EQ(0, counters->getCounter(BgpStats::kAddPeersSuccess));
+  EXPECT_EQ(0, counters->getCounter(BgpStats::kAddPeersRejected));
+
+  BgpStats::incrAddPeersSuccess();
+  BgpStats::incrAddPeersSuccess();
+  BgpStats::incrAddPeersRejected();
+  fb303::ThreadCachedServiceData::get()->publishStats();
+  EXPECT_EQ(2, counters->getCounter(BgpStats::kAddPeersSuccess));
+  EXPECT_EQ(1, counters->getCounter(BgpStats::kAddPeersRejected));
+}
+
+TEST(StatsTest, DelPeersCounterTest) {
+  auto counters = fb303::ThreadCachedServiceData::getShared();
+
+  EXPECT_FALSE(counters->hasCounter(BgpStats::kDelPeersSuccess));
+  EXPECT_FALSE(counters->hasCounter(BgpStats::kDelPeersRejected));
+
+  BgpStats::initCounters();
+  EXPECT_TRUE(counters->hasCounter(BgpStats::kDelPeersSuccess));
+  EXPECT_TRUE(counters->hasCounter(BgpStats::kDelPeersRejected));
+  EXPECT_EQ(0, counters->getCounter(BgpStats::kDelPeersSuccess));
+  EXPECT_EQ(0, counters->getCounter(BgpStats::kDelPeersRejected));
+
+  BgpStats::incrDelPeersSuccess();
+  BgpStats::incrDelPeersSuccess();
+  BgpStats::incrDelPeersRejected();
+  fb303::ThreadCachedServiceData::get()->publishStats();
+  EXPECT_EQ(2, counters->getCounter(BgpStats::kDelPeersSuccess));
+  EXPECT_EQ(1, counters->getCounter(BgpStats::kDelPeersRejected));
+}
+
+TEST(StatsTest, DynamicPolicyApiCountersTest) {
+  BgpStats::initCounters();
+
+  auto tcData = fb303::ThreadCachedServiceData::get();
+
+  EXPECT_EQ(0, tcData->getCounter(BgpStats::kSetPeersPolicySuccess));
+  EXPECT_EQ(0, tcData->getCounter(BgpStats::kSetPeersPolicyFailure));
+  EXPECT_EQ(0, tcData->getCounter(BgpStats::kSetPeerGroupsPolicySuccess));
+  EXPECT_EQ(0, tcData->getCounter(BgpStats::kSetPeerGroupsPolicyFailure));
+  EXPECT_EQ(0, tcData->getCounter(BgpStats::kUnsetPeersPolicySuccess));
+  EXPECT_EQ(0, tcData->getCounter(BgpStats::kUnsetPeersPolicyFailure));
+
+  BgpStats::incrSetPeersPolicySuccess();
+  BgpStats::incrSetPeersPolicyFailure();
+  BgpStats::incrSetPeersPolicyFailure();
+  BgpStats::incrSetPeerGroupsPolicySuccess();
+  BgpStats::incrSetPeerGroupsPolicyFailure();
+  BgpStats::incrUnsetPeersPolicySuccess();
+  BgpStats::incrUnsetPeersPolicySuccess();
+  BgpStats::incrUnsetPeersPolicyFailure();
+  tcData->publishStats();
+
+  EXPECT_EQ(1, tcData->getCounter(BgpStats::kSetPeersPolicySuccess));
+  EXPECT_EQ(2, tcData->getCounter(BgpStats::kSetPeersPolicyFailure));
+  EXPECT_EQ(1, tcData->getCounter(BgpStats::kSetPeerGroupsPolicySuccess));
+  EXPECT_EQ(1, tcData->getCounter(BgpStats::kSetPeerGroupsPolicyFailure));
+  EXPECT_EQ(2, tcData->getCounter(BgpStats::kUnsetPeersPolicySuccess));
+  EXPECT_EQ(1, tcData->getCounter(BgpStats::kUnsetPeersPolicyFailure));
 }
 
 } // namespace facebook::bgp

@@ -139,7 +139,8 @@
 #include "neteng/fboss/bgp/cpp/rib/RibBase.h"
 #include "neteng/fboss/bgp/cpp/rib/RibDC.h"
 #include "neteng/fboss/bgp/cpp/rib/facebook/RibPolicyLogger.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsDC.h"
 #include "neteng/fboss/bgp/cpp/tests/BoundedWaitUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/MockScubaData.h"
 #include "neteng/fboss/bgp/cpp/tests/PolicyUtils.h"
@@ -1121,31 +1122,31 @@ TEST_F(RibFixture, PartialDrainUnderflowGuard) {
  */
 TEST_F(RibFixture, PartialDrainOdsStateOnTransition) {
   rib_->evb_.runInEventBaseThreadAndWait([&]() {
-    RibStats::initCounters();
+    RibStatsDC::initCounters();
     auto* tcData = facebook::fb303::ThreadCachedServiceData::get();
     tcData->publishStats();
-    ASSERT_EQ(0, tcData->getCounter(RibStats::kRibIsPartialDrain));
+    ASSERT_EQ(0, tcData->getCounter(RibStatsDC::kRibIsPartialDrain));
 
     // false->true: first prefix drains, device enters partial drain (0->1).
     EXPECT_TRUE(rib_->recordPartialDrainTransition(
         /*oldIsPartialDrain=*/false, /*newIsPartialDrain=*/true));
     tcData->publishStats();
-    EXPECT_EQ(1, tcData->getCounter(RibStats::kRibIsPartialDrain));
+    EXPECT_EQ(1, tcData->getCounter(RibStatsDC::kRibIsPartialDrain));
 
     // A second prefix draining stays above the boundary: no device-level flip.
     EXPECT_TRUE(rib_->recordPartialDrainTransition(false, true));
     tcData->publishStats();
-    EXPECT_EQ(1, tcData->getCounter(RibStats::kRibIsPartialDrain));
+    EXPECT_EQ(1, tcData->getCounter(RibStatsDC::kRibIsPartialDrain));
 
     // One of the two prefixes undrains: still drained, still no flip.
     EXPECT_TRUE(rib_->recordPartialDrainTransition(true, false));
     tcData->publishStats();
-    EXPECT_EQ(1, tcData->getCounter(RibStats::kRibIsPartialDrain));
+    EXPECT_EQ(1, tcData->getCounter(RibStatsDC::kRibIsPartialDrain));
 
     // true->false: last prefix undrains, device leaves partial drain (1->0).
     EXPECT_TRUE(rib_->recordPartialDrainTransition(true, false));
     tcData->publishStats();
-    EXPECT_EQ(0, tcData->getCounter(RibStats::kRibIsPartialDrain));
+    EXPECT_EQ(0, tcData->getCounter(RibStatsDC::kRibIsPartialDrain));
 
     /*
      * false->true again after fully undraining: device re-enters partial drain
@@ -1154,7 +1155,7 @@ TEST_F(RibFixture, PartialDrainOdsStateOnTransition) {
      */
     EXPECT_TRUE(rib_->recordPartialDrainTransition(false, true));
     tcData->publishStats();
-    EXPECT_EQ(1, tcData->getCounter(RibStats::kRibIsPartialDrain));
+    EXPECT_EQ(1, tcData->getCounter(RibStatsDC::kRibIsPartialDrain));
   });
 }
 
@@ -2733,7 +2734,7 @@ TEST_F(RibFixture, MultipleFullSyncRequest) {
         fmt::format("{}.avg.60", RibStats::ribFullSyncPathSelectionTimeMs));
     facebook::fb303::ThreadCachedServiceData::getShared()->getCounter(
         fmt::format(
-            "{}.avg.60", RibStats::ribFullSyncRouteAttributeOverwriteTimeMs));
+            "{}.avg.60", RibStatsDC::ribFullSyncRouteAttributeOverwriteTimeMs));
   });
 }
 

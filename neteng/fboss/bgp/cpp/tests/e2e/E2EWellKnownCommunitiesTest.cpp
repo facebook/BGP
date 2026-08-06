@@ -46,7 +46,7 @@
 
 #include "fboss/lib/CommonUtils.h"
 #include "neteng/fboss/bgp/cpp/adjrib/WellKnownCommunityFilter.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "neteng/fboss/bgp/cpp/tests/AdjRibOutUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/Utils.h"
 #include "neteng/fboss/bgp/cpp/tests/e2e/E2ETestFixture.h"

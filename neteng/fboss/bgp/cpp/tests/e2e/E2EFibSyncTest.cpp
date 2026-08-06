@@ -27,7 +27,7 @@
 
 #include <folly/logging/xlog.h>
 
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "neteng/fboss/bgp/cpp/tests/e2e/E2ETestFixture.h"
 
 using namespace facebook::bgp;

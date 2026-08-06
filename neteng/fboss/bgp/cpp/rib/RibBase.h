@@ -50,7 +50,7 @@
 #include "neteng/fboss/bgp/cpp/rib/RibCounters.h"
 #include "neteng/fboss/bgp/cpp/rib/RibEntry.h"
 #include "neteng/fboss/bgp/cpp/rib/RibPolicy.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "neteng/fboss/bgp/cpp/watchdog/MonitoredModule.h"
 #include "neteng/fboss/bgp/cpp/watchdog/MonitoredQueue.h"
 #include "neteng/fboss/bgp/if/gen-cpp2/bgp_thrift_types.h"

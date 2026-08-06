@@ -22,7 +22,7 @@
 #include "neteng/fboss/bgp/cpp/common/BgpError.h"
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
 #include "neteng/fboss/bgp/cpp/policy/PolicyTerm.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "thrift/lib/cpp/util/EnumUtils.h"
 
 using facebook::bgp::bgp_policy::BgpPolicyActionType;

@@ -26,7 +26,7 @@
 
 #include "fboss/lib/CommonUtils.h"
 
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 
 #define AdjRib_TEST_FRIENDS                                                    \
   friend class SendBgpMessagesFixture;                                         \

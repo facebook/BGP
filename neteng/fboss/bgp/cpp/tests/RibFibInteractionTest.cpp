@@ -32,7 +32,7 @@
 
 #include "fboss/lib/CommonUtils.h"
 #include "neteng/fboss/bgp/cpp/rib/RibBase.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "neteng/fboss/bgp/cpp/tests/RibUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/Utils.h"
 

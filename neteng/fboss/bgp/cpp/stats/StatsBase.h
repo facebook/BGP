@@ -45,17 +45,8 @@ constexpr auto kRunningSessions = "bgpd.runningSessions"_fs;
 constexpr auto kSessionStateChanges = "bgpd.sessionStateChanges"_fs;
 // Total VIP sessions which are UP
 constexpr auto kRunningVipSessions = "bgpd.runningVipSessions"_fs;
-// VipService is enabled and running
-constexpr auto kVipServiceEnabled = "bgpd.vipServiceEnabled"_fs;
-// Total thrift-based vip injectors
-constexpr auto kRunningVipServiceSessions = "bgpd.runningVipServiceSessions"_fs;
 // Initial convergence time in milliseconds
 constexpr auto kConvergenceTime = "bgpd.convergenceTimeMs"_fs;
-// whether ucmp auto link bandwidth feature is enabled
-constexpr auto kUcmpAlbwEnabled = "bgpd.ucmp.auto_link_bandwidth.enabled"_fs;
-// whether ucmp auto link bandwidth initialization was successful
-constexpr auto kUcmpAlbwInitialized =
-    "bgpd.ucmp.auto_link_bandwidth.initialized"_fs;
 // whether ucmp is active on at least 1 route
 constexpr auto kUcmpActive = "bgpd.ucmp.active"_fs;
 
@@ -238,9 +229,6 @@ DECLARE_dynamic_timeseries(non_graceful_peers_count, 1);
 void setRunningSessions(uint32_t val);
 // Set number of VIP (bgp session + thrift-based) established sessions
 void setRunningVipSessions(uint32_t val);
-// Set number of thrift-based vip injectors
-void setRunningVipServiceSessions(uint32_t val);
-
 // add session state changes stats
 void addSessionStateChanges();
 
@@ -270,14 +258,8 @@ void setStatefulGR(bool isStateful);
 
 void setEorTimerExpired(bool timerExpired);
 
-void setVipServiceEnabled(bool vipSvcEnabled);
-
 // Set convergence time
 void setConvergenceTime(const int64_t duration);
-
-void setUcmpAlbwEnabled(bool enabled);
-
-void setUcmpAlbwInitialized(bool initialized);
 
 // Set UCMP active status
 void setUcmpActive(bool isActive);
@@ -333,12 +315,6 @@ void setTotalPathLimit(uint64_t totalPathLimit);
 void setOverloadProtectionMode(
     std::optional<thrift::OverloadProtectionMode> mode);
 
-void incrAddPeersSuccess();
-void incrAddPeersRejected();
-
-void incrDelPeersSuccess();
-void incrDelPeersRejected();
-
 /*
  * [Initialization] This section covers the BGP++ initialization util function
  */
@@ -347,14 +323,6 @@ void logInitializationEvent(
     const neteng::fboss::bgp::thrift::BgpInitializationEvent event);
 
 int64_t getInitializationDurationMs();
-
-// Increment dynamic policy API success/failure counters
-void incrSetPeersPolicySuccess();
-void incrSetPeersPolicyFailure();
-void incrSetPeerGroupsPolicySuccess();
-void incrSetPeerGroupsPolicyFailure();
-void incrUnsetPeersPolicySuccess();
-void incrUnsetPeersPolicyFailure();
 
 // Number of active update groups
 inline const auto kNumUpdateGroups =
@@ -397,6 +365,18 @@ inline const auto kDynamicPeersCount =
     fmt::format("{}.dynamic_peers.count", kBgpcppTag);
 void incrDynamicPeersCount();
 void decrDynamicPeersCount(uint32_t count = 1);
+
+// Increment dynamic policy API success/failure counters
+void incrAddPeersSuccess();
+void incrAddPeersRejected();
+void incrDelPeersSuccess();
+void incrDelPeersRejected();
+void incrSetPeersPolicySuccess();
+void incrSetPeersPolicyFailure();
+void incrSetPeerGroupsPolicySuccess();
+void incrSetPeerGroupsPolicyFailure();
+void incrUnsetPeersPolicySuccess();
+void incrUnsetPeersPolicyFailure();
 
 // Number of passive connections rejected due to local address mismatch
 inline const auto kPassiveRejectLocalAddrMismatch =
@@ -469,37 +449,8 @@ void setPlannedExit();
 void markPlannedExit();
 void handlePreviousExit();
 
-// [CRF File Mode]
-constexpr auto kCrfFileModeEnabled = "bgpd.crf.file_mode_enabled"_fs;
-constexpr auto kCrfArtifactReadSuccess = "bgpd.crf.artifact_read.success"_fs;
-constexpr auto kCrfArtifactReadFailure = "bgpd.crf.artifact_read.failure"_fs;
-constexpr auto kCrfPolicyAppliedSuccess = "bgpd.crf.policy_applied.success"_fs;
-constexpr auto kCrfPolicyAppliedFailure = "bgpd.crf.policy_applied.failure"_fs;
-constexpr auto kCrfThriftRpcRejected = "bgpd.crf.thrift_rpc_rejected"_fs;
 constexpr auto kCrfForceUpdateBypass = "bgpd.crf.force_update_bypass"_fs;
-void setCrfFileModeEnabled(bool enabled);
-void incrCrfArtifactReadSuccess();
-void incrCrfArtifactReadFailure();
-void incrCrfPolicyAppliedSuccess();
-void incrCrfPolicyAppliedFailure();
-void incrCrfThriftRpcRejected();
 void incrCrfForceUpdateBypass();
-
-// [CPS File Mode]
-constexpr auto kCpsFileModeEnabled = "bgpd.cps.file_mode_enabled"_fs;
-constexpr auto kCpsArtifactReadSuccess = "bgpd.cps.artifact_read.success"_fs;
-constexpr auto kCpsArtifactReadFailure = "bgpd.cps.artifact_read.failure"_fs;
-constexpr auto kCpsPolicyAppliedSuccess = "bgpd.cps.policy_applied.success"_fs;
-constexpr auto kCpsPolicyAppliedFailure = "bgpd.cps.policy_applied.failure"_fs;
-constexpr auto kCpsThriftRpcRejected = "bgpd.cps.thrift_rpc_rejected"_fs;
-constexpr auto kCpsForceUpdateBypass = "bgpd.cps.force_update_bypass"_fs;
-void setCpsFileModeEnabled(bool enabled);
-void incrCpsArtifactReadSuccess();
-void incrCpsArtifactReadFailure();
-void incrCpsPolicyAppliedSuccess();
-void incrCpsPolicyAppliedFailure();
-void incrCpsThriftRpcRejected();
-void incrCpsForceUpdateBypass();
 
 } // namespace BgpStats
 
@@ -550,13 +501,6 @@ inline const auto kRibPrefixCount =
     fmt::format("{}.rib.prefix.count", kBgpcppTag);
 void incrRibPrefixCount();
 void decrRibPrefixCount();
-
-// Device-level partial drain state: 1 when at least one prefix is partially
-// drained, 0 otherwise. Updated on each 0<->1 transition so a true<->false
-// flip is observable on ODS independent of the FSDB publish path.
-inline const auto kRibIsPartialDrain =
-    fmt::format("{}.rib.is_partial_drain", kBgpcppTag);
-void setIsPartialDrain(bool isPartiallyDrained);
 
 // Number of unresolvable nexthops in the RIB
 inline const auto kRibUnresolvableNexthopsCount =
@@ -626,22 +570,6 @@ inline const auto kPostPolicyResultCacheCount =
 void incrPostPolicyResultCacheCount();
 void decrPostPolicyResultCacheCount();
 
-// total number of received path selection policy
-inline constexpr auto kPsPolicyRcvd = "bgpd.ribPolicy.numRcvdPsPolicy";
-DECLARE_timeseries(psPolicyRcvd);
-
-// total number of path selection policy updates
-inline constexpr auto kPsPolicyUpdate = "bgpd.ribPolicy.numUpdatedPsPolicy";
-DECLARE_timeseries(psPolicyUpdate);
-
-// total number of received route attribute policy
-inline constexpr auto kRaPolicyRcvd = "bgpd.ribPolicy.numRcvdRaPolicy";
-DECLARE_timeseries(raPolicyRcvd);
-
-// total number of route attribute policy updates
-inline constexpr auto kRaPolicyUpdate = "bgpd.ribPolicy.numUpdatedRaPolicy";
-DECLARE_timeseries(raPolicyUpdate);
-
 // total number of received route filter policy
 inline constexpr auto kRfPolicyRcvd = "bgpd.ribPolicy.numRcvdRfPolicy";
 DECLARE_timeseries(rfPolicyRcvd);
@@ -684,16 +612,6 @@ inline constexpr auto ribFullSyncPathSelectionTimeMs =
     "bgpd.rib.fullSyncPathSelectionTimeMs";
 DECLARE_quantile_stat(ribFullSyncPathSelectionTimeMs);
 
-// time for rib to overwrite route attributes per route
-inline constexpr auto kRibRouteAttributeOverwriteTimeMs =
-    "bgpd.rib.routeAttributeOverwriteTimeMs";
-DECLARE_quantile_stat(ribRouteAttributeOverwriteTimeMs);
-
-// time for rib to overwrite route attributes in a full sync
-inline constexpr auto ribFullSyncRouteAttributeOverwriteTimeMs =
-    "bgpd.rib.fullSyncRouteAttributeOverwriteTimeMs";
-DECLARE_quantile_stat(ribFullSyncRouteAttributeOverwriteTimeMs);
-
 // Time for which best-path selection and FIB programming is paused
 inline constexpr auto ribBestPathAndFibProgrammingPauseTimeMs =
     "bgpd.rib.bestPathAndFibProgrammingPauseTimeMs";
@@ -708,38 +626,6 @@ DECLARE_timeseries(raPolicyCacheHit);
 inline constexpr auto kRaPolicyCacheMiss =
     "bgpd.ribPolicy.routeAttributePolicyCache.miss";
 DECLARE_timeseries(raPolicyCacheMiss);
-
-// Cache migration outcome types
-inline constexpr auto kRaPolicyCacheMigrationIdentical =
-    "bgpd.ribPolicy.routeAttributePolicyCache.migration.identical";
-DECLARE_timeseries(raPolicyCacheMigrationIdentical);
-
-inline constexpr auto kRaPolicyCacheMigrationExpirationOnly =
-    "bgpd.ribPolicy.routeAttributePolicyCache.migration.expirationOnly";
-DECLARE_timeseries(raPolicyCacheMigrationExpirationOnly);
-
-inline constexpr auto kRaPolicyCacheMigrationSelective =
-    "bgpd.ribPolicy.routeAttributePolicyCache.migration.selective";
-DECLARE_timeseries(raPolicyCacheMigrationSelective);
-
-// Number of cache entries preserved/invalidated during selective migration
-inline constexpr auto kRaPolicyCachePreserved =
-    "bgpd.ribPolicy.routeAttributePolicyCache.num_preserved";
-DECLARE_timeseries(raPolicyCachePreserved);
-
-inline constexpr auto kRaPolicyCacheInvalidated =
-    "bgpd.ribPolicy.routeAttributePolicyCache.num_invalidated";
-DECLARE_timeseries(raPolicyCacheInvalidated);
-
-// Number of prefixes re-evaluated during policy update
-inline constexpr auto kRaPolicyReEvalPrefixes =
-    "bgpd.ribPolicy.routeAttributePolicyCache.num_prefix_reeval";
-DECLARE_timeseries(raPolicyReEvalPrefixes);
-
-// Cache migration latency
-inline constexpr auto kRaPolicyCacheMigrationTimeMs =
-    "bgpd.ribPolicy.routeAttributePolicyCache.migration.process_time_ms";
-DECLARE_quantile_stat(raPolicyCacheMigrationTimeMs);
 
 // RouteAttributePolicy inverted index counters
 inline constexpr auto kRaPolicyCommunityIndexHit =
@@ -1036,35 +922,5 @@ void incrConnectionCollisionClosedByPeer();
 
 } // namespace PeerStats
 
-//------------------------ FsdbStats ------------------------//
-
-namespace FsdbStats {
-
-constexpr auto kNbrDownPrefix = "bgpd.fsdb."_fs;
-
-// NHT FSDB reachability transition counters
-inline const auto kFsdbNhtNexthopReachable =
-    fmt::format("{}.nht.fsdb.nexthop_reachable", kBgpcppTag);
-DECLARE_timeseries(fsdbNhtNexthopReachable);
-void incrFsdbNhtNexthopReachable();
-
-inline const auto kFsdbNhtNexthopUnreachable =
-    fmt::format("{}.nht.fsdb.nexthop_unreachable", kBgpcppTag);
-DECLARE_timeseries(fsdbNhtNexthopUnreachable);
-void incrFsdbNhtNexthopUnreachable();
-
-inline const auto kFsdbNhtDisconnects =
-    fmt::format("{}.nht.fsdb.disconnects", kBgpcppTag);
-DECLARE_timeseries(fsdbNhtDisconnects);
-void incrFsdbNhtDisconnects();
-
-inline const auto kFsdbNhtConnected =
-    fmt::format("{}.nht.fsdb.connected", kBgpcppTag);
-void setFsdbNhtConnected(int64_t val);
-
-void initCounters();
-
-} // namespace FsdbStats
-
-void initStats();
+void initStatsBase();
 } // namespace facebook::bgp

@@ -26,7 +26,7 @@
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
 #include "neteng/fboss/bgp/cpp/common/ThriftClientUtils.h"
 #include "neteng/fboss/bgp/cpp/rib/FibFboss.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 
 DEFINE_int32(
     agent_thrift_port,

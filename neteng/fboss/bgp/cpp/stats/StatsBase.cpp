@@ -22,7 +22,7 @@
 
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
 #include "neteng/fboss/bgp/cpp/common/Utils.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 
 namespace facebook::bgp {
 
@@ -66,10 +66,7 @@ void initCounters() {
   // count.
   fb303::ThreadCachedServiceData::get()->setCounter(kRunningSessions, -1);
   fb303::ThreadCachedServiceData::get()->setCounter(kRunningVipSessions, -1);
-  fb303::ThreadCachedServiceData::get()->setCounter(
-      kRunningVipServiceSessions, -1);
   fb303::ThreadCachedServiceData::get()->setCounter(kNoPrefixSent, -1);
-  fb303::ThreadCachedServiceData::get()->setCounter(kVipServiceEnabled, -1);
   fb303::ThreadCachedServiceData::get()->setCounter(kStatefulGR, -1);
   fb303::ThreadCachedServiceData::get()->setCounter(kEorTimerExpired, -1);
   fb303::ThreadCachedServiceData::get()->setCounter(
@@ -82,8 +79,6 @@ void initCounters() {
       kPolicyNewAsMatchFailCount, 0);
   fb303::ThreadCachedServiceData::get()->addStatExportType(
       kSessionStateChanges, fb303::SUM);
-  fb303::ThreadCachedServiceData::get()->setCounter(kUcmpAlbwEnabled, -1);
-  fb303::ThreadCachedServiceData::get()->setCounter(kUcmpAlbwInitialized, -1);
   fb303::ThreadCachedServiceData::get()->setCounter(kUcmpActive, -1);
   fb303::ThreadCachedServiceData::get()->setCounter(kInitializedTimeout, -1);
   fb303::ThreadCachedServiceData::get()->setCounter(kIsSafeModeOn, 0);
@@ -161,35 +156,8 @@ void initCounters() {
   fb303::ThreadCachedServiceData::get()->addStatExportType(
       kNeighborPortIdStateMismatch, fb303::SUM);
 
-  // [CRF File Mode]
-  fb303::ThreadCachedServiceData::get()->setCounter(kCrfFileModeEnabled, 0);
-  fb303::ThreadCachedServiceData::get()->addStatExportType(
-      kCrfArtifactReadSuccess, fb303::SUM);
-  fb303::ThreadCachedServiceData::get()->addStatExportType(
-      kCrfArtifactReadFailure, fb303::SUM);
-  fb303::ThreadCachedServiceData::get()->addStatExportType(
-      kCrfPolicyAppliedSuccess, fb303::SUM);
-  fb303::ThreadCachedServiceData::get()->addStatExportType(
-      kCrfPolicyAppliedFailure, fb303::SUM);
-  fb303::ThreadCachedServiceData::get()->addStatExportType(
-      kCrfThriftRpcRejected, fb303::SUM);
   fb303::ThreadCachedServiceData::get()->addStatExportType(
       kCrfForceUpdateBypass, fb303::SUM);
-
-  // [CPS File Mode]
-  fb303::ThreadCachedServiceData::get()->setCounter(kCpsFileModeEnabled, 0);
-  fb303::ThreadCachedServiceData::get()->addStatExportType(
-      kCpsArtifactReadSuccess, fb303::SUM);
-  fb303::ThreadCachedServiceData::get()->addStatExportType(
-      kCpsArtifactReadFailure, fb303::SUM);
-  fb303::ThreadCachedServiceData::get()->addStatExportType(
-      kCpsPolicyAppliedSuccess, fb303::SUM);
-  fb303::ThreadCachedServiceData::get()->addStatExportType(
-      kCpsPolicyAppliedFailure, fb303::SUM);
-  fb303::ThreadCachedServiceData::get()->addStatExportType(
-      kCpsThriftRpcRejected, fb303::SUM);
-  fb303::ThreadCachedServiceData::get()->addStatExportType(
-      kCpsForceUpdateBypass, fb303::SUM);
 
   initEgressBackpressureStats();
   initWellKnownCommunityStats();
@@ -269,11 +237,6 @@ void setRunningSessions(uint32_t val) {
 
 void setRunningVipSessions(uint32_t val) {
   fb303::ThreadCachedServiceData::get()->setCounter(kRunningVipSessions, val);
-}
-
-void setRunningVipServiceSessions(uint32_t val) {
-  fb303::ThreadCachedServiceData::get()->setCounter(
-      kRunningVipServiceSessions, val);
 }
 
 void addSessionStateChanges() {
@@ -395,23 +358,8 @@ void setEorTimerExpired(bool timerExpired) {
       kEorTimerExpired, timerExpired ? 1 : 0);
 }
 
-void setVipServiceEnabled(bool vipSvcEnabled) {
-  fb303::ThreadCachedServiceData::get()->setCounter(
-      kVipServiceEnabled, vipSvcEnabled ? 1 : 0);
-}
-
 void setConvergenceTime(const int64_t duration) {
   fb303::ThreadCachedServiceData::get()->setCounter(kConvergenceTime, duration);
-}
-
-void setUcmpAlbwEnabled(bool enabled) {
-  fb303::ThreadCachedServiceData::get()->setCounter(
-      kUcmpAlbwEnabled, enabled ? 1 : 0);
-}
-
-void setUcmpAlbwInitialized(bool initialized) {
-  fb303::ThreadCachedServiceData::get()->setCounter(
-      kUcmpAlbwInitialized, initialized ? 1 : 0);
 }
 
 void setUcmpActive(bool isActive) {
@@ -519,22 +467,6 @@ void setOverloadProtectionMode(
       kOverloadProtectionMode, mode ? static_cast<int>(*mode) : -1);
 }
 
-void incrAddPeersSuccess() {
-  fb303::ThreadCachedServiceData::get()->incrementCounter(kAddPeersSuccess, 1);
-}
-
-void incrAddPeersRejected() {
-  fb303::ThreadCachedServiceData::get()->incrementCounter(kAddPeersRejected, 1);
-}
-
-void incrDelPeersSuccess() {
-  fb303::ThreadCachedServiceData::get()->incrementCounter(kDelPeersSuccess, 1);
-}
-
-void incrDelPeersRejected() {
-  fb303::ThreadCachedServiceData::get()->incrementCounter(kDelPeersRejected, 1);
-}
-
 void logInitializationEvent(
     const std::string& publisher,
     const neteng::fboss::bgp::thrift::BgpInitializationEvent event) {
@@ -578,6 +510,22 @@ int64_t getInitializationDurationMs() {
 void setPeerManagerReachesInitializedTimeout(bool reachesTimeout) {
   fb303::ThreadCachedServiceData::get()->setCounter(
       kInitializedTimeout, reachesTimeout ? 1 : 0);
+}
+
+void incrAddPeersSuccess() {
+  fb303::ThreadCachedServiceData::get()->incrementCounter(kAddPeersSuccess, 1);
+}
+
+void incrAddPeersRejected() {
+  fb303::ThreadCachedServiceData::get()->incrementCounter(kAddPeersRejected, 1);
+}
+
+void incrDelPeersSuccess() {
+  fb303::ThreadCachedServiceData::get()->incrementCounter(kDelPeersSuccess, 1);
+}
+
+void incrDelPeersRejected() {
+  fb303::ThreadCachedServiceData::get()->incrementCounter(kDelPeersRejected, 1);
 }
 
 void incrSetPeersPolicySuccess() {
@@ -659,6 +607,7 @@ void incrSlowPeerDetectionCount() {
  */
 DEFINE_string(
     exit_in_progress_file,
+    // patternlint-disable-next-line no-dev-shm-usage
     "/dev/shm/bgp_exit_in_progress",
     "Empty file to persist exit-in-progress across BGP shutdown, to be handled on subsequent startup");
 
@@ -716,70 +665,8 @@ void setIngressPolicyAllPeersLastReEvaluationTimeMs(int64_t timeMs) {
       timeMs);
 }
 
-void setCrfFileModeEnabled(bool enabled) {
-  fb303::ThreadCachedServiceData::get()->setCounter(
-      kCrfFileModeEnabled, enabled ? 1 : 0);
-}
-
-void incrCrfArtifactReadSuccess() {
-  fb303::ThreadCachedServiceData::get()->addStatValue(
-      kCrfArtifactReadSuccess, 1);
-}
-
-void incrCrfArtifactReadFailure() {
-  fb303::ThreadCachedServiceData::get()->addStatValue(
-      kCrfArtifactReadFailure, 1);
-}
-
-void incrCrfPolicyAppliedSuccess() {
-  fb303::ThreadCachedServiceData::get()->addStatValue(
-      kCrfPolicyAppliedSuccess, 1);
-}
-
-void incrCrfPolicyAppliedFailure() {
-  fb303::ThreadCachedServiceData::get()->addStatValue(
-      kCrfPolicyAppliedFailure, 1);
-}
-
-void incrCrfThriftRpcRejected() {
-  fb303::ThreadCachedServiceData::get()->addStatValue(kCrfThriftRpcRejected, 1);
-}
-
 void incrCrfForceUpdateBypass() {
   fb303::ThreadCachedServiceData::get()->addStatValue(kCrfForceUpdateBypass, 1);
-}
-
-void setCpsFileModeEnabled(bool enabled) {
-  fb303::ThreadCachedServiceData::get()->setCounter(
-      kCpsFileModeEnabled, enabled ? 1 : 0);
-}
-
-void incrCpsArtifactReadSuccess() {
-  fb303::ThreadCachedServiceData::get()->addStatValue(
-      kCpsArtifactReadSuccess, 1);
-}
-
-void incrCpsArtifactReadFailure() {
-  fb303::ThreadCachedServiceData::get()->addStatValue(
-      kCpsArtifactReadFailure, 1);
-}
-
-void incrCpsPolicyAppliedSuccess() {
-  fb303::ThreadCachedServiceData::get()->addStatValue(
-      kCpsPolicyAppliedSuccess, 1);
-}
-
-void incrCpsPolicyAppliedFailure() {
-  fb303::ThreadCachedServiceData::get()->addStatValue(
-      kCpsPolicyAppliedFailure, 1);
-}
-
-void incrCpsThriftRpcRejected() {
-  fb303::ThreadCachedServiceData::get()->addStatValue(kCpsThriftRpcRejected, 1);
-}
-
-void incrCpsForceUpdateBypass() {
-  fb303::ThreadCachedServiceData::get()->addStatValue(kCpsForceUpdateBypass, 1);
 }
 
 } // namespace BgpStats
@@ -801,8 +688,6 @@ void initCounters() {
   fb303::ThreadCachedServiceData::get()->setCounter(kRibTableVersion, 0);
 
   fb303::ThreadCachedServiceData::get()->setCounter(kRibPrefixCount, 0);
-
-  fb303::ThreadCachedServiceData::get()->setCounter(kRibIsPartialDrain, 0);
 
   fb303::ThreadCachedServiceData::get()->setCounter(
       kRibUnresolvableNexthopsCount, 0);
@@ -829,10 +714,6 @@ void initCounters() {
       kPostPolicyResultCacheCount, 0);
 }
 
-DEFINE_timeseries(psPolicyRcvd, kPsPolicyRcvd, fb303::COUNT);
-DEFINE_timeseries(psPolicyUpdate, kPsPolicyUpdate, fb303::COUNT);
-DEFINE_timeseries(raPolicyRcvd, kRaPolicyRcvd, fb303::COUNT);
-DEFINE_timeseries(raPolicyUpdate, kRaPolicyUpdate, fb303::COUNT);
 DEFINE_timeseries(rfPolicyRcvd, kRfPolicyRcvd, fb303::COUNT);
 DEFINE_timeseries(rfPolicyUpdate, kRfPolicyUpdate, fb303::COUNT);
 DEFINE_timeseries(unsupportedPolicyMsg, kUnsupportedPolicyMsg, fb303::COUNT);
@@ -861,20 +742,6 @@ DEFINE_quantile_stat(
     fb303::ExportTypeConsts::kAvg,
     fb303::QuantileConsts::kP50_P95_P99,
     fb303::SlidingWindowPeriodConsts::kOneMinTenMin);
-// time for rib to overwrite route attributes per route
-DEFINE_quantile_stat(
-    ribRouteAttributeOverwriteTimeMs,
-    kRibRouteAttributeOverwriteTimeMs,
-    fb303::ExportTypeConsts::kAvg,
-    fb303::QuantileConsts::kP50_P95_P99,
-    fb303::SlidingWindowPeriodConsts::kOneMinTenMin);
-// time for rib to overwrite route attributes in a full sync
-DEFINE_quantile_stat(
-    ribFullSyncRouteAttributeOverwriteTimeMs,
-    ribFullSyncRouteAttributeOverwriteTimeMs,
-    fb303::ExportTypeConsts::kAvg,
-    fb303::QuantileConsts::kP50_P95_P99,
-    fb303::SlidingWindowPeriodConsts::kOneMinTenMin);
 // time for which best path selection and fib programming is paused
 DEFINE_quantile_stat(
     ribBestPathAndFibProgrammingPauseTimeMs,
@@ -886,37 +753,6 @@ DEFINE_quantile_stat(
 // RouteAttributePolicy cache preservation counters
 DEFINE_timeseries(raPolicyCacheHit, kRaPolicyCacheHit, fb303::COUNT);
 DEFINE_timeseries(raPolicyCacheMiss, kRaPolicyCacheMiss, fb303::COUNT);
-DEFINE_timeseries(
-    raPolicyCacheMigrationIdentical,
-    kRaPolicyCacheMigrationIdentical,
-    fb303::COUNT);
-DEFINE_timeseries(
-    raPolicyCacheMigrationExpirationOnly,
-    kRaPolicyCacheMigrationExpirationOnly,
-    fb303::COUNT);
-DEFINE_timeseries(
-    raPolicyCacheMigrationSelective,
-    kRaPolicyCacheMigrationSelective,
-    fb303::COUNT);
-DEFINE_timeseries(
-    raPolicyCachePreserved,
-    kRaPolicyCachePreserved,
-    fb303::COUNT);
-DEFINE_timeseries(
-    raPolicyCacheInvalidated,
-    kRaPolicyCacheInvalidated,
-    fb303::COUNT);
-DEFINE_timeseries(
-    raPolicyReEvalPrefixes,
-    kRaPolicyReEvalPrefixes,
-    fb303::COUNT);
-DEFINE_quantile_stat(
-    raPolicyCacheMigrationTimeMs,
-    kRaPolicyCacheMigrationTimeMs,
-    fb303::ExportTypeConsts::kAvg,
-    fb303::QuantileConsts::kP50_P95_P99,
-    fb303::SlidingWindowPeriodConsts::kOneMinTenMin);
-
 DEFINE_timeseries(
     raPolicyCommunityIndexHit,
     kRaPolicyCommunityIndexHit,
@@ -977,11 +813,6 @@ void incrRibPrefixCount() {
 
 void decrRibPrefixCount() {
   fb303::ThreadCachedServiceData::get()->incrementCounter(kRibPrefixCount, -1);
-}
-
-void setIsPartialDrain(bool isPartiallyDrained) {
-  fb303::ThreadCachedServiceData::get()->setCounter(
-      kRibIsPartialDrain, isPartiallyDrained ? 1 : 0);
 }
 
 void incrUnresolvableNexthopsCount() {
@@ -1745,60 +1576,11 @@ void incrConnectionCollisionClosedByPeer() {
 
 } // namespace PeerStats
 
-//------------------------ FsdbStats ------------------------//
-
-namespace FsdbStats {
-
-DEFINE_timeseries(
-    fsdbNhtNexthopReachable,
-    kFsdbNhtNexthopReachable,
-    fb303::COUNT);
-DEFINE_timeseries(
-    fsdbNhtNexthopUnreachable,
-    kFsdbNhtNexthopUnreachable,
-    fb303::COUNT);
-DEFINE_timeseries(fsdbNhtDisconnects, kFsdbNhtDisconnects, fb303::COUNT);
-
-void initCounters() {
-  fb303::ThreadCachedServiceData::get()->setCounter(
-      kFsdbNhtNexthopReachable + ".count", 0);
-  fb303::ThreadCachedServiceData::get()->setCounter(
-      kFsdbNhtNexthopReachable + ".count.60", 0);
-  fb303::ThreadCachedServiceData::get()->setCounter(
-      kFsdbNhtNexthopUnreachable + ".count", 0);
-  fb303::ThreadCachedServiceData::get()->setCounter(
-      kFsdbNhtNexthopUnreachable + ".count.60", 0);
-  fb303::ThreadCachedServiceData::get()->setCounter(
-      kFsdbNhtDisconnects + ".count", 0);
-  fb303::ThreadCachedServiceData::get()->setCounter(
-      kFsdbNhtDisconnects + ".count.60", 0);
-  fb303::ThreadCachedServiceData::get()->setCounter(kFsdbNhtConnected, -1);
-}
-
-void incrFsdbNhtNexthopReachable() {
-  STATS_fsdbNhtNexthopReachable.add(1);
-}
-
-void incrFsdbNhtNexthopUnreachable() {
-  STATS_fsdbNhtNexthopUnreachable.add(1);
-}
-
-void incrFsdbNhtDisconnects() {
-  STATS_fsdbNhtDisconnects.add(1);
-}
-
-void setFsdbNhtConnected(int64_t val) {
-  fb303::ThreadCachedServiceData::get()->setCounter(kFsdbNhtConnected, val);
-}
-
-} // namespace FsdbStats
-
-void initStats() {
+void initStatsBase() {
   BgpStats::initCounters();
   RibStats::initCounters();
   FibStats::initCounters();
   PeerStats::initCounters();
-  FsdbStats::initCounters();
 }
 
 } // namespace facebook::bgp

@@ -23,7 +23,7 @@
 #include "neteng/fboss/bgp/cpp/common/BgpPath.h"
 #include "neteng/fboss/bgp/cpp/common/Utils.h"
 #include "neteng/fboss/bgp/cpp/lib/BgpStructs.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 
 using namespace facebook::nettools::bgplib;
 using namespace facebook::bgp::BgpStats;

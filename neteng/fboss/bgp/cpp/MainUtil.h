@@ -30,7 +30,7 @@
 #include "neteng/fboss/bgp/cpp/common/ThriftClientUtils.h"
 #include "neteng/fboss/bgp/cpp/config/Config.h"
 #include "neteng/fboss/bgp/cpp/config/ThriftServerUtils.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "openr/if/gen-cpp2/FibService.h"
 
 namespace facebook::bgp {

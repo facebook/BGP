@@ -33,7 +33,7 @@
   friend class AdjRibOutDelayFixture; \
   FRIEND_TEST(AdjRibOutDelayFixture, NumBackpressureEventsStatsTest);
 
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "neteng/fboss/bgp/cpp/tests/AdjRibOutUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/BoundedWaitUtils.h"
 

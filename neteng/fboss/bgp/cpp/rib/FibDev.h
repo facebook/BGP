@@ -19,7 +19,7 @@
 #include <fboss/agent/if/gen-cpp2/ctrl_types.h>
 
 #include "neteng/fboss/bgp/cpp/rib/Fib.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 
 namespace facebook::bgp {
 

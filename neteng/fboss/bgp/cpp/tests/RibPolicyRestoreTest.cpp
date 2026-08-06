@@ -630,7 +630,7 @@ TEST_F(RibPolicyRestoreTestFixture, CrfFileModeToggle) {
  * The fb303 gauge bgpd.crf.file_mode_enabled must track the real CRF mode so
  * monitoring can distinguish FILE_MODE (1) from THRIFT_MODE (0). Regression
  * test: the gauge previously was never updated off its init value (0) because
- * the mode-flip path did not call BgpStats::setCrfFileModeEnabled.
+ * the mode-flip path did not call BgpStatsDC::setCrfFileModeEnabled.
  */
 TEST_F(RibPolicyRestoreTestFixture, CrfFileModeGaugeFollowsMode) {
   auto gauge = [] {

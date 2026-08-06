@@ -23,7 +23,7 @@
 #include "fb303/ServiceData.h"
 #include "neteng/fboss/bgp/cpp/common/Types.h"
 #include "neteng/fboss/bgp/cpp/rib/RibCounters.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 
 namespace facebook::bgp {
 

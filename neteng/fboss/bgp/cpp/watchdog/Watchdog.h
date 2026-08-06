@@ -25,7 +25,7 @@
 #include "neteng/fboss/bgp/cpp/common/BgpModuleBase.h"
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
 #include "neteng/fboss/bgp/cpp/config/Config.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "neteng/fboss/bgp/cpp/watchdog/MonitoredModule.h"
 
 namespace facebook::bgp {

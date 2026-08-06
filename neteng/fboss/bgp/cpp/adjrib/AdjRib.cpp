@@ -25,7 +25,7 @@
 #include "fboss/lib/AlertLogger.h"
 #include "neteng/fboss/bgp/cpp/adjrib/AdjRib.h"
 #include "neteng/fboss/bgp/cpp/config/ConfigStructs.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 
 using namespace facebook::neteng::fboss::bgp_attr;
 using namespace facebook::neteng::fboss::bgp::thrift;

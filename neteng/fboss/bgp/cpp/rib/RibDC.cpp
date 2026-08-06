@@ -30,7 +30,7 @@
 #include "neteng/fboss/bgp/cpp/rib/RibPolicy.h"
 #include "neteng/fboss/bgp/cpp/rib/RibPolicyLogger.h"
 #include "neteng/fboss/bgp/cpp/rib/Utils.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsDC.h"
 #include "neteng/fboss/bgp/if/gen-cpp2/bgp_thrift_types.h"
 
 DEFINE_string(
@@ -447,10 +447,10 @@ RibDC::RibDC(
    */
   std::optional<rib_policy::CrfPolicyArtifact> tCrfArtifact;
   if (crfRead.hasValue()) {
-    BgpStats::incrCrfArtifactReadSuccess();
+    BgpStatsDC::incrCrfArtifactReadSuccess();
     tCrfArtifact = std::move(crfRead.value());
   } else if (crfRead.error() == ArtifactReadError::kError) {
-    BgpStats::incrCrfArtifactReadFailure();
+    BgpStatsDC::incrCrfArtifactReadFailure();
   }
 
   /*
@@ -485,10 +485,10 @@ RibDC::RibDC(
    */
   std::optional<rib_policy::CpsPolicyArtifact> tCpsArtifact;
   if (cpsRead.hasValue()) {
-    BgpStats::incrCpsArtifactReadSuccess();
+    BgpStatsDC::incrCpsArtifactReadSuccess();
     tCpsArtifact = std::move(cpsRead.value());
   } else if (cpsRead.error() == ArtifactReadError::kError) {
-    BgpStats::incrCpsArtifactReadFailure();
+    BgpStatsDC::incrCpsArtifactReadFailure();
   }
   auto [ribPolicy, cpsFileMode] =
       resolveCpsPolicy(std::move(crfRibPolicy), tCpsArtifact);
@@ -534,7 +534,7 @@ void RibDC::setCrfFileModeEnabled(bool fileModeActive) {
    * bootstrap call. Without this the gauge stays at its init value (0) and can
    * never reflect FILE_MODE.
    */
-  BgpStats::setCrfFileModeEnabled(fileModeActive);
+  BgpStatsDC::setCrfFileModeEnabled(fileModeActive);
 }
 
 bool RibDC::isCpsFileModeEnabled() const {
@@ -550,7 +550,7 @@ void RibDC::setCpsFileModeEnabled(bool fileModeActive) {
    * bootstrap call. Without this the gauge stays at its init value (0) and can
    * never reflect FILE_MODE.
    */
-  BgpStats::setCpsFileModeEnabled(fileModeActive);
+  BgpStatsDC::setCpsFileModeEnabled(fileModeActive);
 }
 
 void RibDC::createFib() {
@@ -868,7 +868,7 @@ RibDC::CacheMigrationResult RibDC::migrateRouteAttributePolicyCache(
   if (!result.hasUpdate) {
     XLOGF(
         INFO, "[CTE] Cache migration: policies identical, no migration needed");
-    RibStats::STATS_raPolicyCacheMigrationIdentical.add(1);
+    RibStatsDC::STATS_raPolicyCacheMigrationIdentical.add(1);
     return result;
   }
 
@@ -879,7 +879,7 @@ RibDC::CacheMigrationResult RibDC::migrateRouteAttributePolicyCache(
     XLOGF(
         INFO,
         "[CTE] Cache migration: only expiration changed, full cache move");
-    RibStats::STATS_raPolicyCacheMigrationExpirationOnly.add(1);
+    RibStatsDC::STATS_raPolicyCacheMigrationExpirationOnly.add(1);
     return result;
   }
 
@@ -940,9 +940,10 @@ RibDC::CacheMigrationResult RibDC::migrateRouteAttributePolicyCache(
       preserved,
       result.affectedPrefixes.size());
 
-  RibStats::STATS_raPolicyCacheMigrationSelective.add(1);
-  RibStats::STATS_raPolicyCachePreserved.add(preserved);
-  RibStats::STATS_raPolicyCacheInvalidated.add(result.affectedPrefixes.size());
+  RibStatsDC::STATS_raPolicyCacheMigrationSelective.add(1);
+  RibStatsDC::STATS_raPolicyCachePreserved.add(preserved);
+  RibStatsDC::STATS_raPolicyCacheInvalidated.add(
+      result.affectedPrefixes.size());
 
   return result;
 }
@@ -952,7 +953,7 @@ RibDC::CacheMigrationResult RibDC::migrateRouteAttributePolicyCache(
    not in read-only mode, trigger fib programming. */
 bool RibDC::replaceRouteAttributePolicy(
     std::unique_ptr<RouteAttributePolicy> newPolicy) {
-  RibStats::STATS_raPolicyRcvd.add(1);
+  RibStatsDC::STATS_raPolicyRcvd.add(1);
 
   bool hasUpdate = false;
   bool needsReEvaluation = false;
@@ -979,7 +980,7 @@ bool RibDC::replaceRouteAttributePolicy(
       auto migrationStart = std::chrono::steady_clock::now();
       auto migrationResult =
           migrateRouteAttributePolicyCache(*routeAttributePolicy_, *newPolicy);
-      RibStats::STATS_raPolicyCacheMigrationTimeMs.addValue(
+      RibStatsDC::STATS_raPolicyCacheMigrationTimeMs.addValue(
           std::chrono::duration_cast<std::chrono::milliseconds>(
               std::chrono::steady_clock::now() - migrationStart)
               .count());
@@ -1023,7 +1024,7 @@ bool RibDC::replaceRouteAttributePolicy(
               : std::nullopt);
     }
     scheduleRouteAttributePolicyTimer();
-    RibStats::STATS_raPolicyUpdate.add(1);
+    RibStatsDC::STATS_raPolicyUpdate.add(1);
   }
 
   /*
@@ -1057,7 +1058,7 @@ bool RibDC::replaceRouteAttributePolicy(
           INFO,
           "[CTE] Selective re-evaluation: {} prefixes",
           prefixesNeedingReEvaluation.size());
-      RibStats::STATS_raPolicyReEvalPrefixes.add(
+      RibStatsDC::STATS_raPolicyReEvalPrefixes.add(
           prefixesNeedingReEvaluation.size());
     } else {
       /*
@@ -1074,7 +1075,7 @@ bool RibDC::replaceRouteAttributePolicy(
           "[CTE] Full re-evaluation fallback: {} prefixes, "
           "affectedPrefixes empty, cache may not have been fully populated",
           ribEntries_.size());
-      RibStats::STATS_raPolicyReEvalPrefixes.add(ribEntries_.size());
+      RibStatsDC::STATS_raPolicyReEvalPrefixes.add(ribEntries_.size());
     }
 
     schedulePrepareFibProgrammingTimer();
@@ -1125,7 +1126,7 @@ bool RibDC::replacePathSelectionPolicy(
     std::unique_ptr<PathSelectionPolicy> newPolicy,
     bool isBootstrap,
     bool forceUpdate) {
-  RibStats::STATS_psPolicyRcvd.add(1);
+  RibStatsDC::STATS_psPolicyRcvd.add(1);
 
   bool hasUpdate = hasPathSelectionPolicyChange(
       pathSelectionPolicy_.get(), newPolicy.get(), forceUpdate);
@@ -1139,7 +1140,7 @@ bool RibDC::replacePathSelectionPolicy(
   if (forceUpdate && pathSelectionPolicy_ && newPolicy &&
       *pathSelectionPolicy_ != *newPolicy &&
       pathSelectionPolicy_->getVersion() > newPolicy->getVersion()) {
-    BgpStats::incrCpsForceUpdateBypass();
+    BgpStatsDC::incrCpsForceUpdateBypass();
   }
 
   if (hasUpdate) {
@@ -1155,7 +1156,7 @@ bool RibDC::replacePathSelectionPolicy(
      * bootstrap, the file-mode RPC, and Thrift-mode sets alike.
      */
     if (pathSelectionPolicy_) {
-      BgpStats::incrCpsPolicyAppliedSuccess();
+      BgpStatsDC::incrCpsPolicyAppliedSuccess();
     }
 
     // Only log and append to history for real policy updates, not bootstrap
@@ -1175,7 +1176,7 @@ bool RibDC::replacePathSelectionPolicy(
           pathSelectionPolicy_ ? std::optional(pathSelectionPolicy_->toThrift())
                                : std::nullopt);
     }
-    RibStats::STATS_psPolicyUpdate.add(1);
+    RibStatsDC::STATS_psPolicyUpdate.add(1);
 
     if (ribPolicyLogger_) {
       int64_t psPolicyVersion = getPathSelectionPolicyVersion();
@@ -1244,7 +1245,7 @@ void RibDC::overwriteRouteAttributes(
       }
     }
 
-    RibStats::STATS_ribRouteAttributeOverwriteTimeMs.addValue(
+    RibStatsDC::STATS_ribRouteAttributeOverwriteTimeMs.addValue(
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - startTime)
             .count());
@@ -1270,7 +1271,7 @@ void RibDC::overwriteRouteAttributes(
         "Route attribute overwrite in a FullRibWalk for {} ribEntries took {} ms",
         ribEntries_.size(),
         routeAttributeOverwriteTimeMs.count());
-    RibStats::STATS_ribFullSyncRouteAttributeOverwriteTimeMs.addValue(
+    RibStatsDC::STATS_ribFullSyncRouteAttributeOverwriteTimeMs.addValue(
         routeAttributeOverwriteTimeMs.count());
   }
 }
@@ -1806,7 +1807,7 @@ bool RibDC::recordPartialDrainTransition(
      * gauge, so a true<->false flip is observable and alertable independent of
      * the FSDB publish path.
      */
-    RibStats::setIsPartialDrain(newIsPartialDrain);
+    RibStatsDC::setIsPartialDrain(newIsPartialDrain);
   }
   return true;
 }

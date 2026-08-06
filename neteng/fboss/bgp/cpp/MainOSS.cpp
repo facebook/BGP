@@ -38,7 +38,8 @@
 #include "neteng/fboss/bgp/cpp/peer/SessionManager.h"
 #include "neteng/fboss/bgp/cpp/policy/PolicyManager.h"
 #include "neteng/fboss/bgp/cpp/rib/RibDC.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsDC.h"
 #include "neteng/fboss/bgp/cpp/watchdog/MonitoredQueue.h"
 #include "neteng/fboss/bgp/cpp/watchdog/Watchdog.h"
 
@@ -164,7 +165,8 @@ int main(int argc, char** argv) {
       "Main", BgpInitializationEvent::INITIALIZING);
 
   // Initialize counters
-  initStats();
+  initStatsBase();
+  initStatsDC();
   if (splitConfigPolicy) {
     BgpStats::setPolicySymlink(1);
   } else {

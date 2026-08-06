@@ -29,7 +29,7 @@
 #include "neteng/fboss/bgp/cpp/nexthopTracker/NexthopCache.h"
 #include "neteng/fboss/bgp/cpp/nexthopTracker/NexthopStatus.h"
 #include "neteng/fboss/bgp/cpp/peer/NeighborWatcher.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 
 using namespace std::chrono_literals;
 

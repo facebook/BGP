@@ -41,7 +41,7 @@
 #include "neteng/fboss/bgp/cpp/rib/RibPolicy.h"
 #include "neteng/fboss/bgp/cpp/rib/RouteFilterConfig.h"
 #include "neteng/fboss/bgp/cpp/rib/Utils.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "neteng/fboss/bgp/if/gen-cpp2/BgpStructs_types.h"
 #include "neteng/fboss/bgp/if/gen-cpp2/bgp_thrift_types.h"
 #include "thrift/lib/cpp2/protocol/Serializer.h"

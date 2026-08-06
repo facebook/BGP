@@ -25,7 +25,7 @@
 #include "neteng/fboss/bgp/cpp/lib/BgpStructs.h"
 #include "neteng/fboss/bgp/cpp/lib/BgpUtil.h"
 #include "neteng/fboss/bgp/cpp/lib/fibers/FiberBgpParser.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 
 namespace facebook {
 namespace nettools {

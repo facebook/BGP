@@ -24,7 +24,7 @@
 #include <folly/container/F14Set.h>
 
 #include "neteng/fboss/bgp/cpp/lib/BgpStructs.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 
 namespace facebook::bgp {
 

@@ -24,7 +24,7 @@
 #include "neteng/fboss/bgp/cpp/nexthopTracker/NexthopAssociationList.h"
 #include "neteng/fboss/bgp/cpp/nexthopTracker/NexthopInfoBase.h"
 #include "neteng/fboss/bgp/cpp/nexthopTracker/NexthopStatus.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 
 namespace facebook::bgp {
 

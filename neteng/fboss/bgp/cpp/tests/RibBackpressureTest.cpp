@@ -38,7 +38,7 @@
 
 #include "fboss/lib/CommonUtils.h"
 #include "neteng/fboss/bgp/cpp/lib/fibers/Utils.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "neteng/fboss/bgp/cpp/tests/RibUtils.h"
 
 using namespace facebook::nettools::bgplib;

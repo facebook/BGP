@@ -28,6 +28,7 @@ DECLARE_bool(disable_rib_policy_scuba_logging);
 #include "neteng/fboss/bgp/cpp/common/Utils.h"
 #include "neteng/fboss/bgp/cpp/config/ConfigManager.h"
 #include "neteng/fboss/bgp/cpp/fsdb/FsdbSyncer.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsDC.h"
 #include "neteng/fboss/bgp/cpp/tests/Utils.h"
 
 #include "fboss/lib/CommonUtils.h"
@@ -333,9 +334,9 @@ TResult MockRib::setRouteAttributePolicy(
 
   std::map<std::string, int64_t> counters;
   fb303::ThreadCachedServiceData::get()->getCounters(counters);
-  static auto rcvdCounter = fmt::format("{}.count", RibStats::kRaPolicyRcvd);
+  static auto rcvdCounter = fmt::format("{}.count", RibStatsDC::kRaPolicyRcvd);
   static auto updateCounter =
-      fmt::format("{}.count", RibStats::kRaPolicyUpdate);
+      fmt::format("{}.count", RibStatsDC::kRaPolicyUpdate);
   EXPECT_TRUE(counters.contains(rcvdCounter));
   EXPECT_TRUE(counters.contains(updateCounter));
   EXPECT_GE(counters.at(rcvdCounter), 0);
@@ -349,9 +350,9 @@ void MockRib::clearRouteAttributePolicy() {
 
   std::map<std::string, int64_t> counters;
   fb303::ThreadCachedServiceData::get()->getCounters(counters);
-  static auto rcvdCounter = fmt::format("{}.count", RibStats::kRaPolicyRcvd);
+  static auto rcvdCounter = fmt::format("{}.count", RibStatsDC::kRaPolicyRcvd);
   static auto updateCounter =
-      fmt::format("{}.count", RibStats::kRaPolicyUpdate);
+      fmt::format("{}.count", RibStatsDC::kRaPolicyUpdate);
   EXPECT_TRUE(counters.contains(rcvdCounter));
   EXPECT_TRUE(counters.contains(updateCounter));
   EXPECT_GE(counters.at(rcvdCounter), 0);
@@ -365,9 +366,9 @@ TResult MockRib::setPathSelectionPolicy(
 
   std::map<std::string, int64_t> counters;
   fb303::ThreadCachedServiceData::get()->getCounters(counters);
-  static auto rcvdCounter = fmt::format("{}.count", RibStats::kPsPolicyRcvd);
+  static auto rcvdCounter = fmt::format("{}.count", RibStatsDC::kPsPolicyRcvd);
   static auto updateCounter =
-      fmt::format("{}.count", RibStats::kPsPolicyUpdate);
+      fmt::format("{}.count", RibStatsDC::kPsPolicyUpdate);
   EXPECT_TRUE(counters.contains(rcvdCounter));
   EXPECT_TRUE(counters.contains(updateCounter));
   EXPECT_GE(counters.at(rcvdCounter), 0);
@@ -380,9 +381,9 @@ void MockRib::clearPathSelectionPolicy() {
 
   std::map<std::string, int64_t> counters;
   fb303::ThreadCachedServiceData::get()->getCounters(counters);
-  static auto rcvdCounter = fmt::format("{}.count", RibStats::kPsPolicyRcvd);
+  static auto rcvdCounter = fmt::format("{}.count", RibStatsDC::kPsPolicyRcvd);
   static auto updateCounter =
-      fmt::format("{}.count", RibStats::kPsPolicyUpdate);
+      fmt::format("{}.count", RibStatsDC::kPsPolicyUpdate);
   EXPECT_TRUE(counters.contains(rcvdCounter));
   EXPECT_TRUE(counters.contains(updateCounter));
   EXPECT_GE(counters.at(rcvdCounter), 0);

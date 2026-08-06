@@ -21,7 +21,7 @@
 #include <folly/logging/xlog.h>
 
 #include "neteng/fboss/bgp/cpp/common/BgpPath.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 
 DEFINE_bool(
     enable_peer_status_logging,

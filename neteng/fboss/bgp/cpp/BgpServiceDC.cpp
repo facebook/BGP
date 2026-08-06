@@ -25,7 +25,7 @@
 #include <neteng/fboss/bgp/cpp/peer/PeerManagerBase.h>
 #include <neteng/fboss/bgp/cpp/rib/RibDC.h>
 #include <neteng/fboss/bgp/cpp/rib/RibFileUtils.h>
-#include <neteng/fboss/bgp/cpp/stats/Stats.h>
+#include <neteng/fboss/bgp/cpp/stats/StatsDC.h>
 #include <neteng/fboss/bgp/if/gen-cpp2/bgp_thrift_types.h>
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
 #include "neteng/fboss/bgp/cpp/common/EvbUtils.h"
@@ -540,7 +540,7 @@ BgpServiceDC::co_setPathSelectionPolicy(
       co_await cpsPolicyMutex_.co_scoped_lock_shared();
   if (dcRib_.isCpsFileModeEnabled()) {
     XLOGF(WARN, "[CPS] CPS policy is in FILE_MODE, cannot set via Thrift RPC");
-    BgpStats::incrCpsThriftRpcRejected();
+    BgpStatsDC::incrCpsThriftRpcRejected();
     auto ret = std::make_unique<TResult>();
     ret->success() = false;
     ret->err() = "CPS policy is in FILE_MODE, cannot set via Thrift RPC";
@@ -601,7 +601,7 @@ folly::coro::Task<void> BgpServiceDC::co_clearPathSelectionPolicy() {
       co_await cpsPolicyMutex_.co_scoped_lock_shared();
   if (dcRib_.isCpsFileModeEnabled()) {
     XLOGF(WARN, "[CPS] Cannot clear CPS policy while in FILE_MODE");
-    BgpStats::incrCpsThriftRpcRejected();
+    BgpStatsDC::incrCpsThriftRpcRejected();
     co_return;
   }
   continueExecution(false);
@@ -938,7 +938,7 @@ BgpServiceDC::co_setRouteFilterPolicy(
 
   if (ribDC_.isCrfFileModeEnabled()) {
     XLOGF(WARN, "[CRF] CRF policy is in FILE_MODE, cannot set via Thrift RPC");
-    BgpStats::incrCrfThriftRpcRejected();
+    BgpStatsDC::incrCrfThriftRpcRejected();
     auto ret = std::make_unique<TResult>();
     ret->success() = false;
     ret->err() = "CRF policy is in FILE_MODE, cannot set via Thrift RPC";
@@ -954,7 +954,7 @@ folly::coro::Task<void> BgpServiceDC::co_clearRouteFilterPolicy() {
 
   if (ribDC_.isCrfFileModeEnabled()) {
     XLOGF(WARN, "[CRF] Cannot clear CRF policy while in FILE_MODE");
-    BgpStats::incrCrfThriftRpcRejected();
+    BgpStatsDC::incrCrfThriftRpcRejected();
     co_return;
   }
 
@@ -984,14 +984,14 @@ BgpServiceDC::co_setCrfPolicyFromFile() {
      * the startup bootstrap path in RibDC.
      */
     if (artifact.error() == ArtifactReadError::kError) {
-      BgpStats::incrCrfArtifactReadFailure();
+      BgpStatsDC::incrCrfArtifactReadFailure();
     }
     auto ret = std::make_unique<TResult>();
     ret->success() = false;
     ret->err() = "Failed to read CRF policy artifact file";
     co_return ret;
   }
-  BgpStats::incrCrfArtifactReadSuccess();
+  BgpStatsDC::incrCrfArtifactReadSuccess();
 
   auto crfLock = co_await crfPolicyMutex_.co_scoped_lock();
 
@@ -1030,7 +1030,7 @@ BgpServiceDC::co_setCrfPolicyFromFile() {
         ERR,
         "[CRF] Failed to validate file-based CRF policy. Error: {}",
         *validationResult.err());
-    BgpStats::incrCrfPolicyAppliedFailure();
+    BgpStatsDC::incrCrfPolicyAppliedFailure();
     auto ret = std::make_unique<TResult>();
     ret->success() = false;
     ret->err() = *validationResult.err();
@@ -1050,7 +1050,7 @@ BgpServiceDC::co_setCrfPolicyFromFile() {
     if (!wasFileModeActive) {
       ribDC_.setCrfFileModeEnabled(false);
     }
-    BgpStats::incrCrfPolicyAppliedFailure();
+    BgpStatsDC::incrCrfPolicyAppliedFailure();
     auto errorMsg = folly::exceptionStr(ex);
     XLOGF(ERR, "[CRF] {}", errorMsg);
     auto ret = std::make_unique<TResult>();
@@ -1061,7 +1061,7 @@ BgpServiceDC::co_setCrfPolicyFromFile() {
     if (!wasFileModeActive) {
       ribDC_.setCrfFileModeEnabled(false);
     }
-    BgpStats::incrCrfPolicyAppliedFailure();
+    BgpStatsDC::incrCrfPolicyAppliedFailure();
     auto errorMsg = folly::exceptionStr(ex);
     XLOGF(ERR, "[CRF] Unexpected error applying CRF policy: {}", errorMsg);
     auto ret = std::make_unique<TResult>();
@@ -1078,7 +1078,7 @@ BgpServiceDC::co_setCrfPolicyFromFile() {
       kRibThriftHandlerTimeout);
 
   if (result.hasException()) {
-    BgpStats::incrCrfPolicyAppliedFailure();
+    BgpStatsDC::incrCrfPolicyAppliedFailure();
     auto ret = std::make_unique<TResult>();
     ret->success() = false;
     if (result.exception().is_compatible_with<folly::FutureTimeout>()) {
@@ -1094,7 +1094,7 @@ BgpServiceDC::co_setCrfPolicyFromFile() {
     co_return ret;
   }
 
-  BgpStats::incrCrfPolicyAppliedSuccess();
+  BgpStatsDC::incrCrfPolicyAppliedSuccess();
   auto ret = std::make_unique<TResult>();
   ret->success() = true;
   ret->err() = "CRF policy applied from file (FILE_MODE)";
@@ -1144,14 +1144,14 @@ BgpServiceDC::co_setCpsPolicyFromFile() {
      * the startup bootstrap path in RibDC.
      */
     if (artifact.error() == ArtifactReadError::kError) {
-      BgpStats::incrCpsArtifactReadFailure();
+      BgpStatsDC::incrCpsArtifactReadFailure();
     }
     auto ret = std::make_unique<TResult>();
     ret->success() = false;
     ret->err() = "Failed to read CPS policy artifact file";
     co_return ret;
   }
-  BgpStats::incrCpsArtifactReadSuccess();
+  BgpStatsDC::incrCpsArtifactReadSuccess();
 
   // Read the file-mode flag once under the lock; it can only change inside this
   // exclusive-locked handler, so a single read is authoritative for both the
@@ -1204,7 +1204,7 @@ BgpServiceDC::co_setCpsPolicyFromFile() {
     if (!wasFileModeEnabled) {
       dcRib_.setCpsFileModeEnabled(false);
     }
-    BgpStats::incrCpsPolicyAppliedFailure();
+    BgpStatsDC::incrCpsPolicyAppliedFailure();
     XLOGF(
         ERR,
         "[CPS] Failed to apply file-based CPS policy. Error: {}",

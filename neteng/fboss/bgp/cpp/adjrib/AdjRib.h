@@ -53,7 +53,7 @@
 #include "neteng/fboss/bgp/cpp/lib/fibers/FiberBgpPeer.h"
 #include "neteng/fboss/bgp/cpp/policy/PolicyManager.h"
 #include "neteng/fboss/bgp/cpp/rib/RibPolicy.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "neteng/fboss/bgp/cpp/watchdog/MonitoredModule.h"
 #include "neteng/fboss/bgp/cpp/watchdog/MonitoredQueue.h"
 

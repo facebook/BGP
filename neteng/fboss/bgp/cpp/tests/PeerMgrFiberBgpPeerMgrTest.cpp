@@ -73,7 +73,7 @@ class PeerManagerTestFixture_DelPeers_AfterFlap_FallbackCleansUp_Test;
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "neteng/fboss/bgp/cpp/tests/PeerManagerTestUtils.h"
 
 using namespace facebook::nettools::bgplib;

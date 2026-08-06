@@ -200,8 +200,9 @@ class FsdbNeighborWatcher
       const std::map<std::string, fboss::state::NeighborEntryFields>& nbrTable,
       folly::F14FastSet<folly::IPAddress>& resolvedIps);
 
-  // Bumps kNeighborPortIdStateMismatch + rate-limited WARNING when portId
-  // and state disagree. Called from collectResolvedIpsFromTable only, so the
+  // Bumps BgpStats::kNeighborPortIdStateMismatch and emits a rate-limited
+  // WARNING when portId and state disagree. Called from
+  // collectResolvedIpsFromTable only, so the
   // counter fires once per entry per scan.
   static void reportPortIdStateMismatch(
       const fboss::state::NeighborEntryFields& nbrFields);

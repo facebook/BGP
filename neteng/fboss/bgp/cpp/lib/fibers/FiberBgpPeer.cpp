@@ -27,7 +27,7 @@
 #include "neteng/fboss/bgp/cpp/lib/fibers/BgpSerializer.h"
 #include "neteng/fboss/bgp/cpp/lib/fibers/FiberBgpPeer.h"
 #include "neteng/fboss/bgp/cpp/lib/fibers/Utils.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 
 using namespace std::chrono_literals;
 

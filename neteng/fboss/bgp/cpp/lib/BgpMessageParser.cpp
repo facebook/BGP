@@ -26,7 +26,7 @@
 #include "neteng/fboss/bgp/cpp/lib/BgpException.h"
 #include "neteng/fboss/bgp/cpp/lib/BgpMessageParser.h"
 #include "neteng/fboss/bgp/cpp/lib/detail/BgpMessageParserUtils.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 
 using folly::IOBuf;
 using folly::io::Cursor;

@@ -19,7 +19,7 @@
 
 #include "neteng/fboss/bgp/cpp/adjrib/AdjRibEntry.h"
 #include "neteng/fboss/bgp/cpp/common/BgpPath.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "neteng/fboss/bgp/cpp/tests/Utils.h"
 
 namespace facebook::bgp {

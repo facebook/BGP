@@ -21,7 +21,7 @@
 #include <optional>
 
 #include "neteng/fboss/bgp/cpp/common/Types.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 
 namespace facebook::bgp {
 

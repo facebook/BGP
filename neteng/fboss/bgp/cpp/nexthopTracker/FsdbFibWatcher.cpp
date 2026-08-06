@@ -24,7 +24,7 @@
 #include <folly/logging/xlog.h>
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
 #include "neteng/fboss/bgp/cpp/common/ThriftClientUtils.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsDC.h"
 namespace facebook::bgp {
 namespace thrift_tags = apache::thrift::ident;
 
@@ -276,8 +276,8 @@ folly::coro::Task<void> FsdbFibWatcher::co_markNeedsReconcile() {
    * reconcile diff.
    */
   needsReconcile_ = true;
-  FsdbStats::incrFsdbNhtDisconnects();
-  FsdbStats::setFsdbNhtConnected(0);
+  FsdbStatsDC::incrFsdbNhtDisconnects();
+  FsdbStatsDC::setFsdbNhtConnected(0);
   XLOGF(
       INFO,
       "[FsdbFibWatcher] Reconnect: reconcile armed ({} nexthops currently"
@@ -470,7 +470,7 @@ void emitReachabilityUpdate(
   const char* const logPrefix = isReconcile ? "Reconcile: " : "";
   if (exists) {
     if (!wasReachable) {
-      FsdbStats::incrFsdbNhtNexthopReachable();
+      FsdbStatsDC::incrFsdbNhtNexthopReachable();
     }
     batchUpdates.emplace_back(
         peerAddr,
@@ -489,7 +489,7 @@ void emitReachabilityUpdate(
     }
   } else {
     if (wasReachable) {
-      FsdbStats::incrFsdbNhtNexthopUnreachable();
+      FsdbStatsDC::incrFsdbNhtNexthopUnreachable();
     }
     batchUpdates.emplace_back(
         peerAddr,
@@ -524,7 +524,7 @@ folly::coro::Task<void> FsdbFibWatcher::co_processFibUpdate(
    *
    * No notification / no route for a prefix means the peer is unreachable.
    **/
-  FsdbStats::setFsdbNhtConnected(1);
+  FsdbStatsDC::setFsdbNhtConnected(1);
   std::vector<NexthopStatus> batchUpdates;
 
   if (needsReconcile_) {

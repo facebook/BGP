@@ -67,7 +67,7 @@ class MockFiberBgpPeer;
 #include "neteng/fboss/bgp/cpp/lib/fibers/FiberBgpPeer.h"
 #include "neteng/fboss/bgp/cpp/lib/fibers/FiberBgpPeerManager.h"
 #include "neteng/fboss/bgp/cpp/lib/fibers/Utils.h"
-#include "neteng/fboss/bgp/cpp/stats/Stats.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "neteng/fboss/bgp/cpp/tests/BoundedWaitUtils.h"
 
 DEFINE_bool(

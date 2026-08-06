@@ -39,6 +39,7 @@
 #include "neteng/fboss/bgp/cpp/BgpServiceDC.h"
 #include "neteng/fboss/bgp/cpp/BgpServiceUtil.h"
 #include "neteng/fboss/bgp/cpp/config/ConfigManager.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsDC.h"
 #include "neteng/fboss/bgp/cpp/tests/MockPeerManager.h"
 #include "neteng/fboss/bgp/cpp/tests/MockSessionManager.h"
 #include "neteng/fboss/bgp/cpp/tests/RibPolicyUtils.h"
@@ -1894,15 +1895,15 @@ CO_TEST_F(
  * SUM stats accumulate process-wide across tests, so we assert deltas.
  */
 CO_TEST_F(BgpServiceCpsFileModeTestFixture, CpsFileModeOdsCountersIncrement) {
-  BgpStats::initCounters();
+  BgpStatsDC::initCounters();
   auto counters = fb303::ThreadCachedServiceData::getShared();
   // SUM-type timeseries stats are read back with the ".sum" suffix.
   const std::string kReadSuccessSum =
-      std::string(BgpStats::kCpsArtifactReadSuccess) + ".sum";
+      std::string(BgpStatsDC::kCpsArtifactReadSuccess) + ".sum";
   const std::string kAppliedSuccessSum =
-      std::string(BgpStats::kCpsPolicyAppliedSuccess) + ".sum";
+      std::string(BgpStatsDC::kCpsPolicyAppliedSuccess) + ".sum";
   const std::string kThriftRejectedSum =
-      std::string(BgpStats::kCpsThriftRpcRejected) + ".sum";
+      std::string(BgpStatsDC::kCpsThriftRpcRejected) + ".sum";
 
   // A ".sum" key does not exist until its stat is first added, and SUM stats
   // accumulate across earlier tests in this process, so treat missing as 0 and

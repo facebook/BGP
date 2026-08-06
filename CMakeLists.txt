@@ -476,6 +476,26 @@ target_link_libraries(bgp_lib_core
 # Tier 1: Foundation
 #
 
+add_library(bgp_stats_base
+  neteng/fboss/bgp/cpp/stats/StatsBase.cpp
+)
+
+target_link_libraries(bgp_stats_base
+  fb303::fb303
+  ${BGP_THRIFT_LIBS}
+  ${BGP_BASE_LIBS}
+)
+
+add_library(bgp_stats_dc
+  neteng/fboss/bgp/cpp/stats/StatsDC.cpp
+)
+
+target_link_libraries(bgp_stats_dc
+  bgp_stats_base
+  fb303::fb303
+  ${BGP_BASE_LIBS}
+)
+
 add_library(bgp_common
   neteng/fboss/bgp/cpp/common/BuildInfo.cpp
   neteng/fboss/bgp/cpp/common/BgpModuleBase.cpp
@@ -483,7 +503,6 @@ add_library(bgp_common
   neteng/fboss/bgp/cpp/common/FeatureFlags.cpp
   neteng/fboss/bgp/cpp/common/RouteInfo.cpp
   neteng/fboss/bgp/cpp/common/Utils.cpp
-  neteng/fboss/bgp/cpp/stats/Stats.cpp
   neteng/fboss/bgp/cpp/lib/BgpMessageParser.cpp
   neteng/fboss/bgp/cpp/lib/detail/BgpMessageParserUtils.cpp
 )
@@ -491,6 +510,7 @@ add_library(bgp_common
 target_link_libraries(bgp_common
   bgp_lib_core
   bgp_routelib
+  bgp_stats_base
   build_info
   fb303::fb303
   ${BGP_THRIFT_LIBS}
@@ -597,6 +617,7 @@ add_library(bgp_fsdb_fib_watcher
 target_link_libraries(bgp_fsdb_fib_watcher
   bgp_common
   bgp_nexthop
+  bgp_stats_dc
   ${BGP_THRIFT_LIBS}
   ${BGP_BASE_LIBS}
   FBThrift::thriftcpp2
@@ -673,6 +694,7 @@ target_link_libraries(bgp_rib
   bgp_lib_core
   bgp_nexthop
   bgp_routelib
+  bgp_stats_dc
   bgp_watchdog
   FBThrift::thriftcpp2
   ${OPENR_LIBS}
@@ -725,6 +747,7 @@ target_link_libraries(bgp_peer
   bgp_lib_transport
   bgp_nexthop
   bgp_rib
+  bgp_stats_base
   bgp_watchdog
   FBThrift::thriftcpp2
   ${OPENR_LIBS}
@@ -753,6 +776,7 @@ target_link_libraries(bgp_service
   bgp_lib_core
   bgp_peer
   bgp_rib
+  bgp_stats_dc
   bgp_watchdog
   ${RE2}
   FBThrift::thriftcpp2
@@ -761,6 +785,8 @@ target_link_libraries(bgp_service
 )
 
 install(TARGETS
+  bgp_stats_base
+  bgp_stats_dc
   bgp_routelib
   bgp_lib_core
   bgp_common
@@ -801,6 +827,8 @@ list(JOIN _bgp_grouped_libs "," _bgp_grouped_libs_csv)
 
 target_link_libraries(bgp_bin
   bgp_service
+  bgp_stats_base
+  bgp_stats_dc
   build_info
   "$<LINK_GROUP:RESCAN,${_bgp_grouped_libs_csv}>"
   ${BGP_BASE_LIBS}
