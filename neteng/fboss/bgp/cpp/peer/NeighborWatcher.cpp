@@ -726,6 +726,7 @@ void NeighborWatcher::subscribeLocked() {
         });
   }
 
+  fsdbSubscribed_ = true;
   XLOG(INFO, "[NeighborWatcher] Shared FSDB subscription started");
 }
 
@@ -746,41 +747,98 @@ void NeighborWatcher::requestNexthopSubscribe(
   evb_.runInEventBaseThread([this, nexthops = std::move(nexthops)]() mutable {
     auto newNexthops = fsdbFibWatcher_->filterNewNexthops(nexthops);
     if (newNexthops.empty()) {
-      // All already tracked — nothing to do, avoid a needless re-subscribe.
+      // All already tracked — nothing to do.
       return;
     }
+    /*
+     * Adding paths requires the subscription to have been established. In
+     * production subscribe() runs at startup before any RIB-IN nexthops are
+     * learned, so this guard is defensive: if we are not yet subscribed, skip.
+     * The nexthops stay untracked (not added to subscribedPeers_) and are
+     * surfaced again by filterNewNexthops on the next RIB-IN request.
+     */
+    if (!fsdbSubscribed_) {
+      XLOGF(
+          WARNING,
+          "[NeighborWatcher] Skipping add of {} RIB-learned nexthop(s):"
+          " shared FSDB subscription not yet active",
+          newNexthops.size());
+      return;
+    }
+    /*
+     * Prefer live add-path when the connected FSDB server supports it: the new
+     * paths are appended to the running subscription with no teardown. Older
+     * servers lack the API, so fall back to the traditional
+     * stop() -> addPath() -> subscribe(): stop() nulls the subscriber (the
+     * accumulated path set survives), addNexthopPaths stages the new FIB paths
+     * pre-subscribe, and subscribe() re-subscribes the full set. The
+     * re-subscribe re-syncs the whole shared subscription (interfaceMaps + all
+     * FIB routes); both watchers dedup, so no route churn results.
+     */
+    const bool liveAdd = sharedFsdbSubMgr_->supportsLiveAddPath();
     XLOGF(
         INFO,
-        "[NeighborWatcher] Re-subscribing shared FSDB sub to track {} new"
-        " nexthop(s) learned from RIB-IN",
-        newNexthops.size());
-    /**
-     * The patch sub manager's path set is immutable while subscribed: stop the
-     * subscription (resets the subscriber), add the new FIB paths (previously
-     * registered paths persist in the sub manager), then re-subscribe the
-     * entire set. On reconnect, FsdbFibWatcher rebuilds reachability from fresh
-     * notifications.
-     **/
+        "[NeighborWatcher] Adding {} RIB-learned nexthop(s) to the shared FSDB"
+        " subscription (liveAdd={})",
+        newNexthops.size(),
+        liveAdd);
     /*
-     * Resilience: once we stop() the shared subscription we MUST re-subscribe,
-     * otherwise the subscription (also used by FsdbNeighborWatcher) is left
-     * stopped until process restart. addNexthopPaths is best-effort and does
-     * not throw, but guard defensively so no exception can escape this
-     * EventBase callback (which would crash the thread) and so
-     * subscribeLocked() always runs.
+     * Guard every path so no exception can escape this EventBase callback -- an
+     * escaping exception would crash the evb thread and leave the shared
+     * subscription (also used by FsdbNeighborWatcher) torn down until process
+     * restart.
      */
-    sharedFsdbSubMgr_->stop();
+    if (liveAdd) {
+      /*
+       * Live add-path: append the new paths to the already-running
+       * subscription; no teardown, nothing to re-establish.
+       */
+      try {
+        fsdbFibWatcher_->addNexthopPaths(newNexthops, true);
+      } catch (const std::exception& ex) {
+        XLOGF(
+            ERR,
+            "[NeighborWatcher] Failed to live-add RIB-learned nexthop(s): {}",
+            ex.what());
+      }
+      return;
+    }
+    /*
+     * Fallback (older server): stop() -> stage paths -> re-subscribe.
+     *
+     * fsdbSubscribed_ is deliberately NOT cleared here. It records that
+     * startup has run, not that the subscription is healthy right now, and
+     * clearing it would make a failed re-subscribe unrecoverable: the guard
+     * above would skip every later request instead of retrying. Left true, a
+     * failed subscribeLocked() leaves the sub manager with no subscriber, so
+     * supportsLiveAddPath() reads false and the next request carrying a new
+     * nexthop lands back on this path and re-attempts the subscribe.
+     *
+     * stop() and the staging share a try block on purpose: addPath()
+     * CHECK-fails ("Cannot add paths after subscribed") while a subscriber is
+     * still live, so paths must only be staged if the teardown succeeded.
+     * subscribeLocked() gets its OWN block so it ALWAYS runs -- the
+     * accumulated path set survives stop(), so re-subscribing is right even
+     * when staging failed, and skipping it would leave the shared subscription
+     * (also used by FsdbNeighborWatcher) torn down until process restart.
+     */
     try {
-      fsdbFibWatcher_->addNexthopPaths(newNexthops);
+      sharedFsdbSubMgr_->stop();
+      fsdbFibWatcher_->addNexthopPaths(newNexthops, false);
     } catch (const std::exception& ex) {
-      XLOGF(ERR, "[NeighborWatcher] addNexthopPaths failed: {}", ex.what());
+      XLOGF(
+          ERR,
+          "[NeighborWatcher] Failed to stage RIB-learned nexthop(s) on the"
+          " fallback path: {}",
+          ex.what());
     }
     try {
       subscribeLocked();
     } catch (const std::exception& ex) {
       XLOGF(
           ERR,
-          "[NeighborWatcher] re-subscribe after addNexthopPaths failed: {}",
+          "[NeighborWatcher] Failed to re-subscribe the shared FSDB"
+          " subscription on the fallback path: {}",
           ex.what());
     }
   });

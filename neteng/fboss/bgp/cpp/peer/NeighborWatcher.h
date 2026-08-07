@@ -347,8 +347,11 @@ class NeighborWatcher : public BgpModuleBase {
   /**
    * Request that the given nexthops (learned at runtime, e.g. from RIB-IN) be
    * tracked in FSDB. Marshals onto evb_, filters out already-tracked nexthops,
-   * and — if any are new — stops and re-subscribes the shared FSDB sub with the
-   * augmented path set. Safe to call from any thread (e.g. the RIB thread).
+   * and — if any are new — registers their FIB paths. When the connected FSDB
+   * server supports live add-path, the paths are appended to the running shared
+   * subscription (no teardown); otherwise it falls back to
+   * stop() -> addPath() -> subscribeLocked() (a full re-subscribe). Safe to
+   * call from any thread (e.g. the RIB thread).
    **/
   void requestNexthopSubscribe(std::vector<folly::IPAddress> nexthops);
 
@@ -365,12 +368,24 @@ class NeighborWatcher : public BgpModuleBase {
 
  private:
   /*
-   * Body of subscribe(); must run on evb_. Also invoked to re-subscribe after
-   * adding paths at runtime (see requestNexthopSubscribe()).
+   * Body of subscribe(); must run on evb_. Also invoked by
+   * requestNexthopSubscribe() on the older-server fallback path to re-subscribe
+   * the shared subscription after stop()/addPath().
    */
   void subscribeLocked();
 
   std::atomic_bool isRunning_{false};
+
+  /*
+   * Set true once the shared FSDB subscription has been started (end of
+   * subscribeLocked()) and never cleared afterwards: it records that startup
+   * has run, NOT that the subscription is healthy right now. Accessed only on
+   * evb_. Gates requestNexthopSubscribe() against pre-startup requests, for
+   * which there is nothing to add paths to; whether a live subscription
+   * currently exists is answered by FsdbSubManagerBase::supportsLiveAddPath(),
+   * which reads the subscriber itself.
+   */
+  bool fsdbSubscribed_{false};
 
   // Watchers on FSDB.
   std::shared_ptr<FsdbNeighborWatcher> fsdbNbrWatcher_;

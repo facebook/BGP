@@ -113,6 +113,44 @@ fboss::fsdb::FsdbCowStateSubManager::Data makeCowDataWithoutRoute() {
   return cowRoot;
 }
 
+namespace {
+/*
+ * Test seam: a watcher that intercepts path registration so tests can
+ * (a) force failures to exercise addNexthopPaths's no-crash / rollback / retry
+ * behavior and (b) observe whether a nexthop was routed to the live add-path
+ * API (liveAdd=true, for RIB-IN-learned nexthops) or the pre-subscribe addPath
+ * API (liveAdd=false, for statically configured peers) — all without a live
+ * FSDB sub manager. addFsdbPathsForNexthop is virtual for this purpose.
+ */
+class ThrowingFsdbFibWatcher : public FsdbFibWatcher {
+ public:
+  using FsdbFibWatcher::FsdbFibWatcher;
+  int pendingFailures{0}; // next N addFsdbPathsForNexthop calls throw
+  std::vector<std::pair<folly::IPAddress, bool>> calls; // (nexthop, liveAdd)
+
+ private:
+  void addFsdbPathsForNexthop(const folly::IPAddress& nexthop, bool liveAdd)
+      override {
+    if (pendingFailures > 0) {
+      --pendingFailures;
+      throw std::runtime_error("injected addPath failure");
+    }
+    calls.emplace_back(nexthop, liveAdd);
+    /*
+     * The success path otherwise touches nothing on the real sub manager so the
+     * test stays hermetic; the base addNexthopPaths()/addPaths() records the
+     * nexthop in subscribedPeers_ on return.
+     */
+  }
+};
+
+std::shared_ptr<fboss::fsdb::FsdbCowStateSubManager> makeTestSubMgr() {
+  return std::make_shared<fboss::fsdb::FsdbCowStateSubManager>(
+      fboss::fsdb::SubscriptionOptions("test"),
+      fboss::utils::ConnectionOptions("::1", 0));
+}
+} // namespace
+
 // ---------------------------------------------------------------------------
 // FsdbFibWatcherTest: unit tests for FsdbFibWatcher in isolation
 // ---------------------------------------------------------------------------
@@ -248,15 +286,16 @@ TEST_F(FsdbFibWatcherTest, AddNexthopPathsTracksAndDeDupes) {
    * addNexthopPaths() registers new nexthops for tracking; subsequently
    * filterNewNexthops() treats them as already tracked, while a fresh
    * nexthop is still reported as new. Re-adding is idempotent.
+   *
+   * Uses the hermetic ThrowingFsdbFibWatcher seam: addNexthopPaths routes to
+   * addPathToLiveSubscription, which on a real (unsubscribed) sub manager would
+   * abort — the seam records the call instead of touching the sub manager.
    **/
-  auto subMgr = std::make_shared<fboss::fsdb::FsdbCowStateSubManager>(
-      fboss::fsdb::SubscriptionOptions("test"),
-      fboss::utils::ConnectionOptions("::1", 0));
-  auto watcher =
-      std::make_shared<FsdbFibWatcher>(nexthopCache_, ribInQ_, &evb_, subMgr);
+  auto watcher = std::make_shared<ThrowingFsdbFibWatcher>(
+      nexthopCache_, ribInQ_, &evb_, makeTestSubMgr());
 
   // Agent is not running; ensureSwitchIds() falls back to "id=0".
-  watcher->addNexthopPaths({kPeerV4, kPeerV6});
+  watcher->addNexthopPaths({kPeerV4, kPeerV6}, /*liveAdd=*/true);
 
   // Already-tracked nexthops are filtered out.
   EXPECT_TRUE(watcher->filterNewNexthops({kPeerV4, kPeerV6}).empty());
@@ -267,8 +306,42 @@ TEST_F(FsdbFibWatcherTest, AddNexthopPathsTracksAndDeDupes) {
   EXPECT_EQ(fresh.front(), kPeerV6_2);
 
   // Re-adding an already-tracked nexthop is a no-op.
-  watcher->addNexthopPaths({kPeerV4});
+  watcher->addNexthopPaths({kPeerV4}, /*liveAdd=*/true);
   EXPECT_TRUE(watcher->filterNewNexthops({kPeerV4}).empty());
+}
+
+TEST_F(FsdbFibWatcherTest, AddNexthopPathsForwardsLiveAddFlag) {
+  /**
+   * addNexthopPaths forwards its liveAdd flag to addFsdbPathsForNexthop: the
+   * caller (NeighborWatcher) passes liveAdd=true when the server supports live
+   * add-path (append to the running subscription) and liveAdd=false on the
+   * older-server fallback (stage pre-subscribe, then stop/re-subscribe).
+   **/
+  auto watcher = std::make_shared<ThrowingFsdbFibWatcher>(
+      nexthopCache_, ribInQ_, &evb_, makeTestSubMgr());
+
+  watcher->addNexthopPaths({kPeerV4}, /*liveAdd=*/true);
+  watcher->addNexthopPaths({kPeerV6}, /*liveAdd=*/false);
+
+  const std::vector<std::pair<folly::IPAddress, bool>> expected{
+      {kPeerV4, /*liveAdd=*/true}, {kPeerV6, /*liveAdd=*/false}};
+  EXPECT_EQ(expected, watcher->calls);
+}
+
+TEST_F(FsdbFibWatcherTest, RegisterPeersUsesNonLiveAddPath) {
+  /**
+   * Statically configured peers are registered before the initial subscribe
+   * via the plain addPath API (liveAdd=false), NOT the live add-path API.
+   **/
+  auto watcher = std::make_shared<ThrowingFsdbFibWatcher>(
+      nexthopCache_, ribInQ_, &evb_, makeTestSubMgr());
+
+  watcher->registerPeers({kPeerV4});
+  evb_.loopOnce(); // run the scheduled addPaths()
+
+  const std::vector<std::pair<folly::IPAddress, bool>> expected{
+      {kPeerV4, /*liveAdd=*/false}};
+  EXPECT_EQ(expected, watcher->calls);
 }
 
 // ---------------------------------------------------------------------------
@@ -782,38 +855,6 @@ CO_TEST_F(FsdbFibWatcherTest, ProcessFibUpdateUnreachableCostIsNullopt) {
 // addNexthopPaths: failure handling (no crash, rollback, retry)
 // ---------------------------------------------------------------------------
 
-namespace {
-/*
- * Test seam: a watcher whose path registration can be forced to throw, to
- * exercise addNexthopPaths's no-crash / rollback / retry behavior without a
- * live FSDB sub manager. addFsdbPathsForNexthop is virtual for this purpose.
- */
-class ThrowingFsdbFibWatcher : public FsdbFibWatcher {
- public:
-  using FsdbFibWatcher::FsdbFibWatcher;
-  int pendingFailures{0}; // next N addFsdbPathsForNexthop calls throw
-
- private:
-  void addFsdbPathsForNexthop(const folly::IPAddress& /*nexthop*/) override {
-    if (pendingFailures > 0) {
-      --pendingFailures;
-      throw std::runtime_error("injected addPath failure");
-    }
-    /*
-     * Success path is intentionally a no-op: the base addNexthopPaths records
-     * the nexthop in subscribedPeers_ on return. We avoid touching the real sub
-     * manager so the test stays hermetic.
-     */
-  }
-};
-
-std::shared_ptr<fboss::fsdb::FsdbCowStateSubManager> makeTestSubMgr() {
-  return std::make_shared<fboss::fsdb::FsdbCowStateSubManager>(
-      fboss::fsdb::SubscriptionOptions("test"),
-      fboss::utils::ConnectionOptions("::1", 0));
-}
-} // namespace
-
 // A throw while registering paths must not escape addNexthopPaths (no crash),
 // must NOT mark the nexthop as tracked, and the nexthop must be retried (and
 // succeed) on a subsequent request.
@@ -822,7 +863,7 @@ TEST_F(FsdbFibWatcherTest, AddNexthopPathsThrowIsCaughtRolledBackAndRetried) {
       nexthopCache_, ribInQ_, &evb_, makeTestSubMgr());
 
   watcher->pendingFailures = 1; // fail the first registration
-  EXPECT_NO_THROW(watcher->addNexthopPaths({kPeerV4}));
+  EXPECT_NO_THROW(watcher->addNexthopPaths({kPeerV4}, /*liveAdd=*/true));
 
   // Failed nexthop was rolled back -> still considered new (retry-able), not
   // silently skipped.
@@ -831,7 +872,7 @@ TEST_F(FsdbFibWatcherTest, AddNexthopPathsThrowIsCaughtRolledBackAndRetried) {
       watcher->filterNewNexthops({kPeerV4}));
 
   // Retry (no failure armed) succeeds -> nexthop becomes tracked.
-  EXPECT_NO_THROW(watcher->addNexthopPaths({kPeerV4}));
+  EXPECT_NO_THROW(watcher->addNexthopPaths({kPeerV4}, /*liveAdd=*/true));
   EXPECT_TRUE(watcher->filterNewNexthops({kPeerV4}).empty());
 }
 
@@ -841,7 +882,8 @@ TEST_F(FsdbFibWatcherTest, AddNexthopPathsFailureDoesNotBlockOtherNexthops) {
       nexthopCache_, ribInQ_, &evb_, makeTestSubMgr());
 
   watcher->pendingFailures = 1; // only the first nexthop in the batch fails
-  EXPECT_NO_THROW(watcher->addNexthopPaths({kPeerV4, kPeerV6}));
+  EXPECT_NO_THROW(
+      watcher->addNexthopPaths({kPeerV4, kPeerV6}, /*liveAdd=*/true));
 
   // kPeerV4 failed (still new); kPeerV6 succeeded (tracked).
   EXPECT_EQ(
@@ -1051,6 +1093,55 @@ TEST_F(NeighborWatcherFibTest, SubscribeWithFibWatcherIsNoCrash) {
   nbrWatcher->subscribe();
 
   // Clean shutdown
+  nbrWatcher->stop();
+  nbrWatcherThread.join();
+}
+
+TEST_F(NeighborWatcherFibTest, RequestNexthopSubscribeAfterSubscribeIsNoCrash) {
+  /**
+   * After subscribe(), a RIB-learned nexthop is appended to the live shared
+   * subscription (addPathToLiveSubscription) — no stop/re-subscribe. Verify
+   * this path does not crash and shuts down cleanly.
+   **/
+  auto nbrWatcher = std::make_shared<NeighborWatcher>(
+      neighborEventQ_,
+      ribInQ_,
+      false /* enableDsfFastTearDown */,
+      sharedSubMgr_);
+
+  auto nbrWatcherThread = nbrWatcher->runInThread();
+
+  nbrWatcher->startFibWatcher(nexthopCache_, ribInQ_, {kPeerV4});
+  nbrWatcher->subscribe();
+
+  // RIB-IN learns a new nexthop at runtime.
+  nbrWatcher->requestNexthopSubscribe({kPeerV6});
+
+  nbrWatcher->stop();
+  nbrWatcherThread.join();
+}
+
+TEST_F(
+    NeighborWatcherFibTest,
+    RequestNexthopSubscribeBeforeSubscribeIsNoCrash) {
+  /**
+   * requestNexthopSubscribe() before subscribe() must be skipped by the
+   * fsdbSubscribed_ guard: addPathToLiveSubscription requires an active
+   * subscription, so issuing it on an unsubscribed sub manager would abort.
+   * Verify the guard prevents that and the flow is a clean no-op.
+   **/
+  auto nbrWatcher = std::make_shared<NeighborWatcher>(
+      neighborEventQ_,
+      ribInQ_,
+      false /* enableDsfFastTearDown */,
+      sharedSubMgr_);
+
+  auto nbrWatcherThread = nbrWatcher->runInThread();
+
+  nbrWatcher->startFibWatcher(nexthopCache_, ribInQ_, {kPeerV4});
+  // subscribe() deliberately NOT called: the guard must skip the live add.
+  nbrWatcher->requestNexthopSubscribe({kPeerV6});
+
   nbrWatcher->stop();
   nbrWatcherThread.join();
 }

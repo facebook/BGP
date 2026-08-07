@@ -108,11 +108,17 @@ class FsdbFibWatcher : public std::enable_shared_from_this<FsdbFibWatcher> {
 
   /**
    * Register FSDB FIB host-route paths for newly-learned nexthops (e.g., from
-   * RIB-IN). The caller MUST stop the shared subscription first and
-   * re-subscribe the full path set afterwards (addPath cannot run on a live
-   * subscription). Runs on evb_.
+   * RIB-IN). When liveAdd is true (server supports live add-path) the paths are
+   * appended to the already-active subscription via addPathToLiveSubscription,
+   * which stays up and delivers a full-state initial sync on the existing
+   * stream. When liveAdd is false (older server) the paths are staged with the
+   * pre-subscribe addPath(); the caller is responsible for the surrounding
+   * stop()/subscribe() (see NeighborWatcher::requestNexthopSubscribe). Runs on
+   * evb_.
    **/
-  void addNexthopPaths(const std::vector<folly::IPAddress>& newNexthops);
+  void addNexthopPaths(
+      const std::vector<folly::IPAddress>& newNexthops,
+      bool liveAdd);
 
   void stop() noexcept;
 
@@ -181,11 +187,18 @@ class FsdbFibWatcher : public std::enable_shared_from_this<FsdbFibWatcher> {
 
   /**
    * Add FSDB FIB host-route paths (across all switch IDs) for a single
-   * nexthop and record it in subscribedPrefixes_. May throw (e.g. allocation
-   * failure inside the sub manager); callers handle that without crashing.
-   * virtual so tests can inject a failure to exercise the no-crash/retry path.
+   * nexthop and record it in subscribedPrefixes_. When liveAdd is true the
+   * paths are appended to the already-active subscription via
+   * addPathToLiveSubscription (used for RIB-IN-learned nexthops); when false
+   * they are staged with addPath before the initial subscribe (used for
+   * statically configured peers). May throw (e.g. allocation failure or a
+   * client-side validation error inside the sub manager); callers handle that
+   * without crashing. virtual so tests can inject a failure to exercise the
+   * no-crash/retry path.
    **/
-  virtual void addFsdbPathsForNexthop(const folly::IPAddress& nexthop);
+  virtual void addFsdbPathsForNexthop(
+      const folly::IPAddress& nexthop,
+      bool liveAdd);
 
   /**
    * Check if a route exists in the COW tree for the given prefix and

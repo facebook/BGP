@@ -106,17 +106,32 @@ void FsdbFibWatcher::ensureSwitchIds() noexcept {
   }
 }
 
-void FsdbFibWatcher::addFsdbPathsForNexthop(const folly::IPAddress& nexthop) {
+void FsdbFibWatcher::addFsdbPathsForNexthop(
+    const folly::IPAddress& nexthop,
+    bool liveAdd) {
   bool isV4 = nexthop.isV4();
   auto hostPrefix = fmt::format("{}/{}", nexthop.str(), isV4 ? 32 : 128);
+  /*
+   * Route each path to the live add-path API for RIB-IN-learned nexthops (the
+   * subscription is already up), or to the pre-subscribe addPath for statically
+   * configured peers. Templated on the concrete v4/v6 thriftpath type.
+   */
+  auto addOne = [this, liveAdd](auto&& path) {
+    if (liveAdd) {
+      fsdbSubMgr_->addPathToLiveSubscription(
+          std::forward<decltype(path)>(path));
+    } else {
+      fsdbSubMgr_->addPath(std::forward<decltype(path)>(path));
+    }
+  };
   for (const auto& switchId : switchIds_) {
     /*
      * Idempotent guard: skip a (switchId, prefix) path already registered with
      * the sub manager. Without this, a retry after a partial failure (see
      * addNexthopPaths) would re-add an already-registered path and trip the sub
      * manager's fatal "Duplicate path added" CHECK. The key is recorded only
-     * after addPath() succeeds, so a throwing addPath leaves the path eligible
-     * for a clean retry.
+     * after the add succeeds, so a throwing add leaves the path eligible for a
+     * clean retry.
      */
     auto pathKey = fmt::format("{}|{}", switchId, hostPrefix);
     if (registeredFsdbPaths_.contains(pathKey)) {
@@ -127,9 +142,9 @@ void FsdbFibWatcher::addFsdbPathsForNexthop(const folly::IPAddress& nexthop) {
                         .fibsInfoMap()[switchId]
                         .fibsMap()[kDefaultVrfId];
     if (isV4) {
-      fsdbSubMgr_->addPath(basePath.fibV4()[hostPrefix]);
+      addOne(basePath.fibV4()[hostPrefix]);
     } else {
-      fsdbSubMgr_->addPath(basePath.fibV6()[hostPrefix]);
+      addOne(basePath.fibV6()[hostPrefix]);
     }
     registeredFsdbPaths_.insert(pathKey);
     auto pathTokens = isV4 ? basePath.fibV4()[hostPrefix].tokens()
@@ -153,7 +168,7 @@ void FsdbFibWatcher::addPaths() noexcept {
      * single failure cannot crash the daemon nor block the remaining paths.
      */
     try {
-      addFsdbPathsForNexthop(peerAddr);
+      addFsdbPathsForNexthop(peerAddr, /*liveAdd=*/false);
     } catch (const std::exception& ex) {
       ++failed;
       XLOGF(
@@ -188,12 +203,16 @@ std::vector<folly::IPAddress> FsdbFibWatcher::filterNewNexthops(
 }
 
 void FsdbFibWatcher::addNexthopPaths(
-    const std::vector<folly::IPAddress>& newNexthops) {
+    const std::vector<folly::IPAddress>& newNexthops,
+    bool liveAdd) {
   /**
    * Register FSDB FIB host-route paths for nexthops learned at runtime (e.g.,
-   * from RIB-IN). The caller MUST stop the shared subscription first (addPath
-   * asserts there is no live subscriber) and re-subscribe the full path set
-   * afterwards.
+   * from RIB-IN). When liveAdd is true the paths are appended to the
+   * already-active subscription via addPathToLiveSubscription (no
+   * stop/re-subscribe; a full-state initial sync arrives on the existing
+   * stream). When liveAdd is false (older server) the paths are staged with the
+   * pre-subscribe addPath(); the caller wraps this in stop()/subscribe() to
+   * deliver them.
    **/
   ensureSwitchIds();
   size_t added = 0;
@@ -209,11 +228,10 @@ void FsdbFibWatcher::addNexthopPaths(
      * request (retry) rather than silently skipping it forever.
      * addFsdbPathsForNexthop is idempotent, so the retry re-adds only the paths
      * not registered on the failed attempt. The exception is swallowed (logged)
-     * so it can neither crash the process nor abort the remaining nexthops /
-     * the re-subscribe.
+     * so it can neither crash the process nor abort the remaining nexthops.
      */
     try {
-      addFsdbPathsForNexthop(nh);
+      addFsdbPathsForNexthop(nh, liveAdd);
       subscribedPeers_.insert(nh);
       ++added;
     } catch (const std::exception& ex) {
@@ -228,9 +246,11 @@ void FsdbFibWatcher::addNexthopPaths(
   if (added > 0) {
     XLOGF(
         INFO,
-        "[FsdbFibWatcher] Added {} new nexthop(s) for tracking ({} total)",
+        "[FsdbFibWatcher] Added {} new nexthop(s) for tracking ({} total,"
+        " liveAdd={})",
         added,
-        subscribedPeers_.size());
+        subscribedPeers_.size(),
+        liveAdd);
   }
 }
 
