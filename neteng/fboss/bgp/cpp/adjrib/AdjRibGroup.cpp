@@ -31,6 +31,7 @@
 #include "neteng/fboss/bgp/cpp/adjrib/AdjRibCommon.h"
 #include "neteng/fboss/bgp/cpp/adjrib/AdjRibGroup.h"
 #include "neteng/fboss/bgp/cpp/adjrib/AdjRibGroupSerializer.h"
+#include "neteng/fboss/bgp/cpp/adjrib/LegacyV4NlriEncoding.h"
 #include "neteng/fboss/bgp/cpp/adjrib/WellKnownCommunityFilter.h"
 #include "neteng/fboss/bgp/cpp/changeTracker/ConsumerBitmap.h"
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
@@ -1761,16 +1762,57 @@ std::shared_ptr<nettools::bgplib::BgpUpdate2> AdjRibOutGroup::buildGroupUpdate(
   if (postOutAttrs) {
     /* Case 1: Announcement */
     update = postOutAttrs->getBgpUpdate2();
-    update->mpAnnounced()->afi() = afi;
-    update->mpAnnounced()->safi() =
-        nettools::bgplib::BgpUpdateSafi::SAFI_UNICAST;
-    update->mpAnnounced()->nexthop() =
-        network::toBinaryAddress(postOutAttrs->getNexthop());
-
-    packGroupPrefixes(
-        prefixPathIds,
-        *update->mpAnnounced()->prefixes(),
-        groupKey_.sendAddPath);
+    /*
+     * The group path passes the raw path nexthop (not a per-peer transformed
+     * one): a group shares one PDU whose per-peer nexthop-self / policy nexthop
+     * is applied at serialization, so no per-peer transform exists at build
+     * time. The encoding decision depends only on the nexthop family, which is
+     * v4 for a v4 route not using RFC 5549 (already excluded via
+     * extNhEncodingCapable).
+     */
+    const auto& newNexthop = postOutAttrs->getNexthop();
+    switch (v4EncodingDecision(
+        groupKey_,
+        afi == nettools::bgplib::BgpUpdateAfi::AFI_IPv4,
+        newNexthop,
+        groupDescriptor_)) {
+      case V4EncodingDecision::ClassicNlri:
+        /*
+         * Legacy RFC 4271: classic v4 NLRI + NEXT_HOP (attr 3). Set only the
+         * binary v4Nexthop() (what the serializer emits and rewrites per-peer);
+         * attrs()->nexthop() is intentionally left unset to stay symmetric with
+         * the MP branch below, which likewise relies on the binary nexthop.
+         * Unlike the single-peer path (AdjRib::buildUpdateWithSizeEstimation /
+         * buildAndQueueAnnouncements), which also sets the string
+         * attrs()->nexthop(), the group path omits it: group PDUs are
+         * serialized straight from the binary nexthop (per-peer rewritten), so
+         * the string form is never read.
+         */
+        update->v4Nexthop() = network::toBinaryAddress(newNexthop);
+        packGroupPrefixes(
+            prefixPathIds, *update->v4Announced2(), groupKey_.sendAddPath);
+        break;
+      case V4EncodingDecision::Drop:
+        /*
+         * Capability-less peer with a v6 nexthop: drop the route (already
+         * logged) instead of building an UPDATE the peer would reject. Clear
+         * prefixPathIds so buildAndSendGroupBgpMessages erases the map entry
+         * instead of re-picking it forever (it only advances once pfxSet
+         * drains).
+         */
+        prefixPathIds.clear();
+        return nullptr;
+      case V4EncodingDecision::MpReach:
+        update->mpAnnounced()->afi() = afi;
+        update->mpAnnounced()->safi() =
+            nettools::bgplib::BgpUpdateSafi::SAFI_UNICAST;
+        update->mpAnnounced()->nexthop() = network::toBinaryAddress(newNexthop);
+        packGroupPrefixes(
+            prefixPathIds,
+            *update->mpAnnounced()->prefixes(),
+            groupKey_.sendAddPath);
+        break;
+    }
 
   } else {
     /* Case 2: Withdrawal */
@@ -1946,7 +1988,17 @@ folly::coro::Task<void> AdjRibOutGroup::buildAndSendGroupBgpMessages(
       // Update counters
       if (attr) {
         // Announcement
-        announcePrefixCnt += update->mpAnnounced()->prefixes()->size();
+        /*
+         * buildGroupUpdate populates exactly one of mpAnnounced / v4Announced2
+         * per UPDATE, so summing their sizes counts each prefix once. Assert
+         * the mutual exclusion so a future mixed-encoding path cannot silently
+         * double-count.
+         */
+        DCHECK(
+            update->mpAnnounced()->prefixes()->empty() ||
+            update->v4Announced2()->empty());
+        announcePrefixCnt += update->mpAnnounced()->prefixes()->size() +
+            update->v4Announced2()->size();
 
         /* Group-level count of announcement UPDATE PDUs generated once for this
          * group, per AFI (one bump per PDU, mirroring the per-peer AdjRibOut
@@ -1954,6 +2006,10 @@ folly::coro::Task<void> AdjRibOutGroup::buildAndSendGroupBgpMessages(
          * getUpdateGroupInfo attribute these to the group's members. */
         if (afi == nettools::bgplib::BgpUpdateAfi::AFI_IPv4) {
           stats_.incrementSentAnnouncementsIpv4();
+          /* Legacy classic-NLRI v4 announcements land in v4Announced2. */
+          if (!update->v4Announced2()->empty()) {
+            stats_.incrementSentLegacyV4Announcements();
+          }
         } else if (afi == nettools::bgplib::BgpUpdateAfi::AFI_IPv6) {
           stats_.incrementSentAnnouncementsIpv6();
         }

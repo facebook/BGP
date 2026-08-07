@@ -712,6 +712,7 @@ add_library(bgp_adjrib
   neteng/fboss/bgp/cpp/adjrib/AdjRibStats.cpp
   neteng/fboss/bgp/cpp/adjrib/AdjRibStructs.cpp
   neteng/fboss/bgp/cpp/adjrib/AdjRibUtil.cpp
+  neteng/fboss/bgp/cpp/adjrib/LegacyV4NlriEncoding.cpp
   neteng/fboss/bgp/cpp/adjrib/PathIdGenerator.cpp
   neteng/fboss/bgp/cpp/adjrib/RouteFilterLogger.cpp
   neteng/fboss/bgp/cpp/adjrib/UpdateGroupManager.cpp

@@ -155,11 +155,15 @@ class AdjRibStats {
   uint64_t getSentAnnouncementsIpv6() const {
     return sentAnnouncementsIpv6;
   }
+  uint64_t getSentLegacyV4Announcements() const {
+    return sentLegacyV4Announcements;
+  }
   uint64_t getSentWithdrawals() const {
     return sentWithdrawals;
   }
   void incrementSentAnnouncementsIpv4();
   void incrementSentAnnouncementsIpv6();
+  void incrementSentLegacyV4Announcements();
   void incrementSentWithdrawals();
 
   /*
@@ -294,6 +298,8 @@ class AdjRibStats {
   uint64_t recvEndOfRibMsgs{0}; // Number of EoR messages recv (distinct PDU)
   uint64_t sentAnnouncementsIpv4{0}; // Number of update annoucements sent ipv4
   uint64_t sentAnnouncementsIpv6{0}; // Number of update annoucements sent ipv6
+  // Number of ipv4 announcements sent as RFC4271 classic NLRI (legacy path)
+  uint64_t sentLegacyV4Announcements{0};
   uint64_t recvAnnouncementsIpv4{0}; // Number of update annoucements recv ipv4
   uint64_t recvAnnouncementsIpv6{0}; // Number of update annoucements recv ipv6
   uint64_t sentWithdrawals{0}; // Number of update withdrawals sent

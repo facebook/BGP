@@ -19,6 +19,7 @@
 #include "neteng/fboss/bgp/cpp/adjrib/AdjRib.h"
 #include "neteng/fboss/bgp/cpp/adjrib/AdjRibCommon.h"
 #include "neteng/fboss/bgp/cpp/adjrib/AdjRibGroup.h"
+#include "neteng/fboss/bgp/cpp/adjrib/LegacyV4NlriEncoding.h"
 #include "neteng/fboss/bgp/cpp/adjrib/WellKnownCommunityFilter.h"
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
 #include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
@@ -390,7 +391,16 @@ folly::coro::Task<void> AdjRib::sendBgpUpdates(
       /* Update counters and statistics. */
       ++bgpMessageCnt;
       if (attr) {
-        announcePrefixCnt += update->mpAnnounced()->prefixes()->size();
+        /*
+         * Exactly one of mpAnnounced / v4Announced2 is populated per UPDATE
+         * (mutually exclusive per buildUpdateWithSizeEstimation), so summing
+         * counts each prefix once; DCHECK guards a future mixed-encoding path.
+         */
+        DCHECK(
+            update->mpAnnounced()->prefixes()->empty() ||
+            update->v4Announced2()->empty());
+        announcePrefixCnt += update->mpAnnounced()->prefixes()->size() +
+            update->v4Announced2()->size();
       } else {
         if (afi == BgpUpdateAfi::AFI_IPv4) {
           withdrawPrefixCnt += update->v4Withdrawn2()->size();
@@ -585,15 +595,41 @@ std::shared_ptr<BgpUpdate2> AdjRib::buildUpdateWithSizeEstimation(
         attrsWithAfi.isNexthopSetByPolicy);
 
     update = postOutAttrs->getBgpUpdate2();
-    update->mpAnnounced()->afi() = afi;
-    update->mpAnnounced()->safi() = BgpUpdateSafi::SAFI_UNICAST;
-    update->mpAnnounced()->nexthop() = network::toBinaryAddress(newNexthop);
+    /* The NEXT_HOP attribute string is identical for both encodings. */
     update->attrs()->nexthop() = newNexthop.str();
-
-    packPrefixesWithLimit(
-        kApproxSerializedAttrLen,
-        prefixPathIds,
-        *update->mpAnnounced()->prefixes());
+    switch (v4EncodingDecision(
+        updateGroupKey_,
+        afi == BgpUpdateAfi::AFI_IPv4,
+        newNexthop,
+        getPeerName())) {
+      case V4EncodingDecision::ClassicNlri:
+        /* Legacy RFC 4271: classic v4 NLRI + NEXT_HOP (attr 3). */
+        update->v4Nexthop() = network::toBinaryAddress(newNexthop);
+        packPrefixesWithLimit(
+            kApproxSerializedAttrLen, prefixPathIds, *update->v4Announced2());
+        if (!update->v4Announced2()->empty()) {
+          stats_.incrementSentLegacyV4Announcements();
+        }
+        break;
+      case V4EncodingDecision::Drop:
+        /*
+         * Capability-less peer with a v6 nexthop: the route cannot be encoded
+         * for this peer, so drop it (v4EncodingDecision has already logged).
+         * Clear prefixPathIds so sendBgpUpdates erases the map entry instead of
+         * re-picking it forever (it only advances once pfxSet is drained).
+         */
+        prefixPathIds.clear();
+        return nullptr;
+      case V4EncodingDecision::MpReach:
+        update->mpAnnounced()->afi() = afi;
+        update->mpAnnounced()->safi() = BgpUpdateSafi::SAFI_UNICAST;
+        update->mpAnnounced()->nexthop() = network::toBinaryAddress(newNexthop);
+        packPrefixesWithLimit(
+            kApproxSerializedAttrLen,
+            prefixPathIds,
+            *update->mpAnnounced()->prefixes());
+        break;
+    }
 
     if (afi == BgpUpdateAfi::AFI_IPv4) {
       stats_.incrementSentAnnouncementsIpv4();
@@ -685,13 +721,38 @@ uint32_t AdjRib::buildAndQueueAnnouncements(uint64_t& bgpMessageCnt) noexcept {
         attrsWithAfi.isNexthopSetByPolicy);
 
     auto update = postOutAttrs->getBgpUpdate2();
-    update->mpAnnounced()->afi() = afi;
-    update->mpAnnounced()->safi() = BgpUpdateSafi::SAFI_UNICAST;
-    update->mpAnnounced()->nexthop() = network::toBinaryAddress(newNexthop);
+    /* The NEXT_HOP attribute string is identical for both encodings. */
     update->attrs()->nexthop() = newNexthop.str();
-
-    prefixesAnnounced +=
-        packPrefixes(prefixPathIds, *update->mpAnnounced()->prefixes());
+    switch (v4EncodingDecision(
+        updateGroupKey_,
+        afi == BgpUpdateAfi::AFI_IPv4,
+        newNexthop,
+        getPeerName())) {
+      case V4EncodingDecision::ClassicNlri:
+        /* Legacy RFC 4271: classic v4 NLRI + NEXT_HOP (attr 3). */
+        update->v4Nexthop() = network::toBinaryAddress(newNexthop);
+        prefixesAnnounced +=
+            packPrefixes(prefixPathIds, *update->v4Announced2());
+        if (!update->v4Announced2()->empty()) {
+          stats_.incrementSentLegacyV4Announcements();
+        }
+        break;
+      case V4EncodingDecision::Drop:
+        /*
+         * Capability-less peer with a v6 nexthop: drop the route (already
+         * logged) instead of enqueuing an UPDATE the peer would reject. Clear
+         * prefixPathIds so the entry is treated as fully processed.
+         */
+        prefixPathIds.clear();
+        continue;
+      case V4EncodingDecision::MpReach:
+        update->mpAnnounced()->afi() = afi;
+        update->mpAnnounced()->safi() = BgpUpdateSafi::SAFI_UNICAST;
+        update->mpAnnounced()->nexthop() = network::toBinaryAddress(newNexthop);
+        prefixesAnnounced +=
+            packPrefixes(prefixPathIds, *update->mpAnnounced()->prefixes());
+        break;
+    }
 
     // Enqueue update
     bgpMessageCnt++;

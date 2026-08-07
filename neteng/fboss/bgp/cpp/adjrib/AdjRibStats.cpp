@@ -52,6 +52,7 @@ void AdjRibStats::clear() {
   recvEndOfRibMsgs = 0;
   sentAnnouncementsIpv4 = 0;
   sentAnnouncementsIpv6 = 0;
+  sentLegacyV4Announcements = 0;
   recvAnnouncementsIpv4 = 0;
   recvAnnouncementsIpv6 = 0;
   sentWithdrawals = 0;
@@ -75,6 +76,7 @@ void AdjRibStats::clearEgressMessageCounts() {
   sentEndOfRibMsgs = 0;
   sentAnnouncementsIpv4 = 0;
   sentAnnouncementsIpv6 = 0;
+  sentLegacyV4Announcements = 0;
   sentWithdrawals = 0;
 }
 
@@ -172,6 +174,10 @@ void AdjRibStats::incrementSentAnnouncementsIpv4() {
 void AdjRibStats::incrementSentAnnouncementsIpv6() {
   sentAnnouncementsIpv6++;
   PeerStats::incrMessageSentAnnouncedIpv6(peerIdOdsStr);
+}
+
+void AdjRibStats::incrementSentLegacyV4Announcements() {
+  sentLegacyV4Announcements++;
 }
 
 void AdjRibStats::incrementSentWithdrawals() {
