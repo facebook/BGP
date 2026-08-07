@@ -285,6 +285,7 @@ class AdjRib : boost::noncopyable,
         enableUpdateGroup_ = globalConfig->enableUpdateGroup;
         enableOptimizedGR_ = globalConfig->enableOptimizedGR;
         enableAddPathGrReconcile_ = globalConfig->enableAddPathGrReconcile;
+        enableLegacyV4NlriEncoding_ = globalConfig->enableLegacyV4NlriEncoding;
         enableDynamicPolicyEvaluation_ =
             globalConfig->enableDynamicPolicyEvaluation;
       }
@@ -2623,6 +2624,15 @@ class AdjRib : boost::noncopyable,
    * gate in a later diff; nothing reads it yet.
    */
   bool enableAddPathGrReconcile_{false};
+
+  /**
+   * Enable RFC 4271 classic IPv4-unicast NLRI encoding toward capability-less
+   * peers (default off). Read in buildAndSetUpdateGroupKey() to gate the
+   * legacyV4NlriEncoding key bit; when false every peer keeps MP_REACH and no
+   * legacy update group is formed -- exact pre-feature behavior, for instant
+   * rollback via config.
+   */
+  bool enableLegacyV4NlriEncoding_{false};
 
   /**
    * Counter tracking the number of stale entries.

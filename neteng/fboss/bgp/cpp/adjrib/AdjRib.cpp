@@ -699,8 +699,13 @@ const UpdateGroupKey& AdjRib::buildAndSetUpdateGroupKey() {
        * negotiated there, so no v4 UPDATE is built), so remoteMpExtExist_ alone
        * suffices. Keys capability-less peers into their own update group so
        * they never share a group with MP peers.
+       *
+       * Gated by the enable_legacy_v4_nlri_encoding thrift config knob (default
+       * off): when off this stays false for every peer, so the encoder falls
+       * back to MP_REACH and no legacy update group is formed -- exact
+       * pre-feature behavior, for instant rollback via config.
        */
-      isAfiIpv4Negotiated_ && !remoteMpExtExist_,
+      enableLegacyV4NlriEncoding_ && isAfiIpv4Negotiated_ && !remoteMpExtExist_,
       peeringParams_.peerGroupName.value_or(""),
       hasPeerEgressPolicyOverride());
   return updateGroupKey_;

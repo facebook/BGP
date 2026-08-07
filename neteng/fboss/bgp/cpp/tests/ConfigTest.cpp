@@ -301,6 +301,46 @@ TEST_F(ConfigTestFixture, enableAddPathGrReconcileTest) {
   }
 }
 
+/*
+ * Verifies enable_legacy_v4_nlri_encoding parses from thrift::BgpConfig into
+ * BgpGlobalConfig with default-off semantics: unset (with or without
+ * bgp_setting_config) stays false, an explicit true propagates, and an
+ * explicit false stays false.
+ */
+TEST_F(ConfigTestFixture, enableLegacyV4NlriEncodingTest) {
+  thrift::BgpConfig thriftConfig;
+  thriftConfig.router_id() = kLocalAddr1.str();
+
+  // Default: no bgp_setting_config -> flag defaults to false.
+  {
+    Config config(thriftConfig);
+    EXPECT_FALSE(config.getBgpGlobalConfig()->enableLegacyV4NlriEncoding);
+  }
+
+  // bgp_setting_config present but flag unset -> still false.
+  {
+    thriftConfig.bgp_setting_config() = thrift::BgpSettingConfig();
+    Config config(thriftConfig);
+    EXPECT_FALSE(config.getBgpGlobalConfig()->enableLegacyV4NlriEncoding);
+  }
+
+  // Flag set true -> propagates to BgpGlobalConfig.
+  {
+    thriftConfig.bgp_setting_config() = thrift::BgpSettingConfig();
+    thriftConfig.bgp_setting_config()->enable_legacy_v4_nlri_encoding() = true;
+    Config config(thriftConfig);
+    EXPECT_TRUE(config.getBgpGlobalConfig()->enableLegacyV4NlriEncoding);
+  }
+
+  // Flag set false -> false.
+  {
+    thriftConfig.bgp_setting_config() = thrift::BgpSettingConfig();
+    thriftConfig.bgp_setting_config()->enable_legacy_v4_nlri_encoding() = false;
+    Config config(thriftConfig);
+    EXPECT_FALSE(config.getBgpGlobalConfig()->enableLegacyV4NlriEncoding);
+  }
+}
+
 TEST_F(ConfigTestFixture, ThriftServerConfigTest) {
   thrift::BgpConfig bgpConfig;
   bgpConfig.router_id() = kLocalAddr1.str();

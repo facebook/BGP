@@ -133,7 +133,8 @@ struct BgpGlobalConfig {
       const bool enableRibAllocatedPathId = false,
       const bool enableOptimizedGR = false,
       const bool enablePolicyDefaultAction = false,
-      const bool enableAddPathGrReconcile = false)
+      const bool enableAddPathGrReconcile = false,
+      const bool enableLegacyV4NlriEncoding = false)
       : localAsn(localAsn),
         routerId(routerId),
         clusterId(clusterId),
@@ -166,7 +167,8 @@ struct BgpGlobalConfig {
         enableRibAllocatedPathId(enableRibAllocatedPathId),
         enableOptimizedGR(enableOptimizedGR),
         enablePolicyDefaultAction(enablePolicyDefaultAction),
-        enableAddPathGrReconcile(enableAddPathGrReconcile) {}
+        enableAddPathGrReconcile(enableAddPathGrReconcile),
+        enableLegacyV4NlriEncoding(enableLegacyV4NlriEncoding) {}
 
   const uint32_t localAsn;
   const folly::IPAddress routerId;
@@ -299,6 +301,15 @@ struct BgpGlobalConfig {
    * Enable add-path receive reconciliation across a peer graceful restart.
    */
   const bool enableAddPathGrReconcile{false};
+
+  /**
+   * Enable RFC 4271 classic IPv4-unicast NLRI encoding toward capability-less
+   * peers (peers that advertised no MP-EXT capability). When enabled, their
+   * IPv4-unicast announcements are encoded as classic NLRI + NEXT_HOP instead
+   * of MP_REACH_NLRI, and they are keyed into their own update group. Default
+   * off: every peer keeps MP_REACH and existing update groups are unchanged.
+   */
+  const bool enableLegacyV4NlriEncoding{false};
 };
 
 struct BgpCommonPeerGroupConfig {

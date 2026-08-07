@@ -17,16 +17,20 @@
 /*
  * E2E tests for legacy IPv4-unicast NLRI encoding toward capability-less peers.
  *
- * A peer that advertised no MP-EXT capability (BgpPeerSpec::mpExtCapable=false)
- * receives IPv4 announcements as classic NLRI + NEXT_HOP (attr 3, RFC 4271),
- * while an MP-capable peer keeps receiving MP_REACH_NLRI (attr 14). The two
- * encodings never share an update group.
+ * The behavior is gated by the enable_legacy_v4_nlri_encoding thrift config
+ * knob (BgpSettingConfig, default off), plumbed Config -> BgpGlobalConfig ->
+ * AdjRib. A capability-less peer advertised no MP-EXT capability
+ * (BgpPeerSpec::mpExtCapable = false):
+ *   - config true        -> classic v4 NLRI + NEXT_HOP (attr 3, RFC 4271):
+ *                           v4Announced2() populated, mpAnnounced() empty
+ *   - config unset/false -> MP_REACH_NLRI (attr 14), same as an MP peer:
+ *                           mpAnnounced() populated with afi=AFI_IPv4
+ * An MP-capable peer always receives MP_REACH regardless of the config, and a
+ * v4 withdrawal is always classic (the gate is announcement-only).
  *
  * Wire encoding is asserted on the raw BgpUpdate2 drained off each peer's
  * egress queue, because verifyRouteAdd() accepts either encoding and cannot
- * prove which one was used:
- *   - classic v4 NLRI  -> v4Announced2() populated, mpAnnounced() empty
- *   - MP_REACH_NLRI    -> mpAnnounced() populated with afi=AFI_IPv4
+ * prove which one was used.
  */
 
 #include <gtest/gtest.h>
@@ -46,6 +50,9 @@ using nettools::bgplib::BgpUpdateAfi;
  * peer5 is an MP source used to originate the prefix that is then advertised to
  * both peer3 and peer4. Observing the SAME prefix on both receivers isolates
  * the per-peer encoding decision.
+ *
+ * SetUp() only registers peers; each test calls buildRib() to construct the
+ * RIB/peer-manager, choosing the thrift config gate state per test.
  */
 class E2ELegacyV4NlriEncodingTest : public E2ESessionTestFixture {
  protected:
@@ -56,7 +63,18 @@ class E2ELegacyV4NlriEncodingTest : public E2ESessionTestFixture {
 
     addPeer(kDefaultPeerSpec4); /* MP receiver */
     addPeer(kDefaultPeerSpec5); /* MP source */
+  }
 
+  /*
+   * Build the RIB and peer manager with the legacy v4 NLRI encoding thrift
+   * config gate on or off. When legacyEncoding is false the config field is
+   * left unset, exercising the default-off ("not present") path that mirrors
+   * the removed gflag's default.
+   */
+  void buildRib(bool legacyEncoding) {
+    if (legacyEncoding) {
+      enableLegacyV4NlriEncoding(true);
+    }
     createRib();
     createPeerManager(
         /*enableUpdateGroup=*/false,
@@ -82,10 +100,15 @@ class E2ELegacyV4NlriEncodingTest : public E2ESessionTestFixture {
 };
 
 /*
- * The capability-less peer (peer3) receives an IPv4 announcement as classic
- * NLRI + NEXT_HOP, while the MP peer (peer4) receives MP_REACH_NLRI.
+ * Feature enabled (config true): the capability-less peer (peer3) receives an
+ * IPv4 announcement as classic NLRI + NEXT_HOP, while the MP peer (peer4)
+ * receives MP_REACH_NLRI.
  */
-TEST_F(E2ELegacyV4NlriEncodingTest, LegacyPeerClassicNlriMpPeerMpReach) {
+TEST_F(
+    E2ELegacyV4NlriEncodingTest,
+    CapabilityLessPeerClassicNlriMpPeerMpReach) {
+  buildRib(/*legacyEncoding=*/true);
+
   bringUpAllPeersWithEoR();
 
   auto prefix = folly::IPAddress::createNetwork("10.0.0.0/8");
@@ -115,21 +138,49 @@ TEST_F(E2ELegacyV4NlriEncodingTest, LegacyPeerClassicNlriMpPeerMpReach) {
 }
 
 /*
- * Regression guard for the "gap is announcement-only" invariant: v4 withdrawals
- * to the capability-less peer are classic (v4Withdrawn2). Verify a withdrawal
- * uses v4Withdrawn2 and never MP_UNREACH.
+ * Feature disabled (config unset/false): the gate is off, so the
+ * capability-less peer (peer3) receives MP_REACH_NLRI just like an MP peer --
+ * exact pre-feature behavior, matching the removed gflag's default-off state.
  */
-TEST_F(E2ELegacyV4NlriEncodingTest, WithdrawalToLegacyPeerIsClassic) {
+TEST_F(E2ELegacyV4NlriEncodingTest, CapabilityLessPeerMpReachWhenDisabled) {
+  buildRib(/*legacyEncoding=*/false);
+
   bringUpAllPeersWithEoR();
 
   auto prefix = folly::IPAddress::createNetwork("10.0.0.0/8");
   addRoute("v4", "10.0.0.0", 8, kPeerAddr5, "11.0.0.1", "65005");
   ASSERT_TRUE(waitForRouteInShadowRib(prefix));
 
-  /* Drain the announcement to peer3 first. */
+  /* peer3 (capability-less) with the feature off: MP_REACH, no classic NLRI. */
+  auto toLegacy = waitForOutboundUpdate(peerId3_);
+  ASSERT_TRUE(toLegacy.has_value());
+  const auto& legacyUpdate = **toLegacy;
+  EXPECT_FALSE(legacyUpdate.mpAnnounced()->prefixes()->empty())
+      << "feature off: capability-less peer must receive MP_REACH";
+  EXPECT_EQ(BgpUpdateAfi::AFI_IPv4, *legacyUpdate.mpAnnounced()->afi());
+  EXPECT_TRUE(legacyUpdate.v4Announced2()->empty())
+      << "feature off: capability-less peer must NOT receive classic v4 NLRI";
+}
+
+/*
+ * Regression guard for the "gap is announcement-only" invariant with the
+ * feature enabled: a v4 withdrawal to the capability-less peer is always
+ * classic (v4Withdrawn2), never MP_UNREACH.
+ */
+TEST_F(E2ELegacyV4NlriEncodingTest, WithdrawalToCapabilityLessPeerIsClassic) {
+  buildRib(/*legacyEncoding=*/true);
+
+  bringUpAllPeersWithEoR();
+
+  auto prefix = folly::IPAddress::createNetwork("10.0.0.0/8");
+  addRoute("v4", "10.0.0.0", 8, kPeerAddr5, "11.0.0.1", "65005");
+  ASSERT_TRUE(waitForRouteInShadowRib(prefix));
+
+  /* Drain the classic announcement to peer3 first. */
   auto announce = waitForOutboundUpdate(peerId3_);
   ASSERT_TRUE(announce.has_value());
-  EXPECT_FALSE((*announce)->v4Announced2()->empty());
+  EXPECT_FALSE((*announce)->v4Announced2()->empty())
+      << "announcement to capability-less peer must be classic v4 NLRI";
 
   /* Now withdraw and confirm the withdrawal is classic v4, not MP_UNREACH. */
   deleteRoute("v4", "10.0.0.0", 8, kPeerAddr5);

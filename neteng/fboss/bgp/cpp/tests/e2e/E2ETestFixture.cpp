@@ -116,6 +116,9 @@ std::shared_ptr<Config> E2ETestFixture::getConfig(
   if (enableEiBgpMultipath_) {
     tBgpSettingConfig.enable_eibgp_multipath() = true;
   }
+  if (enableLegacyV4NlriEncoding_) {
+    tBgpSettingConfig.enable_legacy_v4_nlri_encoding() = true;
+  }
   thriftConfig.bgp_setting_config() = std::move(tBgpSettingConfig);
 
   FeatureFlags::LoadFromThriftConfig(thriftConfig);
@@ -3048,6 +3051,10 @@ void E2ETestFixture::enableComputeUcmpFromLbw(bool enable) {
 
 void E2ETestFixture::enableEiBgpMultipath(bool enable) {
   enableEiBgpMultipath_ = enable;
+}
+
+void E2ETestFixture::enableLegacyV4NlriEncoding(bool enable) {
+  enableLegacyV4NlriEncoding_ = enable;
 }
 
 // ==================== NEXTHOP TRACKING IMPLEMENTATIONS ====================

@@ -942,6 +942,7 @@ void Config::populateConfigDatabase(
   bool enableEgressQueueBackpressure{false};
   bool enableOptimizedGR{false};
   bool enableAddPathGrReconcile{false};
+  bool enableLegacyV4NlriEncoding{false};
   std::vector<std::string> includeInterfaceRegexes{};
 
   if (auto setting = config_.bgp_setting_config()) {
@@ -974,6 +975,10 @@ void Config::populateConfigDatabase(
     }
     if (auto addPathGrReconcileFlag = setting->enable_addpath_gr_reconcile()) {
       enableAddPathGrReconcile = *addPathGrReconcileFlag;
+    }
+    if (auto legacyV4NlriEncodingFlag =
+            setting->enable_legacy_v4_nlri_encoding()) {
+      enableLegacyV4NlriEncoding = *legacyV4NlriEncodingFlag;
     }
     if (auto ugConfig = setting->update_group_config()) {
       updateGroupConfig.enableSerializeGroupPdu =
@@ -1038,7 +1043,8 @@ void Config::populateConfigDatabase(
       false /* enableRibAllocatedPathId */,
       enableOptimizedGR,
       false /* enablePolicyDefaultAction */,
-      enableAddPathGrReconcile);
+      enableAddPathGrReconcile,
+      enableLegacyV4NlriEncoding);
 
   // populate peer groups
   if (config_.peer_groups().has_value()) {

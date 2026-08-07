@@ -1275,6 +1275,15 @@ class E2ETestFixture : public ::testing::Test {
   void enableEiBgpMultipath(bool enable = true);
 
   /*
+   * Enable legacy IPv4-unicast NLRI encoding for capability-less peers.
+   * Call before createRib(). Pass true to set the thrift config
+   * enable_legacy_v4_nlri_encoding = true so a capability-less peer receives
+   * classic v4 NLRI + NEXT_HOP; pass false to leave it unset/disabled so every
+   * peer keeps MP_REACH. No default -- the caller must state the gate state.
+   */
+  void enableLegacyV4NlriEncoding(bool enable);
+
+  /*
    * Override the update group config used by createPeerManager().
    * Call before createPeerManager() to set slow peer thresholds, etc.
    */
@@ -1332,6 +1341,9 @@ class E2ETestFixture : public ::testing::Test {
 
   // eiBGP configuration: equalize eBGP and iBGP paths
   bool enableEiBgpMultipath_ = false;
+
+  // Legacy v4 NLRI encoding for capability-less peers (thrift config gate)
+  bool enableLegacyV4NlriEncoding_ = false;
 
   // Update group config override (call setUpdateGroupConfig before
   // createPeerManager to override slow peer thresholds etc.)
