@@ -50,6 +50,9 @@ EXCLUDED_FILES = {
     # RibBB.cpp lives in cpp/rib/ but is BB-only (its header is excluded from
     # the OSS install set).
     "RibBB.cpp",
+    # StatsBB.cpp lives in cpp/stats/ but is BB-only (its header is excluded
+    # from the OSS install set).
+    "StatsBB.cpp",
 }
 EXCLUDED_THRIFT = {"BmpStructs.thrift"}
 
