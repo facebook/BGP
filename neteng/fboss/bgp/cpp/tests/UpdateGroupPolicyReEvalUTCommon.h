@@ -910,6 +910,13 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
     displayInfo.remoteBgpId = peerId.remoteBgpId;
     displayInfo.negotiatedCapabilities.mpExtV4Unicast() = true;
     displayInfo.negotiatedCapabilities.as4byte() = true;
+    /*
+     * MP-capable peer: advertised MP-EXT in its OPEN. Without this the thrift
+     * default (false) makes buildUpdateGroupKey compute legacyV4NlriEncoding =
+     * isAfiIpv4Negotiated && !remoteMpExtExist = true, splitting these peers
+     * into a legacy update group and breaking group-formation expectations.
+     */
+    displayInfo.remoteCapabilities.mpExtExist() = true;
 
     auto sessionInfo = nettools::bgplib::FiberBgpPeer::getObservableSessionInfo(
         displayInfo, adjRibOutQ, boundedAdjRibOutQ, adjRibInQ, versionNumber);

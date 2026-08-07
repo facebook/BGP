@@ -37,6 +37,7 @@ bool UpdateGroupKey::operator==(const UpdateGroupKey& other) const {
       sendAddPath == other.sendAddPath &&
       as4ByteCapable == other.as4ByteCapable &&
       extNhEncodingCapable == other.extNhEncodingCapable &&
+      legacyV4NlriEncoding == other.legacyV4NlriEncoding &&
       peerGroupName == other.peerGroupName &&
       peerOverride == other.peerOverride;
 }
@@ -58,6 +59,7 @@ size_t UpdateGroupKey::hash() const {
       sendAddPath,
       as4ByteCapable,
       extNhEncodingCapable,
+      legacyV4NlriEncoding,
       peerGroupName,
       peerOverride);
 }
@@ -80,6 +82,7 @@ UpdateGroupKey UpdateGroupKey::buildUpdateGroupKey(
     bool sendAddPath,
     bool as4ByteCapable,
     bool extNhEncodingCapable,
+    bool legacyV4NlriEncoding,
     std::string peerGroupName,
     bool peerOverride) {
   return UpdateGroupKey{
@@ -98,13 +101,14 @@ UpdateGroupKey UpdateGroupKey::buildUpdateGroupKey(
       sendAddPath,
       as4ByteCapable,
       extNhEncodingCapable,
+      legacyV4NlriEncoding,
       std::move(peerGroupName),
       peerOverride};
 }
 
 std::string UpdateGroupKey::toString(const UpdateGroupKey& key) {
   return fmt::format(
-      "{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}",
+      "{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}",
       key.egressPolicyName.value_or(""),
       key.routeFilterStmtName,
       key.outDelay.count(),
@@ -124,6 +128,7 @@ std::string UpdateGroupKey::toString(const UpdateGroupKey& key) {
       key.sendAddPath,
       key.as4ByteCapable,
       key.extNhEncodingCapable,
+      key.legacyV4NlriEncoding,
       key.peerGroupName,
       key.peerOverride);
 }
@@ -152,6 +157,7 @@ facebook::neteng::fboss::bgp::thrift::TUpdateGroupKey UpdateGroupKey::toThrift()
   t.send_add_path() = sendAddPath;
   t.as4_byte_capable() = as4ByteCapable;
   t.ext_nh_encoding_capable() = extNhEncodingCapable;
+  t.legacy_v4_nlri_encoding() = legacyV4NlriEncoding;
   t.peer_group_name() = peerGroupName;
   t.peer_override() = peerOverride;
   return t;

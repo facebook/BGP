@@ -162,6 +162,16 @@ TEST(UpdateGroupKeyTest, InequalityDifferentExtNhEncodingCapable) {
   EXPECT_FALSE(key1 == key2);
 }
 
+TEST(UpdateGroupKeyTest, InequalityDifferentLegacyV4NlriEncoding) {
+  UpdateGroupKey key1;
+  key1.legacyV4NlriEncoding = false;
+
+  UpdateGroupKey key2 = key1;
+  key2.legacyV4NlriEncoding = true;
+
+  EXPECT_FALSE(key1 == key2);
+}
+
 TEST(UpdateGroupKeyTest, HashConsistency) {
   UpdateGroupKey key1;
   key1.egressPolicyName = "policy1";
@@ -241,6 +251,7 @@ TEST(UpdateGroupKeyTest, CompleteFieldsTest) {
       true, /* sendAddPath */
       true, /* as4ByteCapable */
       false, /* extNhEncodingCapable */
+      false, /* legacyV4NlriEncoding */
       "", /* peerGroupName */
       false /* peerOverride */);
   auto key2 = UpdateGroupKey::buildUpdateGroupKey(
@@ -259,6 +270,7 @@ TEST(UpdateGroupKeyTest, CompleteFieldsTest) {
       true, /* sendAddPath */
       true, /* as4ByteCapable */
       false, /* extNhEncodingCapable */
+      false, /* legacyV4NlriEncoding */
       "", /* peerGroupName */
       false /* peerOverride */);
 

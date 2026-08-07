@@ -1750,6 +1750,7 @@ TEST_F(AdjRibOutboundFixture, UpdateGroupKeyCreationTest) {
         false, /* sendAddPath */
         true, /* as4ByteCapable */
         false, /* extNhEncodingCapable */
+        false, /* legacyV4NlriEncoding */
         "", /* peerGroupName */
         false /* peerOverride */
     );

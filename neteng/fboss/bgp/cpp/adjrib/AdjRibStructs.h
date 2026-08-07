@@ -52,6 +52,8 @@ struct UpdateGroupKey {
   bool sendAddPath{false};
   bool as4ByteCapable{true}; /* Negotiated 4-byte ASN capability */
   bool extNhEncodingCapable{false}; /* Negotiated RFC5549 capability */
+  bool legacyV4NlriEncoding{
+      false}; /* Peer gets RFC4271 classic v4 NLRI instead of MP_REACH */
   std::string peerGroupName; /* Peer group this peer belongs to */
   bool peerOverride{
       false}; /* Whether peer has per-peer egress policy override */
@@ -77,6 +79,7 @@ struct UpdateGroupKey {
       bool sendAddPath,
       bool as4ByteCapable,
       bool extNhEncodingCapable,
+      bool legacyV4NlriEncoding,
       std::string peerGroupName,
       bool peerOverride);
 

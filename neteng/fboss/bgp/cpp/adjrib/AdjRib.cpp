@@ -692,6 +692,15 @@ const UpdateGroupKey& AdjRib::buildAndSetUpdateGroupKey() {
       sendAddPath_,
       as4ByteCapable_,
       extNhEncodingCapable_,
+      /*
+       * legacyV4NlriEncoding: true for a peer that negotiated v4-unicast but
+       * advertised no MP-EXT (capability-less / RFC 1771). isAfiIpv4Negotiated_
+       * already excludes the MP-EXT-without-v4-unicast case (v4 is not
+       * negotiated there, so no v4 UPDATE is built), so remoteMpExtExist_ alone
+       * suffices. Keys capability-less peers into their own update group so
+       * they never share a group with MP peers.
+       */
+      isAfiIpv4Negotiated_ && !remoteMpExtExist_,
       peeringParams_.peerGroupName.value_or(""),
       hasPeerEgressPolicyOverride());
   return updateGroupKey_;

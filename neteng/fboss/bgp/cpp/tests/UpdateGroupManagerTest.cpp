@@ -87,6 +87,7 @@ UpdateGroupKey createTestKey(
     bool sendAddPath = false,
     bool as4ByteCapable = true,
     bool extNhEncodingCapable = false,
+    bool legacyV4NlriEncoding = false,
     std::string peerGroupName = "",
     bool peerOverride = false) {
   return UpdateGroupKey::buildUpdateGroupKey(
@@ -105,6 +106,7 @@ UpdateGroupKey createTestKey(
       sendAddPath,
       as4ByteCapable,
       extNhEncodingCapable,
+      legacyV4NlriEncoding,
       std::move(peerGroupName),
       peerOverride);
 }
@@ -460,6 +462,7 @@ TEST_F(UpdateGroupManagerTest, ToThriftConvertsAllFields) {
       /*sendAddPath=*/false,
       /*as4ByteCapable=*/true,
       /*extNhEncodingCapable=*/true,
+      /*legacyV4NlriEncoding=*/true,
       "spine_peers",
       /*peerOverride=*/true);
 
@@ -484,6 +487,7 @@ TEST_F(UpdateGroupManagerTest, ToThriftConvertsAllFields) {
   EXPECT_FALSE(thriftKey.send_add_path().value());
   EXPECT_TRUE(thriftKey.as4_byte_capable().value());
   EXPECT_TRUE(thriftKey.ext_nh_encoding_capable().value());
+  EXPECT_TRUE(thriftKey.legacy_v4_nlri_encoding().value());
   EXPECT_EQ("spine_peers", thriftKey.peer_group_name().value());
   EXPECT_TRUE(thriftKey.peer_override().value());
 }
