@@ -705,6 +705,9 @@ TBgpSession PeerManagerBase::getDetailSessionInfo(
       tBgpSessionDetail.eor_received_time() =
           adjRibs_.at(bgpPeerId)->eorReceivedTime();
       tBgpSessionDetail.num_of_flaps() = adjRibs_.at(bgpPeerId)->flapCounter();
+      /* Whether this peer is using RFC 4271 legacy v4-unicast NLRI encoding. */
+      tBgpSessionDetail.legacy_v4_nlri_encoding() =
+          adjRibs_.at(bgpPeerId)->getUpdateGroupKey().legacyV4NlriEncoding;
 
       // Control-plane per-type message counts (PeerManager / AdjRib), the
       // counterpart to the socket_* counts below. Recv side is per-peer; the

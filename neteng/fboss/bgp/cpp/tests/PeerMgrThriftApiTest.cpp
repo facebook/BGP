@@ -749,6 +749,9 @@ TEST_F(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest) {
     EXPECT_EQ(kPerPeerRecvEoRs, d.adjrib_recv_eor_msgs().value());
     EXPECT_EQ(kPerPeerSentUpdates, d.adjrib_sent_update_msgs().value());
     EXPECT_EQ(kPerPeerSentEoRs, d.adjrib_sent_eor_msgs().value());
+    // legacy_v4_nlri_encoding is surfaced from the AdjRib update-group key
+    // (default false for an MP-capable peer).
+    EXPECT_FALSE(d.legacy_v4_nlri_encoding().value());
     // No group yet: announcement/withdrawal PDU counts are per-peer.
     EXPECT_EQ(
         kPerPeerSentAnnouncementsV4,
