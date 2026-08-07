@@ -1340,6 +1340,81 @@ CO_TEST_F(
   EXPECT_TRUE(rib_->isCrfFileModeEnabled());
 }
 
+/*
+ * Behavioral check: a successful file-mode refresh not only returns success and
+ * flips the mode flag, but the artifact's policy actually reaches the RIB. We
+ * wait for the enqueued policy to drain on the rib evb and assert the installed
+ * route-filter policy version matches the artifact.
+ */
+CO_TEST_F(
+    BgpServiceCrfFileModeTestFixture,
+    SetCrfPolicyFromFileAppliesPolicyToRib) {
+  writeCrfArtifact(/*dryrun=*/false, /*version=*/100);
+
+  folly::LoggerDB::get().getCategory("")->clearHandlers();
+  auto peerMgrThread = peerManager_->runInThread();
+  auto sessionMgrThread = sessionMgr_->runInThread();
+  auto ribThread = rib_->runInThread();
+  SCOPE_EXIT {
+    rib_->stop();
+    peerManager_->stop();
+    sessionMgr_->stop();
+    ribThread.join();
+    peerMgrThread.join();
+    sessionMgrThread.join();
+  };
+
+  // @lint-ignore CLANGTIDY facebook-thrift-handler-direct-call
+  auto ret = co_await service_->co_setCrfPolicyFromFile();
+  CO_ASSERT_TRUE(*ret->success());
+  EXPECT_TRUE(rib_->isCrfFileModeEnabled());
+
+  // Block until the enqueued policy is consumed and applied on the rib evb,
+  // then assert the installed version is exactly what the artifact carried.
+  rib_->waitForRouteFilterPolicyUpdate();
+  EXPECT_EQ(100, rib_->getRouteFilterPolicyVersion());
+}
+
+/*
+ * A later refresh carrying a newer artifact version re-applies through the file
+ * path and the RIB ends up with the newer version. version is part of policy
+ * equality, so forceUpdate installs it. This exercises the artifact reaching
+ * the RIB across successive refreshes (the read now happens under the lock, so
+ * a concurrent COOP rewrite cannot let an older read win).
+ */
+CO_TEST_F(
+    BgpServiceCrfFileModeTestFixture,
+    SetCrfPolicyFromFileNewerVersionReapplied) {
+  writeCrfArtifact(/*dryrun=*/false, /*version=*/100);
+
+  folly::LoggerDB::get().getCategory("")->clearHandlers();
+  auto peerMgrThread = peerManager_->runInThread();
+  auto sessionMgrThread = sessionMgr_->runInThread();
+  auto ribThread = rib_->runInThread();
+  SCOPE_EXIT {
+    rib_->stop();
+    peerManager_->stop();
+    sessionMgr_->stop();
+    ribThread.join();
+    peerMgrThread.join();
+    sessionMgrThread.join();
+  };
+
+  // @lint-ignore CLANGTIDY facebook-thrift-handler-direct-call
+  auto ret1 = co_await service_->co_setCrfPolicyFromFile();
+  CO_ASSERT_TRUE(*ret1->success());
+  rib_->waitForRouteFilterPolicyUpdate();
+  EXPECT_EQ(100, rib_->getRouteFilterPolicyVersion());
+
+  writeCrfArtifact(/*dryrun=*/false, /*version=*/200);
+  auto replaceFuture = rib_->getRibPolicyReplaceFuture();
+  // @lint-ignore CLANGTIDY facebook-thrift-handler-direct-call
+  auto ret2 = co_await service_->co_setCrfPolicyFromFile();
+  CO_ASSERT_TRUE(*ret2->success());
+  replaceFuture.wait();
+  EXPECT_EQ(200, rib_->getRouteFilterPolicyVersion());
+}
+
 CO_TEST_F(BgpServiceCrfFileModeTestFixture, SetCrfPolicyFromFileDryrunTrue) {
   writeCrfArtifact(/*dryrun=*/true);
 
@@ -1552,6 +1627,167 @@ CO_TEST_F(
   // Thrift updates never clear FILE_MODE, so once any refresh has run the
   // terminal state is deterministically FILE_MODE enabled.
   EXPECT_TRUE(rib_->isCrfFileModeEnabled());
+}
+
+/*
+ * Soak: file-mode refreshes racing a concurrent artifact rewrite. COOP can
+ * rewrite the artifact file at any time; the read now happens under
+ * crfPolicyMutex_, so read + RIB enqueue are atomic. A background writer
+ * rewrites the artifact to monotonically increasing versions while a fleet of
+ * co_setCrfPolicyFromFile() refreshes read it in parallel. The test asserts
+ * there is no crash, deadlock, or data race (under TSAN), and that after the
+ * churn a final serial refresh of a known-highest version converges the RIB to
+ * exactly that version.
+ *
+ * NOTE: this is a nondeterministic soak. It does NOT force the specific
+ * stale-read interleaving that crfPolicyMutex_ guards against (an older read
+ * enqueued after a newer one) — deterministically reproducing that would need a
+ * test seam between the artifact read and the RIB enqueue, which does not
+ * exist. This exercises the concurrent read-under-lock path and terminal
+ * convergence only; it is not a regression guard for the reordering bug itself.
+ */
+CO_TEST_F(
+    BgpServiceCrfFileModeTestFixture,
+    CrfFileModeConcurrentRefreshWithArtifactRewrite) {
+  writeCrfArtifact(/*dryrun=*/false, /*version=*/1);
+
+  /*
+   * Remove non-thread-safe TestLogHandler before starting worker threads to
+   * avoid TSAN data races on the handler's message vector.
+   */
+  folly::LoggerDB::get().getCategory("")->clearHandlers();
+
+  auto peerMgrThread = peerManager_->runInThread();
+  auto sessionMgrThread = sessionMgr_->runInThread();
+  auto ribThread = rib_->runInThread();
+  SCOPE_EXIT {
+    rib_->stop();
+    peerManager_->stop();
+    sessionMgr_->stop();
+    ribThread.join();
+    peerMgrThread.join();
+    sessionMgrThread.join();
+  };
+
+  constexpr int kIters = 25;
+  folly::CPUThreadPoolExecutor exec(4);
+
+  /*
+   * Background writer atomically rewrites the artifact to increasing versions
+   * (mirroring COOP's writeFileAtomic) for the duration of the refresh fleet,
+   * so refreshes read the file while it is changing underneath them. Versions
+   * stay below kFinalVersion so the terminal convergence check is unambiguous.
+   */
+  std::atomic<bool> writerStop{false};
+  std::thread writer([&] {
+    int64_t version = 1;
+    while (!writerStop.load(std::memory_order_relaxed)) {
+      writeCrfArtifact(/*dryrun=*/false, /*version=*/++version);
+    }
+  });
+
+  std::vector<folly::coro::Task<std::unique_ptr<TResult>>> tasks;
+  tasks.reserve(kIters);
+  for (int i = 0; i < kIters; ++i) {
+    // @lint-ignore CLANGTIDY facebook-thrift-handler-direct-call
+    tasks.push_back(service_->co_setCrfPolicyFromFile());
+  }
+
+  auto results = co_await folly::coro::co_withExecutor(
+      &exec, folly::coro::collectAllRange(std::move(tasks)));
+
+  writerStop.store(true, std::memory_order_relaxed);
+  writer.join();
+
+  // Every refresh completed with a well-formed result. dryrun=false always
+  // enables and applies FILE_MODE, so each refresh succeeds — never UB or a
+  // partial/garbage result.
+  for (const auto& res : results) {
+    CO_ASSERT_NE(res, nullptr);
+    EXPECT_TRUE(*res->success());
+  }
+
+  /*
+   * After the churn, a final serial refresh of a known-highest version must
+   * converge the RIB to exactly that version: with no concurrent writer or
+   * refresh, the read-under-lock installs the freshest on-disk artifact.
+   */
+  constexpr int64_t kFinalVersion = 1'000'000;
+  writeCrfArtifact(/*dryrun=*/false, /*version=*/kFinalVersion);
+  auto replaceFuture = rib_->getRibPolicyReplaceFuture();
+  // @lint-ignore CLANGTIDY facebook-thrift-handler-direct-call
+  auto finalRet = co_await service_->co_setCrfPolicyFromFile();
+  CO_ASSERT_TRUE(*finalRet->success());
+  replaceFuture.wait();
+  EXPECT_EQ(kFinalVersion, rib_->getRouteFilterPolicyVersion());
+
+  EXPECT_TRUE(rib_->isCrfFileModeEnabled());
+}
+
+/*
+ * Assert the CRF file-mode ODS SUM counters move on a real apply. A successful
+ * file-mode apply bumps artifact-read + policy-applied success (the latter now
+ * counted at the RIB apply, not at enqueue, so the coalescing MergeQueue does
+ * not inflate it), and a Thrift setRouteFilterPolicy rejected while in
+ * FILE_MODE bumps thrift_rpc_rejected. SUM stats accumulate process-wide across
+ * tests, so we assert deltas.
+ */
+CO_TEST_F(BgpServiceCrfFileModeTestFixture, CrfFileModeOdsCountersIncrement) {
+  BgpStatsDC::initCounters();
+  auto counters = fb303::ThreadCachedServiceData::getShared();
+  // SUM-type timeseries stats are read back with the ".sum" suffix.
+  const std::string kReadSuccessSum =
+      std::string(BgpStatsDC::kCrfArtifactReadSuccess) + ".sum";
+  const std::string kAppliedSuccessSum =
+      std::string(BgpStatsDC::kCrfPolicyAppliedSuccess) + ".sum";
+  const std::string kThriftRejectedSum =
+      std::string(BgpStatsDC::kCrfThriftRpcRejected) + ".sum";
+
+  // A ".sum" key does not exist until its stat is first added, and SUM stats
+  // accumulate across earlier tests in this process, so treat missing as 0 and
+  // compare deltas rather than absolute values.
+  auto sumOr0 = [&](const std::string& key) {
+    return counters->hasCounter(key) ? counters->getCounter(key) : 0;
+  };
+
+  counters->publishStats();
+  const auto readSuccessBefore = sumOr0(kReadSuccessSum);
+  const auto appliedSuccessBefore = sumOr0(kAppliedSuccessSum);
+  const auto thriftRejectedBefore = sumOr0(kThriftRejectedSum);
+
+  writeCrfArtifact(/*dryrun=*/false, /*version=*/7);
+
+  folly::LoggerDB::get().getCategory("")->clearHandlers();
+  auto peerMgrThread = peerManager_->runInThread();
+  auto sessionMgrThread = sessionMgr_->runInThread();
+  auto ribThread = rib_->runInThread();
+  SCOPE_EXIT {
+    rib_->stop();
+    peerManager_->stop();
+    sessionMgr_->stop();
+    ribThread.join();
+    peerMgrThread.join();
+    sessionMgrThread.join();
+  };
+
+  // Successful file-mode apply -> artifact-read + policy-applied success.
+  // @lint-ignore CLANGTIDY facebook-thrift-handler-direct-call
+  auto ret = co_await service_->co_setCrfPolicyFromFile();
+  CO_ASSERT_TRUE(*ret->success());
+  rib_->waitForRouteFilterPolicyUpdate();
+
+  // A Thrift set rejected in FILE_MODE -> thrift_rpc_rejected.
+  rib_policy::TRouteFilterPolicy tPolicy;
+  tPolicy.version() = 8;
+  // @lint-ignore CLANGTIDY facebook-thrift-handler-direct-call
+  auto rejectRet = co_await service_->co_setRouteFilterPolicy(
+      std::make_unique<rib_policy::TRouteFilterPolicy>(tPolicy));
+  EXPECT_FALSE(*rejectRet->success());
+
+  counters->publishStats();
+  EXPECT_EQ(readSuccessBefore + 1, sumOr0(kReadSuccessSum));
+  EXPECT_EQ(appliedSuccessBefore + 1, sumOr0(kAppliedSuccessSum));
+  EXPECT_EQ(thriftRejectedBefore + 1, sumOr0(kThriftRejectedSum));
 }
 
 class BgpServiceCpsFileModeTestFixture

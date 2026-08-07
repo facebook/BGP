@@ -690,6 +690,15 @@ void RibDC::cleanupPlatform() noexcept {
 }
 
 void RibDC::postRouteFilterPolicyReplaced() {
+  /*
+   * This hook runs only after a real policy update. Count applies here rather
+   * than at enqueue time so coalesced and identical refreshes are excluded;
+   * the null check also excludes policy clears.
+   */
+  if (routeFilterPolicy_) {
+    BgpStatsDC::incrCrfPolicyAppliedSuccess();
+  }
+
   if (fsdbSyncer_) {
     fsdbSyncer_->setRouteFilterPolicy(
         routeFilterPolicy_ ? std::optional(routeFilterPolicy_->toThrift())

@@ -972,7 +972,23 @@ BgpServiceDC::co_setCrfPolicyFromFile() {
     co_return ret;
   }
 
-  // Read artifact outside the lock to avoid blocking Thrift CRF RPCs on I/O
+  auto crfLock = co_await crfPolicyMutex_.co_scoped_lock();
+
+  if (exitInitiated_) {
+    auto ret = std::make_unique<TResult>();
+    ret->success() = false;
+    ret->err() = "Session exits";
+    co_return ret;
+  }
+
+  /*
+   * Read the artifact under the exclusive lock so the read and the RIB enqueue
+   * are atomic. COOP can rewrite the artifact file at any time; because
+   * forceUpdate=true bypasses the RIB version gate and the RIB policy queue
+   * coalesces to the last enqueue, reading outside the lock would let an older
+   * artifact read by one refresh be applied after — and so overwrite — a newer
+   * one read by a concurrent refresh.
+   */
   auto artifact = readThriftArtifactFromFile<rib_policy::CrfPolicyArtifact>(
       FLAGS_crf_policy_file);
   if (artifact.hasError()) {
@@ -992,15 +1008,6 @@ BgpServiceDC::co_setCrfPolicyFromFile() {
     co_return ret;
   }
   BgpStatsDC::incrCrfArtifactReadSuccess();
-
-  auto crfLock = co_await crfPolicyMutex_.co_scoped_lock();
-
-  if (exitInitiated_) {
-    auto ret = std::make_unique<TResult>();
-    ret->success() = false;
-    ret->err() = "Session exits";
-    co_return ret;
-  }
 
   bool fileMode = !*artifact->dryrun();
 
@@ -1070,31 +1077,19 @@ BgpServiceDC::co_setCrfPolicyFromFile() {
     co_return ret;
   }
 
-  auto result = co_await co_runOnEvbWithTimeout(
-      rib_.getEventBase(),
-      [this, p = std::move(policy)]() mutable {
-        rib_.setRouteFilterPolicy(std::move(p), /*forceUpdate=*/true);
-      },
-      kRibThriftHandlerTimeout);
+  /*
+   * Enqueue on the calling Thrift thread: setRouteFilterPolicy pushes onto the
+   * RIB's thread-safe coalescing policy queue, so there is no RIB evb hop that
+   * could time out or run after this handler (and the lock) has released.
+   */
+  rib_.setRouteFilterPolicy(std::move(policy), /*forceUpdate=*/true);
 
-  if (result.hasException()) {
-    BgpStatsDC::incrCrfPolicyAppliedFailure();
-    auto ret = std::make_unique<TResult>();
-    ret->success() = false;
-    if (result.exception().is_compatible_with<folly::FutureTimeout>()) {
-      XLOGF(ERR, "[CRF] setCrfPolicyFromFile timed out — Rib evb unresponsive");
-      ret->err() = "Rib evb unresponsive (timeout)";
-    } else {
-      XLOGF(
-          ERR,
-          "[CRF] setCrfPolicyFromFile failed: {}",
-          result.exception().what());
-      ret->err() = std::string(result.exception().what());
-    }
-    co_return ret;
-  }
-
-  BgpStatsDC::incrCrfPolicyAppliedSuccess();
+  /*
+   * policy_applied.success is emitted by RibBase::replaceRouteFilterPolicy when
+   * the RIB actually applies the policy (hasUpdate), not here at enqueue time:
+   * the coalescing MergeQueue can drop superseded refreshes and a no-op
+   * identical policy would otherwise inflate the counter.
+   */
   auto ret = std::make_unique<TResult>();
   ret->success() = true;
   ret->err() = "CRF policy applied from file (FILE_MODE)";
