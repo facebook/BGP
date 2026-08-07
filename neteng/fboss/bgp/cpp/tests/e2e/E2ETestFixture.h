@@ -72,6 +72,14 @@ struct BgpPeerSpec {
   std::string peerType = kPeerTypeCsw;
   bool disableIpv4Afi = false;
   bool disableIpv6Afi = false;
+  /*
+   * Whether the peer advertised the MP-EXT capability. Default true. Set false
+   * to model a capability-less peer (RFC 1771 / IxANVL strict mode): the
+   * session still negotiates v4-unicast (per negotiateCapabilities), but the
+   * remote (pre-negotiation) MP-EXT bit is false, which drives
+   * legacyV4NlriEncoding in the update-group key.
+   */
+  bool mpExtCapable = true;
   std::optional<int32_t> outDelaySeconds; /* out-delay timer in seconds */
   /*
    * ADD-PATH capability for this peer.
@@ -1366,6 +1374,11 @@ class E2ETestFixture : public ::testing::Test {
       folly::IPAddress,
       std::optional<nettools::bgplib::BgpAddPathSendRec>>
       peerAddPathCapabilities_;
+
+  // Per-peer MP-EXT capability flag (set via addPeer with BgpPeerSpec). When
+  // false, the peer's remote (pre-negotiation) MP-EXT bit is modeled as false,
+  // driving legacyV4NlriEncoding in the update-group key.
+  std::unordered_map<folly::IPAddress, bool> peerMpExtCapable_;
 
   // Dynamically added local routes (via addLocalRoute)
   std::unordered_map<folly::CIDRNetwork, thrift::BgpNetwork> localRoutes_;

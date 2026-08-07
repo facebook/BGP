@@ -87,6 +87,16 @@ struct BgpPeerDisplayInfo {
   int64_t numResets;
   SocketMessageCounters txMsgs;
   SocketMessageCounters rxMsgs;
+  /*
+   * Remote (pre-negotiation) capabilities the peer advertised in its OPEN,
+   * copied whole to mirror negotiatedCapabilities. Only mpExtExist() is
+   * consumed today: it detects capability-less peers for legacy v4-unicast NLRI
+   * encoding (a peer that advertised no MP-EXT receives classic NLRI). Unlike
+   * negotiatedCapabilities.mpExtV4Unicast (deliberately true for
+   * capability-less peers so v4 is still announced), this reflects what the
+   * peer actually advertised.
+   */
+  BgpCapabilities remoteCapabilities;
 };
 
 } // namespace facebook::nettools::bgplib

@@ -2127,6 +2127,7 @@ BgpPeerDisplayInfo FiberBgpPeerManager::getEstablishedPeerDisplayInfoHelper(
       static_cast<int64_t>(sessionInfo->numResets),
       establishedSession->peer->getTxMessageCounters(),
       establishedSession->peer->getRxMessageCounters(),
+      establishedSession->peer->getRemoteCapabilities(),
   };
   info.peeringParams.peerPrefix = std::nullopt;
   return info;

@@ -565,7 +565,8 @@ void AdjRib::sessionEstablished(
     const RouteRefreshNegotiated& isRouteRefreshNegotiated,
     const std::optional<BgpAddPathSendRec>& addPathCapa,
     bool as4ByteCapable,
-    bool extNhEncodingCapable) noexcept {
+    bool extNhEncodingCapable,
+    bool remoteMpExtExist) noexcept {
   XLOGF(DBG1, "Starting AdjRib for {}", getPeerName());
 
   // Stop the restart-gr timer if running and fire the stale-path timer.
@@ -612,6 +613,7 @@ void AdjRib::sessionEstablished(
   isRouteRefreshNegotiated_ = isRouteRefreshNegotiated;
   as4ByteCapable_ = as4ByteCapable;
   extNhEncodingCapable_ = extNhEncodingCapable;
+  remoteMpExtExist_ = remoteMpExtExist;
   std::tie(sendAddPath_, recAddPath_) = getAddPathCapa(addPathCapa);
   pathIdGenerator_ = std::make_unique<PathIdGenerator>(sendAddPath_);
 

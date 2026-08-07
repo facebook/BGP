@@ -204,6 +204,10 @@ void E2ETestFixture::addPeer(const BgpPeerSpec& spec) {
   /* Store ADD-PATH capability for this peer (used in establishSession) */
   peerAddPathCapabilities_[spec.peerAddr] = spec.addPathCapability;
 
+  /* Store the peer's MP-EXT capability flag (used to model the remote MP-EXT
+   * bit at session establishment; false = capability-less peer). */
+  peerMpExtCapable_[spec.peerAddr] = spec.mpExtCapable;
+
   peers_.push_back(std::move(peer));
 }
 
@@ -1177,7 +1181,8 @@ BgpPeerDisplayInfo createDisplayInfo(
     const std::shared_ptr<const BgpGlobalConfig>& globalConfig,
     const std::optional<nettools::bgplib::BgpAddPathSendRec>& addPathCapa =
         std::nullopt,
-    std::optional<uint16_t> grRestartTimeSeconds = std::nullopt) {
+    std::optional<uint16_t> grRestartTimeSeconds = std::nullopt,
+    bool mpExtCapable = true) {
   BgpPeerDisplayInfo displayInfo;
   displayInfo.peeringParams.peerAddr = peerId.peerAddr;
   displayInfo.peeringParams.remoteAs = cfg.peerAsn;
@@ -1227,6 +1232,12 @@ BgpPeerDisplayInfo createDisplayInfo(
   displayInfo.peeringParams.receiveLinkBandwidth = cfg.receiveLinkBandwidth;
   displayInfo.peeringParams.linkBandwidthBps = cfg.linkBandwidthBps;
   displayInfo.remoteBgpId = peerId.remoteBgpId;
+  /*
+   * Model the peer's remote (pre-negotiation) MP-EXT-exists bit. A
+   * capability-less peer advertised no MP-EXT (mpExtCapable = false), while
+   * negotiated v4 stays true (below), mirroring negotiateCapabilities().
+   */
+  displayInfo.remoteCapabilities.mpExtExist() = mpExtCapable;
   displayInfo.negotiatedCapabilities.mpExtV4Unicast() =
       !cfg.disableIpv4Afi.value_or(false);
   displayInfo.negotiatedCapabilities.mpExtV6Unicast() =
@@ -1357,8 +1368,19 @@ void E2ETestFixture::establishSession(
     addPathCapa = addPathIt->second;
   }
 
+  bool mpExtCapable = true;
+  auto mpExtIt = peerMpExtCapable_.find(peerId.peerAddr);
+  if (mpExtIt != peerMpExtCapable_.end()) {
+    mpExtCapable = mpExtIt->second;
+  }
+
   auto displayInfo = createDisplayInfo(
-      peerId, cfg, globalConfig, addPathCapa, peerGrRestartTimeSeconds_);
+      peerId,
+      cfg,
+      globalConfig,
+      addPathCapa,
+      peerGrRestartTimeSeconds_,
+      mpExtCapable);
 
   auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
       displayInfo,

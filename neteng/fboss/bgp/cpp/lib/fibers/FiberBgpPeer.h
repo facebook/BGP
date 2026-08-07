@@ -265,6 +265,10 @@ class FiberBgpPeer : public std::enable_shared_from_this<FiberBgpPeer>,
     return peeringState_.negotiatedCapabilities;
   }
 
+  BgpCapabilities getRemoteCapabilities() const {
+    return peeringState_.remoteCapabilities;
+  }
+
   std::optional<std::chrono::seconds> getNegotiatedHoldTime() const {
     return (peeringState_.state >= BgpSessionState::OPEN_CONFIRM)
         ? std::optional<std::chrono::seconds>(peeringState_.holdTime)

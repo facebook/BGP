@@ -142,6 +142,16 @@ void E2ESessionTestFixture::bringUpPeer(
   displayInfo.negotiatedCapabilities.mpExtV6Unicast() = true;
   displayInfo.negotiatedCapabilities.as4byte() = true;
 
+  /* Model the peer's remote (pre-negotiation) MP-EXT-exists bit; negotiated v4
+   * stays true so v4 is still announced. A capability-less peer advertised no
+   * MP-EXT (mpExtCapable = false). */
+  bool mpExtCapable = true;
+  auto mpExtIt = peerMpExtCapable_.find(peerAddr);
+  if (mpExtIt != peerMpExtCapable_.end()) {
+    mpExtCapable = mpExtIt->second;
+  }
+  displayInfo.remoteCapabilities.mpExtExist() = mpExtCapable;
+
   auto addPathIt = peerAddPathCapabilities_.find(peerAddr);
   if (addPathIt != peerAddPathCapabilities_.end() &&
       addPathIt->second.has_value()) {

@@ -367,7 +367,8 @@ class AdjRib : boost::noncopyable,
       const std::optional<nettools::bgplib::BgpAddPathSendRec>& addPathCapas =
           std::nullopt,
       bool as4ByteCapable = true,
-      bool extNhEncodingCapable = false) noexcept;
+      bool extNhEncodingCapable = false,
+      bool remoteMpExtExist = true) noexcept;
 
   // Called when session established with a peer (in PeerManagerBase)
   // to start fibers processing peer messages and Rib messages
@@ -2299,6 +2300,13 @@ class AdjRib : boost::noncopyable,
   V4OverV6Nexthop isV4OverV6NexthopNegotiated_{false};
   EnhancedRouteRefreshNegotiated isEnhancedRouteRefreshNegotiated_{false};
   RouteRefreshNegotiated isRouteRefreshNegotiated_{false};
+  /*
+   * Remote (pre-negotiation) MP-EXT-exists bit, used to derive
+   * legacyV4NlriEncoding in the update-group key. Default true = assume
+   * MP-capable peer, preserving today's MP_REACH behavior for callers that do
+   * not plumb it through.
+   */
+  bool remoteMpExtExist_{true};
   bool as4ByteCapable_{true}; /* Negotiated 4-byte ASN capability */
   bool extNhEncodingCapable_{false}; /* Negotiated RFC5549 capability */
 

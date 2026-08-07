@@ -2196,7 +2196,8 @@ folly::coro::Task<void> PeerManagerBase::sessionEstablished(
             *peerInfo->negotiatedCapabilities.routeRefresh()},
         cachedCapa,
         *peerInfo->negotiatedCapabilities.as4byte(),
-        !peerInfo->negotiatedCapabilities.extNHEncodingCapabilities()->empty());
+        !peerInfo->negotiatedCapabilities.extNHEncodingCapabilities()->empty(),
+        *peerInfo->remoteCapabilities.mpExtExist());
     adjRib->logPeerEvent("SESSION_ADJRIB_ESTABLISHED", BGP_LOG_SRC());
 
     /*
