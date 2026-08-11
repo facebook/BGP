@@ -1306,6 +1306,9 @@ void AdjRibOutGroup::processRibAnnouncedEntryForGroup(
       getPostOutPolicyAttributesAndInfo(
           entry, adjRibEntry, prePolicyAttrs, updatePeerIdStr);
 
+  /* Preserve previous value of the isNexthopSetByPolicy flag for comparison. */
+  const bool wasNexthopSetByPolicy = adjRibEntry->isNexthopSetByPolicy();
+
   /* Store flag on AdjRibEntry for CLI display (AdjRibShow). */
   adjRibEntry->setNexthopSetByPolicy(postPolicyInfo.isNexthopSetByPolicy);
 
@@ -1349,11 +1352,19 @@ void AdjRibOutGroup::processRibAnnouncedEntryForGroup(
   // Check if we announced the prefix before
   // post out is set if the prefix was previously announced
   if (adjRibEntry->getPostAttr()) {
-    // Announce the prefix to group again only if postOut has changed
-    // We are doing deep compare to avoid notifying group in cases where
-    // due to policy changes of attributes, we end up with same contents
-    // but different BgpPath shared_ptr
-    if (*adjRibEntry->getPostAttr() == *postOutAttrsNew) {
+    /*
+     * Announce the prefix to group again only if postOut has changed.
+     * We are doing deep compare to avoid notifying group in cases where
+     * due to policy changes of attributes, we end up with same contents
+     * but different BgpPath shared_ptr.
+     *
+     * isNexthopSetByPolicy is part of the comparison because it is a packing
+     * list key (BgpPathWithAfi) and it decides per-peer nexthop-self at send
+     * time, so a toggle changes the wire output even when the attributes are
+     * byte-identical. This mirrors AdjRib::processRibAnnouncedEntry.
+     */
+    if (*adjRibEntry->getPostAttr() == *postOutAttrsNew &&
+        wasNexthopSetByPolicy == adjRibEntry->isNexthopSetByPolicy()) {
       XLOGF(
           DBG3,
           "Group {} skipping unchanged announcement {} from [{}]. "

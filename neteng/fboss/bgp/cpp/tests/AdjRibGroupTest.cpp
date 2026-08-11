@@ -1271,6 +1271,65 @@ TEST_F(
 }
 
 /*
+ * Regression test: the group's unchanged-announcement suppression must also
+ * compare isNexthopSetByPolicy, the way AdjRib::processRibAnnouncedEntry does
+ * for a detached peer. The flag is part of the packing list key and decides
+ * per-peer nexthop-self at send time, so a toggle changes the wire output even
+ * when the post-policy attributes are byte-identical. Comparing attributes
+ * alone suppressed the re-advertisement and left the prefix staged under the
+ * stale flag.
+ */
+TEST_F(
+    AdjRibGroupPackingFixture,
+    ProcessRibAnnouncedEntryForGroup_NexthopSetByPolicyToggleIsAnnounced) {
+  createAdjRibOutGroup("test_group", 0, createDefaultGroupKey());
+
+  RibOutAnnouncementEntry entry(
+      kV4Prefix1_,
+      kDefaultPathID,
+      TinyPeerInfo(
+          folly::IPAddress("1.1.1.1"), 65000, 1, BgpSessionType::EBGP, false),
+      announcementAttrs_,
+      0,
+      0,
+      0,
+      0,
+      0);
+
+  adjRibOutGroup_->processRibAnnouncedEntryForGroup(entry);
+  ASSERT_EQ(1, adjRibOutGroup_->getAttrToPrefixMap().size());
+
+  /* Drain the packing list so the second pass starts from an empty one. */
+  folly::coro::blockingWait(adjRibOutGroup_->buildAndSendGroupBgpMessages());
+  ASSERT_TRUE(adjRibOutGroup_->getAttrToPrefixMap().empty());
+
+  /*
+   * Stand in for the previous announcement having gone out with a
+   * policy-set nexthop; the attributes themselves do not change.
+   */
+  auto* adjRibEntry = adjRibOutGroup_->tryInsertRibOutEntry(
+      kV4Prefix1_, announcementAttrs_->getNexthop(), kDefaultPathID);
+  ASSERT_NE(adjRibEntry, nullptr);
+  ASSERT_NE(adjRibEntry->getPostAttr(), nullptr);
+  adjRibEntry->setNexthopSetByPolicy(true);
+
+  /* Same attributes, no egress policy: the flag drops back to false. */
+  adjRibOutGroup_->processRibAnnouncedEntryForGroup(entry);
+
+  const auto& attrToPrefixMap = adjRibOutGroup_->getAttrToPrefixMap();
+  ASSERT_EQ(1, attrToPrefixMap.size());
+
+  auto attrsWithAfi = BgpPathWithAfi{
+      announcementAttrs_,
+      nettools::bgplib::BgpUpdateAfi::AFI_IPv4,
+      false /* isNexthopSetByPolicy */};
+  ASSERT_TRUE(attrToPrefixMap.contains(attrsWithAfi));
+  EXPECT_TRUE(attrToPrefixMap.at(attrsWithAfi)
+                  .contains(std::make_pair(kV4Prefix1_, kPlaceholderPathID)));
+  EXPECT_FALSE(adjRibEntry->isNexthopSetByPolicy());
+}
+
+/*
  * Regression test: a group with NO egress policy configured (empty
  * egressPolicyName) but a non-null policyManager_ must not crash while
  * processing the initial dump.
