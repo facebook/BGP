@@ -147,7 +147,21 @@ struct AdjRibEntry {
   explicit AdjRibEntry(uint32_t pathId) : pathId_(pathId) {}
 
   void setPreIn(const std::shared_ptr<const BgpPath>& attrs) {
-    prePolicyAttrs_ = attrs;
+    if (attrs) {
+      /*
+       * Dedup via DeDuplicatedBgpPath, as setPostAttr does: AdjRib mints ONE
+       * BgpPath per UPDATE PDU (AdjRibIn.cpp, outside the NLRI loop), so
+       * without interning the pre-policy footprint tracks UPDATE COUNT rather
+       * than distinct values -- N updates carrying byte-identical attributes
+       * and nexthop cost N objects. A table dump split per prefix, a flap
+       * storm, or add-path all drive PDU count toward prefix count, and how a
+       * peer packs its NLRI is not something this side controls.
+       */
+      DeDuplicatedBgpPath deduped(std::const_pointer_cast<BgpPath>(attrs));
+      prePolicyAttrs_ = deduped.getSharedPtr();
+    } else {
+      prePolicyAttrs_ = nullptr;
+    }
     // We only modify lastUpdateRcvdUsec_ when pre-in attributes have changed
     lastUpdateRcvdUsec_ = getCurrentTimeMicroSec();
   }

@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+#include <deque>
+#include <set>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
@@ -41,7 +44,7 @@ class AdjRibEntryFixture : public ::testing::Test {
   // Helper function to create a BgpPath with specific AS path length
   std::shared_ptr<const BgpPath> createBgpPath(uint32_t asCount) {
     auto fields = buildBgpPathFields(asCount, 0, 0, 0);
-    return std::make_shared<const BgpPath>(*fields);
+    return std::make_shared<BgpPath>(*fields);
   }
 
   // Helper function to verify the deduplicator size
@@ -49,6 +52,202 @@ class AdjRibEntryFixture : public ::testing::Test {
     EXPECT_EQ(DeDuplicatedBgpPath::deduplicatorSize(), expectedSize);
   }
 };
+
+/*
+ * Pre-policy paths are interned globally, like post-policy ones.
+ *
+ * Both `setPreIn` and `setPostAttr` route their value through
+ * DeDuplicatedBgpPath, so identical paths collapse onto one object across
+ * every peer and every UPDATE.
+ *
+ * The distinction these tests pin down is WHICH axis the footprint follows.
+ * AdjRib mints ONE pre-policy BgpPath per UPDATE PDU and hands that same
+ * pointer to every prefix in the message, so pre-policy sharing within a PDU
+ * predates interning. What interning adds is sharing ACROSS PDUs: without it,
+ * two UPDATEs carrying byte-identical attributes and nexthop keep two objects
+ * forever and the footprint tracks UPDATE COUNT rather than distinct values.
+ *
+ * They also pin the meaning of the `bgp_path` gauge
+ * (= DeDuplicatedBgpPath::deduplicatorSize()): with both slots interned it
+ * covers pre- and post-policy alike, so it can be read as "unique paths".
+ */
+TEST_F(AdjRibEntryFixture, PrePolicyPathsAreSharedWithinOneUpdate) {
+  // One UPDATE => one BgpPath handed to every prefix it announces.
+  auto fromOneUpdate = createBgpPath(3);
+
+  AdjRibEntry entryA(/*pathId=*/1);
+  AdjRibEntry entryB(/*pathId=*/2);
+  entryA.setPreIn(fromOneUpdate);
+  entryB.setPreIn(fromOneUpdate);
+
+  // Same pointer: prefixes in one PDU share their pre-policy path.
+  EXPECT_EQ(entryA.getPreIn().get(), entryB.getPreIn().get());
+  // ...and the value is interned, so it is visible to the deduplicator.
+  verifyDeduplicatorSize(1);
+}
+
+TEST_F(AdjRibEntryFixture, PrePolicyPathsAreDeduplicatedAcrossUpdates) {
+  /*
+   * Two UPDATEs carrying byte-identical attributes: separate allocations,
+   * exactly as AdjRibIn does per PDU.
+   */
+  auto fromUpdate1 = createBgpPath(3);
+  auto fromUpdate2 = createBgpPath(3);
+  ASSERT_NE(fromUpdate1.get(), fromUpdate2.get());
+
+  AdjRibEntry entryA(/*pathId=*/1);
+  AdjRibEntry entryB(/*pathId=*/2);
+  entryA.setPreIn(fromUpdate1);
+  entryB.setPreIn(fromUpdate2);
+
+  /*
+   * Two byte-identical values minted by separate UPDATEs collapse onto one
+   * stored object, so pre-policy footprint tracks DISTINCT VALUES rather than
+   * UPDATE COUNT.
+   */
+  EXPECT_EQ(entryA.getPreIn().get(), entryB.getPreIn().get());
+  verifyDeduplicatorSize(1);
+}
+
+TEST_F(AdjRibEntryFixture, PostPolicyPathsAreDeduplicatedAcrossUpdates) {
+  // The contrast: the same two values through setPostAttr collapse to one.
+  auto fromUpdate1 = createBgpPath(3);
+  auto fromUpdate2 = createBgpPath(3);
+  ASSERT_NE(fromUpdate1.get(), fromUpdate2.get());
+
+  AdjRibEntry entryA(/*pathId=*/1);
+  AdjRibEntry entryB(/*pathId=*/2);
+  entryA.setPostAttr(fromUpdate1);
+  entryB.setPostAttr(fromUpdate2);
+
+  EXPECT_EQ(entryA.getPostAttr().get(), entryB.getPostAttr().get());
+  verifyDeduplicatorSize(1);
+}
+
+TEST_F(AdjRibEntryFixture, DeduplicatorCountsBothPolicyStages) {
+  /*
+   * With both slots interned, an entry holding a DISTINCT pre- and post-policy
+   * path contributes 2 -- and `bgp_path` finally means "unique paths", closing
+   * the 2x gap against the walked total_unique_attributes.
+   */
+  auto prePolicy = createBgpPath(3);
+  auto postPolicy = createBgpPath(4); // different value => distinct object
+  ASSERT_NE(prePolicy.get(), postPolicy.get());
+
+  AdjRibEntry entry(/*pathId=*/1);
+  entry.setPreIn(prePolicy);
+  entry.setPostAttr(postPolicy);
+
+  verifyDeduplicatorSize(2);
+}
+
+/*
+ * SCALE: what interning the pre-policy slot buys, at N.
+ *
+ * Each loop iteration models one UPDATE PDU announcing one prefix, all carrying
+ * byte-identical attributes and the same nexthop -- a table dump split
+ * per-prefix, or a route flapping N times. AdjRibIn mints one BgpPath per PDU
+ * (outside the NLRI loop), so the VALUE repeats while the ALLOCATION does not.
+ *
+ * Both slots collapse all N onto one object. Pre-policy footprint is therefore
+ * O(distinct values), not O(UPDATE count) -- note update count rather than
+ * prefix count, because prefixes sharing a PDU already share their path.
+ */
+TEST_F(AdjRibEntryFixture, IdenticalPathsFromNUpdatesCostOnePrePolicyObject) {
+  constexpr size_t kUpdates = 100;
+
+  /*
+   * deque: AdjRibEntry is held by reference below, so the container must not
+   * reallocate its elements.
+   */
+  std::deque<AdjRibEntry> entries;
+  std::set<const BgpPath*> distinctPreIn;
+  std::set<const BgpPath*> distinctPostAttr;
+
+  for (size_t i = 0; i < kUpdates; ++i) {
+    // A fresh allocation per "UPDATE", identical in value to every other.
+    auto mintedForThisUpdate = createBgpPath(/*asCount=*/3);
+
+    entries.emplace_back(static_cast<uint32_t>(i + 1));
+    auto& entry = entries.back();
+    entry.setPreIn(mintedForThisUpdate);
+    entry.setPostAttr(mintedForThisUpdate);
+
+    distinctPreIn.insert(entry.getPreIn().get());
+    distinctPostAttr.insert(entry.getPostAttr().get());
+  }
+
+  /*
+   * THE POINT OF THE FIX: N UPDATEs carrying one value cost ONE object, not N.
+   * A 100k-prefix table dump split per prefix no longer costs 100k objects.
+   */
+  EXPECT_EQ(1u, distinctPreIn.size());
+
+  // Post-policy already behaved this way; both slots now agree.
+  EXPECT_EQ(1u, distinctPostAttr.size());
+  verifyDeduplicatorSize(1);
+}
+
+/*
+ * The control for the test above: the same N prefixes arriving in ONE UPDATE
+ * already cost one object without interning, because AdjRibIn hands every
+ * prefix in a PDU the same pointer. Isolating this from the N-UPDATE case is
+ * what shows the waste interning removes is driven by UPDATE count.
+ */
+TEST_F(AdjRibEntryFixture, PrefixesSharingOneUpdateCostOnePrePolicyObject) {
+  constexpr size_t kPrefixesInOnePdu = 100;
+
+  auto mintedOncePerPdu = createBgpPath(/*asCount=*/3);
+  std::deque<AdjRibEntry> entries;
+  std::set<const BgpPath*> distinctPreIn;
+
+  for (size_t i = 0; i < kPrefixesInOnePdu; ++i) {
+    entries.emplace_back(static_cast<uint32_t>(i + 1));
+    entries.back().setPreIn(mintedOncePerPdu);
+    distinctPreIn.insert(entries.back().getPreIn().get());
+  }
+
+  EXPECT_EQ(1u, distinctPreIn.size());
+  verifyDeduplicatorSize(1);
+}
+
+/*
+ * Interning carries NO precondition on publish state, deliberately.
+ *
+ * Production reaches setPreIn with a PUBLISHED path -- AdjRibIn publishes the
+ * object it mints for an UPDATE before handing it over -- which is the shape
+ * this test covers. The other tests deliberately do not publish, so between
+ * them both shapes are exercised and neither is load-bearing.
+ *
+ * setPreIn must not depend on publish state: the deduplicator hands back a
+ * shared_ptr<const BgpPath>, so nothing can mutate the stored object through
+ * the interned handle regardless of how it arrived. setPostAttr interns
+ * unconditionally for the same reason; requiring published input on only one
+ * slot would make it the outlier and turn a future caller into a crash rather
+ * than simply a missed dedup.
+ *
+ * setPreOut still stores verbatim, and does not need to intern: it is handed
+ * the RIB best-entry path, which reached the RIB as an already-interned
+ * postAttr, so peers announcing the same best path already share one object.
+ */
+TEST_F(AdjRibEntryFixture, AcceptsPublishedPaths) {
+  auto fields = buildBgpPathFields(3, 0, 0, 0);
+  auto published1 = std::make_shared<BgpPath>(*fields);
+  auto published2 = std::make_shared<BgpPath>(*fields);
+  published1->publish();
+  published2->publish();
+  ASSERT_TRUE(published1->isPublished());
+  ASSERT_NE(published1.get(), published2.get());
+
+  AdjRibEntry entryA(/*pathId=*/1);
+  AdjRibEntry entryB(/*pathId=*/2);
+  entryA.setPreIn(published1);
+  entryB.setPreIn(published2);
+
+  // Interned on value, exactly as an unpublished pair would be.
+  EXPECT_EQ(entryA.getPreIn().get(), entryB.getPreIn().get());
+  verifyDeduplicatorSize(1);
+}
 
 // Test eviction with empty deduplicator
 TEST_F(AdjRibEntryFixture, EvictEmptyDeduplicatorTest) {

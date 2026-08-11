@@ -2645,10 +2645,12 @@ TEST_F(PeerManagerTestFixture, GetAttributeStatsTest) {
       lambdaVerifyStats(0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     }
     {
-      // Verify that if only single BgpPath is pointed in preIn
-      // we see avg refcount as 1
-      // Verify that avg_community_list_len, avg_as_path_len etc are as
-      // expected
+      /*
+       * Verify that if only single BgpPath is pointed in preIn we see avg
+       * refcount as 2: the entry holds one reference and the deduplicator
+       * holds the other, since setPreIn interns. Verify that
+       * avg_community_list_len, avg_as_path_len etc are as expected.
+       */
       auto attrsFields = buildBgpPathFields(2, 2, 3, 2);
       auto attrs = std::make_shared<facebook::bgp::BgpPath>(*attrsFields);
       auto adjRibEntry = std::make_unique<AdjRibEntry>(kDefaultPathID);
@@ -2656,13 +2658,15 @@ TEST_F(PeerManagerTestFixture, GetAttributeStatsTest) {
       adjRibEntry->setPreIn(std::move(attrs));
       adjRib1->adjRibInLiteTree_.insert(
           kPeerPrefix1.first, kPeerPrefix1.second, std::move(adjRibEntry));
-      lambdaVerifyStats(1, 1, 1.0, 2.0, 3.0, 2.0, 2.0, 0.0);
+      lambdaVerifyStats(1, 1, 2.0, 2.0, 3.0, 2.0, 2.0, 0.0);
       // Clean up for next test case
       adjRib1->adjRibInLiteTree_.clear();
     }
     {
-      // Verify shallow compare scenario. (Same BgpPath shared by two
-      // adjRibEntries)
+      /*
+       * Verify shallow compare scenario. (Same BgpPath shared by two
+       * adjRibEntries) Refcount is 3: two entries plus the deduplicator.
+       */
       auto attrsFields = buildBgpPathFields(2, 2, 3, 2);
       auto attrs = std::make_shared<facebook::bgp::BgpPath>(*attrsFields);
       auto adjRibEntry1 = std::make_unique<AdjRibEntry>(kDefaultPathID);
@@ -2676,13 +2680,22 @@ TEST_F(PeerManagerTestFixture, GetAttributeStatsTest) {
       adjRib1->adjRibInLiteTree_.insert(
           kPeerPrefix2.first, kPeerPrefix2.second, std::move(adjRibEntry2));
 
-      lambdaVerifyStats(1, 1, 2.0, 2.0, 3.0, 2.0, 2.0, 0.0);
+      lambdaVerifyStats(1, 1, 3.0, 2.0, 3.0, 2.0, 2.0, 0.0);
       // Clean up for next test case
       adjRib1->adjRibInLiteTree_.clear();
     }
     {
-      // Verify deep compare. (Same attribute fields between two
-      // BgpPath) Verify multiple adjRib counts are aggregated
+      /*
+       * Two separately allocated BgpPaths holding identical fields, reaching
+       * two different adjRibs. setPreIn interns, so they collapse onto ONE
+       * object at insert: the walk sees a single attribute (refcount 3 = two
+       * entries plus the deduplicator) rather than two deep-equal ones.
+       *
+       * The walk's deep-compare path -- two DISTINCT objects that compare
+       * equal -- is still reachable through the slots that store verbatim,
+       * and is covered by the EGRESS/setPreOut cases in
+       * GetAttributeStatsFilteredTest.
+       */
       auto attrsFields = buildBgpPathFields(2, 2, 3, 2);
       // Sharing contents between attrs1, attrs2, different shared_ptr
       auto attrs1 = std::make_shared<facebook::bgp::BgpPath>(*attrsFields);
@@ -2699,7 +2712,7 @@ TEST_F(PeerManagerTestFixture, GetAttributeStatsTest) {
       adjRib2->adjRibInLiteTree_.insert(
           kPeerPrefix2.first, kPeerPrefix2.second, std::move(adjRibEntry2));
 
-      lambdaVerifyStats(2, 1, 1.0, 2.0, 3.0, 2.0, 2.0, 0.0);
+      lambdaVerifyStats(1, 1, 3.0, 2.0, 3.0, 2.0, 2.0, 0.0);
       // Clean up for next test case
       adjRib1->adjRibInLiteTree_.clear();
       adjRib2->adjRibInLiteTree_.clear();
@@ -2800,7 +2813,8 @@ TEST_F(PeerManagerTestFixture, GetAttributeStatsFilteredTest) {
       adjRib->adjRibInLiteTree_.insert(
           kPeerPrefix1.first, kPeerPrefix1.second, std::move(adjRibEntry));
 
-      verifyStatsWithFilter(filter, 1, 1, 1.0, 2.0, 3.0, 2.0, 2.0, 0.0);
+      // refcount 2: the entry plus the deduplicator, since setPreIn interns.
+      verifyStatsWithFilter(filter, 1, 1, 2.0, 2.0, 3.0, 2.0, 2.0, 0.0);
       adjRib->adjRibInLiteTree_.clear();
     }
 
@@ -2841,9 +2855,11 @@ TEST_F(PeerManagerTestFixture, GetAttributeStatsFilteredTest) {
       adjRib->adjRibInLiteTree_.insert(
           kPeerPrefix1.first, kPeerPrefix1.second, std::move(adjRibEntry));
 
-      // Should count both attributes (preIn has useCount=1, postAttr has
-      // useCount=2)
-      verifyStatsWithFilter(filter, 2, 2, 1.5, 2.5, 3.5, 2.5, 2.5, 0.0);
+      /*
+       * Should count both attributes. Both slots intern, so each object is
+       * held by its entry plus the deduplicator: useCount=2 apiece.
+       */
+      verifyStatsWithFilter(filter, 2, 2, 2.0, 2.5, 3.5, 2.5, 2.5, 0.0);
       adjRib->adjRibInLiteTree_.clear();
     }
 
@@ -2944,8 +2960,12 @@ TEST_F(PeerManagerTestFixture, GetAttributeStatsFilteredTest) {
           kDefaultPathID);
       adjRibOutEntry->setPreOut(std::move(attrs2));
 
-      // Should count both unique attributes
-      verifyStatsWithFilter(filter, 2, 2, 1.0, 2.5, 3.5, 2.5, 2.5, 0.0);
+      /*
+       * Should count both unique attributes. Averaged across the interned
+       * preIn object (entry + deduplicator = 2) and the verbatim preOut one
+       * (entry only = 1).
+       */
+      verifyStatsWithFilter(filter, 2, 2, 1.5, 2.5, 3.5, 2.5, 2.5, 0.0);
       adjRib->adjRibInLiteTree_.clear();
       adjRib->adjRibOutGroup_->LiteTree_.clear();
     }
@@ -2970,8 +2990,8 @@ TEST_F(PeerManagerTestFixture, GetAttributeStatsFilteredTest) {
       adjRib->adjRibInLiteTree_.insert(
           kPeerPrefix2.first, kPeerPrefix2.second, std::move(entry2));
 
-      // 1 unique attribute referenced by 2 entries, refcount = 2
-      verifyStatsWithFilter(filter, 1, 1, 2.0, 2.0, 3.0, 2.0, 2.0, 0.0);
+      // 1 unique attribute referenced by 2 entries + the deduplicator
+      verifyStatsWithFilter(filter, 1, 1, 3.0, 2.0, 3.0, 2.0, 2.0, 0.0);
       adjRib->adjRibInLiteTree_.clear();
     }
 
