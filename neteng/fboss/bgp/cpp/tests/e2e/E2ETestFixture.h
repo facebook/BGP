@@ -369,6 +369,21 @@ class E2ETestFixture : public ::testing::Test {
   void bringDownPeer(const folly::IPAddress& peerAddr, bool peerDelete = false);
 
   /*
+   * Deliver the AdjRib half of session termination and wait for it to finish,
+   * leaving the PeerManager termination event pending. This exposes the same
+   * event gap that exists in production without fabricating peer state.
+   */
+  void beginPeerSessionTermination(const folly::IPAddress& peerAddr);
+
+  /*
+   * Deliver the PeerManager half of a termination started by
+   * beginPeerSessionTermination().
+   */
+  void completePeerSessionTermination(
+      const folly::IPAddress& peerAddr,
+      bool peerDelete = false);
+
+  /*
    * Tear down a BGP session for a peer with gracefulRestart=true so the
    * AdjRib enters GR helper mode (schedules remoteGrRestartTimer_ and
    * keeps stale routes in adjRibInStale_). Otherwise mirrors

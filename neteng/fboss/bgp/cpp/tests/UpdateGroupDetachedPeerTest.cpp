@@ -101,6 +101,9 @@
       PeerAheadOfGroupTransitionsToReadyToJoin);                               \
   FRIEND_TEST(                                                                 \
       UpdateGroupDetachLifecycleTest,                                          \
+      DownPeerDoesNotTransitionOnPeerUpdateState);                             \
+  FRIEND_TEST(                                                                 \
+      UpdateGroupDetachLifecycleTest,                                          \
       PeerAheadOfGroupDoesNotProceedOnChangelist);                             \
   FRIEND_TEST(                                                                 \
       UpdateGroupDetachLifecycleTest,                                          \
@@ -207,6 +210,9 @@
   FRIEND_TEST(                                                                 \
       UpdateGroupDetachLifecycleTest,                                          \
       PeerAheadOfGroupTransitionsToReadyToJoin);                               \
+  FRIEND_TEST(                                                                 \
+      UpdateGroupDetachLifecycleTest,                                          \
+      DownPeerDoesNotTransitionOnPeerUpdateState);                             \
   FRIEND_TEST(                                                                 \
       UpdateGroupDetachLifecycleTest,                                          \
       PeerAheadOfGroupDoesNotProceedOnChangelist);                             \
@@ -5629,6 +5635,56 @@ TEST_F(
 
   EXPECT_EQ(adjRib0->getPeerState(), PeerUpdateState::DETACHED_READY_TO_JOIN);
   EXPECT_FALSE(adjRib0->isAdjRibFlagSet(AdjRib::IS_DETACHED_FAST_PEER));
+  EXPECT_EQ(adjRib1->getPeerState(), PeerUpdateState::JOINED_RUNNING);
+}
+
+/*
+ * An unregistered peer must not transition at all. PeerManager::
+ * sessionTerminated can run before AdjRib::sessionTerminated, so an
+ * already-scheduled sendBgpUpdates() can still reach
+ * transitionPeerUpdateState() after unregisterPeer has set the peer DOWN and
+ * cleared its group. Acting on that peer would operate on a terminated
+ * session.
+ *
+ * Staged exactly like PeerAheadOfGroupTransitionsToReadyToJoin -- the branch
+ * this peer would otherwise take, sending it to DETACHED_READY_TO_JOIN -- with
+ * unregisterPeer() standing in for the PeerManager half of the teardown.
+ */
+TEST_F(
+    UpdateGroupDetachLifecycleTest,
+    DownPeerDoesNotTransitionOnPeerUpdateState) {
+  auto adjRib0 = createAndRegisterPeer(0);
+  auto adjRib1 = createAndRegisterPeer(1);
+  setUpJoinedRunningPeer(adjRib0, 0);
+  setUpJoinedRunningPeer(adjRib1, 1);
+
+  adjRib0->setPeerState(PeerUpdateState::DETACHED_INIT_DUMP);
+  adjRib0->setLastSeenRibVersion(100);
+  group_->setLastSeenRibVersion(50);
+  group_->markPeerDetached(adjRib0);
+
+  /*
+   * PeerManager::sessionTerminated -> AdjRibGroup::unregisterPeer: sets the
+   * peer DOWN and clears its group.
+   */
+  group_->unregisterPeer(adjRib0);
+  ASSERT_EQ(adjRib0->getPeerState(), PeerUpdateState::DOWN);
+  ASSERT_EQ(adjRib0->getUpdateGroup(), nullptr);
+
+  /* The late tail of an already-scheduled sendBgpUpdates(). */
+  adjRib0->transitionPeerUpdateState();
+
+  /* Nothing happened: no state transition, no DFP promotion, no rejoin. */
+  EXPECT_EQ(adjRib0->getPeerState(), PeerUpdateState::DOWN);
+  EXPECT_EQ(adjRib0->getUpdateGroup(), nullptr);
+  EXPECT_FALSE(adjRib0->isAdjRibFlagSet(AdjRib::IS_DETACHED_FAST_PEER));
+  EXPECT_FALSE(group_->isPeerInSync(0));
+
+  EXPECT_FALSE(
+      adjRib0->changeListConsumeTimer_ &&
+      adjRib0->changeListConsumeTimer_->isScheduled());
+
+  /* Peer 1 unaffected. */
   EXPECT_EQ(adjRib1->getPeerState(), PeerUpdateState::JOINED_RUNNING);
 }
 

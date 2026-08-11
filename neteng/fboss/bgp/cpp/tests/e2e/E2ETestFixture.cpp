@@ -358,6 +358,35 @@ void E2ETestFixture::bringDownPeer(
   XLOGF(INFO, "Session termination complete for peer: {}", peerAddr.str());
 }
 
+void E2ETestFixture::beginPeerSessionTermination(
+    const folly::IPAddress& peerAddr) {
+  BgpPeerId peerId{peerAddr, peerAddr.asV4().toLongHBO()};
+  auto queues = getPeerQueues(peerId);
+  ASSERT_TRUE(queues.has_value());
+  queues->adjRibInQ->fiberPush(FiberBgpPeer::BgpSessionStop{});
+
+  auto batonIt = peerManager_->sessionTerminateBatons_.find(peerId);
+  ASSERT_NE(batonIt, peerManager_->sessionTerminateBatons_.end());
+  folly::coro::blockingWait(
+      [&]() -> folly::coro::Task<void> { co_await *batonIt->second; }());
+}
+
+void E2ETestFixture::completePeerSessionTermination(
+    const folly::IPAddress& peerAddr,
+    bool peerDelete) {
+  BgpPeerId peerId{peerAddr, peerAddr.asV4().toLongHBO()};
+  FiberBgpPeer::ObservableStateT terminateEvent{
+      .peerId = peerId,
+      .state = BgpSessionState::IDLE,
+      .versionNumber = 0,
+      .sessionInfo = nullptr,
+      .peerDelete = peerDelete};
+  folly::coro::blockingWait(
+      folly::coro::co_withExecutor(
+          &peerManager_->getEventBase(),
+          peerManager_->sessionTerminated(terminateEvent)));
+}
+
 void E2ETestFixture::bringDownPeerWithGr(const folly::IPAddress& peerAddr) {
   BgpPeerId peerId{peerAddr, peerAddr.asV4().toLongHBO()};
   auto it = peerQueues_.find(peerId);

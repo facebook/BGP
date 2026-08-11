@@ -445,6 +445,13 @@ folly::coro::Task<void> AdjRib::sendBgpUpdates(
       eorCnt,
       bgpMessageCnt,
       backpressured);
+
+  /*
+   * Exit early if cancellation was requested due to session termination by
+   * AdjRib::sessionTerminated.
+   */
+  co_await folly::coro::co_safe_point;
+
   if (enableUpdateGroup_) {
     transitionPeerUpdateState();
   } else {
@@ -1758,6 +1765,16 @@ bool AdjRib::isDetachedPeer() const {
  * Neither: reschedule packing timers to continue processing.
  */
 void AdjRib::transitionPeerUpdateState() noexcept {
+  if (peerState_ == PeerUpdateState::DOWN) {
+    /*
+     * If PeerManager::sessionTerminated runs before adjRib::sessionTerminated,
+     * then we could see PeerUpdateState is DOWN when this method runs. We
+     * should do nothing for peers whose state was set to DOWN and whose
+     * adjRibGroup was set to nullptr via
+     * PeerManager::sessionTerminated -> AdjRibGroup::unregisterPeer.
+     */
+    return;
+  }
   // DETACHED_ON_REGISTRATION peers were never in sync with the group, so they
   // can never be DFP — they must always go through the DSP rejoin path
   // with collapse verification.
