@@ -295,6 +295,13 @@ folly::Expected<FiberSocket, FiberSocketError> FiberSocket::makeConnectedSocket(
         }); // addTask
   }
 
+  /*
+   * Unlike the await in FiberSocket::connect(), this one needs no
+   * in-progress tracking by the caller. This is a static factory: the
+   * FiberSocket does not exist until it is constructed from `socket` below, so
+   * nothing can replace or destroy it while the fiber is suspended here, and
+   * the code after the await touches only locals.
+   */
   ConnectCallback cb(socket);
   try {
     await([&cb, &socket, destAddr, bindAddr, connectTimeout](
@@ -330,6 +337,13 @@ folly::Expected<folly::Unit, FiberSocketError> FiberSocket::connect(
         FiberGenericSocketErrorType::CONNECT_ALREADY,
         "connect() called on socket already connected"});
   }
+
+  /*
+   * The await() below suspends the fiber, and the code after it dereferences
+   * members of `this`. Owners must therefore not replace or destroy this
+   * socket until connect() returns; FiberBgpPeerManager tracks that with
+   * BgpPeerActiveConnectInfo::connectInProgress.
+   */
 
   // disable read callbacks for now
   socket_->setReadCB(nullptr);

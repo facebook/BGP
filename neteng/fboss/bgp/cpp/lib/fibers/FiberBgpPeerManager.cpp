@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <folly/ScopeGuard.h>
 #include <folly/container/F14Set.h>
 #include <folly/coro/BlockingWait.h>
 #include <atomic>
@@ -1401,12 +1402,19 @@ void FiberBgpPeerManager::activeConnect(
     activeConnectInfo->socket = std::make_unique<FiberSocket>();
     activeConnectInfo->numOfConnectionAttempts++;
     bool isV6 = isV6Peer(peerAddr);
-    auto result = activeConnectInfo->socket->connect(
-        peerSocketAddr,
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            activeConnectInfo->connTimeParams.getConnectTimeout()),
-        bindSocketAddr,
-        getBgpSockOptions(isV6));
+
+    auto result = [&]() {
+      activeConnectInfo->connectInProgress = true;
+      SCOPE_EXIT {
+        activeConnectInfo->connectInProgress = false;
+      };
+      return activeConnectInfo->socket->connect(
+          peerSocketAddr,
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              activeConnectInfo->connTimeParams.getConnectTimeout()),
+          bindSocketAddr,
+          getBgpSockOptions(isV6));
+    }();
 
     // Re-validate peer state after fiber suspension (connect() suspends)
     bool canRetry = canRetryConnect(peerAddr);
@@ -1453,6 +1461,34 @@ void FiberBgpPeerManager::activeConnect(
 void FiberBgpPeerManager::scheduleConnectTimeout(
     std::shared_ptr<BgpPeerActiveConnectInfo> activeConnectInfo,
     std::chrono::milliseconds delay) {
+  /*
+   * Do not schedule an activeConnect while one is already pending. Otherwise
+   * this would let another activeConnect() run while the first is suspended
+   * inside FiberSocket::connect(); its
+   * `activeConnectInfo->socket = std::make_unique<FiberSocket>()` destroys the
+   * FiberSocket that the suspended frame resumes on, which is a
+   * use-after-free.
+   *
+   * Nothing is lost by skipping: whoever owns the pending attempt reschedules
+   * once it finishes -- activeConnect() on connect failure, and runBgpPeer()
+   * when the session it started ends.
+   */
+  if (activeConnectInfo->pendingTimeout &&
+      activeConnectInfo->pendingTimeout->isScheduled()) {
+    XLOGF(
+        DBG2,
+        "Connect retry already scheduled for {}, not rescheduling",
+        activeConnectInfo->peerAddr.describe());
+    return;
+  }
+  if (activeConnectInfo->connectInProgress) {
+    XLOGF(
+        DBG2,
+        "Connect already in progress for {}, not scheduling a retry",
+        activeConnectInfo->peerAddr.describe());
+    return;
+  }
+
   /*
    * Use weak_ptr to break circular reference:
    * activeConnectInfo->pendingTimeout → AsyncTimeout → lambda →

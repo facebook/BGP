@@ -23,7 +23,12 @@
   FRIEND_TEST(FiberBgpPeerManagerFixture, SendReceiveLongBgpUpdateTest);      \
   FRIEND_TEST(FiberBgpPeerManagerFixture, PeeringStateResetOnStopTest);       \
   FRIEND_TEST(FiberBgpPeerManagerFixture, PeeringStateResetOnStopWithGRTest); \
-  FRIEND_TEST(FiberBgpPeerManagerFixture, PeerAcceptErrorTest);
+  FRIEND_TEST(FiberBgpPeerManagerFixture, PeerAcceptErrorTest);               \
+  FRIEND_TEST(                                                                \
+      FiberBgpPeerManagerFixture, ActiveConnectUseAfterFreeViaPeerStart);     \
+  FRIEND_TEST(                                                                \
+      FiberBgpPeerManagerFixture,                                             \
+      ActiveConnectUseAfterFreeViaSessionTeardown);
 
 #define FiberBgpPeer_TEST_FRIENDS                                       \
   friend class FiberBgpPeerManagerFixture;                              \
@@ -32,10 +37,14 @@
   FRIEND_TEST(FiberBgpPeerManagerFixture, PeeringStateResetOnStopWithGRTest);
 
 #include <folly/Random.h>
+#include <folly/ScopeGuard.h>
 #include <folly/coro/BlockingWait.h>
 #include <folly/io/async/EventBaseManager.h>
 #include <folly/io/async/test/ScopedBoundPort.h>
 #include <folly/logging/xlog.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
 #include <cerrno>
 
 #include <fb303/ThreadCachedServiceData.h>
@@ -5844,6 +5853,320 @@ TEST_F(FiberBgpPeerManagerFixture, PassiveConnectCrossSubnetRejectTest) {
 
     waitTillSessionsGoDown(fm, peerMgr1, {peerId2});
     waitTillSessionsGoDown(fm, peerMgr2, {peerId1});
+  });
+
+  evb.loop();
+}
+
+/*
+ * Shared post-condition for the two activeConnect reentrancy repros: the
+ * connect that was in flight must have completed on the very FiberSocket it
+ * started on -- not one that replaced it -- and that connection must be
+ * usable for BGP.
+ *
+ * Checks, in order: only one connect attempt ran (the redundant one was
+ * suppressed); activeConnectInfo still owns the FiberSocket the suspended
+ * frame resumed on; that socket finished its handshake; and the DUT actually
+ * spoke BGP on the connection it established.
+ *
+ * `socket` is expected to still be owned here rather than null. runBgpPeer()
+ * takes it as `std::move(*activeConnectInfo->socket)`, which moves the
+ * pointee and not the unique_ptr -- and FiberSocket's const shared_ptr member
+ * makes even that move a copy -- so nothing ever leaves the unique_ptr empty.
+ *
+ * Callers must already have freed the accept-queue slot and slept long enough
+ * for the DUT to connect and send OPEN. The bytes are then sitting in the
+ * kernel buffer, so the read below does not block the EventBase this fiber is
+ * running on.
+ */
+void expectConnectCompletedOnProtectedSocket(
+    int listenFd,
+    const std::shared_ptr<BgpPeerActiveConnectInfo>& aci,
+    const FiberSocket* inFlight,
+    uint16_t peerPort) {
+  EXPECT_EQ(1u, aci->numOfConnectionAttempts)
+      << "a second connect attempt ran while one was already in flight";
+  ASSERT_EQ(inFlight, aci->socket.get())
+      << "the in-flight FiberSocket was replaced";
+
+  /*
+   * getPeerAddress() is only populated after connect() resumes past its
+   * await, so a matching peer port proves this exact FiberSocket completed
+   * its handshake.
+   */
+  EXPECT_EQ(peerPort, aci->socket->getPeerAddress().getPort())
+      << "connect did not complete on the protected socket";
+
+  // Non-blocking so a missing connection fails the test instead of hanging.
+  ::fcntl(listenFd, F_SETFL, ::fcntl(listenFd, F_GETFL, 0) | O_NONBLOCK);
+  int established = ::accept(listenFd, nullptr, nullptr);
+  ASSERT_GE(established, 0) << "DUT never completed its TCP connect";
+  SCOPE_EXIT {
+    ::close(established);
+  };
+
+  // Safety net only; the OPEN should already be buffered.
+  struct timeval tv{2, 0};
+  ::setsockopt(established, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+  // BGP header: 16-byte marker, 2-byte length, 1-byte type. OPEN is type 1.
+  std::array<unsigned char, 19> hdr{};
+  const auto received =
+      ::recv(established, hdr.data(), hdr.size(), MSG_WAITALL);
+  ASSERT_EQ(static_cast<ssize_t>(hdr.size()), received)
+      << "no BGP message arrived on the established connection";
+  EXPECT_TRUE(std::all_of(hdr.begin(), hdr.begin() + 16, [](unsigned char b) {
+    return b == 0xFF;
+  })) << "connection did not carry a BGP marker";
+  EXPECT_EQ(1, hdr[18]) << "expected the DUT to send a BGP OPEN";
+}
+
+/*
+ * End-to-end reproduction of T268160522: public API in, SIGSEGV out.
+ *
+ * ASAN is the oracle. While activeConnect() lacks a reentrancy guard this
+ * aborts with heap-use-after-free at FiberSocket.cpp:345; once guarded, the
+ * same sequence runs clean and the test passes. It therefore asserts nothing
+ * about the bug being present -- a run where the race below does not land
+ * also passes, so treat a green result as "no memory error observed" rather
+ * than proof the window was exercised.
+ *
+ * Nothing here is hand-queued: both activeConnect() invocations come from
+ * real connect-retry timeouts (FiberBgpPeerManager.cpp:1471), driven only by
+ * addPeer()/shutdownPeer()/startPeer(). The difficulty is holding fiber A
+ * suspended inside FiberSocket::connect() long enough for the second timeout
+ * to fire, while still letting A's connect ultimately SUCCEED -- the failure
+ * path returns from connect()'s catch block without touching a member, so it
+ * never faults.
+ *
+ * Mechanism:
+ *   - listen(backlog=0) with the single accept-queue slot occupied, so the
+ *     kernel silently drops further SYNs and A parks in SYN_SENT. A 30s
+ *     connectTimeout keeps A from erroring out (the 500ms default would).
+ *   - shutdownPeer()/startPeer() re-arms the connect timer on the *same*
+ *     activeConnectInfo. Fiber B runs while A is parked and reassigns
+ *     activeConnectInfo->socket, destroying A's FiberSocket.
+ *   - Linux retransmits each SYN on its own clock from its own start: A at
+ *     ~1s, B (starting ~150ms later) at ~1.15s. Freeing exactly one slot at
+ *     ~950ms lets A's retransmit land first and win it; B's is dropped again.
+ *   - A's connect succeeds, A resumes, and dereferences the destroyed object.
+ *
+ * Depends on Linux SYN-retransmit timing, so it is inherently timing-sensitive
+ * rather than deterministic.
+ */
+TEST_F(FiberBgpPeerManagerFixture, ActiveConnectUseAfterFreeViaPeerStart) {
+  auto& fm = fmWrapper.get();
+
+  int listenFd = ::socket(AF_INET, SOCK_STREAM, 0);
+  ASSERT_GE(listenFd, 0);
+  SCOPE_EXIT {
+    ::close(listenFd);
+  };
+  sockaddr_in laddr{};
+  laddr.sin_family = AF_INET;
+  laddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  laddr.sin_port = 0;
+  ASSERT_EQ(0, ::bind(listenFd, (sockaddr*)&laddr, sizeof(laddr)));
+  ASSERT_EQ(0, ::listen(listenFd, 0));
+  socklen_t alen = sizeof(laddr);
+  ASSERT_EQ(0, ::getsockname(listenFd, (sockaddr*)&laddr, &alen));
+  const uint16_t peerPort = ntohs(laddr.sin_port);
+  const auto peerAddr = folly::IPAddress("127.0.0.1");
+
+  // Occupy the single accept-queue slot so subsequent SYNs are dropped.
+  int filler = ::socket(AF_INET, SOCK_STREAM, 0);
+  ASSERT_GE(filler, 0);
+  SCOPE_EXIT {
+    ::close(filler);
+  };
+  ASSERT_EQ(0, ::connect(filler, (sockaddr*)&laddr, sizeof(laddr)));
+
+  auto config = makeBgpGlobalConfig(kR1Lo1, kR1Lo1);
+  peerMgr1 = make_shared<TestFiberBgpPeerManager>(config, &callback1, fm, evb);
+  fm.addTask([this] { peerMgr1->run(); });
+
+  fm.addTask([this, peerAddr, peerPort, listenFd] {
+    // startAfterDelay=0, minRetry=100ms, maxRetry=60s, connectTimeout=30s.
+    ASSERT_TRUE(peerMgr1
+                    ->addPeer(
+                        peerAddr,
+                        100,
+                        100,
+                        folly::SocketAddress("127.0.0.1", 0),
+                        peerPort,
+                        ConnTimeParams(0ms, 100ms, 60000ms, 30000ms))
+                    .hasValue());
+
+    // t ~= 150ms: fiber A is parked in SYN_SENT inside FiberSocket::connect().
+    fiberSleepFor(150ms);
+    auto aci = peerMgr1->allPeers_.at(peerAddr)
+                   ->connectionInfos.at(peerPort)
+                   ->activeConnectInfo;
+    ASSERT_NE(nullptr, aci);
+    const FiberSocket* inFlight = aci->socket.get();
+    ASSERT_NE(nullptr, inFlight);
+    ASSERT_EQ(1u, aci->numOfConnectionAttempts);
+
+    /*
+     * Re-arm the connect timer on the same ACI. While the bug is present
+     * fiber B replaces activeConnectInfo->socket here, destroying the
+     * FiberSocket that A's suspended connect() frame is still using; with the
+     * reentrancy guard in place B returns without touching it.
+     */
+    peerMgr1->shutdownPeer(peerAddr);
+    peerMgr1->startPeer(peerAddr);
+    fiberSleepFor(150ms);
+    GTEST_LOG_(INFO) << "in-flight FiberSocket " << inFlight << " -> "
+                     << aci->socket.get() << " after "
+                     << aci->numOfConnectionAttempts << " connect attempts";
+
+    /*
+     * t ~= 950ms: free exactly one slot, just ahead of A's ~1s SYN
+     * retransmit, so A wins it rather than B (whose retransmit is ~150ms
+     * later and finds the queue full again).
+     */
+    fiberSleepFor(650ms);
+    int accepted = ::accept(listenFd, nullptr, nullptr);
+    EXPECT_GE(accepted, 0);
+    if (accepted >= 0) {
+      ::close(accepted);
+    }
+
+    /*
+     * A's handshake completes and A resumes inside FiberSocket::connect().
+     * While the bug is present that resume touches the destroyed FiberSocket
+     * and ASAN aborts here; once guarded, A resumes on its own live socket.
+     */
+    fiberSleepFor(2000ms);
+
+    // Not crashing is not enough -- the protected connect must also have
+    // succeeded.
+    expectConnectCompletedOnProtectedSocket(listenFd, aci, inFlight, peerPort);
+
+    peerMgr1->shutdownWithGR(false);
+  });
+
+  evb.loop();
+}
+
+/*
+ * Same use-after-free as ActiveConnectUseAfterFreeViaPeerStart, but armed
+ * by the runBgpPeer() teardown path instead of startPeer(). This is the
+ * arming source that can fire without any operator action, so it is the one
+ * that matters for an unattended crash like T268160522.
+ *
+ * When a BGP session ends, runBgpPeer() re-arms the connect retry timer on
+ * `connectionInfos[peerListenPort]->activeConnectInfo`. Note the port: for a
+ * session the peer initiated, the connection lives under the peer's
+ * *ephemeral* port, but the retry is armed on the *listen-port* ACI -- the
+ * same ACI an in-flight active connect is using. So a passive session tearing
+ * down re-enters activeConnect() for the active connect already in progress,
+ * and its `activeConnectInfo->socket = std::make_unique<FiberSocket>()`
+ * destroys the FiberSocket that connect() is suspended on.
+ *
+ * No shutdownPeer()/startPeer() here: the peer stays configured and running
+ * throughout. The only stimulus is an inbound TCP connection that is accepted
+ * and then dropped.
+ */
+TEST_F(
+    FiberBgpPeerManagerFixture,
+    ActiveConnectUseAfterFreeViaSessionTeardown) {
+  auto& fm = fmWrapper.get();
+
+  /*
+   * Listener the DUT actively connects to, with its single accept-queue slot
+   * occupied so the connect parks in SYN_SENT. See the sibling test for why
+   * this shape is needed.
+   */
+  int listenFd = ::socket(AF_INET, SOCK_STREAM, 0);
+  ASSERT_GE(listenFd, 0);
+  SCOPE_EXIT {
+    ::close(listenFd);
+  };
+  sockaddr_in laddr{};
+  laddr.sin_family = AF_INET;
+  laddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  laddr.sin_port = 0;
+  ASSERT_EQ(0, ::bind(listenFd, (sockaddr*)&laddr, sizeof(laddr)));
+  ASSERT_EQ(0, ::listen(listenFd, 0));
+  socklen_t alen = sizeof(laddr);
+  ASSERT_EQ(0, ::getsockname(listenFd, (sockaddr*)&laddr, &alen));
+  const uint16_t peerPort = ntohs(laddr.sin_port);
+  const auto peerAddr = folly::IPAddress("127.0.0.1");
+
+  int filler = ::socket(AF_INET, SOCK_STREAM, 0);
+  ASSERT_GE(filler, 0);
+  SCOPE_EXIT {
+    ::close(filler);
+  };
+  ASSERT_EQ(0, ::connect(filler, (sockaddr*)&laddr, sizeof(laddr)));
+
+  // The manager needs its own listener so the test can drive an inbound
+  // session through passiveConnectLoop().
+  auto config =
+      makeBgpGlobalConfig(kR1Lo1, kR1Lo1, folly::SocketAddress("127.0.0.1", 0));
+  peerMgr1 = make_shared<TestFiberBgpPeerManager>(config, &callback1, fm, evb);
+  fm.addTask([this] { peerMgr1->run(); });
+
+  fm.addTask([this, peerAddr, peerPort, listenFd] {
+    ASSERT_TRUE(peerMgr1
+                    ->addPeer(
+                        peerAddr,
+                        100,
+                        100,
+                        folly::SocketAddress("127.0.0.1", 0),
+                        peerPort,
+                        ConnTimeParams(0ms, 100ms, 60000ms, 30000ms))
+                    .hasValue());
+
+    // Fiber A is now parked in SYN_SENT inside FiberSocket::connect().
+    fiberSleepFor(150ms);
+    auto aci = peerMgr1->allPeers_.at(peerAddr)
+                   ->connectionInfos.at(peerPort)
+                   ->activeConnectInfo;
+    ASSERT_NE(nullptr, aci);
+    const FiberSocket* inFlight = aci->socket.get();
+    ASSERT_NE(nullptr, inFlight);
+
+    /*
+     * Inbound connection -> passiveConnectLoop() accepts it and spawns
+     * runBgpPeer() under the ephemeral port. Dropping it ends that session,
+     * whose teardown re-arms the retry timer on the listen-port ACI above.
+     */
+    const auto mgrListen = peerMgr1->getListenAddress();
+    ASSERT_TRUE(mgrListen.has_value());
+    int passive = ::socket(AF_INET, SOCK_STREAM, 0);
+    ASSERT_GE(passive, 0);
+    sockaddr_in maddr{};
+    maddr.sin_family = AF_INET;
+    maddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    maddr.sin_port = htons(mgrListen->getPort());
+    ASSERT_EQ(0, ::connect(passive, (sockaddr*)&maddr, sizeof(maddr)));
+    fiberSleepFor(100ms);
+    ::close(passive);
+
+    // Session teardown arms the timer; fiber B then destroys A's FiberSocket.
+    fiberSleepFor(400ms);
+    GTEST_LOG_(INFO) << "in-flight FiberSocket " << inFlight << " -> "
+                     << aci->socket.get() << " after "
+                     << aci->numOfConnectionAttempts << " connect attempts";
+
+    // t ~= 950ms: free one slot just ahead of A's ~1s SYN retransmit.
+    fiberSleepFor(300ms);
+    int accepted = ::accept(listenFd, nullptr, nullptr);
+    EXPECT_GE(accepted, 0);
+    if (accepted >= 0) {
+      ::close(accepted);
+    }
+
+    // A resumes onto the destroyed FiberSocket -> ASAN aborts here.
+    fiberSleepFor(3000ms);
+
+    // Once guarded, A resumes on its own socket and the connect must have
+    // succeeded.
+    expectConnectCompletedOnProtectedSocket(listenFd, aci, inFlight, peerPort);
+
+    peerMgr1->shutdownWithGR(false);
   });
 
   evb.loop();

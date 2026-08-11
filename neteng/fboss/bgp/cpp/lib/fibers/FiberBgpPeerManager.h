@@ -153,6 +153,13 @@ struct BgpPeerActiveConnectInfo {
   std::optional<int32_t> ttlSecurityHops;
   std::unique_ptr<folly::AsyncTimeout> pendingTimeout;
   std::unique_ptr<FiberSocket> socket{nullptr};
+  /*
+   * Set while activeConnect() is suspended inside FiberSocket::connect().
+   * `socket` must not be replaced while this is set: connect() resumes by
+   * dereferencing members of the FiberSocket it was called on, so destroying
+   * it mid-flight is a use-after-free.
+   */
+  bool connectInProgress{false};
   /**
    * TCP connection backoff. Failure to establish TCP connection will
    * backoff for the next attempt
