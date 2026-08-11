@@ -3943,6 +3943,12 @@ std::vector<std::shared_ptr<AdjRib>> AdjRibOutGroup::tryAcceptPeersToGroup(
       peer->setDetachedRibVersion(lastSeenRibVersion_);
       peer->reschedulePackingTimers();
       peer->clearAdjRibFlag(AdjRib::RIB_OUT_DISCREPANCY);
+      /*
+       * After updating the detachedRibVersion and collapsing the peer entries,
+       * the peer is sharing entries with the group, and therefore cannot
+       * be represented by the DETACHED_ON_REGISTRATION flag.
+       */
+      peer->clearAdjRibFlag(AdjRib::DETACHED_ON_REGISTRATION);
       continue;
     }
 

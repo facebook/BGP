@@ -36,7 +36,8 @@
   FRIEND_TEST(UpdateGroupPeerJoinTest, CollapsePathMixedSharedAndCloned);      \
   FRIEND_TEST(                                                                 \
       UpdateGroupPeerJoinTest, CollapsePathFailsWhenPostDetachEntryNotCloned); \
-  FRIEND_TEST(UpdateGroupPeerJoinTest, DiscrepancyUpdatesDetachedRibVersion);
+  FRIEND_TEST(UpdateGroupPeerJoinTest, DiscrepancyUpdatesDetachedRibVersion);  \
+  FRIEND_TEST(UpdateGroupPeerJoinTest, DiscrepancyClearsDetachedOnRegistration);
 
 #define AdjRibOutGroup_TEST_FRIENDS                                            \
   friend class UpdateGroupPeerJoinTest;                                        \
@@ -57,7 +58,8 @@
   FRIEND_TEST(UpdateGroupPeerJoinTest, CollapsePathMixedSharedAndCloned);      \
   FRIEND_TEST(                                                                 \
       UpdateGroupPeerJoinTest, CollapsePathFailsWhenPostDetachEntryNotCloned); \
-  FRIEND_TEST(UpdateGroupPeerJoinTest, DiscrepancyUpdatesDetachedRibVersion);
+  FRIEND_TEST(UpdateGroupPeerJoinTest, DiscrepancyUpdatesDetachedRibVersion);  \
+  FRIEND_TEST(UpdateGroupPeerJoinTest, DiscrepancyClearsDetachedOnRegistration);
 
 #include <folly/io/async/EventBase.h>
 
@@ -899,6 +901,58 @@ TEST_F(UpdateGroupPeerJoinTest, DiscrepancyUpdatesDetachedRibVersion) {
   EXPECT_TRUE(accepted.empty());
   EXPECT_EQ(adjRib->getPeerState(), PeerUpdateState::DETACHED_RUNNING);
   EXPECT_EQ(adjRib->getDetachedRibVersion(), 50);
+}
+
+/*
+ * collapseLiteEntry seeds `hasDiscrepancy` from DETACHED_ON_REGISTRATION, so
+ * for a peer that joined already detached every group-only entry counts as a
+ * discrepancy regardless of rib version. Once the discrepancy path has
+ * collapsed that peer into the group it is sharing the group's entries and is
+ * no longer detached-on-registration, so the flag must be cleared.
+ *
+ * Without clearing it, the retry re-counts the very entries the first round
+ * just shared, and the count grows once per attempt instead of settling.
+ */
+TEST_F(UpdateGroupPeerJoinTest, DiscrepancyClearsDetachedOnRegistration) {
+  auto adjRib = createAndRegisterPeer(0);
+  auto groupOwnerKey = group_->getGroupOwnerKey();
+  auto attrs = makeAttrs(1, 1);
+
+  group_->setLastSeenRibVersion(50);
+
+  /*
+   * Inject the discrepancy: a single group-only entry the peer never
+   * materialized. Its ribVersion is below the peer's detachedRibVersion, so
+   * it is counted only because the peer is detached-on-registration.
+   */
+  auto* entry = group_->addToLiteTree(
+      group_->LiteTree_, kV4Prefix1, groupOwnerKey, kPlaceholderPathID);
+  entry->setPostAttr(attrs);
+  entry->setRibVersion(30);
+
+  adjRib->setDetachedRibVersion(10);
+  adjRib->setAdjRibFlag(AdjRib::DETACHED_ON_REGISTRATION);
+  adjRib->setPeerState(PeerUpdateState::DETACHED_READY_TO_JOIN);
+  group_->markPeerDetached(adjRib);
+
+  const auto discrepanciesBefore = group_->getTotalDiscrepancies();
+
+  EXPECT_TRUE(group_->tryAcceptPeersToGroup({adjRib}).empty());
+  EXPECT_EQ(adjRib->getPeerState(), PeerUpdateState::DETACHED_RUNNING);
+  EXPECT_EQ(discrepanciesBefore + 1, group_->getTotalDiscrepancies());
+  EXPECT_FALSE(adjRib->isAdjRibFlagSet(AdjRib::DETACHED_ON_REGISTRATION))
+      << "peer is sharing the group's entries but is still marked "
+         "detached-on-registration";
+
+  /*
+   * Retry against the same unchanged entry. The peer is no longer
+   * detached-on-registration and the entry is not newer than its refreshed
+   * detachedRibVersion, so the one discrepancy above must remain the only one.
+   */
+  adjRib->setPeerState(PeerUpdateState::DETACHED_READY_TO_JOIN);
+  group_->tryAcceptPeersToGroup({adjRib});
+  EXPECT_EQ(discrepanciesBefore + 1, group_->getTotalDiscrepancies())
+      << "retry re-counted entries the first collapse already shared";
 }
 
 } // namespace facebook::bgp
