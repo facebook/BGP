@@ -49,7 +49,7 @@ TEST(RibCountersTest, PrefixCountTracksFieldAndFb303) {
   EXPECT_EQ(2, c.totalPrefixes());
   EXPECT_EQ(2, counter(RibStats::kRibPrefixCount));
 
-  c.onPrefixRemoved(/*isV4=*/true, 24);
+  c.onPrefixRemoved(/*isV4=*/true, 24, /*inactivePaths=*/0);
   EXPECT_EQ(1, c.totalPrefixes());
   EXPECT_EQ(1, counter(RibStats::kRibPrefixCount));
 }
@@ -75,7 +75,7 @@ TEST(RibCountersTest, PerAfiPrefixAndPerLengthCounts) {
   // v4 /24 must not leak into the v6 counts.
   EXPECT_EQ(0, c.prefixLenCounts(/*isV4=*/false)[24]);
 
-  c.onPrefixRemoved(/*isV4=*/true, 24);
+  c.onPrefixRemoved(/*isV4=*/true, 24, /*inactivePaths=*/0);
   EXPECT_EQ(1, c.prefixLenCounts(/*isV4=*/true)[24]);
   EXPECT_EQ(2, c.totalPrefixes(/*isV4=*/true));
 }
@@ -107,6 +107,52 @@ TEST(RibCountersTest, TotalPathsPerAfiFromDeltas) {
   // A zero delta (an update that did not change the path count) is a no-op.
   c.onPathsDelta(/*isV4=*/true, 0);
   EXPECT_EQ(1, c.totalPaths(/*isV4=*/true));
+}
+
+// Inactive paths are tracked per address family from signed deltas, and the
+// fb303 gauge is SET from the aggregate rather than incremented -- so the
+// exported value always equals the in-memory total and cannot accumulate drift.
+TEST(RibCountersTest, InactivePathsPerAfiFromDeltas) {
+  RibStats::initCounters();
+  RibCounters c;
+  EXPECT_EQ(0, c.inactivePaths());
+  EXPECT_EQ(0, counter(RibStats::kInactivePathCount));
+
+  // Two v4 prefixes each gain an inactive path; one v6 prefix gains two.
+  c.onInactivePathsDelta(/*isV4=*/true, 1);
+  c.onInactivePathsDelta(/*isV4=*/true, 1);
+  c.onInactivePathsDelta(/*isV4=*/false, 2);
+
+  EXPECT_EQ(2, c.inactivePaths(/*isV4=*/true));
+  EXPECT_EQ(2, c.inactivePaths(/*isV4=*/false));
+  EXPECT_EQ(4, c.inactivePaths());
+  EXPECT_EQ(4, counter(RibStats::kInactivePathCount));
+
+  // A next-hop resolving decrements only its own address family.
+  c.onInactivePathsDelta(/*isV4=*/true, -2);
+  EXPECT_EQ(0, c.inactivePaths(/*isV4=*/true));
+  EXPECT_EQ(2, c.inactivePaths(/*isV4=*/false));
+  EXPECT_EQ(2, counter(RibStats::kInactivePathCount));
+
+  // A zero delta -- a prefix re-selected with unchanged eligibility, which is
+  // the common case on every path-selection pass -- is a no-op.
+  c.onInactivePathsDelta(/*isV4=*/false, 0);
+  EXPECT_EQ(2, c.inactivePaths());
+  EXPECT_EQ(2, counter(RibStats::kInactivePathCount));
+}
+
+TEST(RibCountersTest, PrefixRemovalReleasesCachedInactivePaths) {
+  RibStats::initCounters();
+  RibCounters c;
+
+  c.onPrefixAdded(/*isV4=*/true, 24);
+  c.onInactivePathsDelta(/*isV4=*/true, 3);
+  ASSERT_EQ(3, c.inactivePaths());
+
+  c.onPrefixRemoved(/*isV4=*/true, 24, /*inactivePaths=*/3);
+  EXPECT_EQ(0, c.totalPrefixes());
+  EXPECT_EQ(0, c.inactivePaths());
+  EXPECT_EQ(0, counter(RibStats::kInactivePathCount));
 }
 
 TEST(RibCountersTest, OriginatedRoutesTracksFieldAndFb303) {
@@ -216,6 +262,7 @@ TEST(RibCountersTest, ResetZeroesInMemoryFields) {
   c.onPrefixAdded(/*isV4=*/true, 24);
   c.onPrefixAdded(/*isV4=*/false, 64);
   c.onPathsDelta(/*isV4=*/true, 3);
+  c.onInactivePathsDelta(/*isV4=*/true, 2);
   c.setOriginatedRoutes(5);
   c.onUnresolvableNexthopAdded();
   c.onBestpathSourceChanged(
@@ -225,6 +272,8 @@ TEST(RibCountersTest, ResetZeroesInMemoryFields) {
   EXPECT_EQ(0, c.totalPrefixes());
   EXPECT_EQ(0, c.totalPrefixes(/*isV4=*/true));
   EXPECT_EQ(0, c.totalPaths());
+  EXPECT_EQ(0, c.inactivePaths());
+  EXPECT_EQ(0, c.inactivePaths(/*isV4=*/true));
   EXPECT_EQ(0, c.prefixLenCounts(/*isV4=*/false)[64]);
   EXPECT_EQ(0, c.originatedRoutes());
   EXPECT_EQ(0, c.unresolvableNexthops());

@@ -478,12 +478,15 @@ inline const auto kRibUnresolvableNexthopsCount =
 void incrUnresolvableNexthopsCount();
 void decrUnresolvableNexthopsCount();
 
-// total number of inactive BGP paths (paths not selected by best path
-// selection)
+/*
+ * Total number of BGP paths excluded from best-path selection because their
+ * nexthops are unresolved. Set absolutely from the RibCounters aggregate
+ * rather than incremented in place, so the gauge cannot accumulate drift even
+ * if a delta is ever missed.
+ */
 inline const auto kInactivePathCount =
     fmt::format("{}.rib.inactive_path.count", kBgpcppTag);
-void incrInactivePathCount(int64_t count);
-void decrInactivePathCount(int64_t count);
+void setInactivePathCount(int64_t count);
 
 // Number of nexthop info entries tracked in the RIB
 inline const auto kNexthopInfoCount =

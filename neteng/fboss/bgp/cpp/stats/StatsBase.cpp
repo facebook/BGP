@@ -751,13 +751,8 @@ void decrUnresolvableNexthopsCount() {
       kRibUnresolvableNexthopsCount, -1);
 }
 
-void incrInactivePathCount(int64_t count) {
-  fb303::ThreadCachedServiceData::get()->incrementCounter(
-      kInactivePathCount, count);
-}
-void decrInactivePathCount(int64_t count) {
-  fb303::ThreadCachedServiceData::get()->incrementCounter(
-      kInactivePathCount, -count);
+void setInactivePathCount(int64_t count) {
+  fb303::ThreadCachedServiceData::get()->setCounter(kInactivePathCount, count);
 }
 
 void incrNexthopInfoCount() {

@@ -7622,6 +7622,198 @@ TEST_F(RibNexthopTrackingFixture, RibInNexthopUpdate) {
   EXPECT_EQ(0, tcData->getCounter(RibStats::kRibUnresolvableNexthopsCount));
 }
 
+namespace {
+/*
+ * prePathSelectionFiltering consults the FeatureFlags global (not the RIB's own
+ * enableNexthopTracking_), so the inactive-path tests must set it explicitly.
+ */
+void setNexthopTrackingFeatureFlag(bool enabled) {
+  thrift::BgpConfig thriftConfig;
+  thrift::BgpSettingConfig tBgpSettingConfig;
+  tBgpSettingConfig.enable_next_hop_tracking() = enabled;
+  thriftConfig.bgp_setting_config() = std::move(tBgpSettingConfig);
+  FeatureFlags::LoadFromThriftConfig(thriftConfig);
+}
+
+int64_t inactivePathCount() {
+  auto tcData = fb303::ThreadCachedServiceData::get();
+  tcData->publishStats();
+  return tcData->getCounter(RibStats::kInactivePathCount);
+}
+} // namespace
+
+/*
+ * The inactive-path counter reports the paths best-path selection actually
+ * excluded, recomputed from the RIB on every selection pass. A path whose
+ * nexthop is unresolved is inactive; resolving that nexthop makes it active
+ * again, and a path with a resolved nexthop is never counted.
+ */
+TEST_F(RibNexthopTrackingFixture, InactivePathCountTracksNexthopResolution) {
+  RibStats::initCounters();
+  setNexthopTrackingFeatureFlag(true);
+  rib_->setFibBatchTime(milliseconds(2));
+
+  NexthopStatus unreachableStatus(kPeerAddr1, false);
+  NexthopStatus reachableStatus(kPeerAddr2, true, 100);
+  updateCacheAndNotifyRib({unreachableStatus, reachableStatus});
+
+  const auto attrs = *buildBgpPathFields(4, 4, 4, 4);
+  auto unresolvedAttrs = std::make_shared<facebook::bgp::BgpPath>(attrs);
+  unresolvedAttrs->setNexthop(kPeerAddr1);
+  unresolvedAttrs->publish();
+  auto resolvedAttrs = std::make_shared<facebook::bgp::BgpPath>(attrs);
+  resolvedAttrs->setNexthop(kPeerAddr2);
+  resolvedAttrs->publish();
+
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendAnnouncement(
+      PrefixPathIds{{kV4Prefix1, kDefaultPathID}}, iBgpPeer_, unresolvedAttrs);
+  sendAnnouncement(
+      PrefixPathIds{{kV6Prefix1, kDefaultPathID}}, eBgpPeer1_, resolvedAttrs);
+  sendInitialPathComputation();
+  fibFuture.wait();
+
+  // Only the path via the unresolved nexthop is excluded from selection.
+  EXPECT_EQ(1, inactivePathCount());
+
+  // Resolving that nexthop returns its path to the candidate set.
+  auto fibFuture2 = fib_->getFibProgramFuture();
+  updateCacheAndNotifyRib({NexthopStatus(kPeerAddr1, true, 50)});
+  fibFuture2.wait();
+
+  EXPECT_EQ(0, inactivePathCount());
+}
+
+/*
+ * Exercise both surviving-prefix withdrawal directions. Removing the inactive
+ * path must decrement the aggregate even though the selected path (and thus
+ * the prefix) stays installed. Removing the active path instead must retain
+ * the inactive contribution while the prefix survives with no best path.
+ */
+TEST_F(RibNexthopTrackingFixture, InactivePathCountTracksPartialWithdrawals) {
+  RibStats::initCounters();
+  setNexthopTrackingFeatureFlag(true);
+  rib_->setFibBatchTime(milliseconds(2));
+
+  updateCacheAndNotifyRib(
+      {NexthopStatus(kPeerAddr1, false), NexthopStatus(kPeerAddr2, true, 100)});
+
+  const auto attrs = *buildBgpPathFields(4, 4, 4, 4);
+  auto unresolvedAttrs = std::make_shared<facebook::bgp::BgpPath>(attrs);
+  unresolvedAttrs->setNexthop(kPeerAddr1);
+  unresolvedAttrs->publish();
+  auto resolvedAttrs = std::make_shared<facebook::bgp::BgpPath>(attrs);
+  resolvedAttrs->setNexthop(kPeerAddr2);
+  resolvedAttrs->publish();
+
+  const auto prefixBatch = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendAnnouncement(prefixBatch, iBgpPeer_, unresolvedAttrs);
+  sendAnnouncement(prefixBatch, eBgpPeer1_, resolvedAttrs);
+  sendInitialPathComputation();
+  fibFuture.wait();
+
+  EXPECT_EQ(1, inactivePathCount());
+  EXPECT_TRUE(rib_->getBestPath(kV4Prefix1));
+
+  // The prefix and its selected path survive, but its inactive contribution
+  // disappears on the next selection pass.
+  sendWithdrawal(prefixBatch, iBgpPeer_);
+  WITH_RETRIES({ ASSERT_EVENTUALLY_EQ(0, inactivePathCount()); });
+  EXPECT_TRUE(rib_->getBestPath(kV4Prefix1));
+
+  // Restore the mixed entry, then remove only the active path. The unresolved
+  // path keeps the RibEntry alive and remains counted, despite there being no
+  // best path to program.
+  sendAnnouncement(prefixBatch, iBgpPeer_, unresolvedAttrs);
+  WITH_RETRIES({ ASSERT_EVENTUALLY_EQ(1, inactivePathCount()); });
+
+  auto withdrawalFuture = fib_->getFibProgramFuture();
+  sendWithdrawal(prefixBatch, eBgpPeer1_);
+  withdrawalFuture.wait();
+  EXPECT_FALSE(rib_->getBestPath(kV4Prefix1));
+  EXPECT_EQ(1, inactivePathCount());
+
+  // Removing the final inactive path erases the entry and releases its cached
+  // contribution through RibCounters::onPrefixRemoved.
+  sendWithdrawal(prefixBatch, iBgpPeer_);
+  WITH_RETRIES({ ASSERT_EVENTUALLY_EQ(0, inactivePathCount()); });
+}
+
+/*
+ * Regression guard for the drift that made the previous counter untrustworthy.
+ * That counter incremented once per RouteInfo linked to an unresolved nexthop,
+ * but re-advertising a prefix creates a new RouteInfo and displaces the old one
+ * without unlinking it -- the intrusive list hook auto-unlinks on destruction,
+ * so no decrement ever ran and the counter leaked +1 per re-advertisement.
+ * Recomputing from the RIB each pass makes the count depend on RIB contents
+ * alone, so it must stay at 1 no matter how many times the path is refreshed.
+ */
+TEST_F(
+    RibNexthopTrackingFixture,
+    InactivePathCountStableAcrossReadvertisement) {
+  RibStats::initCounters();
+  setNexthopTrackingFeatureFlag(true);
+  rib_->setFibBatchTime(milliseconds(2));
+
+  updateCacheAndNotifyRib({NexthopStatus(kPeerAddr1, false)});
+
+  constexpr int kNumReadvertisements = 10;
+  for (int i = 0; i < kNumReadvertisements; i++) {
+    // Vary the AS path so each refresh is a genuine attribute change rather
+    // than an update that updatePath() short-circuits.
+    auto refreshedAttrs = std::make_shared<facebook::bgp::BgpPath>(
+        *buildBgpPathFields(4 + i, 4, 4, 4));
+    refreshedAttrs->setNexthop(kPeerAddr1);
+    refreshedAttrs->publish();
+
+    sendAnnouncement(
+        PrefixPathIds{{kV4Prefix1, kDefaultPathID}}, iBgpPeer_, refreshedAttrs);
+    sendInitialPathComputation();
+
+    /*
+     * One prefix, one path, still unresolved -- exactly one inactive path, no
+     * matter how many refreshes preceded this one. Polled rather than waiting
+     * on a FIB-program future: this prefix never has a best path, so it is
+     * never programmed and no such event is produced. Under the old counter
+     * this grew by one per refresh and the assertion would never come true.
+     */
+    WITH_RETRIES({ ASSERT_EVENTUALLY_EQ(1, inactivePathCount()); });
+  }
+}
+
+/*
+ * A prefix whose every path is inactive has no best path, so it reaches the
+ * RibEntry erase path still carrying a cached inactive count. Withdrawing it
+ * must return the aggregate to zero rather than stranding that count.
+ */
+TEST_F(RibNexthopTrackingFixture, InactivePathCountReleasedOnWithdrawal) {
+  RibStats::initCounters();
+  setNexthopTrackingFeatureFlag(true);
+  rib_->setFibBatchTime(milliseconds(2));
+
+  updateCacheAndNotifyRib({NexthopStatus(kPeerAddr1, false)});
+
+  auto unresolvedAttrs =
+      std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
+  unresolvedAttrs->setNexthop(kPeerAddr1);
+  unresolvedAttrs->publish();
+
+  auto prefixBatch = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
+  sendAnnouncement(prefixBatch, iBgpPeer_, unresolvedAttrs);
+  sendInitialPathComputation();
+  WITH_RETRIES({ ASSERT_EVENTUALLY_EQ(1, inactivePathCount()); });
+
+  /*
+   * The entry is erased inline on the withdrawal (no best path and no paths
+   * left), before any further selection pass can recompute its count -- so
+   * this only returns to zero because the erase path releases the cached
+   * count.
+   */
+  sendWithdrawal(prefixBatch, iBgpPeer_);
+  WITH_RETRIES({ ASSERT_EVENTUALLY_EQ(0, inactivePathCount()); });
+}
+
 /**
  * Test that repeatedly announces and withdraws a route with a unique nexthop
  * to stress test the register/unregister functionality. This verifies that

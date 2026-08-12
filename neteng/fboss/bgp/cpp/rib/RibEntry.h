@@ -98,6 +98,15 @@ class RibEntry {
     return cnt;
   }
 
+  /*
+   * Paths of this prefix that the last path-selection pass excluded from
+   * best-path selection because their nexthops were unresolved. Zero until
+   * selection has run for this entry.
+   */
+  uint32_t getInactivePathCnt() const {
+    return inactivePathCount_;
+  }
+
   // retrieve paths received from one dedicated peer
   folly::F14NodeMap<uint32_t, std::shared_ptr<RouteInfo>> getRouteInfos(
       const nettools::bgplib::BgpPeerId& peer) {
@@ -351,6 +360,17 @@ class RibEntry {
    * NOTE: flag is set to false after selectBestPath is called.
    */
   bool needPathSelection_{true};
+
+  /*
+   * Paths excluded from best-path selection by prePathSelectionFiltering,
+   * rewritten on every pass. Cached per prefix so the RIB-wide aggregate in
+   * RibCounters can be maintained by delta rather than by walking the RIB.
+   *
+   * Memory: occupies the alignment hole between needPathSelection_ and the
+   * shared_ptr below, so sizeof(RibEntry) is unchanged (0 bytes per entry vs.
+   * 8 if placed elsewhere) -- same rationale as the partial-drain fields below.
+   */
+  uint32_t inactivePathCount_{0};
 
   // Multipath nexthop and associated weights
   std::shared_ptr<const WeightedNexthopMap> weightedNexthops_;

@@ -572,11 +572,31 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
       std::optional<BgpRouteType> oldSource,
       const RouteInfo* newBestpath) noexcept;
 
+  /**
+   * Fold one prefix's change in inactive-path count into the RIB-wide
+   * aggregate, given the entry's cached count BEFORE the pass (`oldCount`) and
+   * the entry AFTER it. Safe to call on every pass: a no-op when the count is
+   * unchanged, which is the common case. Like recordBestpathSourceDelta this
+   * lives on RibBase so RibDC's runBestPathSelection override can reuse it --
+   * a hook placed only in RibBase::runBestPathSelection would be skipped on DC.
+   */
+  void recordInactivePathDelta(
+      const folly::CIDRNetwork& prefix,
+      uint32_t oldCount,
+      const RibEntry& entry) noexcept;
+
   static PathSelectionInput snapshotAndResetForPathSelection(
       RibEntry& entry) noexcept;
 
+  /**
+   * Return the candidate paths for best-path selection, dropping the ones
+   * whose nexthops are unresolved, and cache the number dropped on the entry.
+   * Non-const because of that cache: this is the one place both the RibBase and
+   * RibDC orchestrators funnel through, so the count is taken at the exact
+   * point where selection decides candidate eligibility.
+   */
   static std::vector<std::shared_ptr<RouteInfo>> prePathSelectionFiltering(
-      const RibEntry& entry) noexcept;
+      RibEntry& entry) noexcept;
 
   static MultiPathSelectionResult multiPathSelection(
       RibEntry& entry,

@@ -58,12 +58,20 @@ class RibCounters {
     RibStats::incrRibPrefixCount();
   }
 
-  /** A prefix of the given family/length was removed from the Loc-RIB. */
-  void onPrefixRemoved(bool isV4, uint8_t prefixLen) {
+  /**
+   * A prefix of the given family/length was removed from the Loc-RIB.
+   *
+   * `inactivePaths` is the entry's last cached contribution to the aggregate.
+   * Releasing it here makes prefix removal one bookkeeping operation: an erase
+   * site cannot decrement the prefix count while accidentally stranding the
+   * entry's inactive paths.
+   */
+  void onPrefixRemoved(bool isV4, uint8_t prefixLen, uint32_t inactivePaths) {
     auto& a = afiOf(isV4);
     --a.totalPrefixes;
     --a.prefixLenCounts[bucket(prefixLen)];
     RibStats::decrRibPrefixCount();
+    onInactivePathsDelta(isV4, -static_cast<int64_t>(inactivePaths));
   }
 
   /**
@@ -78,6 +86,25 @@ class RibCounters {
       return;
     }
     afiOf(isV4).totalPaths += delta;
+  }
+
+  /**
+   * The number of paths excluded from best-path selection for one prefix
+   * changed by `delta`. Driven from runBestPathSelection as the change in that
+   * prefix's cached count (recomputed by prePathSelectionFiltering, which is
+   * where the exclusion decision is made), and from the prefix-erase sites as
+   * the removal of the whole cached count.
+   *
+   * A no-op when `delta` is 0 -- the common case, since most prefixes are
+   * re-selected without any change in eligibility. The fb303 mirror is set
+   * absolutely from the aggregate rather than incremented, so it cannot drift.
+   */
+  void onInactivePathsDelta(bool isV4, int64_t delta) {
+    if (delta == 0) {
+      return;
+    }
+    afiOf(isV4).inactivePaths += delta;
+    RibStats::setInactivePathCount(inactivePaths());
   }
 
   /** The set of locally-originated routes was (re)computed to `count`. */
@@ -142,6 +169,15 @@ class RibCounters {
   }
 
   /**
+   * Paths excluded from best-path selection, for one address family. Always a
+   * subset of totalPaths(isV4): the remainder are the candidates that entered
+   * selection.
+   */
+  int64_t inactivePaths(bool isV4) const {
+    return afiOf(isV4).inactivePaths;
+  }
+
+  /**
    * Per-prefix-length counts for one address family, indexed by prefix
    * length. Index i holds the number of /i prefixes in that family.
    */
@@ -192,6 +228,11 @@ class RibCounters {
   uint64_t totalPaths() const {
     return afis_[0].totalPaths + afis_[1].totalPaths;
   }
+
+  /** Paths excluded from best-path selection across both address families. */
+  int64_t inactivePaths() const {
+    return afis_[0].inactivePaths + afis_[1].inactivePaths;
+  }
   uint64_t originatedRoutes() const {
     return originatedRoutes_;
   }
@@ -203,6 +244,8 @@ class RibCounters {
   struct AfiCounters {
     uint64_t totalPrefixes{0};
     uint64_t totalPaths{0};
+    // Subset of totalPaths that best-path selection excluded as candidates.
+    int64_t inactivePaths{0};
     std::array<int64_t, kMaxPrefixLen + 1> prefixLenCounts{};
     // Best-path source breakdown, by the selected best path's class. The
     // `unknown` bucket maps 1:1 to BgpRouteType::UNKNOWN. getBgpPathType does

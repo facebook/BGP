@@ -24,7 +24,6 @@
 #include "neteng/fboss/bgp/cpp/nexthopTracker/NexthopAssociationList.h"
 #include "neteng/fboss/bgp/cpp/nexthopTracker/NexthopInfoBase.h"
 #include "neteng/fboss/bgp/cpp/nexthopTracker/NexthopStatus.h"
-#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 
 namespace facebook::bgp {
 
@@ -115,17 +114,11 @@ class NexthopInfo : public NexthopInfoBase {
   void linkRouteInfo(RouteInfo& routeInfo) {
     routeInfo.setNexthopInfo(this);
     nexthopAssociationList_.link(routeInfo);
-    if (!isReachable()) {
-      RibStats::incrInactivePathCount(1);
-    }
   }
 
   void unlinkRouteInfo(RouteInfo& routeInfo) {
     routeInfo.setNexthopInfo(nullptr);
     nexthopAssociationList_.unlink(routeInfo);
-    if (!isReachable()) {
-      RibStats::decrInactivePathCount(1);
-    }
   }
 
   uint32_t getRouteInfoListSize() const {

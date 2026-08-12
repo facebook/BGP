@@ -702,8 +702,9 @@ void RibBase::checkWithdrawalBeforeRouteProgrammed(
         DBG1,
         "The case of new prefix {} announcement followed by withdrawal during Fib-programming timer.",
         folly::IPAddress::networkToString(prefix));
+    ribCounters_.onPrefixRemoved(
+        prefix.first.isV4(), prefix.second, entry.getInactivePathCnt());
     ribEntries_.erase(prefix);
-    ribCounters_.onPrefixRemoved(prefix.first.isV4(), prefix.second);
   }
 }
 
@@ -1218,16 +1219,20 @@ void RibBase::processRibInNexthopUpdate(
       bool reachabilityChanged = (it->second.isReachable() != isReachable);
       bool costChanged = (it->second.getIgpCost() != igpCost);
 
-      // Update unresolvable nexthop and inactive path counters on
-      // reachability change
+      /*
+       * Update the unresolvable-nexthop counter on reachability change. The
+       * inactive-path count is deliberately NOT adjusted here: the paths this
+       * flip affects are all marked for re-selection below, and
+       * prePathSelectionFiltering recomputes their count from the RIB. Deriving
+       * it from getRouteInfoListSize() instead would reintroduce the drift this
+       * counter used to have -- that size is maintained by hand and misses the
+       * displaced RouteInfo on the re-advertisement path.
+       */
       if (reachabilityChanged) {
-        auto pathCount = it->second.getRouteInfoListSize();
         if (isReachable) {
           ribCounters_.onUnresolvableNexthopRemoved();
-          RibStats::decrInactivePathCount(pathCount);
         } else {
           ribCounters_.onUnresolvableNexthopAdded();
-          RibStats::incrInactivePathCount(pathCount);
         }
       }
 
@@ -1481,19 +1486,23 @@ RibBase::PathSelectionInput RibBase::snapshotAndResetForPathSelection(
 }
 
 std::vector<std::shared_ptr<RouteInfo>> RibBase::prePathSelectionFiltering(
-    const RibEntry& entry) noexcept {
+    RibEntry& entry) noexcept {
   const FeatureFlags::BgpBestpathFeatures& bgpBestpathFeatures =
       FeatureFlags::getBgpBestpathFeatures();
+  const bool nexthopTrackingEnabled = bgpBestpathFeatures.enableNextHopTracking;
   std::vector<std::shared_ptr<RouteInfo>> routes;
+  uint32_t inactivePathCount{0};
   for (const auto& peerIdAndPaths : entry.routeInfos_) {
     for (const auto& pathIdAndRoute : peerIdAndPaths.second) {
-      if (bgpBestpathFeatures.enableNextHopTracking &&
-          (!pathIdAndRoute.second->isResolvedForSelection())) {
+      if (nexthopTrackingEnabled &&
+          !pathIdAndRoute.second->isResolvedForSelection()) {
+        ++inactivePathCount;
         continue;
       }
       routes.emplace_back(pathIdAndRoute.second);
     }
   }
+  entry.inactivePathCount_ = inactivePathCount;
   return routes;
 }
 
@@ -1709,13 +1718,31 @@ void RibBase::recordBestpathSourceDelta(
       prefix.first.isV4(), oldSource, bestpathSource(newBestpath));
 }
 
+void RibBase::recordInactivePathDelta(
+    const folly::CIDRNetwork& prefix,
+    uint32_t oldCount,
+    const RibEntry& entry) noexcept {
+  ribCounters_.onInactivePathsDelta(
+      prefix.first.isV4(),
+      static_cast<int64_t>(entry.getInactivePathCnt()) -
+          static_cast<int64_t>(oldCount));
+}
+
 std::pair<bool, bool> RibBase::runBestPathSelection(RibEntry& entry) noexcept {
-  // Capture the winner's source class (a small value, not the owning
-  // shared_ptr) before selection so the delta covers every bestpath write
-  // inside selectBestPath (positive and all set-to-null paths) without
-  // shared_ptr refcount traffic on the hot path. The old path may be freed by
-  // selection, so we must not retain a pointer to it across the call.
+  /*
+   * Capture the winner's source class (a small value, not the owning
+   * shared_ptr) before selection so the delta covers every bestpath write
+   * inside selectBestPath (positive and all set-to-null paths) without
+   * shared_ptr refcount traffic on the hot path. The old path may be freed by
+   * selection, so we must not retain a pointer to it across the call.
+   *
+   * prePathSelectionFiltering(), called inside selectBestPath(), recomputes
+   * and overwrites entry.inactivePathCount_. Preserve the previous cached
+   * value here so recordInactivePathDelta() can compute newCount - oldCount
+   * after selection returns.
+   */
   const auto oldSource = bestpathSource(entry.getBestPathRaw());
+  const auto oldInactivePathCount = entry.getInactivePathCnt();
   auto result = selectBestPath(
       entry,
       multipathSelector_,
@@ -1726,6 +1753,7 @@ std::pair<bool, bool> RibBase::runBestPathSelection(RibEntry& entry) noexcept {
 
   recordBestpathSourceDelta(
       entry.getPrefix(), oldSource, entry.getBestPathRaw());
+  recordInactivePathDelta(entry.getPrefix(), oldInactivePathCount, entry);
   return result;
 }
 
@@ -2064,8 +2092,9 @@ void RibBase::handleFibProgrammedMessage(
                 DBG3,
                 "All paths withdrawn for {}, deleting RibEntry.",
                 folly::IPAddress::networkToString(prefix));
+            ribCounters_.onPrefixRemoved(
+                prefix.first.isV4(), prefix.second, entry.getInactivePathCnt());
             ribEntries_.erase(prefix);
-            ribCounters_.onPrefixRemoved(prefix.first.isV4(), prefix.second);
           } else {
             XLOGF(
                 DBG1,
