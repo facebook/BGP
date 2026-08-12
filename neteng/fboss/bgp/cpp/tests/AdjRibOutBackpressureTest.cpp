@@ -59,6 +59,9 @@
   FRIEND_TEST(SendBgpMessagesFixtureWithBackpressure, SendPendingEoRsTest);    \
   FRIEND_TEST(                                                                 \
       SendBgpMessagesFixtureWithBackpressure,                                  \
+      CommittedUpdateCountDoesNotCrossClear);                                  \
+  FRIEND_TEST(                                                                 \
+      SendBgpMessagesFixtureWithBackpressure,                                  \
       SendBgpUpdateMessagesTest_AfterEoR);                                     \
   FRIEND_TEST(                                                                 \
       SendBgpMessagesFixtureWithBackpressure,                                  \
@@ -414,6 +417,8 @@ CO_TEST_F(SendBgpMessagesFixture, SendPendingEoRsTest) {
   EXPECT_FALSE(backpressured);
   EXPECT_EQ(2, eorCnt);
   EXPECT_EQ(eorCnt, adjRib_->boundedAdjRibOutQueue_->size());
+  EXPECT_EQ(0, adjRib_->getStats().getSentUpdateMsgs());
+  EXPECT_EQ(2, adjRib_->getStats().getSentEndOfRibMsgs());
 }
 
 CO_TEST_F(SendBgpMessagesFixtureWithBackpressure, SendPendingEoRsTest) {
@@ -439,6 +444,8 @@ CO_TEST_F(SendBgpMessagesFixtureWithBackpressure, SendPendingEoRsTest) {
   EXPECT_TRUE(drained);
   EXPECT_TRUE(eorPendingStatus.first);
   EXPECT_EQ(2, eorPendingStatus.second);
+  EXPECT_EQ(0, adjRib_->getStats().getSentUpdateMsgs());
+  EXPECT_EQ(2, adjRib_->getStats().getSentEndOfRibMsgs());
 
   /* The EoRs should be included in the remaining items in the queue. */
   bool v4Pending = true, v6Pending = true;
@@ -458,6 +465,49 @@ CO_TEST_F(SendBgpMessagesFixtureWithBackpressure, SendPendingEoRsTest) {
     }
   }
   EXPECT_FALSE(adjRib_->egressEoRsPending());
+}
+
+CO_TEST_F(
+    SendBgpMessagesFixtureWithBackpressure,
+    CommittedUpdateCountDoesNotCrossClear) {
+  SetUpAdjRibStateForUnit(false /* eorPending */, false /* eorSent */);
+  adjRib_->boundedAdjRibOutQueue_ =
+      std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+          3 /* capacity */, 1 /* highWm */, 0 /* lowWm */);
+
+  UpdateAttrToPrefixMap(GetBgpPath(kV4Nexthop2), {kV4Prefix1});
+  UpdateAttrToPrefixMap(GetBgpPath(kV4Nexthop3), {kV4Prefix2});
+
+  std::thread evbThread([this]() { evb_.loopForever(); });
+
+  auto clearAndUnblock = [&]() -> folly::coro::Task<void> {
+    while (!adjRib_->boundedAdjRibOutQueue_->isBlocked()) {
+      co_await folly::coro::co_reschedule_on_current_executor;
+    }
+
+    /*
+     * The first UPDATE owns a queue slot before the sender suspends on the
+     * second UPDATE, so its count must already be visible to counter clear.
+     */
+    EXPECT_EQ(1, adjRib_->getStats().getSentUpdateMsgs());
+    adjRib_->clearEgressMessageCounts();
+    EXPECT_EQ(0, adjRib_->getStats().getSentUpdateMsgs());
+
+    co_await facebook::bgp::test::boundedPop(
+        *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
+  };
+
+  co_await folly::coro::collectAll(
+      co_withExecutor(
+          &evb_, adjRib_->sendBgpUpdates(false /* tryPullNewChangeItems */)),
+      co_withExecutor(&evb_, clearAndUnblock()));
+
+  evb_.terminateLoopSoon();
+  evbThread.join();
+
+  /* Only the UPDATE queued after clear belongs to the new counter epoch. */
+  EXPECT_EQ(1, adjRib_->getStats().getSentUpdateMsgs());
+  EXPECT_EQ(1, adjRib_->boundedAdjRibOutQueue_->size());
 }
 
 CO_TEST_F(SendBgpMessagesFixture, SimpleSendBgpUpdateMessagesTest) {
@@ -504,6 +554,8 @@ CO_TEST_F(SendBgpMessagesFixture, SimpleSendBgpUpdateMessagesTest) {
   EXPECT_FALSE(adjRib_->egressEoRsPending());
   EXPECT_TRUE(adjRib_->egressEoRsSent_);
   EXPECT_TRUE(adjRib_->attrToPrefixMap_.empty());
+  EXPECT_EQ(4, adjRib_->getStats().getSentUpdateMsgs());
+  EXPECT_EQ(1, adjRib_->getStats().getSentEndOfRibMsgs());
 }
 
 CO_TEST_F(SendBgpMessagesFixture, BulkSendBgpUpdateMessagesTest) {

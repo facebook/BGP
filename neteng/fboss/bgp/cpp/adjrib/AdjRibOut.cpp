@@ -388,8 +388,6 @@ folly::coro::Task<void> AdjRib::sendBgpUpdates(
     const auto afi = attrWithAfi.afi;
     auto update = buildUpdateWithSizeEstimation(attrWithAfi, pfxSet);
     if (update) {
-      /* Update counters and statistics. */
-      ++bgpMessageCnt;
       if (attr) {
         /*
          * Exactly one of mpAnnounced / v4Announced2 is populated per UPDATE
@@ -413,6 +411,13 @@ folly::coro::Task<void> AdjRib::sendBgpUpdates(
        * guaranteed to succeed writing.
        */
       boundedAdjRibOutQueue_->push(std::move(update));
+      /*
+       * Queue insertion is the counter commit point. Publish the counter
+       * before any subsequent suspension so counter clear and cancellation
+       * cannot separate the PDU from its accounting.
+       */
+      stats_.incrementSentUpdateMsgs(1);
+      ++bgpMessageCnt;
     }
     /*
      * Move onto next attr if we sent all of the prefixes for current attr.
@@ -430,12 +435,11 @@ folly::coro::Task<void> AdjRib::sendBgpUpdates(
     auto [writeBlocked, numEoRs] = co_await sendPendingEoRs();
     backpressured |= writeBlocked;
     eorCnt = numEoRs;
-    bgpMessageCnt += eorCnt;
   }
-  stats_.incrementSentUpdateMsgs(bgpMessageCnt);
+  const auto totalMessageCnt = bgpMessageCnt + eorCnt;
   XLOGF_IF(
       INFO,
-      bgpMessageCnt > 0,
+      totalMessageCnt > 0,
       "Sending accumulated changes to {}."
       "({} withdraws, {} announcements, EoR {}) - {} BGP message(s). "
       "Backpressured = {}",
@@ -443,7 +447,7 @@ folly::coro::Task<void> AdjRib::sendBgpUpdates(
       withdrawPrefixCnt,
       announcePrefixCnt,
       eorCnt,
-      bgpMessageCnt,
+      totalMessageCnt,
       backpressured);
 
   /*
@@ -466,7 +470,7 @@ AdjRib::sendPendingEoRs() noexcept {
   /* Check for asyncScope cancellation. */
   co_await folly::coro::co_safe_point;
 
-  uint16_t bgpMessageCnt{0};
+  uint16_t eorCnt{0};
   bool backpressured = false;
   /*
    * Send only the AFIs still pending. When the group already queued one AFI's
@@ -477,20 +481,22 @@ AdjRib::sendPendingEoRs() noexcept {
    */
   if (isAdjRibFlagSet(EGRESS_EOR_PENDING_V4)) {
     backpressured |= co_await waitForQueueSpace();
-    bgpMessageCnt++;
     boundedAdjRibOutQueue_->push(buildEndOfRib(BgpUpdateAfi::AFI_IPv4));
+    stats_.incrementSentEndOfRibMsgs(1);
+    ++eorCnt;
     clearAdjRibFlag(EGRESS_EOR_PENDING_V4);
   }
   if (isAdjRibFlagSet(EGRESS_EOR_PENDING_V6)) {
     backpressured |= co_await waitForQueueSpace();
-    bgpMessageCnt++;
     boundedAdjRibOutQueue_->push(buildEndOfRib(BgpUpdateAfi::AFI_IPv6));
+    stats_.incrementSentEndOfRibMsgs(1);
+    ++eorCnt;
     clearAdjRibFlag(EGRESS_EOR_PENDING_V6);
   }
 
   onEgressEoRSent();
 
-  co_return std::make_pair(backpressured, bgpMessageCnt);
+  co_return std::make_pair(backpressured, eorCnt);
 }
 
 /*

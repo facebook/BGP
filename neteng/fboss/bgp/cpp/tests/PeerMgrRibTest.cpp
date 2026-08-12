@@ -936,6 +936,7 @@ CO_TEST_F(PeerManagerTestFixture, RibDumpReqPositiveTest) {
     EXPECT_EQ(false, isShadowRibRouteInWithdraw(srEntry.bestpath->flags));
 
     auto lastAdjRib1SendUpdateMsgs = adjRib1->stats_.getSentUpdateMsgs();
+    auto lastAdjRib1SendEorMsgs = adjRib1->stats_.getSentEndOfRibMsgs();
     co_await peerMgr->processRibDumpReqCoro(
         RibDumpReq(kPeerId1, false /* sendAddPath */));
 
@@ -953,14 +954,16 @@ CO_TEST_F(PeerManagerTestFixture, RibDumpReqPositiveTest) {
       EXPECT_TRUE(std::holds_alternative<BgpEndOfRib>(*eor1));
       EXPECT_TRUE(std::holds_alternative<BgpEndOfRib>(*eor2));
     }
+    EXPECT_EQ(lastAdjRib1SendUpdateMsgs, adjRib1->stats_.getSentUpdateMsgs());
     EXPECT_EQ(
-        lastAdjRib1SendUpdateMsgs + 2, adjRib1->stats_.getSentUpdateMsgs());
+        lastAdjRib1SendEorMsgs + 2, adjRib1->stats_.getSentEndOfRibMsgs());
   }
   {
     co_await adjRib1->getChangeListConsumer()->consumeChanges();
     // Step 2: send RibDumpReq for adjrib2 with sendAddPath = true
     //
     auto lastAdjRib1SendUpdateMsgs = adjRib1->stats_.getSentUpdateMsgs();
+    auto lastAdjRib1SendEorMsgs = adjRib1->stats_.getSentEndOfRibMsgs();
     co_await peerMgr->processRibDumpReqCoro(
         RibDumpReq(kPeerId1, true /* sendAddPath */));
 
@@ -983,7 +986,9 @@ CO_TEST_F(PeerManagerTestFixture, RibDumpReqPositiveTest) {
       EXPECT_TRUE(std::holds_alternative<BgpEndOfRib>(*eor2));
     }
     EXPECT_EQ(
-        lastAdjRib1SendUpdateMsgs + 3, adjRib1->stats_.getSentUpdateMsgs());
+        lastAdjRib1SendUpdateMsgs + 1, adjRib1->stats_.getSentUpdateMsgs());
+    EXPECT_EQ(
+        lastAdjRib1SendEorMsgs + 2, adjRib1->stats_.getSentEndOfRibMsgs());
   }
 }
 
