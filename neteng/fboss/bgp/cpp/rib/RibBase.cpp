@@ -2365,6 +2365,7 @@ TRibSummary RibBase::getRibSummary(TBgpAfi afi) {
     const bool isV4 = afi == TBgpAfi::AFI_IPV4;
     summary.total_prefixes() = ribCounters_.totalPrefixes(isV4);
     summary.total_paths() = ribCounters_.totalPaths(isV4);
+    summary.inactive_paths() = ribCounters_.inactivePaths(isV4);
     const auto& counts = ribCounters_.prefixLenCounts(isV4);
     for (size_t len = 0; len < counts.size(); ++len) {
       if (counts[len] != 0) {

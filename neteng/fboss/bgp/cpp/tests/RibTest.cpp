@@ -234,6 +234,8 @@ TEST_F(RibFixture, GetRibSummarySourceBreakdown) {
   EXPECT_EQ(2, summary.total_prefixes().value());
   // Two prefixes, one path each (no add-path), so two total paths.
   EXPECT_EQ(2, summary.total_paths().value());
+  // Both next-hops resolve, so every path entered best-path selection.
+  EXPECT_EQ(0, summary.inactive_paths().value());
   EXPECT_EQ(1, summary.ebgp_prefixes().value());
   EXPECT_EQ(1, summary.ibgp_prefixes().value());
   EXPECT_EQ(0, summary.confed_ebgp_prefixes().value());
@@ -7675,6 +7677,16 @@ TEST_F(RibNexthopTrackingFixture, InactivePathCountTracksNexthopResolution) {
 
   // Only the path via the unresolved nexthop is excluded from selection.
   EXPECT_EQ(1, inactivePathCount());
+  /*
+   * getRibSummary reports the same split per address family: the v4 prefix
+   * holds the single inactive path, the v6 one is fully active.
+   */
+  auto v4Summary = rib_->getRibSummary(TBgpAfi::AFI_IPV4);
+  EXPECT_EQ(1, v4Summary.total_paths().value());
+  EXPECT_EQ(1, v4Summary.inactive_paths().value());
+  auto v6Summary = rib_->getRibSummary(TBgpAfi::AFI_IPV6);
+  EXPECT_EQ(1, v6Summary.total_paths().value());
+  EXPECT_EQ(0, v6Summary.inactive_paths().value());
 
   // Resolving that nexthop returns its path to the candidate set.
   auto fibFuture2 = fib_->getFibProgramFuture();
