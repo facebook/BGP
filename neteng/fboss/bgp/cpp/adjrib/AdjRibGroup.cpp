@@ -776,6 +776,16 @@ void AdjRibOutGroup::processRibDumpForGroup(bool sendWithEoR) {
 
 folly::coro::Task<void>
 AdjRibOutGroup::buildAndScheduleSendInitialDumpFromShadowRib() {
+  /* A policy reconciliation can empty and erase this group while its initial
+   * dump task is still queued. Honor async-scope cancellation first; the
+   * membership check also covers a task that was already runnable when the
+   * group became empty.
+   */
+  co_await folly::coro::co_safe_point;
+  if (getMemberCount() == 0) {
+    co_return;
+  }
+
   processRibDumpForGroup();
 
   if (state_ == UpdateGroupState::IDLE) {

@@ -721,6 +721,8 @@ TEST_F(AdjRibGroupTest, StateManagement) {
  */
 TEST_F(AdjRibGroupTest, ScheduleInitialDump) {
   createAdjRibOutGroup("test_group");
+  auto adjRib = createMinimalAdjRib(1);
+  adjRibOutGroup_->registerPeer(adjRib);
 
   // Initial state should be UNINITIALIZED
   EXPECT_EQ(adjRibOutGroup_->getState(), UpdateGroupState::UNINITIALIZED);
@@ -761,6 +763,8 @@ TEST_F(AdjRibGroupTest, ScheduleInitialDumpWrongState) {
  */
 TEST_F(AdjRibGroupTest, ScheduleInitialDumpOnce) {
   createAdjRibOutGroup("test_group");
+  auto adjRib = createMinimalAdjRib(1);
+  adjRibOutGroup_->registerPeer(adjRib);
 
   // Schedule initial dump first time
   adjRibOutGroup_->scheduleInitialDump();
