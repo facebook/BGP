@@ -296,22 +296,7 @@ void E2ETestFixture::bringDownPeer(
    * EVB to process the BgpSessionStop and signal the semaphore before we
    * attempt to bring the peer back up.
    */
-  auto batonIt = peerManager_->sessionTerminateBatons_.find(peerId);
-  if (batonIt != peerManager_->sessionTerminateBatons_.end()) {
-    XLOGF(
-        INFO,
-        "Waiting for session termination baton for peer: {}",
-        peerAddr.str());
-    // Baton has latch semantics: stays posted between post() and reset().
-    // No need to re-signal after waiting — sessionEstablished() will also
-    // pass through immediately since the baton remains posted.
-    folly::coro::blockingWait(
-        [&]() -> folly::coro::Task<void> { co_await *batonIt->second; }());
-    XLOGF(
-        INFO,
-        "Session termination baton received for peer: {}",
-        peerAddr.str());
-  }
+  waitForSessionTerminationBaton(peerAddr);
 
   /*
    * Now notify PeerManagerBase about the session termination.
@@ -356,6 +341,30 @@ void E2ETestFixture::bringDownPeer(
           peerManager_->sessionTerminated(terminateEvent)));
 
   XLOGF(INFO, "Session termination complete for peer: {}", peerAddr.str());
+}
+
+void E2ETestFixture::waitForSessionTerminationBaton(
+    const folly::IPAddress& peerAddr) {
+  BgpPeerId peerId{peerAddr, peerAddr.asV4().toLongHBO()};
+  std::shared_ptr<folly::coro::Baton> terminationBaton;
+  peerManager_->getEventBase().runInEventBaseThreadAndWait([&]() {
+    auto batonIt = peerManager_->sessionTerminateBatons_.find(peerId);
+    if (batonIt != peerManager_->sessionTerminateBatons_.end()) {
+      terminationBaton = batonIt->second;
+    }
+  });
+  if (!terminationBaton) {
+    return;
+  }
+
+  XLOGF(
+      INFO,
+      "Waiting for session termination baton for peer: {}",
+      peerAddr.str());
+  folly::coro::blockingWait(
+      [&]() -> folly::coro::Task<void> { co_await *terminationBaton; }());
+  XLOGF(
+      INFO, "Session termination baton received for peer: {}", peerAddr.str());
 }
 
 void E2ETestFixture::beginPeerSessionTermination(

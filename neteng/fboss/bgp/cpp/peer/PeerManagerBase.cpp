@@ -4544,6 +4544,11 @@ void PeerManagerBase::processDetachedPeerEgressPolicyReEvaluation(
       adjRib->sendAddPath(),
       adjRib->egressEoRsPending() /* sendWithEoR */);
 
+  if (!adjRib->getChangeListConsumer()) {
+    adjRib->registerDetachedConsumer(
+        changeListTracker_, addPathConsumerBitmap_, nonAddPathConsumerBitmap_);
+  }
+
   /*
    * Consume the peer's change list to the tail so its RIB-OUT reflects the full
    * shadow RIB plus every pending change, completing the re-evaluation in this

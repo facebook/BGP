@@ -88,7 +88,7 @@ void E2ESessionTestFixture::createPeerManager(
   sessionMgrThread_ =
       std::make_shared<std::thread>(testSessionManager_->runInThread());
 
-  auto configManager = std::make_shared<ConfigManager>(config_);
+  configManager_ = std::make_shared<ConfigManager>(config_);
 
   std::shared_ptr<PolicyManager> policyManager = nullptr;
   if (policyConfig_.has_value()) {
@@ -97,7 +97,7 @@ void E2ESessionTestFixture::createPeerManager(
   }
 
   peerManager_ = std::make_unique<PeerManagerBase>(
-      configManager, policyManager, ribInQ_, ribOutQ_, nbrRouteChangeQ_);
+      configManager_, policyManager, ribInQ_, ribOutQ_, nbrRouteChangeQ_);
 
   peerManager_->setSessionManager(testSessionManager_);
 
@@ -274,6 +274,7 @@ bool E2ESessionTestFixture::waitForSessionTerminated(
   evb.runInEventBaseThreadAndWait([&]() {});
   std::this_thread::yield();
   evb.runInEventBaseThreadAndWait([&]() {});
+  waitForSessionTerminationBaton(peerAddr);
   XLOGF(INFO, "Session terminated for peer: {}", peerAddr.str());
   return true;
 }

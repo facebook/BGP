@@ -368,6 +368,9 @@ class E2ETestFixture : public ::testing::Test {
    */
   void bringDownPeer(const folly::IPAddress& peerAddr, bool peerDelete = false);
 
+  /* Wait for both AdjRib message loops to finish the production teardown. */
+  void waitForSessionTerminationBaton(const folly::IPAddress& peerAddr);
+
   /*
    * Deliver the AdjRib half of session termination and wait for it to finish,
    * leaving the PeerManager termination event pending. This exposes the same
