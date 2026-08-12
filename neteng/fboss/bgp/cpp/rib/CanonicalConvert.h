@@ -67,6 +67,7 @@ struct CanonicalPathInput {
   std::optional<int64_t> pathIdToSend;
   std::optional<std::string> bestPathFilterDescr;
   std::optional<std::string> policyName;
+  bool isInactive{false};
 };
 
 /*

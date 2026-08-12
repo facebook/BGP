@@ -177,6 +177,9 @@ void applyPerPathInstanceFields(
   if (in.policyName.has_value()) {
     p.policy_name() = in.policyName.value();
   }
+  if (in.isInactive) {
+    p.is_inactive() = true;
+  }
 }
 
 } // namespace facebook::bgp

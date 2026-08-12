@@ -2758,6 +2758,7 @@ RibBase::createTRibEntryWithFilter(
     if (routeinfo->pathIdToSend.has_value()) {
       tPath.path_id_to_send() = routeinfo->pathIdToSend.value();
     }
+    setInactiveFlag(tPath, *routeinfo);
     if (routeinfo->pathIdToSend.has_value() &&
         multipath_routeinfos.contains(routeinfo->pathIdToSend.value())) {
       if (bestpath && routeinfo == bestpath) {

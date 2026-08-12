@@ -20,6 +20,7 @@
 #include "neteng/fboss/bgp/cpp/BgpServiceUtil.h"
 #include "neteng/fboss/bgp/cpp/common/BgpError.h"
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
+#include "neteng/fboss/bgp/cpp/common/FeatureFlags.h"
 #include "neteng/fboss/bgp/cpp/fsdb/FsdbSyncer.h"
 #include "neteng/fboss/bgp/cpp/peer/NeighborWatcher.h"
 #include "neteng/fboss/bgp/cpp/rib/CanonicalRibBuilder.h"
@@ -60,6 +61,8 @@ std::vector<CanonicalPathInput> RibDC::buildCanonicalPathInputs(
    * (min_nexthop / min_agg_lbw) is violated.
    */
   const bool failedCps = canonicalFailedCpsNativeCriteria(ribEntry);
+  const bool nexthopTrackingEnabled =
+      FeatureFlags::getBgpBestpathFeatures().enableNextHopTracking;
 
   const auto& routeinfos = ribEntry.getAllPaths();
   std::vector<CanonicalPathInput> inputs;
@@ -89,6 +92,8 @@ std::vector<CanonicalPathInput> RibDC::buildCanonicalPathInputs(
     if (routeinfo->pathIdToSend.has_value()) {
       in.pathIdToSend = routeinfo->pathIdToSend.value();
     }
+    in.isInactive =
+        nexthopTrackingEnabled && !routeinfo->isResolvedForSelection();
     const bool inMultipath = routeinfo->pathIdToSend.has_value() &&
         multipathRouteinfos.contains(routeinfo->pathIdToSend.value());
     /*

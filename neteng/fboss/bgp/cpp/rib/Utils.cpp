@@ -18,6 +18,7 @@
 
 #include "fboss/agent/AddressUtil.h"
 #include "neteng/fboss/bgp/cpp/BgpServiceUtil.h"
+#include "neteng/fboss/bgp/cpp/common/FeatureFlags.h"
 
 using namespace facebook::neteng::fboss::bgp_attr;
 using namespace facebook::neteng::fboss::bgp::thrift;
@@ -132,7 +133,17 @@ TBgpPath toTBgpPath(
   if (routeinfo->pathIdToSend.has_value()) {
     tPath.path_id_to_send() = routeinfo->pathIdToSend.value();
   }
+  setInactiveFlag(tPath, *routeinfo);
   return tPath;
+}
+
+void setInactiveFlag(
+    neteng::fboss::bgp::thrift::TBgpPath& tPath,
+    const RouteInfo& routeinfo) {
+  if (FeatureFlags::getBgpBestpathFeatures().enableNextHopTracking &&
+      !routeinfo.isResolvedForSelection()) {
+    tPath.is_inactive() = true;
+  }
 }
 
 } // namespace facebook::bgp

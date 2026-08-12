@@ -7753,6 +7753,80 @@ TEST_F(RibNexthopTrackingFixture, InactivePathCountTracksPartialWithdrawals) {
 }
 
 /*
+ * A path counted inactive is flagged on the wire, while an active one is not.
+ * Check both legacy and canonical encodings, since the CLI prefers canonical.
+ */
+TEST_F(RibNexthopTrackingFixture, InactiveFlagSurfacedOnThriftPaths) {
+  RibStats::initCounters();
+  setNexthopTrackingFeatureFlag(true);
+  rib_->setFibBatchTime(milliseconds(2));
+
+  updateCacheAndNotifyRib(
+      {NexthopStatus(kPeerAddr1, false), NexthopStatus(kPeerAddr2, true, 100)});
+
+  const auto attrs = *buildBgpPathFields(4, 4, 4, 4);
+  auto unresolvedAttrs = std::make_shared<facebook::bgp::BgpPath>(attrs);
+  unresolvedAttrs->setNexthop(kPeerAddr1);
+  unresolvedAttrs->publish();
+  auto resolvedAttrs = std::make_shared<facebook::bgp::BgpPath>(attrs);
+  resolvedAttrs->setNexthop(kPeerAddr2);
+  resolvedAttrs->publish();
+
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendAnnouncement(
+      PrefixPathIds{{kV4Prefix1, kDefaultPathID}}, iBgpPeer_, unresolvedAttrs);
+  sendAnnouncement(
+      PrefixPathIds{{kV6Prefix1, kDefaultPathID}}, eBgpPeer1_, resolvedAttrs);
+  sendInitialPathComputation();
+  fibFuture.wait();
+
+  auto v4Entries = rib_->getRibEntries(TBgpAfi::AFI_IPV4);
+  ASSERT_EQ(1, v4Entries.size());
+  for (const auto& [group, paths] : v4Entries[0].paths().value()) {
+    for (const auto& path : paths) {
+      EXPECT_TRUE(path.is_inactive().value_or(false));
+    }
+  }
+
+  auto v6Entries = rib_->getRibEntries(TBgpAfi::AFI_IPV6);
+  ASSERT_EQ(1, v6Entries.size());
+  for (const auto& [group, paths] : v6Entries[0].paths().value()) {
+    for (const auto& path : paths) {
+      EXPECT_FALSE(path.is_inactive().value_or(false));
+    }
+  }
+
+  /*
+   * The flag is per (prefix, path) instance, so it lives on TBgpPathCanonical
+   * rather than in the shared deduped-path pool.
+   */
+  auto countCanonicalInactivePaths = [](const auto& canonicalState) {
+    int inactive = 0, total = 0;
+    for (const auto& [prefix, canonicalEntry] :
+         canonicalState.rib_entries().value()) {
+      for (const auto& [group, paths] : canonicalEntry.paths().value()) {
+        for (const auto& path : paths) {
+          ++total;
+          if (path.is_inactive().value_or(false)) {
+            ++inactive;
+          }
+        }
+      }
+    }
+    return std::make_pair(inactive, total);
+  };
+
+  EXPECT_EQ(
+      std::make_pair(1, 1),
+      countCanonicalInactivePaths(
+          rib_->getRibEntriesCanonical(TBgpAfi::AFI_IPV4)));
+  EXPECT_EQ(
+      std::make_pair(0, 1),
+      countCanonicalInactivePaths(
+          rib_->getRibEntriesCanonical(TBgpAfi::AFI_IPV6)));
+}
+
+/*
  * Regression guard for the drift that made the previous counter untrustworthy.
  * That counter incremented once per RouteInfo linked to an unresolved nexthop,
  * but re-advertising a prefix creates a new RouteInfo and displaces the old one

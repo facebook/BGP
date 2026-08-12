@@ -60,4 +60,12 @@ neteng::fboss::bgp_attr::TIpPrefix buildTPrefix(
 neteng::fboss::bgp::thrift::TBgpPath toTBgpPath(
     const std::shared_ptr<RouteInfo>& routeinfo,
     const std::shared_ptr<const WeightedNexthopMap>& weightedNexthops);
+
+/*
+ * Mark paths that the loc-RIB selection predicate excludes. Shared by every
+ * loc-RIB serializer; leaves the field unset for active paths.
+ */
+void setInactiveFlag(
+    neteng::fboss::bgp::thrift::TBgpPath& tPath,
+    const RouteInfo& routeinfo);
 } // namespace facebook::bgp
