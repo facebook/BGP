@@ -589,14 +589,22 @@ void AdjRibOutGroup::scheduleInitialDump() noexcept {
     return;
   }
 
-  XLOGF(INFO, "Scheduling initial RIB dump for group {}", groupDescriptor_);
-
-  // Start the coroutine to build initial dump
-  // Only proceed if update group feature is enabled
-  if (enableUpdateGroup_) {
-    asyncScope_.add(
-        co_withExecutor(&evb_, buildAndScheduleSendInitialDumpFromShadowRib()));
+  if (initialDumpScheduled_) {
+    XLOGF(
+        DBG1,
+        "Group {} initial dump already scheduled, coalescing duplicate request",
+        groupDescriptor_);
+    return;
   }
+
+  if (!enableUpdateGroup_) {
+    return;
+  }
+
+  initialDumpScheduled_ = true;
+  XLOGF(INFO, "Scheduling initial RIB dump for group {}", groupDescriptor_);
+  asyncScope_.add(
+      co_withExecutor(&evb_, buildAndScheduleSendInitialDumpFromShadowRib()));
 }
 
 /*
@@ -776,6 +784,17 @@ void AdjRibOutGroup::processRibDumpForGroup(bool sendWithEoR) {
 
 folly::coro::Task<void>
 AdjRibOutGroup::buildAndScheduleSendInitialDumpFromShadowRib() {
+  /*
+   * The latch means "a dump task owns this group", so release it on every
+   * exit: normal completion, either early return below, or a cancellation
+   * unwind. The early returns leave state_ at UNINITIALIZED, so the state
+   * guard in scheduleInitialDump() does not back the latch up there -- a latch
+   * left set would coalesce every later request and strand the group with no
+   * dump.
+   */
+  auto clearLatchGuard =
+      folly::makeGuard([this]() noexcept { initialDumpScheduled_ = false; });
+
   /* A policy reconciliation can empty and erase this group while its initial
    * dump task is still queued. Honor async-scope cancellation first; the
    * membership check also covers a task that was already runnable when the
@@ -3192,6 +3211,8 @@ void AdjRibOutGroup::copyGroupFieldsToNewGroup(
     const std::shared_ptr<AdjRibOutGroup>& newGroup) noexcept {
   newGroup->setChangeListTracker(
       changeListTracker_, *addPathConsumerBitmap_, *nonAddPathConsumerBitmap_);
+  /* The scheduling latch is object-local: a task queued on this source group
+   * cannot service newGroup. */
   /*
    * Don't inherit the source's state: WAITING means a build coroutine is
    * running on the source, but none runs for newGroup, so inheriting it would

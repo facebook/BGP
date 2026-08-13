@@ -766,7 +766,8 @@ TEST_F(AdjRibGroupTest, ScheduleInitialDumpOnce) {
   auto adjRib = createMinimalAdjRib(1);
   adjRibOutGroup_->registerPeer(adjRib);
 
-  // Schedule initial dump first time
+  // Both calls happen before the event-loop turn that starts the dump.
+  adjRibOutGroup_->scheduleInitialDump();
   adjRibOutGroup_->scheduleInitialDump();
   evb_->loopOnce();
 
@@ -780,6 +781,35 @@ TEST_F(AdjRibGroupTest, ScheduleInitialDumpOnce) {
 
   // State should remain unchanged
   EXPECT_EQ(adjRibOutGroup_->getState(), stateAfterFirst);
+}
+
+/*
+ * The dump task bails when the group is drained before it gets its turn. That
+ * exit leaves state_ at UNINITIALIZED, so the state guard cannot reject a
+ * later request -- the latch has to be released or the group coalesces every
+ * request from then on and never dumps.
+ */
+TEST_F(AdjRibGroupTest, ScheduleInitialDumpAfterEmptyGroupBail) {
+  createAdjRibOutGroup("test_group");
+  auto adjRib = createMinimalAdjRib(1);
+  adjRibOutGroup_->registerPeer(adjRib);
+
+  // Arm the latch, then drain the group before the queued task runs.
+  adjRibOutGroup_->scheduleInitialDump();
+  adjRibOutGroup_->unregisterPeer(adjRib);
+  ASSERT_EQ(adjRibOutGroup_->getMemberCount(), 0);
+  evb_->loopOnce();
+
+  // Task bailed on the empty group, so the state machine never advanced.
+  ASSERT_EQ(adjRibOutGroup_->getState(), UpdateGroupState::UNINITIALIZED);
+
+  // A peer arriving afterwards must still get its dump.
+  adjRibOutGroup_->registerPeer(adjRib);
+  adjRibOutGroup_->scheduleInitialDump();
+  evb_->loopOnce();
+
+  // No shadowRibEntries_ — a dump that ran lands the group in IDLE.
+  EXPECT_EQ(adjRibOutGroup_->getState(), UpdateGroupState::IDLE);
 }
 
 /*

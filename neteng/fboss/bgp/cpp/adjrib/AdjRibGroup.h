@@ -1437,6 +1437,12 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
    */
   UpdateGroupState state_{UpdateGroupState::UNINITIALIZED};
 
+  /* scheduleInitialDump() leaves state_ UNINITIALIZED until its queued task
+   * runs, so this latch coalesces duplicate requests while that task is in
+   * flight. buildAndScheduleSendInitialDumpFromShadowRib() clears it on every
+   * exit, cancellation included. */
+  bool initialDumpScheduled_{false};
+
   /*
    * Mapping from bit position (from bitmap) to actual AdjRib object pointer.
    * Bitmaps are efficient but we need to get the actual peer object from bit

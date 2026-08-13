@@ -117,11 +117,12 @@ void E2ESessionTestFixture::bringUpPeer(
   BgpPeerId peerId{peerAddr, peerAddr.asV4().toLongHBO()};
   XLOGF(INFO, "=== bringUpPeer (session pipeline) for: {} ===", peerAddr.str());
 
-  auto peerConfig = config_->getConfigOfAPeer(peerAddr);
+  auto currentConfig = configManager_ ? configManager_->getConfig() : config_;
+  auto peerConfig = currentConfig->getConfigOfAPeer(peerAddr);
   ASSERT_TRUE(peerConfig.has_value())
       << "Peer config not found for " << peerAddr.str();
   auto& cfg = peerConfig.value();
-  auto globalConfig = config_->getBgpGlobalConfig();
+  auto globalConfig = currentConfig->getBgpGlobalConfig();
 
   BgpPeerDisplayInfo displayInfo;
   displayInfo.peeringParams.peerAddr = peerId.peerAddr;
