@@ -4615,6 +4615,16 @@ folly::coro::Task<void>
 PeerManagerBase::processIngressAndEgressRouteFilterUpdate(
     size_t ingressAffectedCount,
     size_t egressAffectedCount) {
+  // Test-only: pause routing-policy processing at coroutine entry.
+  if (FOLLY_UNLIKELY(
+          testOnlyPolicyUpdateProcessingEntered_ &&
+          testOnlyPolicyUpdateProcessingRelease_)) {
+    auto entered = std::move(testOnlyPolicyUpdateProcessingEntered_);
+    auto release = std::move(testOnlyPolicyUpdateProcessingRelease_);
+    entered->post();
+    co_await *release;
+  }
+
   // Check if dynamic policy evaluation is enabled and there are adjRibs
   // with ingress policy changes
   if (enableDynamicPolicyEvaluation_ && ingressAffectedCount > 0) {

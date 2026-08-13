@@ -148,6 +148,7 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
         sessionBoundedOutQueues;
 
     int ribBaseVersion{0};
+    bool manuallyApplyPolicyNames{false};
   };
 
   /*
@@ -936,31 +937,42 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
 
   /*
    * Resolve the effective per-peer policies for the peers selected by `filter`
-   * from `newConfig` and apply them through PeerManager. This mirrors the body
-   * of the BgpServiceBB policy RPCs (config update -> resolveEffectivePeer-
-   * Policies -> updateIngressEgressPolicyNames) without calling the generated
-   * Thrift handler methods directly.
+   * from `newConfig`. Normal tests apply them through PeerManager, mirroring
+   * the BgpServiceBB policy RPC. White-box evaluator tests stage only the names
+   * and pending flags so they can invoke reconciliation manually.
    */
   void applyResolvedPeerPolicies(
       TestContext& ctx,
       const std::shared_ptr<const Config>& newConfig,
       const std::function<bool(const folly::IPAddress&, const BgpPeerConfig&)>&
           filter) {
-    ctx.peerMgr->updateIngressEgressPolicyNames(
-        resolveEffectivePeerPolicies(*newConfig, filter));
+    auto peerToPolicyNames = resolveEffectivePeerPolicies(*newConfig, filter);
+    if (!ctx.manuallyApplyPolicyNames) {
+      ctx.peerMgr->updateIngressEgressPolicyNames(std::move(peerToPolicyNames));
+      return;
+    }
+
+    ctx.peerMgr->getEventBase().runInEventBaseThreadAndWait(
+        [&, stagedPolicyNames = std::move(peerToPolicyNames)]() {
+          for (auto& [_, adjRib] : ctx.peerMgr->adjRibs_) {
+            auto [ingressChanged, egressChanged] =
+                ctx.peerMgr->updateIngressEgressPolicyNamesForAdjRib(
+                    adjRib, *stagedPolicyNames);
+            adjRib->setPendingIngressPolicyUpdate(ingressChanged);
+            adjRib->setPendingEgressPolicyUpdate(egressChanged);
+          }
+          ctx.peerMgr->lastAppliedPolicyVersion_ =
+              ctx.configMgr->getConfigVersion();
+        });
   }
 
   /*
    * Flush the peer manager's EventBase: run a no-op to completion on the evb so
-   * every task queued ahead of it has run. The setPolicy RPCs below apply the
-   * egress policy names via a version-gated lambda posted with
-   * runInEventBaseThread (PeerManager::updateIngressEgressPolicyNames), not
-   * synchronously. Without a flush between calls, several such lambdas queue
-   * up; the first to run stamps lastAppliedPolicyVersion_ to the latest config
-   * version, so the version gate skips the rest and their change sets are
-   * dropped -- leaving some peers' egress unapplied. Flushing after each RPC
-   * forces its apply to land (and bump the version) before the next RPC bumps
-   * the config version again.
+   * every task queued ahead of it has run. The setPolicy helpers below normally
+   * apply names through an asyncScope coroutine, not synchronously. Without a
+   * flush between calls, the first queued coroutine can stamp
+   * lastAppliedPolicyVersion_ with the latest config version, causing the
+   * remaining change sets to be skipped as stale.
    */
   void flushEventBase(TestContext& ctx) {
     ctx.peerMgr->getEventBase().runInEventBaseThreadAndWait([]() {});
@@ -1055,19 +1067,13 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
    */
 
   /*
-   * Mark the async egress re-evaluation as already scheduled so that the
-   * co_setPeersPolicy / co_setPeerGroupsPolicy calls below do not kick off
-   * processUpdateGroupsEgressPolicyReevaluation on asyncScope_. These tests
-   * stage config and drive the re-evaluation by hand; letting the async
-   * pipeline also run races the manual call, moves peers out from under it, and
-   * leaves keys inconsistent (leaking the AdjRibPolicyCache singleton at
-   * teardown). The flag is intentionally left set for the fixture's lifetime.
+   * These tests stage policy names directly and drive the evaluator by hand;
+   * automatic evaluation would move peers before the scenario is complete.
+   * Staging the names is what suppresses it: updateIngressEgressPolicyNames is
+   * never called, so nothing schedules a re-evaluation.
    */
   void disableAsyncEgressReEvalOnEvb(TestContext& ctx) {
-    auto& evb = ctx.peerMgr->getEventBase();
-    evb.runInEventBaseThreadAndWait([&]() {
-      ctx.peerMgr->egressPolicyUpdateForUpdateGroupsScheduled_ = true;
-    });
+    ctx.manuallyApplyPolicyNames = true;
   }
 
   /*
@@ -1137,21 +1143,8 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
    */
   void runProcessUpdateGroupsEgressPolicyReevaluationOnEvb(TestContext& ctx) {
     auto& evb = ctx.peerMgr->getEventBase();
-    /*
-     * Run the re-evaluation, then re-arm
-     * egressPolicyUpdateForUpdateGroupsScheduled_ inside the same coroutine,
-     * before the EventBase runs anything else. The re-evaluation's SCOPE_EXIT
-     * clears the flag on completion; left cleared, a still-pending
-     * processIngressAndEgressRouteFilterUpdate coro from an earlier setPolicy
-     * call would observe it cleared and schedule a stray async re-evaluation
-     * that races the test. Re-arming inline keeps the async path suppressed for
-     * the rest of the test (matching disableAsyncEgressReEvalOnEvb).
-     */
-    auto reevalAndReArm = [&ctx]() -> folly::coro::Task<void> {
-      co_await ctx.peerMgr->processUpdateGroupsEgressPolicyReevaluation();
-      ctx.peerMgr->egressPolicyUpdateForUpdateGroupsScheduled_ = true;
-    };
-    folly::coro::blockingWait(reevalAndReArm().scheduleOn(&evb));
+    folly::coro::blockingWait(co_withExecutor(
+        &evb, ctx.peerMgr->processUpdateGroupsEgressPolicyReevaluation()));
   }
 
   // Whether the update group manager still tracks a group for the given key.

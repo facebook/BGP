@@ -448,6 +448,18 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   std::vector<nettools::bgplib::BgpPeerId> triggerRouteRefreshRequestsForPeers(
       std::vector<nettools::bgplib::BgpPeerId> peerIds);
 
+  // Test-only: pause routing-policy processing at coroutine entry.
+  void testOnlyDeferPolicyUpdateProcessing(
+      std::shared_ptr<folly::coro::Baton> entered,
+      std::shared_ptr<folly::coro::Baton> release) {
+    evb_.runInEventBaseThreadAndWait([this,
+                                      entered = std::move(entered),
+                                      release = std::move(release)]() mutable {
+      testOnlyPolicyUpdateProcessingEntered_ = std::move(entered);
+      testOnlyPolicyUpdateProcessingRelease_ = std::move(release);
+    });
+  }
+
  protected:
   void scheduleCoroTasks() noexcept;
 
@@ -585,6 +597,9 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
       AttributeStatsAccumulator& accumulator) noexcept;
 
   folly::coro::Task<void> updatePeerCounters();
+
+  std::shared_ptr<folly::coro::Baton> testOnlyPolicyUpdateProcessingEntered_;
+  std::shared_ptr<folly::coro::Baton> testOnlyPolicyUpdateProcessingRelease_;
 
   /**
    * Coroutine to re-evaluate all adjRibs by applying policies to
