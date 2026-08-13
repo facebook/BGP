@@ -1926,7 +1926,7 @@ AdjRibOutGroup::buildAndSendGroupBgpMessages() noexcept {
    * RAII guard to ensure cleanup even if exception occurs:
    * 1. Clear packingInProgress_ flag
    * 2. Reschedule changeListConsumeTimer_
-   * 3. Transition group to IDLE if packing list is empty.
+   * 3. Transition group to IDLE if packing list is empty, READY if not.
    * 4. Check and accept all ready to join peers.
    */
   auto guard = folly::makeGuard([this]() {
@@ -1934,9 +1934,24 @@ AdjRibOutGroup::buildAndSendGroupBgpMessages() noexcept {
 
     /*
      * Transition to IDLE and rejoin detached peers if packing list is now
-     * empty.
+     * empty, otherwise transition to READY.
+     *
+     * A non-empty packing list means work was appended while this
+     * builder was suspended -- an in-place policy re-evaluation during the
+     * EoR wait, for instance. This is because policy re-evaluation must
+     * happen inline and cannot check for the packingInProgress_ flag.
+     *
+     * The group is in WAITING state when it enters this coro. However,
+     * if we fail to transition to IDLE or READY,
+     * leaving it WAITING would gate the consume timer's build
+     * trigger, which only fires for READY or IDLE, and strand that work until
+     * an unrelated change item happened to move the group out of WAITING.
      */
-    tryRejoinDetachedPeersOnAllChangesProcessed();
+    if (attrToPrefixMap_.empty()) {
+      tryRejoinDetachedPeersOnAllChangesProcessed();
+    } else {
+      state_ = UpdateGroupState::READY;
+    }
 
     /* Keep advancing while a SYNC peer or a sharing DSP needs the group. */
     if (hasEntrySharingPeers()) {
