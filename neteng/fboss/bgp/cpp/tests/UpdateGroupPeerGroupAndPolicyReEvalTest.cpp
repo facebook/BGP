@@ -322,8 +322,6 @@ TEST_F(SplitToGroup, CopiesGroupFields) {
     sourceGroup->setState(UpdateGroupState::READY);
     sourceGroup->setLastSeenRibVersion(12345);
     sourceGroup->mraiInterval_ = 30000;
-    sourceGroup->egressEoRPendingV4_ = true;
-    sourceGroup->egressEoRPendingV6_ = true;
     sourceGroup->initialDumpCompletionTimeMs_ = int64_t{777};
     if (!sourceGroup->peeringParams_.has_value()) {
       sourceGroup->peeringParams_ = PeeringParams();
@@ -356,10 +354,6 @@ TEST_F(SplitToGroup, CopiesGroupFields) {
         targetGroup->getLastSeenRibVersion(),
         sourceGroup->getLastSeenRibVersion());
     EXPECT_EQ(targetGroup->mraiInterval_, sourceGroup->mraiInterval_);
-    EXPECT_EQ(
-        targetGroup->egressEoRPendingV4_, sourceGroup->egressEoRPendingV4_);
-    EXPECT_EQ(
-        targetGroup->egressEoRPendingV6_, sourceGroup->egressEoRPendingV6_);
     EXPECT_EQ(
         targetGroup->getInitialDumpCompletionTimeMs(),
         sourceGroup->getInitialDumpCompletionTimeMs());
@@ -782,8 +776,7 @@ TEST_F(SplitToGroup, SplitBlockedPeerDrainWaitsInBuildAndSendGroupMessages) {
     /* Start the new group's drain; it must park on waitForAllPendingPushes. */
     targetGroup->asyncScope_.add(
         folly::coro::co_withExecutor(
-            &evb,
-            targetGroup->buildAndSendGroupBgpMessages(/*sendWithEoR=*/false)));
+            &evb, targetGroup->buildAndSendGroupBgpMessages()));
   });
 
   /*
@@ -888,8 +881,7 @@ TEST_F(SplitToGroup, SplitBlockedPeerDrainNoInSyncPeerKeepsConsumingForDSP) {
 
     targetGroup->asyncScope_.add(
         folly::coro::co_withExecutor(
-            &evb,
-            targetGroup->buildAndSendGroupBgpMessages(/*sendWithEoR=*/false)));
+            &evb, targetGroup->buildAndSendGroupBgpMessages()));
   });
 
   /* Let the drain reach its parked state on the carried-over push. */

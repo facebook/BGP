@@ -289,7 +289,7 @@ TEST_F(
         group->getState() == UpdateGroupState::IDLE &&
         adjRib4->getPeerState() == PeerUpdateState::JOINED_RUNNING &&
         adjRib5->getPeerState() == PeerUpdateState::JOINED_RUNNING &&
-        !group->egressEoRsPending();
+        !adjRib4->egressEoRsPending() && !adjRib5->egressEoRsPending();
   }));
 
   /* Flush work enqueued by either initial-dump task before stopping the

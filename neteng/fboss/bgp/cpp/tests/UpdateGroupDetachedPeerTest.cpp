@@ -4783,7 +4783,7 @@ TEST_F(
   EXPECT_EQ(groupEntryAfter, groupEntry);
 }
 
-TEST_F(UpdateGroupDetachedPeerTest, DetachSlowPeerSetsEgressEoRWhenFlagIsTrue) {
+TEST_F(UpdateGroupDetachedPeerTest, DetachSlowPeerRetainsPendingEgressEoR) {
   auto adjRib0 = createAndRegisterPeer(0);
   auto adjRib1 = createAndRegisterPeer(1);
 
@@ -4816,10 +4816,7 @@ TEST_F(UpdateGroupDetachedPeerTest, DetachSlowPeerSetsEgressEoRWhenFlagIsTrue) {
    * its EoR (it is blocked), so it must RETAIN the pending EoR through
    * slow-peer detach -- detach must neither clear nor re-arm it.
    */
-  group_->groupKey_.afiIpv4Negotiated = true;
-  group_->egressEoRPendingV4_ = true;
-  adjRib0->setEgressEoRsPending(
-      group_->egressEoRPendingV4_, group_->egressEoRPendingV6_);
+  adjRib0->setEgressEoRsPending(true /* v4 */, false /* v6 */);
   group_->detachSlowPeer(adjRib0);
 
   /* Peer retains its (uncommitted) pending EoR across detach. */
@@ -4836,12 +4833,12 @@ TEST_F(UpdateGroupDetachedPeerTest, DetachSlowPeerSetsEgressEoRWhenFlagIsTrue) {
 }
 
 /**
- * Test: detachSlowPeer does not set egressEoRsPending when group doesn't
- * have it pending
+ * Test: detachSlowPeer does not set egressEoRsPending when the peer does not
+ * have it pending.
  */
 TEST_F(
     UpdateGroupDetachedPeerTest,
-    DetachDoesNotSetEoRsPendingWhenGroupHasNone) {
+    DetachDoesNotSetEoRsPendingWhenPeerHasNone) {
   auto adjRib0 = createAndRegisterPeer(0);
   auto adjRib1 = createAndRegisterPeer(1);
 
@@ -4871,8 +4868,8 @@ TEST_F(
   group_->detachSlowPeer(adjRib0);
 
   /*
-   * The group has no EoR pending and the peer was never marked as owing one, so
-   * it has nothing pending after detach.
+   * The peer was never marked as owing an EoR, so it has nothing pending after
+   * detach.
    */
   EXPECT_FALSE(adjRib0->egressEoRsPending());
 
@@ -4887,13 +4884,12 @@ TEST_F(
 
 /**
  * Test: Initial RIB dump with sendWithEoR=true. When a slow peer gets detached
- * during distribution, it inherits the group's pending egress EoR.
+ * during distribution, it retains its pending egress EoR.
  *
  * Flow:
- *   1. walkAndProcessShadowRib(true) populates the packing list, sets the
- * group's per-AFI egress EoR pending, and marks every in-sync peer's flags via
- * setEgressEorsPendingSyncPeers
- *   2. buildAndSendGroupBgpMessages(sendWithEoR=true) distributes messages
+ *   1. walkAndProcessShadowRib(true) populates the packing list and marks every
+ * in-sync peer's per-AFI flags via setEgressEorsPendingSyncPeers
+ *   2. buildAndSendGroupBgpMessages distributes messages
  *   3. distributeMessageToInSyncPeers finds peer0's queue blocked
  *   4. markPeerBlocked triggers detachSlowPeer(adjRib)
  */
@@ -4997,15 +4993,10 @@ TEST_F(UpdateGroupDetachedPeerTest, RibWalkDetachCopiesEgressEoRsPending) {
    */
   evb_->loopOnce();
 
-  /* Peer0 should have been detached and inherited egressEoRsPending */
+  /* Peer0 should have been detached and retained egressEoRsPending. */
   EXPECT_TRUE(group_->getDetachedPeers().contains(adjRib0));
   EXPECT_TRUE(adjRib0->egressEoRsPending());
-
-  /*
-   * Group's egressEoRsPending should be reset after
-   * buildAndSendGroupBgpMessages
-   */
-  EXPECT_FALSE(group_->egressEoRsPending());
+  EXPECT_FALSE(adjRib1->egressEoRsPending());
 
   /* Close blocked queue and pump evb so deferredPushToPeer can exit */
   blockedQueue->close();
@@ -5023,31 +5014,14 @@ TEST_F(UpdateGroupDetachedPeerTest, RibWalkDetachCopiesEgressEoRsPending) {
 /*
  * Regression test for a duplicate-EoR race on detach.
  *
- * The group's per-AFI flag (egressEoRPendingV4_) means "owed to the in-sync set
- * as a whole" and is cleared only after waitForAllPendingPushes() drains every
- * peer. A peer's own EGRESS_EOR_PENDING_<afi> flag is cleared the instant THAT
- * peer's EoR push resolves (markEgressEoRSent). These are not atomic: a peer
- * can have its v4 EoR already committed (per-peer flag cleared) while the group
- * flag is still set because another peer's push is still pending.
- *
- * If such a peer detaches in that window, detachPeer must NOT set the v4 flag
- * pending again from the still-true group flag -- doing so makes the detached
- * peer's sendPendingEoRs emit a SECOND v4 EoR. It must still keep the v6 flag,
- * which was never committed (so there is no missed EoR either).
+ * A peer's EGRESS_EOR_PENDING_<afi> flag is cleared when that peer's EoR push
+ * resolves. If the peer detaches between AFIs, detachPeer must preserve that
+ * state: v4 stays clear while the still-uncommitted v6 remains pending.
  */
 TEST_F(UpdateGroupDetachedPeerTest, DetachDoesNotResendCommittedEgressEoR) {
   auto adjRib0 = createAndRegisterPeer(0);
   adjRib0->setPeerState(PeerUpdateState::JOINED_RUNNING);
   group_->setSyncBitForTesting(0);
-
-  /*
-   * Group still owes both AFIs to the in-sync set as a whole (another peer's
-   * push has not landed, so distributePendingEoRs has not cleared these yet).
-   */
-  group_->groupKey_.afiIpv4Negotiated = true;
-  group_->groupKey_.afiIpv6Negotiated = true;
-  group_->egressEoRPendingV4_ = true;
-  group_->egressEoRPendingV6_ = true;
 
   /*
    * Peer0 was marked to send both AFIs (distributePendingEoRs step A), then its
@@ -5059,7 +5033,7 @@ TEST_F(UpdateGroupDetachedPeerTest, DetachDoesNotResendCommittedEgressEoR) {
   ASSERT_FALSE(adjRib0->isAdjRibFlagSet(AdjRib::EGRESS_EOR_PENDING_V4));
   ASSERT_TRUE(adjRib0->isAdjRibFlagSet(AdjRib::EGRESS_EOR_PENDING_V6));
 
-  /* Peer0 detaches before the group clears its v4 flag. */
+  /* Peer0 detaches between its v4 and v6 EoR pushes. */
   group_->detachPeer(adjRib0, AdjRibOutGroup::DetachReason::Blocking);
 
   /*
@@ -5713,13 +5687,10 @@ TEST_F(UpdateGroupDetachLifecycleTest, DetachPeerSetsAllExpectedState) {
   // Mark peer as blocked in the group bitmap
   BitmapUtils::setBit(group_->adjRibBlockedBitmap_, 0);
 
-  // Set group EoR pending and mark the in-sync peer as owing it, mirroring the
-  // intake marking in walkAndProcessShadowRib. adjRib0 has not committed its
-  // EoR, so it must retain it across detach (detachPeer must not clear it).
-  group_->egressEoRPendingV4_ = true;
-  group_->egressEoRPendingV6_ = true;
-  adjRib0->setEgressEoRsPending(
-      group_->egressEoRPendingV4_, group_->egressEoRPendingV6_);
+  /* Mark the in-sync peer as owing both EoRs, mirroring intake marking in
+   * walkAndProcessShadowRib. Detach must preserve this per-peer state.
+   */
+  adjRib0->setEgressEoRsPending(true /* v4 */, true /* v6 */);
 
   // Add prefix to group PL so clonePackingList has something to clone
   auto attrs = std::make_shared<BgpPath>(*buildBgpPathFields(1, 1, 0, 0));

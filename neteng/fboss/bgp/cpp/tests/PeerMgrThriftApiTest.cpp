@@ -764,8 +764,8 @@ TEST_F(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest) {
 
   /*
    * Phase 2: peer JOINED_RUNNING in an update-group -> the sent side is
-   * attributed to the group's shared counts, while the recv side stays
-   * per-peer.
+   * attributed to the group's shared counts. The underlying EoR accounting
+   * remains per-peer, and the recv side also stays per-peer.
    */
   folly::EventBase groupEvb;
   auto group = std::make_shared<AdjRibOutGroup>(groupEvb, "test_group", 1);
@@ -794,6 +794,8 @@ TEST_F(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest) {
     EXPECT_EQ(kPerPeerRecvEoRs, d.adjrib_recv_eor_msgs().value());
     EXPECT_EQ(kGroupSentUpdates, d.adjrib_sent_update_msgs().value());
     EXPECT_EQ(kGroupSentEoRs, d.adjrib_sent_eor_msgs().value());
+    EXPECT_EQ(kPerPeerSentEoRs, adjRib->getStats().getSentEndOfRibMsgs());
+    EXPECT_EQ(kGroupSentEoRs, adjRib->getUpdateGroupSentEndOfRibMsgs().value());
     // In-sync member: announcement/withdrawal PDU counts are attributed to the
     // group's shared counts (the per-peer counters set above are ignored).
     EXPECT_EQ(

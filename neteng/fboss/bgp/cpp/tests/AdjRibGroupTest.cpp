@@ -65,6 +65,11 @@ class AdjRibGroupTest : public ::testing::Test {
   }
 
   void TearDown() override {
+    for (const auto& [group, peer] : registeredInSyncPeers_) {
+      group->unregisterPeer(peer);
+    }
+    registeredInSyncPeers_.clear();
+
     if (adjRibOutGroup_) {
       adjRibOutGroup_->resetChangeListConsumer();
 
@@ -134,19 +139,22 @@ class AdjRibGroupTest : public ::testing::Test {
   }
 
   /*
-   * Register a real in-sync peer at the given bit so the group's packing list
-   * accepts entries (the group only queues when it has an in-sync peer).
+   * Register a real in-sync peer so the group's packing list accepts entries
+   * (the group only queues when it has an in-sync peer).
    */
-  std::shared_ptr<AdjRib> addInSyncPeer(uint64_t bit = 0) {
-    auto adjRib = createMinimalAdjRib(static_cast<uint8_t>(bit + 1));
-    adjRibOutGroup_->setBitToAdjRibForTesting(bit, adjRib);
-    adjRibOutGroup_->markPeerInSync(adjRib);
+  std::shared_ptr<AdjRib> addInSyncPeer() {
+    auto adjRib = createMinimalAdjRib();
+    adjRibOutGroup_->registerPeer(adjRib);
+    registeredInSyncPeers_.emplace_back(adjRibOutGroup_, adjRib);
     return adjRib;
   }
 
   std::unique_ptr<folly::EventBase> evb_;
   std::shared_ptr<ChangeTracker<ShadowRibEntry>> changeListTracker_;
   std::shared_ptr<AdjRibOutGroup> adjRibOutGroup_;
+  std::vector<
+      std::pair<std::shared_ptr<AdjRibOutGroup>, std::shared_ptr<AdjRib>>>
+      registeredInSyncPeers_;
   nettools::bgplib::MonitoredBackPressuredQueue<RibInMessage> ribInQ_{
       nettools::bgplib::kMaxIngressQueueSize};
   MonitoredMPMCQueue<AdjRib::ObservableMessageT> observerQ_;
@@ -937,7 +945,7 @@ class AdjRibGroupPackingFixture : public AdjRibGroupTest {
       uint64_t groupId = 0,
       const UpdateGroupKey& groupKey = UpdateGroupKey{}) {
     AdjRibGroupTest::createAdjRibOutGroup(groupName, groupId, groupKey);
-    adjRibOutGroup_->setSyncBitForTesting(0);
+    addInSyncPeer();
   }
 
   std::shared_ptr<const BgpPath> withdrawalAttrs_{nullptr};
@@ -1296,12 +1304,10 @@ TEST_F(
   auto& attrToPrefixMap = adjRibOutGroup_->getAttrToPrefixMap();
   EXPECT_EQ(1, attrToPrefixMap.size());
 
-  auto attrsWithAfi = BgpPathWithAfi{
-      announcementAttrs_, nettools::bgplib::BgpUpdateAfi::AFI_IPv4};
-  EXPECT_TRUE(attrToPrefixMap.contains(attrsWithAfi));
-
+  const auto& [attrsWithAfi, prefixPathIds] = *attrToPrefixMap.begin();
+  EXPECT_EQ(attrsWithAfi.afi, nettools::bgplib::BgpUpdateAfi::AFI_IPv4);
   auto prefixPathId = std::make_pair(kV4Prefix1_, kPlaceholderPathID);
-  EXPECT_TRUE(attrToPrefixMap.at(attrsWithAfi).contains(prefixPathId));
+  EXPECT_TRUE(prefixPathIds.contains(prefixPathId));
 }
 
 /*
@@ -1353,13 +1359,10 @@ TEST_F(
   const auto& attrToPrefixMap = adjRibOutGroup_->getAttrToPrefixMap();
   ASSERT_EQ(1, attrToPrefixMap.size());
 
-  auto attrsWithAfi = BgpPathWithAfi{
-      announcementAttrs_,
-      nettools::bgplib::BgpUpdateAfi::AFI_IPv4,
-      false /* isNexthopSetByPolicy */};
-  ASSERT_TRUE(attrToPrefixMap.contains(attrsWithAfi));
-  EXPECT_TRUE(attrToPrefixMap.at(attrsWithAfi)
-                  .contains(std::make_pair(kV4Prefix1_, kPlaceholderPathID)));
+  const auto& [attrsWithAfi, prefixPathIds] = *attrToPrefixMap.begin();
+  EXPECT_FALSE(attrsWithAfi.isNexthopSetByPolicy);
+  EXPECT_TRUE(
+      prefixPathIds.contains(std::make_pair(kV4Prefix1_, kPlaceholderPathID)));
   EXPECT_FALSE(adjRibEntry->isNexthopSetByPolicy());
 }
 
@@ -2189,7 +2192,7 @@ TEST_F(AdjRibGroupPackingFixture, BuildGroupUpdateWithSizeEstimation_EmptySet) {
 /**
  * Test: distributeMessageToInSyncPeers - no peers registered
  */
-TEST_F(AdjRibGroupPackingFixture, DistributeMessageToInSyncPeers_NoPeers) {
+TEST_F(AdjRibGroupTest, DistributeMessageToInSyncPeers_NoPeers) {
   createAdjRibOutGroup("test_group");
 
   // Create a dummy message
@@ -2355,17 +2358,59 @@ TEST_F(AdjRibGroupPackingFixture, EorCountedSeparatelyFromUpdate) {
       true /* enableUpdateGroup */,
       key,
       ShadowRibView{&emptyShadowRib, &maxRibVersion});
-  adjRibOutGroup_->setSyncBitForTesting(0);
+
+  auto adjRib = createMinimalAdjRib();
+  auto adjRibInQ = std::make_shared<AdjRib::AdjRibInQueueT>(
+      nettools::bgplib::kMaxIngressQueueSize);
+  auto adjRibOutQ = std::make_shared<AdjRib::AdjRibOutQueueT>();
+  auto boundedAdjRibOutQ = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+      nettools::bgplib::kMaxEgressQueueSize,
+      nettools::bgplib::kEgressQueueHighWatermark,
+      nettools::bgplib::kEgressQueueLowWatermark);
+  adjRib->sessionEstablished(
+      std::nullopt, adjRibInQ, adjRibOutQ, boundedAdjRibOutQ);
+  adjRib->setUpdateGroup(adjRibOutGroup_);
+  adjRibOutGroup_->registerPeer(adjRib);
+  adjRib->markStateEstablished();
+  struct PeerCleanup {
+    std::shared_ptr<AdjRibOutGroup> group;
+    std::shared_ptr<AdjRib> peer;
+
+    ~PeerCleanup() {
+      group->unregisterPeer(peer);
+      peer->markStateTerminated();
+    }
+  } cleanup{adjRibOutGroup_, adjRib};
 
   // Request EoR with no queued UPDATEs: only EoR PDUs should be produced.
   adjRibOutGroup_->processRibDumpForGroup(/*sendWithEoR=*/true);
   runEventLoopUntilIdle();
+
+  ASSERT_EQ(2, boundedAdjRibOutQ->size());
+  bool sawV4Eor = false;
+  bool sawV6Eor = false;
+  for (int i = 0; i < 2; ++i) {
+    auto message = folly::coro::blockingWait(boundedAdjRibOutQ->pop());
+    ASSERT_TRUE(message.has_value());
+    auto* eor = std::get_if<nettools::bgplib::BgpEndOfRib>(&*message);
+    ASSERT_NE(nullptr, eor);
+    if (*eor->afi() == nettools::bgplib::BgpUpdateAfi::AFI_IPv4) {
+      sawV4Eor = true;
+    } else if (*eor->afi() == nettools::bgplib::BgpUpdateAfi::AFI_IPv6) {
+      sawV6Eor = true;
+    }
+  }
+  EXPECT_TRUE(sawV4Eor);
+  EXPECT_TRUE(sawV6Eor);
 
   // No UPDATE PDUs were queued, so the UPDATE counter stays 0 — the EoRs are
   // NOT folded into it (the regression being guarded against).
   EXPECT_EQ(0, adjRibOutGroup_->getStats().getSentUpdateMsgs());
   // Both negotiated AFIs (v4 + v6) emit an EoR PDU, counted separately.
   EXPECT_EQ(2, adjRibOutGroup_->getStats().getSentEndOfRibMsgs());
+  EXPECT_EQ(2, adjRib->getStats().getSentEndOfRibMsgs());
+  EXPECT_FALSE(adjRib->egressEoRPendingV4());
+  EXPECT_FALSE(adjRib->egressEoRPendingV6());
 }
 
 /**
@@ -2940,7 +2985,7 @@ TEST_F(AdjRibGroupDistributionFixture, DestructorCleansUpAsyncOperations) {
 /**
  * Test: getMemberCount returns correct count
  */
-TEST_F(AdjRibGroupPackingFixture, GetMemberCount) {
+TEST_F(AdjRibGroupTest, GetMemberCount) {
   createAdjRibOutGroup("test_group", 1);
 
   // Initially, no members
@@ -2950,7 +2995,7 @@ TEST_F(AdjRibGroupPackingFixture, GetMemberCount) {
 /**
  * Test: registerPeer with null adjRib
  */
-TEST_F(AdjRibGroupPackingFixture, RegisterPeerNull) {
+TEST_F(AdjRibGroupTest, RegisterPeerNull) {
   createAdjRibOutGroup("test_group", 1);
 
   // Should handle null gracefully
@@ -2961,7 +3006,7 @@ TEST_F(AdjRibGroupPackingFixture, RegisterPeerNull) {
 /**
  * Test: unregisterPeer with null adjRib
  */
-TEST_F(AdjRibGroupPackingFixture, UnregisterPeerNull) {
+TEST_F(AdjRibGroupTest, UnregisterPeerNull) {
   createAdjRibOutGroup("test_group", 1);
 
   // Should handle null gracefully
@@ -2989,7 +3034,7 @@ TEST_F(AdjRibGroupPackingFixture, GetGroupKey) {
  * Test: registerPeer with null adjRib does not crash and does not increase
  * member count This verifies the null check in registerPeer()
  */
-TEST_F(AdjRibGroupPackingFixture, RegisterPeerNullDoesNotIncreaseCount) {
+TEST_F(AdjRibGroupTest, RegisterPeerNullDoesNotIncreaseCount) {
   createAdjRibOutGroup("test_group", 1);
 
   EXPECT_EQ(adjRibOutGroup_->getMemberCount(), 0);
@@ -3005,7 +3050,7 @@ TEST_F(AdjRibGroupPackingFixture, RegisterPeerNullDoesNotIncreaseCount) {
  * Test: unregisterPeer with null adjRib does not crash
  * This verifies the null check in unregisterPeer()
  */
-TEST_F(AdjRibGroupPackingFixture, UnregisterPeerNullDoesNotCrash) {
+TEST_F(AdjRibGroupTest, UnregisterPeerNullDoesNotCrash) {
   createAdjRibOutGroup("test_group", 1);
 
   // Should not crash with null peer
@@ -4253,8 +4298,7 @@ TEST_F(
   adjRibOutGroup_->setState(UpdateGroupState::READY);
 
   // Call buildAndSendGroupBgpMessages with empty packing list
-  folly::coro::blockingWait(
-      adjRibOutGroup_->buildAndSendGroupBgpMessages(false));
+  folly::coro::blockingWait(adjRibOutGroup_->buildAndSendGroupBgpMessages());
 
   // Verify state transitioned to IDLE and logged the previous state
   EXPECT_EQ(adjRibOutGroup_->getState(), UpdateGroupState::IDLE);
@@ -4287,8 +4331,7 @@ TEST_F(
   auto adjRib = createMinimalAdjRib();
   adjRibOutGroup_->detachedPeers_.insert(adjRib);
 
-  folly::coro::blockingWait(
-      adjRibOutGroup_->buildAndSendGroupBgpMessages(false));
+  folly::coro::blockingWait(adjRibOutGroup_->buildAndSendGroupBgpMessages());
 
   // With detached peers, checkAndAcceptReadyToJoinPeers should log
   // "Checking {} detached peers to try rejoin"
@@ -4322,8 +4365,7 @@ TEST_F(
    * buildAndSendGroupBgpMessages' cleanup guard skips rescheduling the consume
    * timer while the group has no SYNC peers, leaving it frozen.
    */
-  folly::coro::blockingWait(
-      adjRibOutGroup_->buildAndSendGroupBgpMessages(false));
+  folly::coro::blockingWait(adjRibOutGroup_->buildAndSendGroupBgpMessages());
   EXPECT_FALSE(adjRibOutGroup_->changeListConsumeTimer_->isScheduled());
 }
 
@@ -4345,8 +4387,7 @@ TEST_F(
   adjRibOutGroup_->markPeerInSync(adjRib);
   ASSERT_EQ(adjRibOutGroup_->getNumInSyncPeers(), 1);
 
-  folly::coro::blockingWait(
-      adjRibOutGroup_->buildAndSendGroupBgpMessages(false));
+  folly::coro::blockingWait(adjRibOutGroup_->buildAndSendGroupBgpMessages());
 
   // With a SYNC peer present, the guard reschedules the consume timer.
   EXPECT_TRUE(adjRibOutGroup_->changeListConsumeTimer_->isScheduled());

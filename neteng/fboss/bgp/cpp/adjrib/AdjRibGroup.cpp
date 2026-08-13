@@ -508,18 +508,22 @@ void AdjRibOutGroup::createChangeListConsumeTimer() noexcept {
     if (hasEntrySharingPeers()) {
       scheduleChangeListConsumeTimer();
     }
-    /* Trigger message building if packing list has entries */
+    /* Trigger message building if route updates or EoRs are pending. */
     if (state_ == UpdateGroupState::READY || state_ == UpdateGroupState::IDLE) {
-      if (!attrToPrefixMap_.empty()) {
+      if (hasPendingMessages()) {
         state_ = UpdateGroupState::WAITING;
         asyncScope_.add(
             folly::coro::co_withExecutor(
-                &evb_, buildAndSendGroupBgpMessages(false)));
+                &evb_, buildAndSendGroupBgpMessages()));
       } else {
         tryRejoinDetachedPeersOnAllChangesProcessed();
       }
     }
   });
+}
+
+bool AdjRibOutGroup::hasPendingMessages() const noexcept {
+  return !attrToPrefixMap_.empty() || !syncPeersWithPendingEoRs_.empty();
 }
 
 void AdjRibOutGroup::scheduleChangeListConsumeTimer() noexcept {
@@ -698,15 +702,11 @@ void AdjRibOutGroup::walkAndProcessShadowRib(bool sendWithEoR) {
   }
 
   /*
-   * Set the per-AFI egress EoR pending flags, mirroring
-   * AdjRib::handleRibAnnouncedEntries which sets the flags at intake time. Only
-   * the AFIs negotiated by the group are set. Then mark every currently in-sync
-   * peer as owing the same AFIs so the per-peer EGRESS_EOR_PENDING flags are
+   * Mark every currently in-sync peer as owing the negotiated AFIs, mirroring
+   * AdjRib::handleRibAnnouncedEntries. Per-peer EGRESS_EOR_PENDING flags are
    * the single source of truth from this point on.
    */
   if (sendWithEoR) {
-    egressEoRPendingV4_ = groupKey_.afiIpv4Negotiated;
-    egressEoRPendingV6_ = groupKey_.afiIpv6Negotiated;
     setEgressEorsPendingSyncPeers();
   }
 
@@ -773,8 +773,7 @@ void AdjRibOutGroup::processRibDumpForGroup(bool sendWithEoR) {
 
   // Schedule the single async build+send for the initial dump.
   asyncScope_.add(
-      folly::coro::co_withExecutor(
-          &evb_, buildAndSendGroupBgpMessages(sendWithEoR)));
+      folly::coro::co_withExecutor(&evb_, buildAndSendGroupBgpMessages()));
 
   initialDumpCompletionTimeMs_ =
       std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1148,12 +1147,11 @@ void AdjRibOutGroup::processGroupRibWithdraw(
 }
 
 /*
- * @brief  Mark every currently in-sync peer as owing the group's pending
- *         per-AFI EoRs.
+ * @brief Mark every currently in-sync peer as owing each negotiated AFI's EoR.
  *
  * Called at the instant EoR becomes owed (walkAndProcessShadowRib), right
- * after the group's egressEoRPending flags are set, so the per-peer
- * EGRESS_EOR_PENDING flags are the single source of truth from this point on.
+ * after the RIB walk, so the per-peer EGRESS_EOR_PENDING flags are the single
+ * source of truth from this point on.
  * markEgressEoRSent clears a peer's flag the moment its EoR push resolves, so a
  * peer that detaches at any later point (route-distribution drain or EoR
  * distribution) already carries exactly the AFIs it still owes: no duplicate
@@ -1177,7 +1175,11 @@ void AdjRibOutGroup::setEgressEorsPendingSyncPeers() noexcept {
           bitPos);
       continue;
     }
-    adjRib->setEgressEoRsPending(egressEoRPendingV4_, egressEoRPendingV6_);
+    adjRib->setEgressEoRsPending(
+        groupKey_.afiIpv4Negotiated, groupKey_.afiIpv6Negotiated);
+    if (adjRib->egressEoRsPending()) {
+      syncPeersWithPendingEoRs_.insert(adjRib);
+    }
     ++markedPeers;
   }
   XLOGF(
@@ -1885,17 +1887,13 @@ std::shared_ptr<nettools::bgplib::BgpUpdate2> AdjRibOutGroup::buildGroupUpdate(
  * 4. Removes processed prefixes from packing list
  * 5. Repeats until packing list is empty
  *
- * Key differences from peer-level (AdjRib::sendBgpUpdates):
- * - Synchronous (no co_await) - runs in single event loop iteration
- * - No stats tracking (groups don't have stats_ member)
- * - Distributes one message to N peers instead of N messages
- * - EoR notification deferred to later implementation
+ * Unlike the peer-level path, each message is built once and distributed to
+ * every eligible in-sync peer.
  *
- * @param  sendWithEoR - Whether to notify peers to send EoR (later feature)
  * @return void
  */
-folly::coro::Task<void> AdjRibOutGroup::buildAndSendGroupBgpMessages(
-    bool sendWithEoR) noexcept {
+folly::coro::Task<void>
+AdjRibOutGroup::buildAndSendGroupBgpMessages() noexcept {
   ScopedProfile profile("AdjRibOutGroup::buildAndSendGroupBgpMessages");
   /*
    * Guard against re-entrant calls to maintain BGP UPDATE ordering
@@ -1970,8 +1968,7 @@ folly::coro::Task<void> AdjRibOutGroup::buildAndSendGroupBgpMessages(
     }
   }
 
-  // Return early if nothing to announce/withdraw and no EoR pending.
-  if (attrToPrefixMap_.empty() && !sendWithEoR) {
+  if (attrToPrefixMap_.empty() && syncPeersWithPendingEoRs_.empty()) {
     co_return;
   }
 
@@ -1985,8 +1982,7 @@ folly::coro::Task<void> AdjRibOutGroup::buildAndSendGroupBgpMessages(
   uint32_t withdrawPrefixCnt = 0;
   uint32_t announcePrefixCnt = 0;
 
-  // Iterate attrToPrefixMap and build/distribute one message at a time
-  // Similar to AdjRib::sendBgpUpdates() but synchronous (no co_await)
+  // Iterate attrToPrefixMap and build/distribute one message at a time.
   while (!attrToPrefixMap_.empty()) {
     /* Check for cancellation at start of each iteration */
     co_await folly::coro::co_safe_point;
@@ -2074,15 +2070,15 @@ folly::coro::Task<void> AdjRibOutGroup::buildAndSendGroupBgpMessages(
    * BGP PDU from UPDATE, so keep its count separate from msgCount (which counts
    * only UPDATE announcements/withdrawals). */
   uint32_t eorCount = 0;
-  if (egressEoRPendingV4_ || egressEoRPendingV6_) {
+  if (!syncPeersWithPendingEoRs_.empty()) {
     eorCount = co_await distributePendingEoRs();
   }
 
-  // Group-level control-plane counts of PDUs generated once for this group.
-  // In-sync member peers' per-peer AdjRib counts stay 0 (the PDU is built once
-  // here); getSessionInfo attributes these to each member. UPDATE and EoR are
-  // tracked separately so each converges with its socket-layer counterpart
-  // (txMsgs.update / txMsgs.endOfRib) instead of diverging by the EoR count.
+  /* Group-level control-plane counts of PDUs generated once for this group.
+   * UPDATE counts are attributed to in-sync members by getSessionInfo. EoR is
+   * retained here as a group aggregate, while each resolved push increments
+   * the eligible peer's own EoR counter.
+   */
   stats_.incrementSentUpdateMsgs(msgCount);
   if (eorCount > 0) {
     stats_.incrementSentEndOfRibMsgs(eorCount);
@@ -2101,9 +2097,9 @@ folly::coro::Task<void> AdjRibOutGroup::buildAndSendGroupBgpMessages(
 }
 
 /*
- * @brief  Distribute the group's pending per-AFI EoR markers to in-sync peers.
+ * @brief Distribute per-AFI EoR markers to eligible in-sync peers.
  *
- * Queues each in-sync peer's EoR PDU through tryPushToPeer;
+ * Queues each eligible in-sync peer's EoR PDU through tryPushToPeer;
  * each EoR push carries an onResolved continuation (markEgressEoRSent) that
  * handles the per-peer EoR-sent bookkeeping: it clears the peer's
  * EGRESS_EOR_PENDING_<afi> flag when the PDU lands, and once no AFI flags
@@ -2111,11 +2107,10 @@ folly::coro::Task<void> AdjRibOutGroup::buildAndSendGroupBgpMessages(
  *
  * In-sync peers are marked as owing EoR when the EoR becomes owed
  * (walkAndProcessShadowRib), not here, and markEgressEoRSent clears each
- * peer's flag as its push resolves. The group's own per-AFI
- * flag (cleared after waitForAllPendingPushes) only gates whether this
- * distribution needs to run for this batch of sync peers.
+ * peer's flag as its push resolves.
  *
- * Returns the number of EoR PDUs built (one per AFI distributed).
+ * Returns the number of EoR PDUs accepted for delivery (one per AFI
+ * distributed).
  */
 folly::coro::Task<uint32_t> AdjRibOutGroup::distributePendingEoRs() noexcept {
   uint32_t eorMsgCount = 0;
@@ -2129,39 +2124,68 @@ folly::coro::Task<uint32_t> AdjRibOutGroup::distributePendingEoRs() noexcept {
 
   auto distributeEoRs = [&](nettools::bgplib::BgpUpdateAfi afi) {
     auto eorMessage = buildEndOfRib(afi);
-    for (const auto& [bitPos, adjRib] : bitToAdjRibs_) {
-      if (!BitmapUtils::isBitSet(adjRibSyncBitmap_, bitPos) || !adjRib) {
+    bool distributed = false;
+    const std::vector<std::shared_ptr<AdjRib>> pendingPeers(
+        syncPeersWithPendingEoRs_.begin(), syncPeersWithPendingEoRs_.end());
+    for (const auto& adjRib : pendingPeers) {
+      const auto bitPos = adjRib->getGroupBitPosition();
+      const bool eorPending = afi == nettools::bgplib::BgpUpdateAfi::AFI_IPv4
+          ? adjRib->egressEoRPendingV4()
+          : adjRib->egressEoRPendingV6();
+      if (!eorPending) {
         continue;
       }
       /* On land, finalize this peer's EoR for this AFI. */
-      tryPushToPeer(eorMessage, adjRib, bitPos, [adjRib, afi]() noexcept {
-        adjRib->markEgressEoRSent(afi);
-      });
+      const auto result =
+          tryPushToPeer(eorMessage, adjRib, bitPos, [adjRib, afi]() noexcept {
+            adjRib->markEgressEoRSent(afi);
+            if (!adjRib->egressEoRsPending()) {
+              if (auto group = adjRib->getUpdateGroup()) {
+                group->syncPeersWithPendingEoRs_.erase(adjRib);
+              }
+            }
+          });
+      distributed |= result != PushResult::PUSH_FAILED;
     }
+    return distributed;
   };
 
-  if (egressEoRPendingV4_) {
-    distributeEoRs(nettools::bgplib::BgpUpdateAfi::AFI_IPv4);
+  if (distributeEoRs(nettools::bgplib::BgpUpdateAfi::AFI_IPv4)) {
     eorMsgCount++;
-
-    co_await waitForAllPendingPushes();
-
-    /* Committed v4 to all in-sync peers; clear after the wait so a peer
-     * detaching during the wait does not miss sending v4 if it failed
-     * to push during deferredPushToPeer.
-     */
-    egressEoRPendingV4_ = false;
   }
-  if (egressEoRPendingV6_) {
-    distributeEoRs(nettools::bgplib::BgpUpdateAfi::AFI_IPv6);
+  co_await waitForAllPendingPushes();
+  if (distributeEoRs(nettools::bgplib::BgpUpdateAfi::AFI_IPv6)) {
     eorMsgCount++;
-    co_await waitForAllPendingPushes();
-    egressEoRPendingV6_ = false;
   }
+  co_await waitForAllPendingPushes();
 
   XLOGF(INFO, "Group {} completed sending pending EoRs", groupDescriptor_);
 
   co_return eorMsgCount;
+}
+
+void AdjRibOutGroup::setSyncBit(
+    uint64_t bit,
+    const std::shared_ptr<AdjRib>& adjRib) noexcept {
+  if (!BitmapUtils::isBitSet(adjRibSyncBitmap_, bit)) {
+    ++numInSyncPeers_;
+  }
+  BitmapUtils::setBit(adjRibSyncBitmap_, bit);
+
+  if (adjRib->egressEoRsPending()) {
+    syncPeersWithPendingEoRs_.insert(adjRib);
+  }
+}
+
+void AdjRibOutGroup::clearSyncBit(
+    uint64_t bit,
+    const std::shared_ptr<AdjRib>& adjRib) noexcept {
+  syncPeersWithPendingEoRs_.erase(adjRib);
+
+  if (BitmapUtils::isBitSet(adjRibSyncBitmap_, bit)) {
+    --numInSyncPeers_;
+  }
+  BitmapUtils::clearBit(adjRibSyncBitmap_, bit);
 }
 
 /*
@@ -2523,7 +2547,7 @@ void AdjRibOutGroup::registerPeer(const std::shared_ptr<AdjRib>& adjRib) {
     adjRib->resetChangeListConsumer();
 
     /* Set in-sync bitmap bit - peer is ready to receive group dump */
-    setSyncBit(bit);
+    setSyncBit(bit, adjRib);
   } else {
     // Group already initialized and running
     // New peer must catch up independently before joining
@@ -2858,7 +2882,7 @@ void AdjRibOutGroup::removePeer(
   adjRib->resetSlowPeerDurationTimer();
 
   BitmapUtils::clearBit(adjRibEstablishedBitmap_, bit);
-  clearSyncBit(bit);
+  clearSyncBit(bit, adjRib);
   BitmapUtils::clearBit(adjRibBlockedBitmap_, bit);
 
   /*
@@ -3231,8 +3255,6 @@ void AdjRibOutGroup::copyGroupFieldsToNewGroup(
   newGroup->setLastSeenRibVersion(lastSeenRibVersion_);
   newGroup->peeringParams_ = peeringParams_;
   newGroup->mraiInterval_ = mraiInterval_;
-  newGroup->egressEoRPendingV4_ = egressEoRPendingV4_;
-  newGroup->egressEoRPendingV6_ = egressEoRPendingV6_;
   newGroup->updateGroupConfig_ = updateGroupConfig_;
   newGroup->initialDumpCompletionTimeMs_ = initialDumpCompletionTimeMs_;
   /*
@@ -3330,7 +3352,7 @@ void AdjRibOutGroup::splitToNewGroup(
     BitmapUtils::setBit(newGroup->adjRibEstablishedBitmap_, newBit);
 
     if (wasInSync) {
-      newGroup->setSyncBit(newBit);
+      newGroup->setSyncBit(newBit, peer);
       /*
        * Only in-sync peers carry the blocked bit (detachPeer clears it when a
        * peer leaves the sync set), so a JOINED_BLOCKED peer -- in-sync AND
@@ -3647,7 +3669,7 @@ void AdjRibOutGroup::markPeerDetached(
     const std::shared_ptr<AdjRib>& adjRib) noexcept {
   auto bit = adjRib->getGroupBitPosition();
   detachedPeers_.insert(adjRib);
-  clearSyncBit(bit);
+  clearSyncBit(bit, adjRib);
   XLOGF(
       DBG2,
       "Group {}: Peer {} at bit {} marked as detached",
@@ -3662,7 +3684,7 @@ void AdjRibOutGroup::markPeerDetached(
 void AdjRibOutGroup::markPeerInSync(
     const std::shared_ptr<AdjRib>& adjRib) noexcept {
   auto bit = adjRib->getGroupBitPosition();
-  setSyncBit(bit);
+  setSyncBit(bit, adjRib);
   detachedPeers_.erase(adjRib);
   /*
    * The peer is folding back into the group's shared accounting, so it no

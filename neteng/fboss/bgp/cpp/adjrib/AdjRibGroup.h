@@ -503,7 +503,7 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
    * both initial dump and policy re-evaluation.
    * This is not interruptible -- runs synchronously in a single
    * event loop turn with no co_await inside the loop.
-   * @param sendWithEoR - whether to mark the group's pending egress EoR
+   * @param sendWithEoR - whether to mark each in-sync peer's pending EoRs
    */
   void walkAndProcessShadowRib(bool sendWithEoR);
 
@@ -607,24 +607,25 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   /*
    * Build and send BGP UPDATE messages from group packing list
    */
-  folly::coro::Task<void> buildAndSendGroupBgpMessages(
-      bool sendWithEoR = false) noexcept;
+  folly::coro::Task<void> buildAndSendGroupBgpMessages() noexcept;
 
   /*
-   * Mark every currently in-sync peer as owing the group's pending per-AFI
-   * EoRs. Reads the group's egressEoRPending flags (set just before this call
-   * in walkAndProcessShadowRib) and sets the matching per-peer
-   * EGRESS_EOR_PENDING flags, which become the single source of truth for
-   * what each peer still owes.
+   * Return whether the group has route updates or per-peer EoRs to send.
+   */
+  bool hasPendingMessages() const noexcept;
+
+  /*
+   * Mark every currently in-sync peer as owing each AFI negotiated by the
+   * group. The per-peer EGRESS_EOR_PENDING flags are the single source of
+   * truth for what each peer still owes.
    */
   void setEgressEorsPendingSyncPeers() noexcept;
 
   /*
-   * Distribute the group's pending per-AFI EoR markers to all in-sync peers.
-   * Drains one AFI at a time (waitForAllPendingPushes between AFIs) and
-   * clears each group per-AFI pending flag once committed. Returns the number
-   * of EoR PDUs built (one per AFI distributed) so the caller can fold it
-   * into its BGP message count.
+   * Distribute per-AFI EoR markers to in-sync peers that still owe them.
+   * Drains one AFI at a time (waitForAllPendingPushes between AFIs). Returns
+   * the number of EoR PDUs accepted for delivery (one per AFI distributed) so
+   * the caller can fold it into its BGP message count.
    */
   folly::coro::Task<uint32_t> distributePendingEoRs() noexcept;
 
@@ -736,18 +737,14 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   bool containsBitToAdjRibForTesting(uint64_t bitPos) const noexcept;
 
   void setSyncBitForTesting(uint64_t bit) noexcept {
-    setSyncBit(bit);
+    const auto it = bitToAdjRibs_.find(bit);
+    if (it != bitToAdjRibs_.end() && it->second) {
+      setSyncBit(bit, it->second);
+    }
   }
 
   const ConsumerBitmap& getBlockedBitmap() const noexcept {
     return adjRibBlockedBitmap_;
-  }
-
-  /* True while the group still owes any AFI's EoR marker to its in-sync
-   * peers.
-   */
-  bool egressEoRsPending() const noexcept {
-    return egressEoRPendingV4_ || egressEoRPendingV6_;
   }
 
   /*
@@ -1174,19 +1171,11 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   void promoteDetachedPeerLiteEntries(
       const std::shared_ptr<AdjRib>& adjRib) noexcept;
 
-  void setSyncBit(uint64_t bit) noexcept {
-    if (!BitmapUtils::isBitSet(adjRibSyncBitmap_, bit)) {
-      ++numInSyncPeers_;
-    }
-    BitmapUtils::setBit(adjRibSyncBitmap_, bit);
-  }
+  void setSyncBit(uint64_t bit, const std::shared_ptr<AdjRib>& adjRib) noexcept;
 
-  void clearSyncBit(uint64_t bit) noexcept {
-    if (BitmapUtils::isBitSet(adjRibSyncBitmap_, bit)) {
-      --numInSyncPeers_;
-    }
-    BitmapUtils::clearBit(adjRibSyncBitmap_, bit);
-  }
+  void clearSyncBit(
+      uint64_t bit,
+      const std::shared_ptr<AdjRib>& adjRib) noexcept;
 
   /*
    * Common cleanup when removing a peer from this group.
@@ -1424,6 +1413,13 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   ConsumerBitmap adjRibSyncBitmap_;
 
   /*
+   * In-sync peers that still owe at least one per-AFI EoR. This is maintained
+   * with adjRibSyncBitmap_: clearing a peer's sync bit removes it, while
+   * setting the bit transfers any pending per-peer obligation into this group.
+   */
+  folly::F14NodeSet<std::shared_ptr<AdjRib>> syncPeersWithPendingEoRs_;
+
+  /*
    * Cached count of set bits in adjRibSyncBitmap_, maintained incrementally
    * when bits are set/cleared to avoid O(bitmap-size) popcount on every
    * query.
@@ -1568,19 +1564,6 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
    * Used to schedule coroutines that wait for blocked peer queues to unblock
    */
   folly::coro::CancellableAsyncScope asyncScope_;
-
-  /**
-   * Per-AFI flags tracking whether the group still owes that AFI's EoR marker
-   * to its in-sync peers. Set when the packing list drains; each is cleared
-   * once the group has committed that AFI's EoR to all in-sync peers. These
-   * gate whether distributePendingEoRs runs. The authoritative per-peer state
-   * lives in each AdjRib's EGRESS_EOR_PENDING flags, which are marked when
-   * the EoR becomes owed and cleared per-peer by markEgressEoRSent; a
-   * detaching peer is NOT re-derived from these group flags (that would set
-   * already-committed AFIs back to pending and duplicate the EoR).
-   */
-  bool egressEoRPendingV4_{false};
-  bool egressEoRPendingV6_{false};
 
   /**
    * Guard flag to prevent concurrent execution of

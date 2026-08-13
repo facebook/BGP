@@ -485,15 +485,14 @@ TEST_P(
  * and its initial dump is deferred (testOnlyDeferInitDump) so it stays pinned
  * in DETACHED_INIT_DUMP. The append override is applied while peer3 is still
  * pinned; the re-eval splits peer3 into its own group and cancels its deferred
- * dump, re-evaluating it inline under the new policy -- so peer3's RIB-OUT
- * reflects append while it stays detached and healthy (not DOWN), and the other
- * peers stay on propagate-everything. Releasing the defer leaves peer3 healthy.
+ * dump, re-evaluates it inline under the new policy, and activates detached
+ * processing. The writable peer can therefore drain and rejoin its new group
+ * immediately. Its RIB-OUT reflects append, and the other peers stay on
+ * propagate-everything.
  *
  * The inline re-eval dump delivers peer3's full re-evaluated set to its egress
- * queue even though it stays detached, so its on-wire delivery is verified too
- * (by draining directly, not via the JOINED_RUNNING-gated helper the other
- * cases use). The peer does not rejoin the group via a simple release here, so
- * this asserts correct in-place handling rather than a later rejoin.
+ * queue before it rejoins, so its on-wire delivery is verified by draining the
+ * queue directly.
  */
 TEST_P(
     SinglePeerPolicyReEvalE2ETest,
@@ -533,26 +532,26 @@ TEST_P(
 
   /*
    * Apply the append override while peer3 is pinned in DETACHED_INIT_DUMP (its
-   * dump stays deferred through the re-evaluation). peer3 splits into its own
-   * group and stays healthy; the other peers stay on propagate-everything.
+   * dump stays deferred until the re-evaluation cancels it). peer3 splits into
+   * its own group and stays healthy; the other peers stay on
+   * propagate-everything.
    */
   applyAppendOverrideToSubject();
   expectSubjectSplitFromGroup(originalGroup, otherAddrs);
   /*
    * The re-eval cancels peer3's deferred init dump and re-evaluates it inline
    * under the new policy, so peer3's RIB-OUT reflects append (all routes, the
-   * appended community on the i % 3 == 0 routes) while it stays detached in
-   * DETACHED_INIT_DUMP; the other peers stay on propagate-everything.
+   * appended community on the i % 3 == 0 routes). Detached processing then
+   * drains the writable queue and rejoins the single-member target group.
    */
   waitForRibOutAdvertisedCount(kPeerAddr3, kNumRoutes);
   expectRibOutForPolicy(kPeerAddr3, kMatchModifyAppendPolicyName, kNumRoutes);
-  EXPECT_TRUE(isPeerDetached(kPeerAddr3));
-  EXPECT_NE(getPeerState(kPeerAddr3), PeerUpdateState::DOWN);
+  ASSERT_TRUE(waitForPeerState(kPeerAddr3, PeerUpdateState::JOINED_RUNNING));
+  EXPECT_TRUE(isPeerInSync(kPeerAddr3));
   /*
    * Wire: the inline re-eval dump delivers peer3's full re-evaluated set to its
-   * egress queue even though it stays detached (not gated on JOINED_RUNNING),
-   * so draining captures every route with the appended community on the i % 3
-   * == 0 routes.
+   * egress queue before rejoin, so draining captures every route with the
+   * appended community on the i % 3 == 0 routes.
    */
   recordDrainedRoutes(subjectId);
   expectReceivedRoutesForPolicy(
@@ -563,14 +562,12 @@ TEST_P(
   }
 
   /*
-   * Release the defer: peer3 stays healthy (not DOWN) and the other peers stay
-   * in sync. (A DID peer whose deferred dump was cancelled by the re-eval does
-   * not rejoin via a simple release+drain here, mirroring the group-level DID
-   * re-eval coverage, so this asserts correct in-place handling rather than a
-   * later rejoin.)
+   * Clear the test defer after its scheduled dump was cancelled. This must not
+   * disturb the peer's already-converged target-group membership.
    */
   testOnlyDeferInitDump(kPeerAddr3, false);
-  EXPECT_NE(getPeerState(kPeerAddr3), PeerUpdateState::DOWN);
+  EXPECT_EQ(getPeerState(kPeerAddr3), PeerUpdateState::JOINED_RUNNING);
+  EXPECT_TRUE(isPeerInSync(kPeerAddr3));
   for (const auto& other : otherAddrs) {
     EXPECT_TRUE(isPeerInSync(other));
   }

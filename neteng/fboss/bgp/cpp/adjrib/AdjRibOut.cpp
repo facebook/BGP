@@ -527,8 +527,9 @@ void AdjRib::onEgressEoRSent() noexcept {
  * egress queue. The group's EoR push supplies this as the onResolved
  * continuation to tryPushToPeer, so it runs on immediate push or from
  * deferredPushToPeer for a backpressured peer. The continuation carries the
- * AFI, so clear exactly this AFI's EGRESS_EOR_PENDING flag, then fire the
- * one-time bookkeeping if no AFI's EoR is still pending (this was the last).
+ * AFI, so clear exactly this AFI's EGRESS_EOR_PENDING flag, increment this
+ * peer's sent-EoR count, then fire the one-time bookkeeping if no AFI's EoR is
+ * still pending (this was the last).
  *
  * Only AFI_IPv4 and AFI_IPv6 carry egress EoR state. Match each AFI explicitly
  * rather than treating "not IPv4" as IPv6: an unexpected AFI (e.g. AFI_LS, or a
@@ -542,7 +543,7 @@ void AdjRib::markEgressEoRSent(nettools::bgplib::BgpUpdateAfi afi) noexcept {
     clearAdjRibFlag(EGRESS_EOR_PENDING_V6);
   } else {
     XLOGF(
-        DFATAL,
+        ERR,
         "Peer {}: markEgressEoRSent called with unsupported AFI {}; expected "
         "AFI_IPv4 or AFI_IPv6",
         getPeerName(),
@@ -550,6 +551,7 @@ void AdjRib::markEgressEoRSent(nettools::bgplib::BgpUpdateAfi afi) noexcept {
     return;
   }
 
+  stats_.incrementSentEndOfRibMsgs(1);
   if (!egressEoRsPending()) {
     onEgressEoRSent();
   }

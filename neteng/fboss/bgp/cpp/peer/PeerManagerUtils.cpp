@@ -711,8 +711,7 @@ TBgpSession PeerManagerBase::getDetailSessionInfo(
 
       // Control-plane per-type message counts (PeerManager / AdjRib), the
       // counterpart to the socket_* counts below. Recv side is per-peer; the
-      // sent side is attributed to the update-group for in-sync members (whose
-      // per-peer sent counters stay 0), mirroring TBgpSession.sent_update_msgs.
+      // sent counts are attributed to the update-group for in-sync members.
       const auto& adjRib = adjRibs_.at(bgpPeerId);
       tBgpSessionDetail.adjrib_recv_update_msgs() =
           static_cast<int64_t>(stats.getRecvUpdateMsgs());
