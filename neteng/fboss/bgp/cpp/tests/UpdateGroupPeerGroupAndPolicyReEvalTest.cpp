@@ -45,7 +45,7 @@
   FRIEND_TEST(                                                                \
       SplitToGroup, SplitBlockedPeerDrainWaitsInBuildAndSendGroupMessages);   \
   FRIEND_TEST(                                                                \
-      SplitToGroup, SplitBlockedPeerDrainNoInSyncPeerDoesNotReschedule);      \
+      SplitToGroup, SplitBlockedPeerDrainNoInSyncPeerKeepsConsumingForDSP);   \
   FRIEND_TEST(                                                                \
       UpdateGroupsEgressReEvalTest,                                           \
       PolicyUpdateDuringGroupDestroyIsNotDropped);                            \
@@ -847,10 +847,13 @@ TEST_F(SplitToGroup, SplitBlockedPeerDrainWaitsInBuildAndSendGroupMessages) {
  * Companion to the reschedule case: if the group is left without an in-sync
  * peer while the carried-over push wait is in flight (the blocked peer
  * detaches), the wait still completes -- detachPeer clears the blocked bit, so
- * the drain never deadlocks -- and it finishes without rescheduling the consume
- * timer (guarded on numInSyncPeers_).
+ * the drain never deadlocks. detachPeer also stamps a detachedRibVersion and
+ * counts the peer in numPeersDetachedAfterJoin_, making it a sharing DSP, so
+ * the drain reschedules the consume timer despite there being no in-sync peer:
+ * that DSP needs both consumers to reach the end of the change list before it
+ * can rejoin.
  */
-TEST_F(SplitToGroup, SplitBlockedPeerDrainNoInSyncPeerDoesNotReschedule) {
+TEST_F(SplitToGroup, SplitBlockedPeerDrainNoInSyncPeerKeepsConsumingForDSP) {
   auto ctx = setUp(2);
   sendInitialRibDump(ctx);
   auto peerId1 = makePeerId(1);
@@ -910,18 +913,19 @@ TEST_F(SplitToGroup, SplitBlockedPeerDrainNoInSyncPeerDoesNotReschedule) {
   /*
    * The wait completes and the drain finishes -- the seeded packing-list entry
    * is consumed (distributed to zero in-sync peers), proving no deadlock -- and
-   * because the group has no in-sync peer the guard skips the consume-timer
-   * reschedule, so the drained list stays empty.
+   * the guard reschedules the consume timer off the sharing DSP the detach
+   * created, even though no in-sync peer remains.
    */
   WITH_RETRIES({
-    auto completedNoReschedule =
+    auto drainedAndStillConsuming =
         folly::via(&evb, [&]() {
           return targetGroup->getAttrToPrefixMap().empty() &&
               targetGroup->getNumInSyncPeers() == 0 &&
-              !(targetGroup->changeListConsumeTimer_ &&
-                targetGroup->changeListConsumeTimer_->isScheduled());
+              targetGroup->getNumPeersDetachedAfterJoin() > 0 &&
+              targetGroup->changeListConsumeTimer_ &&
+              targetGroup->changeListConsumeTimer_->isScheduled();
         }).get();
-    EXPECT_EVENTUALLY_TRUE(completedNoReschedule);
+    EXPECT_EVENTUALLY_TRUE(drainedAndStillConsuming);
   });
 
   evb.runInEventBaseThreadAndWait(

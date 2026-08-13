@@ -1367,15 +1367,20 @@ class AdjRib : boost::noncopyable,
 
   /*
    * DSP (Detached Slow Peer) readiness check.
-   * Returns true if the peer has drained its packing list and its change list
-   * marker has caught up to the group consumer's marker (same position on the
-   * CL). We compare markers rather than requiring the end of the CL: when the
-   * group is frozen mid-list, a DSP that reaches that frozen marker can rejoin
-   * without waiting for the group to reach the end.
+   * Returns true only when both the peer and group have consumed the entire
+   * change list, peer has drained packing list, and peer and group have
+   * matching materialized RIB versions.
    *
    * Conditions:
-   *   1. attrToPrefixMap_ is empty (PL fully drained)
-   *   2. changeListConsumer_->getMarker() == the group consumer's marker
+   *   1. The peer packing list is empty
+   *   2. The peer and group change-list consumers are at the end
+   *   3. The peer and group last-seen RIB versions match
+   */
+  bool canWaitForGroupToRejoin() const;
+
+  /*
+   * Rejoin readiness at the acceptance boundary: every condition
+   * canWaitForGroupToRejoin() checks, plus an empty group packing list.
    */
   bool isReadyToRejoinGroup() const;
 

@@ -311,8 +311,6 @@ TEST_P(UpdateGroupCollapseRetryConvergenceE2ETest, RetryConverges) {
     EXPECT_EVENTUALLY_EQ(getGroupMarker(kPeerAddr3), kBoundaryPrefix);
   });
 
-  const auto discrepanciesBeforeCollapse = getTotalDiscrepancies(kPeerAddr3);
-
   /*
    * Pop only S. The waiting EoR lands and completes the dump, but remains in
    * the one-message queue. P's detached timer can now consume H; its H send
@@ -355,9 +353,9 @@ TEST_P(UpdateGroupCollapseRetryConvergenceE2ETest, RetryConverges) {
   });
 
   /*
-   * Pop the EoR. H lands, P's send completes, and the production acceptance
-   * path runs while G is still blocked. Round one finds only B divergent, but
-   * the failed collapse has already erased P's matching S and H owners.
+   * Pop the EoR. H lands and P's send completes at the old premature-
+   * acceptance point. The event-base snapshot below is a barrier after that
+   * completion; both consumers must still be parked together at M.
    */
   auto eorMessage = drainAllOutboundMessagesToOrderedVec(
       detachedPeer,
@@ -367,24 +365,47 @@ TEST_P(UpdateGroupCollapseRetryConvergenceE2ETest, RetryConverges) {
   ASSERT_EQ(1, eorMessage.size());
   EXPECT_TRUE(eorMessage.front().isEoR);
   ASSERT_TRUE(waitForPeerQueueBlocked(detachedPeer));
-  WITH_RETRIES_N(kRetries, {
-    EXPECT_EVENTUALLY_EQ(
-        getTotalDiscrepancies(kPeerAddr3), discrepanciesBeforeCollapse + 1);
-  });
+  const auto afterRejectedGate = getCollapseGateState(kPeerAddr5);
+  EXPECT_FALSE(afterRejectedGate.peerChangeListReady);
+  EXPECT_FALSE(afterRejectedGate.groupChangeListReady);
+  EXPECT_TRUE(afterRejectedGate.markersEqual);
+  EXPECT_TRUE(afterRejectedGate.versionsEqual);
+  EXPECT_TRUE(afterRejectedGate.groupPackingListEmpty);
+
+  EXPECT_EQ(0, getTotalDiscrepancies(kPeerAddr3));
   EXPECT_EQ(
-      (OwnerPresence{false, true}), getOwnerPresence(kPeerAddr5, kSeedPrefix));
+      (OwnerPresence{true, true}), getOwnerPresence(kPeerAddr5, kSeedPrefix));
   EXPECT_EQ(
-      (OwnerPresence{false, true}),
+      (OwnerPresence{true, true}),
       getOwnerPresence(kPeerAddr5, kHighVersionPrefix));
-  EXPECT_EQ(
-      (OwnerPresence{false, true}),
-      getOwnerPresence(kPeerAddr5, kMissingPrefix));
 
   /*
-   * Pop H. This allows the B repair to land and the peer to retry the same
-   * collapse. Round one erased P's matching S and H owners, so the retry has
-   * to rebuild them.
+   * P cannot move past G's marker. Release G first: the old deferred PDU
+   * lands, G consumes M/B to the end, and its next send blocks with an empty
+   * group PL. P can now legally consume M/B to the end behind it.
    */
+  ASSERT_TRUE(unblockPeer(kPeerAddr4, /*maxRetries=*/0));
+  auto firstGroupCatchupDrain = drainAllOutboundMessagesToOrderedVec(
+      holderPeer,
+      /*idleRetries=*/1,
+      /*maxMessages=*/kHolderHighWatermark,
+      /*sleepMsBetweenRetries=*/0);
+  ASSERT_EQ(kHolderHighWatermark, firstGroupCatchupDrain.size());
+  WITH_RETRIES_N(kRetries, {
+    const auto state = getCollapseGateState(kPeerAddr5);
+    EXPECT_EVENTUALLY_TRUE(
+        state.groupChangeListReady && state.groupPackingListEmpty &&
+        isPeerQueueBlocked(holderPeer));
+  });
+  ASSERT_TRUE(waitForPeerState(kPeerAddr4, PeerUpdateState::JOINED_BLOCKED));
+  ASSERT_TRUE(waitForChangeListConsumerReady(kPeerAddr5));
+
+  /*
+   * Drain H, then one M/B PDU. The final PDU lands and P's PL becomes empty.
+   * Both consumers are now at the end, so the production acceptance path may
+   * collapse P into G without a discrepancy.
+   */
+  ASSERT_TRUE(unblockPeer(kPeerAddr5, /*maxRetries=*/0));
   auto highVersionMessage = drainAllOutboundMessagesToOrderedVec(
       detachedPeer,
       /*idleRetries=*/1,
@@ -402,15 +423,19 @@ TEST_P(UpdateGroupCollapseRetryConvergenceE2ETest, RetryConverges) {
       getExpectedNexthop(kPeerAddr5),
       "4200000001",
       "6612:1"));
-
   ASSERT_TRUE(waitForPeerQueueBlocked(detachedPeer));
-  /*
-   * Round two accepts because the failed round-one collapse cleared
-   * DETACHED_ON_REGISTRATION (D115516517). While set, that flag makes collapse
-   * skip the detachedRibVersion check and re-flag every group-only entry, so
-   * the retry never converges.
-   */
+
+  auto peerCatchupMessage = drainAllOutboundMessagesToOrderedVec(
+      detachedPeer,
+      /*idleRetries=*/1,
+      /*maxMessages=*/1,
+      /*sleepMsBetweenRetries=*/0);
+  ASSERT_EQ(1, peerCatchupMessage.size());
+
   ASSERT_TRUE(waitForPeerState(kPeerAddr5, PeerUpdateState::JOINED_RUNNING));
+  EXPECT_TRUE(isPeerInSync(kPeerAddr5));
+  EXPECT_EQ(0, getTotalDiscrepancies(kPeerAddr3));
+
   EXPECT_EQ(
       (OwnerPresence{false, true}), getOwnerPresence(kPeerAddr5, kSeedPrefix));
   EXPECT_EQ(
@@ -419,7 +444,16 @@ TEST_P(UpdateGroupCollapseRetryConvergenceE2ETest, RetryConverges) {
   EXPECT_EQ(
       (OwnerPresence{false, true}),
       getOwnerPresence(kPeerAddr5, kMissingPrefix));
-  EXPECT_FALSE(isPeerDetached(kPeerAddr5));
+  EXPECT_EQ(
+      (OwnerPresence{false, true}),
+      getOwnerPresence(kPeerAddr5, kBoundaryPrefix));
+
+  auto secondGroupCatchupDrain = drainAllOutboundMessagesToOrderedVec(
+      holderPeer,
+      /*idleRetries=*/1,
+      /*maxMessages=*/kHolderHighWatermark,
+      /*sleepMsBetweenRetries=*/0);
+  EXPECT_EQ(kHolderHighWatermark, secondGroupCatchupDrain.size());
 }
 
 INSTANTIATE_TEST_SUITE_P(

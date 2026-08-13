@@ -258,9 +258,9 @@ TEST_P(
  *      claims C.
  *
  * peer5 can only rejoin when its version equals the group's
- * (AdjRib::isReadyToRejoinGroup, strict equality). Nothing between B and C is
- * marked for its consumer, so per-item advancement leaves it pinned at B: the
- * only way to reach C is to claim maxRibVersion on reaching the end of the
+ * (AdjRib::canWaitForGroupToRejoin, strict equality). Nothing between B and C
+ * is marked for its consumer, so per-item advancement leaves it pinned at B:
+ * the only way to reach C is to claim maxRibVersion on reaching the end of the
  * change list. The rejoin is the assertion rather than the version itself,
  * because once back in sync AdjRib::getLastSeenRibVersion() reports the
  * group's version rather than the peer's own.

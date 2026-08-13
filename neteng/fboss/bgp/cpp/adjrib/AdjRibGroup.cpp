@@ -504,8 +504,8 @@ void AdjRibOutGroup::createChangeListConsumeTimer() noexcept {
         state_,
         !attrToPrefixMap_.empty());
 
-    /* Keep the group frozen while it has no SYNC peers. */
-    if (numInSyncPeers_ > 0) {
+    /* A sharing DSP needs the group consumer to keep advancing to the end. */
+    if (hasEntrySharingPeers()) {
       scheduleChangeListConsumeTimer();
     }
     /* Trigger message building if packing list has entries */
@@ -1940,12 +1940,8 @@ folly::coro::Task<void> AdjRibOutGroup::buildAndSendGroupBgpMessages(
      */
     tryRejoinDetachedPeersOnAllChangesProcessed();
 
-    /*
-     * checkAndAcceptReadyToJoinPeers may promote a detached peer, taking
-     * numInSyncPeers_ from 0 to >0. The earlier reschedule above was skipped
-     * while frozen, so reschedule here to unfreeze the group.
-     */
-    if (numInSyncPeers_ > 0) {
+    /* Keep advancing while a SYNC peer or a sharing DSP needs the group. */
+    if (hasEntrySharingPeers()) {
       scheduleChangeListConsumeTimer();
     }
   });
@@ -2641,8 +2637,9 @@ void AdjRibOutGroup::unregisterPeer(
 
   /*
    * If this removal left the group with members but no in-sync peers, recover:
-   * clear the packing list, freeze the consume timer, and try to promote a
-   * detached peer (or stay frozen until one catches up).
+   * clear the packing list and try to promote a detached peer. A group with a
+   * sharing DSP keeps consuming changes until both consumers reach the end;
+   * otherwise it stays frozen until a DEP-A finishes draining.
    *
    * TODO: optimize -- this runs synchronously per removal. Skip it when nothing
    * is promotable (no DETACHED_READY_TO_JOIN peers).
@@ -2867,9 +2864,9 @@ void AdjRibOutGroup::removePeer(
   /*
    * A detached-after-join member (detachedRibVersion > 0) is leaving this
    * group, so drop it from numPeersDetachedAfterJoin_ -- otherwise the stale
-   * count keeps the group frozen (in the caller's handleNoSyncPeers) waiting
-   * for a peer that is gone. This is a no-op for peers that already deactivated
-   * detached mode processing (e.g. unregisterPeer), which cleared the version.
+   * count keeps the group consumer running for a peer that is gone. This is a
+   * no-op for peers that already deactivated detached mode processing (e.g.
+   * unregisterPeer), which cleared the version.
    */
   if (adjRib->getDetachedRibVersion() > 0) {
     decrementPeersDetachedAfterJoin();
@@ -3739,10 +3736,10 @@ void AdjRibOutGroup::tryRejoinDetachedPeersOnAllChangesProcessed() noexcept {
  */
 void AdjRibOutGroup::checkAndAcceptReadyToJoinPeers() noexcept {
   /*
-   * This runs on every change-list consume tick (~mraiInterval_) for any group
-   * with in-sync peers, so log only when there is actually something to check.
-   * Otherwise this DBG1 line spams once per group per tick with
-   * "Skipping 0 detached peers to try rejoin". Mirrors the gated follow-up
+   * This runs on every change-list consume tick (~mraiInterval_) for a group
+   * with SYNC peers or a sharing DSP, so log only when there is actually
+   * something to check. Otherwise this DBG1 line spams once per group per tick
+   * with "Skipping 0 detached peers to try rejoin". Mirrors the gated follow-up
    * logs below (the function is a no-op when detachedPeers_ is empty).
    */
   XLOGF_IF(
@@ -3775,7 +3772,8 @@ void AdjRibOutGroup::checkAndAcceptReadyToJoinPeers() noexcept {
     if (adjRib->isAdjRibFlagSet(AdjRib::IS_DETACHED_FAST_PEER)) {
       dfpPeers.push_back(adjRib);
     } else if (adjRib->isReadyToRejoinGroup()) {
-      // isReadyToRejoinGroup verifies the peer's marker matches the group's.
+      // Both consumers are at the end, both packing lists are empty, and
+      // versions match.
       dspCandidates.push_back(adjRib);
     } else if (adjRib->getLastSeenRibVersion() > lastSeenRibVersion_) {
       /*
@@ -3849,25 +3847,18 @@ void AdjRibOutGroup::checkAndAcceptReadyToJoinPeers() noexcept {
 }
 
 /*
- * Called by a DSP peer to proactively trigger its own rejoin once its marker
- * has caught up to the group's marker (verified by isReadyToRejoinGroup).
+ * Called by a DSP peer to proactively trigger its own rejoin.
  */
 void AdjRibOutGroup::maybeAcceptDSPPeer(
     const std::shared_ptr<AdjRib>& adjRib) noexcept {
   if (FOLLY_UNLIKELY(adjRib->testOnlyDeferDrjAcceptance)) {
     return;
   }
-  /*
-   * Only accept the DSP peer once the group's packing list is drained.
-   * If the group still has undistributed entries, collapsing the peer against
-   * the group's RIB-OUT now would surface spurious discrepancies for entries
-   * the group has not yet absorbed. The peer stays DETACHED_READY_TO_JOIN and
-   * is picked up by checkAndAcceptReadyToJoinPeers once the group drains.
-   */
-  if (!attrToPrefixMap_.empty()) {
+  /* Revalidate at the final production acceptance boundary. */
+  if (!adjRib->isReadyToRejoinGroup()) {
     XLOGF(
         DBG2,
-        "Group {}: deferring DSP rejoin of peer {} - group packing list not empty",
+        "Group {}: deferring DSP rejoin of peer {} - readiness conditions not met",
         groupDescriptor_,
         adjRib->getPeerName());
     return;
@@ -3880,7 +3871,7 @@ void AdjRibOutGroup::maybeAcceptDSPPeer(
       adjRib->getPeerName(),
       bit);
   if (tryAcceptPeerToGroup(adjRib)) {
-    // Resume the group: it may have been frozen while it had no sync peers.
+    // Ensure the group keeps consuming after the peer restores SYNC state.
     scheduleChangeListConsumeTimer();
   }
 }
@@ -4113,11 +4104,7 @@ void AdjRibOutGroup::handleNoSyncPeers() noexcept {
       groupDescriptor_,
       detachedPeers_.size());
 
-  /*
-   * Without any sync peers, we stop update processing and distribution. The
-   * cleanup guard in buildAndSendGroupBgpMessages keeps the freeze by skipping
-   * the consume-timer reschedule while numInSyncPeers_ == 0.
-   */
+  /* Without any SYNC peers, stop distribution and discard the pending PL. */
   clearPackingList();
 
   cancelChangeListConsumeTimer();
@@ -4140,14 +4127,15 @@ void AdjRibOutGroup::handleNoSyncPeers() noexcept {
    * because they are likelier to share the same view of the RIB-OUT
    * as the group.
    *
-   * The group stays frozen until the first peer to reach the
-   * group marker rejoins.
+   * A sharing DSP cannot be accepted at an intermediate marker. Keep the group
+   * consumer running so both consumers can reach the end before rejoining.
    */
   if (numPeersDetachedAfterJoin_ > 0) {
     XLOGF(
         INFO,
-        "Group {}: Paused group consume timer, waiting for peers to catch up due to no sync peers",
+        "Group {}: Continuing group consume timer for detached peers sharing group entries",
         groupDescriptor_);
+    scheduleChangeListConsumeTimer();
   } else {
     /*
      * We only have peers ahead of the group on the changelist (DEP-A)

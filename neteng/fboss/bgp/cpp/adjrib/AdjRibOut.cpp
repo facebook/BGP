@@ -456,7 +456,7 @@ folly::coro::Task<void> AdjRib::sendBgpUpdates(
    */
   co_await folly::coro::co_safe_point;
 
-  if (enableUpdateGroup_) {
+  if (enableUpdateGroup_ && attrToPrefixMap_.empty()) {
     transitionPeerUpdateState();
   } else {
     reschedulePackingTimers();
@@ -1709,15 +1709,13 @@ bool AdjRib::isDFP() const {
 
 /*
  * DSP (Detached Slow Peer) readiness check.
- * Returns true if the peer has drained its packing list and its RIB-OUT is at
- * the same version as the group's. We compare lastSeenRibVersion rather than
- * change list markers: a marker can be advanced (or aliased to a freed node)
- * independently of what the peer has actually materialized, so it can falsely
- * report "caught up" while the peer's entries still diverge. Version equality
- * is the reliable signal that the peer and group share the same materialized
- * RIB-OUT before the peer rejoins.
+ * Returns true only after both the peer and group have consumed the entire
+ * change list, peer packing list is empty, and their materialized RIB
+ * versions match. Equal non-null markers and versions are insufficient: the
+ * consumers can reach the same boundary after materializing different earlier
+ * entries.
  */
-bool AdjRib::isReadyToRejoinGroup() const {
+bool AdjRib::canWaitForGroupToRejoin() const {
   if (!attrToPrefixMap_.empty()) {
     XLOGF(
         DBG2,
@@ -1739,6 +1737,28 @@ bool AdjRib::isReadyToRejoinGroup() const {
         getPeerName());
     return false;
   }
+  const auto groupConsumer = adjRibOutGroup_->getChangeListConsumer();
+  if (!groupConsumer) {
+    XLOGF(
+        DBG2,
+        "Peer {} not ready to rejoin group: group changeListConsumer is null",
+        getPeerName());
+    return false;
+  }
+  if (!changeListConsumer_->isReady()) {
+    XLOGF(
+        DBG2,
+        "Peer {} not ready to rejoin group: peer change list is not fully consumed",
+        getPeerName());
+    return false;
+  }
+  if (!groupConsumer->isReady()) {
+    XLOGF(
+        DBG2,
+        "Peer {} not ready to rejoin group: group change list is not fully consumed",
+        getPeerName());
+    return false;
+  }
   if (adjRibOutGroup_->getLastSeenRibVersion() != lastSeenRibVersion_) {
     XLOGF(
         DBG2,
@@ -1747,6 +1767,24 @@ bool AdjRib::isReadyToRejoinGroup() const {
         getPeerName(),
         lastSeenRibVersion_,
         adjRibOutGroup_->getLastSeenRibVersion());
+    return false;
+  }
+  return true;
+}
+
+bool AdjRib::isReadyToRejoinGroup() const {
+  /*
+   * Shared conditions first; it also validates adjRibOutGroup_, so the group
+   * dereference below is safe.
+   */
+  if (!canWaitForGroupToRejoin()) {
+    return false;
+  }
+  if (!adjRibOutGroup_->getAttrToPrefixMap().empty()) {
+    XLOGF(
+        DBG2,
+        "Peer {} not ready to rejoin group: group packing list not empty",
+        getPeerName());
     return false;
   }
   return true;
@@ -1771,7 +1809,7 @@ bool AdjRib::isDetachedPeer() const {
  * Neither: reschedule packing timers to continue processing.
  */
 void AdjRib::transitionPeerUpdateState() noexcept {
-  if (peerState_ == PeerUpdateState::DOWN) {
+  if (peerState_ == PeerUpdateState::DOWN || !adjRibOutGroup_) {
     /*
      * If PeerManager::sessionTerminated runs before adjRib::sessionTerminated,
      * then we could see PeerUpdateState is DOWN when this method runs. We
@@ -1781,9 +1819,11 @@ void AdjRib::transitionPeerUpdateState() noexcept {
      */
     return;
   }
-  // DETACHED_ON_REGISTRATION peers were never in sync with the group, so they
-  // can never be DFP — they must always go through the DSP rejoin path
-  // with collapse verification.
+  /*
+   * DETACHED_ON_REGISTRATION peers were never in sync with the group, so they
+   * can never be DFP — they must always go through the DSP rejoin path
+   * with collapse verification.
+   */
   if (!isAdjRibFlagSet(DETACHED_ON_REGISTRATION) && isDFP()) {
     setAdjRibFlag(IS_DETACHED_FAST_PEER);
     XLOGF(
@@ -1795,7 +1835,7 @@ void AdjRib::transitionPeerUpdateState() noexcept {
 
     setPeerState(PeerUpdateState::DETACHED_READY_TO_JOIN);
     cancelPackingTimers();
-  } else if (isReadyToRejoinGroup()) {
+  } else if (canWaitForGroupToRejoin()) {
     XLOGF(
         DBG1,
         "Peer {}: State Transition: {} (DSP) -> {}",
@@ -1807,13 +1847,34 @@ void AdjRib::transitionPeerUpdateState() noexcept {
     cancelPackingTimers();
 
     adjRibOutGroup_->maybeAcceptDSPPeer(shared_from_this());
-  } else if (
-      adjRibOutGroup_ &&
-      lastSeenRibVersion_ > adjRibOutGroup_->getLastSeenRibVersion()) {
+  } else if (!adjRibOutGroup_->hasEntrySharingPeers()) {
     /*
-     * Peer is ahead of the group on the CL. Transition to
-     * DETACHED_READY_TO_JOIN and wait for the group to catch up.
-     * The group handles acceptance in checkAndAcceptReadyToJoinPeers.
+     * If the group has no SYNC peers and no sharing DSP, it is frozen waiting
+     * for a detached peer to promote itself (handleNoSyncPeers). This peer can
+     * re-seed the group. Only do so when no detached peer still shares the
+     * group's entries (numPeersDetachedAfterJoin_ == 0).
+     */
+    XLOGF(
+        DBG1,
+        "Group {}: Promoting peer {} at bit {} in group with no sharing peers at rib version {}, "
+        "State Transition: {} -> {}",
+        adjRibOutGroup_->getGroupDescriptor(),
+        getPeerName(),
+        getGroupBitPosition(),
+        lastSeenRibVersion_,
+        peerState_,
+        PeerUpdateState::DETACHED_READY_TO_JOIN);
+    setPeerState(PeerUpdateState::DETACHED_READY_TO_JOIN);
+    cancelPackingTimers();
+    adjRibOutGroup_->promoteDetachedPeerToSync(shared_from_this());
+    adjRibOutGroup_->scheduleChangeListConsumeTimer();
+  } else if (lastSeenRibVersion_ > adjRibOutGroup_->getLastSeenRibVersion()) {
+    /*
+     * Peer is ahead of the group on the CL (DEP-A). Park it in
+     * DETACHED_READY_TO_JOIN; checkAndAcceptReadyToJoinPeers picks it up on a
+     * later group tick. The group reaching the peer's version is not enough:
+     * acceptance needs both consumers at the end of the CL with their packing
+     * lists drained (isReadyToRejoinGroup).
      */
     XLOGF(
         DBG1,
@@ -1828,27 +1889,11 @@ void AdjRib::transitionPeerUpdateState() noexcept {
         PeerUpdateState::DETACHED_READY_TO_JOIN);
     setPeerState(PeerUpdateState::DETACHED_READY_TO_JOIN);
     cancelPackingTimers();
-
-    /*
-     * If the group has no SYNC peers it is frozen waiting for a detached peer
-     * to promote itself (handleNoSyncPeers). This DEP-A has just finished
-     * draining, so it can re-seed the group. Only do so when no detached peer
-     * still shares the group's entries (numPeersDetachedAfterJoin_ == 0):
-     * promoteDetachedPeerToSync deletes group-only entries, which would corrupt
-     * a sharing DSP's pending rejoin, so leave the DEP-A parked and let that
-     * DSP catch up and collapse first.
-     */
-    if (adjRibOutGroup_->getNumInSyncPeers() == 0 &&
-        adjRibOutGroup_->getNumPeersDetachedAfterJoin() == 0) {
-      adjRibOutGroup_->promoteDetachedPeerToSync(shared_from_this());
-      adjRibOutGroup_->scheduleChangeListConsumeTimer();
-    }
-    /*
-     * Otherwise the DEP-A stays parked in DETACHED_READY_TO_JOIN: once the
-     * group starts moving again it will catch up to the peer's position and
-     * pick it up via checkAndAcceptReadyToJoinPeers.
-     */
   } else {
+    /*
+     * Otherwise, the peer is behind the group on the changelist. Let the peer
+     * continue consuming behind and up to the group.
+     */
     reschedulePackingTimers();
   }
 }

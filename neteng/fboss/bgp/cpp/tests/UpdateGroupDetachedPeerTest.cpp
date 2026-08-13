@@ -29,14 +29,23 @@
       UpdateGroupDetachedPeerTest, IsDFPReturnsFalseWhenVersionsMismatch);     \
   FRIEND_TEST(                                                                 \
       UpdateGroupDetachedPeerTest,                                             \
-      IsReadyToRejoinGroupReturnsFalseWhenVersionMismatchEvenIfPLEmpty);       \
+      CanWaitForGroupToRejoinReturnsFalseWhenVersionMismatchEvenIfPLEmpty);    \
   FRIEND_TEST(                                                                 \
       UpdateGroupDetachedPeerTest,                                             \
-      IsReadyToRejoinGroupReturnsFalseWhenPLNotEmpty);                         \
+      CanWaitForGroupToRejoinReturnsFalseWhenPLNotEmpty);                      \
   FRIEND_TEST(                                                                 \
       UpdateGroupDetachedPeerTest,                                             \
-      IsReadyToRejoinGroupReturnsFalseWhenNoConsumer);                         \
-  FRIEND_TEST(UpdateGroupDetachedPeerTest, IsReadyToRejoinGroupReturnsTrue);   \
+      CanWaitForGroupToRejoinReturnsFalseWhenNoConsumer);                      \
+  FRIEND_TEST(                                                                 \
+      UpdateGroupDetachedPeerTest,                                             \
+      CanWaitForGroupToRejoinRequiresBothConsumersReady);                      \
+  FRIEND_TEST(                                                                 \
+      UpdateGroupDetachedPeerTest,                                             \
+      IsReadyToRejoinGroupReturnsFalseWhenGroupPLNotEmpty);                    \
+  FRIEND_TEST(                                                                 \
+      UpdateGroupDetachedPeerTest, MaybeAcceptDSPPeerRechecksReadiness);       \
+  FRIEND_TEST(                                                                 \
+      UpdateGroupDetachedPeerTest, CanWaitForGroupToRejoinReturnsTrue);        \
   FRIEND_TEST(UpdateGroupDetachedPeerTest, IsDFPReturnsFalseWhenGroupPLEmpty); \
   FRIEND_TEST(UpdateGroupDetachedPeerTest, IsDFPReturnsFalseWhenNoGroup);      \
   FRIEND_TEST(                                                                 \
@@ -123,6 +132,9 @@
 
 #define AdjRibOutGroup_TEST_FRIENDS                                            \
   friend class UpdateGroupDetachedPeerTest;                                    \
+  FRIEND_TEST(                                                                 \
+      UpdateGroupDetachedPeerTest,                                             \
+      HandleNoSyncPeersWithSharingDspKeepsConsumerRunning);                    \
   FRIEND_TEST(                                                                 \
       UpdateGroupDetachedPeerTest, ShouldCloneFalseWhenPeerHasOwnEntry);       \
   FRIEND_TEST(                                                                 \
@@ -1165,12 +1177,12 @@ TEST_F(UpdateGroupDetachedPeerTest, IsDFPReturnsFalseWhenNoGroup) {
 }
 
 /*
- * isReadyToRejoinGroup() tests
+ * canWaitForGroupToRejoin() tests
  */
 
 TEST_F(
     UpdateGroupDetachedPeerTest,
-    IsReadyToRejoinGroupReturnsFalseWhenVersionMismatchEvenIfPLEmpty) {
+    CanWaitForGroupToRejoinReturnsFalseWhenVersionMismatchEvenIfPLEmpty) {
   auto adjRib = createAndRegisterPeer(0);
 
   // Set up change tracker and consumer
@@ -1179,15 +1191,11 @@ TEST_F(
   ConsumerBitmap addPathBitmap;
   ConsumerBitmap nonAddPathBitmap;
 
-  auto groupConsumer = std::make_shared<AdjRibOutGroupConsumer>(
-      changeTracker,
-      group_,
-      "test_group_consumer",
-      *evb_,
-      addPathBitmap,
-      nonAddPathBitmap);
-  groupConsumer->registerWithTracker();
-  groupConsumer->setBitmap();
+  group_->setChangeListTracker(changeTracker, addPathBitmap, nonAddPathBitmap);
+  group_->registerGroupConsumer();
+  auto groupConsumer = group_->getChangeListConsumer();
+  ASSERT_NE(groupConsumer, nullptr);
+  ASSERT_TRUE(groupConsumer->isReady());
 
   // Register detached consumer so the null-consumer guard passes.
   adjRib->registerDetachedConsumerAtGroupPosition(
@@ -1200,18 +1208,19 @@ TEST_F(
 
   // PL is empty but the versions differ — not ready to rejoin.
   ASSERT_TRUE(adjRib->attrToPrefixMap_.empty());
-  EXPECT_FALSE(adjRib->isReadyToRejoinGroup());
+  EXPECT_FALSE(adjRib->canWaitForGroupToRejoin());
 
   // Clean up
   adjRib->deactivateDetachedModeProcessing();
   groupConsumer->resetBitmap();
   groupConsumer->terminate();
   groupConsumer->deregisterFromTracker();
+  group_->resetChangeListConsumer();
 }
 
 TEST_F(
     UpdateGroupDetachedPeerTest,
-    IsReadyToRejoinGroupReturnsFalseWhenPLNotEmpty) {
+    CanWaitForGroupToRejoinReturnsFalseWhenPLNotEmpty) {
   auto adjRib = createAndRegisterPeer(0);
 
   // Set up detached consumer
@@ -1243,7 +1252,7 @@ TEST_F(
   group_->clonePackingListForPeer(adjRib);
   ASSERT_FALSE(adjRib->attrToPrefixMap_.empty());
 
-  EXPECT_FALSE(adjRib->isReadyToRejoinGroup());
+  EXPECT_FALSE(adjRib->canWaitForGroupToRejoin());
 
   // Clean up
   adjRib->deactivateDetachedModeProcessing();
@@ -1254,17 +1263,168 @@ TEST_F(
 
 TEST_F(
     UpdateGroupDetachedPeerTest,
-    IsReadyToRejoinGroupReturnsFalseWhenNoConsumer) {
+    CanWaitForGroupToRejoinReturnsFalseWhenNoConsumer) {
   auto adjRib = createAndRegisterPeer(0);
 
   // No detached consumer registered
   ASSERT_EQ(adjRib->getDetachedConsumer(), nullptr);
   ASSERT_TRUE(adjRib->attrToPrefixMap_.empty());
 
-  EXPECT_FALSE(adjRib->isReadyToRejoinGroup());
+  EXPECT_FALSE(adjRib->canWaitForGroupToRejoin());
 }
 
-TEST_F(UpdateGroupDetachedPeerTest, IsReadyToRejoinGroupReturnsTrue) {
+TEST_F(
+    UpdateGroupDetachedPeerTest,
+    CanWaitForGroupToRejoinRequiresBothConsumersReady) {
+  auto adjRib = createAndRegisterPeer(0);
+  auto changeTracker =
+      std::make_shared<ChangeTracker<ShadowRibEntry>>("test_tracker");
+  ConsumerBitmap addPathBitmap;
+  ConsumerBitmap nonAddPathBitmap;
+
+  group_->setChangeListTracker(changeTracker, addPathBitmap, nonAddPathBitmap);
+  group_->registerGroupConsumer();
+  auto groupConsumer = group_->getChangeListConsumer();
+  adjRib->registerDetachedConsumerAtGroupPosition(
+      changeTracker, groupConsumer, addPathBitmap, nonAddPathBitmap);
+  auto peerConsumer = adjRib->getDetachedConsumer();
+
+  group_->setLastSeenRibVersion(42);
+  adjRib->setLastSeenRibVersion(42);
+  ASSERT_TRUE(group_->getAttrToPrefixMap().empty());
+  ASSERT_TRUE(adjRib->attrToPrefixMap_.empty());
+  ASSERT_TRUE(groupConsumer->isReady());
+  ASSERT_TRUE(peerConsumer->isReady());
+  EXPECT_TRUE(adjRib->canWaitForGroupToRejoin());
+
+  ShadowRibEntry firstEntry;
+  firstEntry.prefix = folly::CIDRNetwork{folly::IPAddress("10.0.0.0"), 24};
+  auto firstTrackable =
+      std::make_unique<TrackableObject<ShadowRibEntry>>(std::move(firstEntry));
+  changeTracker->publishChange(firstTrackable.get());
+
+  ASSERT_FALSE(groupConsumer->isReady());
+  ASSERT_FALSE(peerConsumer->isReady());
+  ASSERT_EQ(groupConsumer->getMarker(), peerConsumer->getMarker());
+  EXPECT_FALSE(adjRib->canWaitForGroupToRejoin());
+
+  peerConsumer->iterateChanges();
+  ASSERT_TRUE(peerConsumer->isReady());
+  ASSERT_FALSE(groupConsumer->isReady());
+  EXPECT_FALSE(adjRib->canWaitForGroupToRejoin());
+
+  groupConsumer->iterateChanges();
+  ASSERT_TRUE(peerConsumer->isReady());
+  ASSERT_TRUE(groupConsumer->isReady());
+  EXPECT_TRUE(adjRib->canWaitForGroupToRejoin());
+
+  ShadowRibEntry secondEntry;
+  secondEntry.prefix = folly::CIDRNetwork{folly::IPAddress("20.0.0.0"), 24};
+  auto secondTrackable =
+      std::make_unique<TrackableObject<ShadowRibEntry>>(std::move(secondEntry));
+  changeTracker->publishChange(secondTrackable.get());
+  groupConsumer->iterateChanges();
+
+  ASSERT_FALSE(peerConsumer->isReady());
+  ASSERT_TRUE(groupConsumer->isReady());
+  EXPECT_FALSE(adjRib->canWaitForGroupToRejoin());
+
+  adjRib->deactivateDetachedModeProcessing();
+  groupConsumer->resetBitmap();
+  groupConsumer->terminate();
+  groupConsumer->deregisterFromTracker();
+  group_->resetChangeListConsumer();
+}
+
+TEST_F(
+    UpdateGroupDetachedPeerTest,
+    IsReadyToRejoinGroupReturnsFalseWhenGroupPLNotEmpty) {
+  auto adjRib = createAndRegisterPeer(0);
+  auto changeTracker =
+      std::make_shared<ChangeTracker<ShadowRibEntry>>("test_tracker");
+  ConsumerBitmap addPathBitmap;
+  ConsumerBitmap nonAddPathBitmap;
+
+  group_->setChangeListTracker(changeTracker, addPathBitmap, nonAddPathBitmap);
+  group_->registerGroupConsumer();
+  auto groupConsumer = group_->getChangeListConsumer();
+  adjRib->registerDetachedConsumerAtGroupPosition(
+      changeTracker, groupConsumer, addPathBitmap, nonAddPathBitmap);
+
+  group_->setLastSeenRibVersion(42);
+  adjRib->setLastSeenRibVersion(42);
+  addInSyncPeer(1);
+  auto attrs = std::make_shared<BgpPath>(BgpPathFields());
+  std::shared_ptr<const BgpPath> constAttrs = attrs;
+  group_->tryUpdateAttrToPrefixMapForGroup(
+      std::make_pair(
+          folly::CIDRNetwork{folly::IPAddress("10.0.0.0"), 24},
+          kPlaceholderPathID),
+      nullptr,
+      constAttrs);
+
+  ASSERT_TRUE(adjRib->attrToPrefixMap_.empty());
+  ASSERT_FALSE(group_->getAttrToPrefixMap().empty());
+  ASSERT_TRUE(adjRib->getDetachedConsumer()->isReady());
+  ASSERT_TRUE(groupConsumer->isReady());
+  /*
+   * The group packing list is the only condition separating the two: the peer
+   * still qualifies to transition to DETACHED_READY_TO_JOIN, but cannot be
+   * accepted into the group until the group drains.
+   */
+  EXPECT_TRUE(adjRib->canWaitForGroupToRejoin());
+  EXPECT_FALSE(adjRib->isReadyToRejoinGroup());
+
+  adjRib->deactivateDetachedModeProcessing();
+  groupConsumer->resetBitmap();
+  groupConsumer->terminate();
+  groupConsumer->deregisterFromTracker();
+  group_->resetChangeListConsumer();
+}
+
+TEST_F(UpdateGroupDetachedPeerTest, MaybeAcceptDSPPeerRechecksReadiness) {
+  auto adjRib = createAndRegisterPeer(0);
+  group_->markPeerDetached(adjRib);
+  adjRib->setPeerState(PeerUpdateState::DETACHED_READY_TO_JOIN);
+  auto changeTracker =
+      std::make_shared<ChangeTracker<ShadowRibEntry>>("test_tracker");
+  ConsumerBitmap addPathBitmap;
+  ConsumerBitmap nonAddPathBitmap;
+
+  group_->setChangeListTracker(changeTracker, addPathBitmap, nonAddPathBitmap);
+  group_->registerGroupConsumer();
+  auto groupConsumer = group_->getChangeListConsumer();
+
+  ShadowRibEntry entry;
+  entry.prefix = folly::CIDRNetwork{folly::IPAddress("10.0.0.0"), 24};
+  auto trackable =
+      std::make_unique<TrackableObject<ShadowRibEntry>>(std::move(entry));
+  changeTracker->publishChange(trackable.get());
+  adjRib->registerDetachedConsumerAtGroupPosition(
+      changeTracker, groupConsumer, addPathBitmap, nonAddPathBitmap);
+  group_->setLastSeenRibVersion(42);
+  adjRib->setLastSeenRibVersion(42);
+
+  ASSERT_FALSE(groupConsumer->isReady());
+  ASSERT_FALSE(adjRib->getDetachedConsumer()->isReady());
+  ASSERT_EQ(
+      groupConsumer->getMarker(), adjRib->getDetachedConsumer()->getMarker());
+  ASSERT_TRUE(group_->getAttrToPrefixMap().empty());
+  ASSERT_TRUE(adjRib->attrToPrefixMap_.empty());
+
+  group_->maybeAcceptDSPPeer(adjRib);
+
+  EXPECT_EQ(adjRib->getPeerState(), PeerUpdateState::DETACHED_READY_TO_JOIN);
+  EXPECT_FALSE(group_->isPeerInSync(0));
+
+  adjRib->deactivateDetachedModeProcessing();
+  groupConsumer->resetBitmap();
+  groupConsumer->terminate();
+  groupConsumer->deregisterFromTracker();
+  group_->resetChangeListConsumer();
+}
+
+TEST_F(UpdateGroupDetachedPeerTest, CanWaitForGroupToRejoinReturnsTrue) {
   auto adjRib = createAndRegisterPeer(0);
 
   // Set up change tracker and consumer
@@ -1296,7 +1456,7 @@ TEST_F(UpdateGroupDetachedPeerTest, IsReadyToRejoinGroupReturnsTrue) {
 
   // PL is empty and consumer is ready — should return true
   ASSERT_TRUE(adjRib->attrToPrefixMap_.empty());
-  EXPECT_TRUE(adjRib->isReadyToRejoinGroup());
+  EXPECT_TRUE(adjRib->canWaitForGroupToRejoin());
 
   // Clean up
   adjRib->deactivateDetachedModeProcessing();
@@ -1315,7 +1475,7 @@ TEST_F(UpdateGroupDetachedPeerTest, ActivateDSPTransitionsToReadyToJoin) {
   adjRib->setUpdateGroup(group_);
   adjRib->setPeerState(PeerUpdateState::DETACHED_RUNNING);
 
-  // Set up change tracker and consumer so isReadyToRejoinGroup() can pass
+  // Set up change tracker and consumer so canWaitForGroupToRejoin() can pass
   auto changeTracker =
       std::make_shared<ChangeTracker<ShadowRibEntry>>("test_tracker");
   ConsumerBitmap addPathBitmap;
@@ -1477,22 +1637,6 @@ TEST_F(UpdateGroupDetachedPeerTest, ActivateDFPTransitionsViaIsDFPPath) {
   group_->resetChangeListConsumer();
 }
 
-TEST_F(UpdateGroupDetachedPeerTest, ActivateDSPLogsErrorWithNoConsumer) {
-  auto adjRib = createAndRegisterPeer(0);
-  adjRib->setUpdateGroup(group_);
-  adjRib->setPeerState(PeerUpdateState::DETACHED_RUNNING);
-
-  // No detached consumer — isReadyToRejoinGroup() will return false
-
-  adjRib->activateDetachedModeProcessing();
-
-  // Pump the evb so sendBgpUpdates runs and hits the no-consumer check
-  evb_->loopOnce();
-
-  // Peer should remain in DETACHED_RUNNING (no transition without consumer)
-  EXPECT_EQ(adjRib->getPeerState(), PeerUpdateState::DETACHED_RUNNING);
-}
-
 /*
  * deactivateDetachedModeProcessing() tests
  */
@@ -1514,7 +1658,7 @@ TEST_F(
   auto adjRib = createAndRegisterPeer(0);
   adjRib->setUpdateGroup(group_);
 
-  // Set up change tracker and consumer so isReadyToRejoinGroup() can pass
+  // Set up change tracker and consumer so canWaitForGroupToRejoin() can pass
   auto changeTracker =
       std::make_shared<ChangeTracker<ShadowRibEntry>>("test_tracker");
   ConsumerBitmap addPathBitmap;
@@ -2093,7 +2237,14 @@ TEST_F(
 
 TEST_F(
     UpdateGroupDetachedPeerTest,
-    HandleNoSyncPeersWithSharingDspStaysFrozen) {
+    HandleNoSyncPeersWithSharingDspKeepsConsumerRunning) {
+  auto changeTracker =
+      std::make_shared<ChangeTracker<ShadowRibEntry>>("test_tracker");
+  ConsumerBitmap addPathBitmap;
+  ConsumerBitmap nonAddPathBitmap;
+  group_->setChangeListTracker(changeTracker, addPathBitmap, nonAddPathBitmap);
+  group_->registerGroupConsumer();
+
   auto adjRib0 = createAndRegisterPeer(0);
   auto adjRib1 = createAndRegisterPeer(1);
   group_->markPeerInSync(adjRib0);
@@ -2111,11 +2262,16 @@ TEST_F(
 
   group_->handleNoSyncPeers();
 
-  // A sharing DSP exists, so the group stays frozen waiting for it to catch up:
-  // nothing is promoted.
+  // Nothing is promoted until both consumers reach the end, but the group
+  // consumer remains active so the sharing DSP cannot wedge behind it.
   EXPECT_EQ(group_->getNumInSyncPeers(), 0);
   EXPECT_NE(adjRib0->getPeerState(), PeerUpdateState::JOINED_RUNNING);
   EXPECT_TRUE(group_->getDetachedPeers().contains(adjRib0));
+  ASSERT_NE(group_->changeListConsumeTimer_, nullptr);
+  EXPECT_TRUE(group_->changeListConsumeTimer_->isScheduled());
+
+  adjRib0->resetChangeListConsumer();
+  group_->resetChangeListConsumer();
 }
 
 TEST_F(UpdateGroupDetachedPeerTest, HandleNoSyncPeersPromotesReadyDepA) {
@@ -3077,10 +3233,10 @@ class UpdateGroupDetachLifecycleTest : public ::testing::Test {
   }
 
   /*
-   * Set up a peer's CL consumer in ready state so isReadyToRejoinGroup()
+   * Set up a peer's CL consumer in ready state so canWaitForGroupToRejoin()
    * returns true. Required for DSP peers going through
-   * checkAndAcceptReadyToJoinPeers. isReadyToRejoinGroup() gates on the peer's
-   * lastSeenRibVersion matching the group's, so bring the peer up to the
+   * checkAndAcceptReadyToJoinPeers. canWaitForGroupToRejoin() gates on the
+   * peer's lastSeenRibVersion matching the group's, so bring the peer up to the
    * group's version to reflect a caught-up peer.
    */
   void setUpReadyPeerConsumer(const std::shared_ptr<AdjRib>& adjRib) {
@@ -4518,7 +4674,7 @@ TEST_F(UpdateGroupDetachLifecycleTest, DSPPeerRejoinsWhenPeerConsumerReady) {
 
   // Peer consumer marker is nullptr (no changes published), so isReady()
   // returns true.
-  EXPECT_TRUE(adjRib0->isReadyToRejoinGroup());
+  EXPECT_TRUE(adjRib0->canWaitForGroupToRejoin());
 
   // Group consumer IS ready
   setGroupConsumerReady();
@@ -5230,6 +5386,7 @@ TEST_F(
    * and packing list was drained. Collapse should find matching entries and
    * accept the peer. */
   adjRib0->clearPackingList();
+  group_->clearPackingList();
   adjRib0->setPeerState(PeerUpdateState::DETACHED_READY_TO_JOIN);
   setUpReadyPeerConsumer(adjRib0);
   setGroupConsumerReady();
@@ -5410,9 +5567,10 @@ TEST_F(
   EXPECT_EQ(adjRib0->getStats().getPreOutPrefixCount(), 3);
 
   /* Peer 0 rejoins — collapse should detect peer-only entry for kV4Prefix3
-   * and decrement peer's counts. Clear PL first so isReadyToRejoinGroup()
+   * and decrement peer's counts. Clear PL first so canWaitForGroupToRejoin()
    * passes. */
   adjRib0->clearPackingList();
+  group_->clearPackingList();
   adjRib0->setPeerState(PeerUpdateState::DETACHED_READY_TO_JOIN);
   setUpReadyPeerConsumer(adjRib0);
   setGroupConsumerReady();
@@ -5507,6 +5665,7 @@ TEST_F(
    * and increment peer's counts. Clear PL to simulate that sendBgpUpdates was
    * run and packing list was drained. */
   adjRib0->clearPackingList();
+  group_->clearPackingList();
   adjRib0->setPeerState(PeerUpdateState::DETACHED_READY_TO_JOIN);
   setUpReadyPeerConsumer(adjRib0);
   setGroupConsumerReady();
@@ -5736,8 +5895,8 @@ TEST_F(
   group_->markPeerDetached(depA);
   setUpReadyPeerConsumer(depA);
   /*
-   * Group consumer not at end of CL -> isReadyToRejoinGroup() is false, so the
-   * peer takes the "ahead of group" branch.
+   * Group consumer not at end of CL -> canWaitForGroupToRejoin() is false, so
+   * the peer takes the "ahead of group" branch.
    */
   publishChangeItem(folly::CIDRNetwork{folly::IPAddress("10.1.0.0"), 24});
   ASSERT_EQ(group_->getNumInSyncPeers(), 0);
@@ -5787,7 +5946,7 @@ TEST_F(
   setUpReadyPeerConsumer(adjRib0); // peer CL marker == group marker (nullptr)
   setGroupConsumerReady();
   ASSERT_TRUE(adjRib0->attrToPrefixMap_.empty());
-  ASSERT_TRUE(adjRib0->isReadyToRejoinGroup());
+  ASSERT_TRUE(adjRib0->canWaitForGroupToRejoin());
 
   // The group still owes an undistributed entry in its packing list.
   addPrefixToGroupPL(kV4Prefix1);

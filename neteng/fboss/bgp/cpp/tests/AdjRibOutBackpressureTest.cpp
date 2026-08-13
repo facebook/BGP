@@ -1805,7 +1805,7 @@ CO_TEST_F(
  *
  * Sets up a peer with a non-empty PL, calls activateDetachedModeProcessing,
  * and verifies that the PL is fully drained and messages are in the queue.
- * No changeListConsumer_ is set up, so isReadyToRejoinGroup() returns false
+ * No changeListConsumer_ is set up, so canWaitForGroupToRejoin() returns false
  * and the peer stays DETACHED_RUNNING (DSP path).
  */
 TEST_F(

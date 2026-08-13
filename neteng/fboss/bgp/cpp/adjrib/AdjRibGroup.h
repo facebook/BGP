@@ -914,9 +914,9 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
 
   /*
    * Recover the group after its last SYNC peer leaves, leaving only detached
-   * peers. Clears the packing list, freezes the consume timer, and tries to
-   * restore a SYNC peer; if none can be promoted immediately the group stays
-   * frozen until a detached peer catches up or finishes draining.
+   * peers. Clears the packing list and tries to restore a SYNC peer. A sharing
+   * DSP keeps the group consumer active until both consumers reach the end;
+   * with only DEP-As, the group stays frozen until one finishes draining.
    */
   void handleNoSyncPeers() noexcept;
 
@@ -957,12 +957,11 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   /*
    * Check for detached peers ready to rejoin and accept them back into
    * the group. DFP peers (IS_DETACHED_FAST_PEER flag set) are accepted
-   * directly — no collapse needed. DSP peers are accepted when their change
-   * list marker matches the group consumer's marker (same position on the CL,
-   * verified by isReadyToRejoinGroup) — not only when the group is at the end
-   * of the CL — and go through tryAcceptPeersToGroup for collapse
-   * verification. Called ONLY after PL drain completes (WAITING -> IDLE
-   * transition).
+   * directly — no collapse needed. DSP peers are accepted only after both
+   * change-list consumers reach the end, both packing lists drain, and their
+   * materialized RIB versions match. DSP peers then go through
+   * tryAcceptPeersToGroup for collapse verification. Called ONLY after PL
+   * drain completes (WAITING -> IDLE transition).
    */
   void checkAndAcceptReadyToJoinPeers() noexcept;
 
@@ -978,9 +977,8 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   /*
    * Called by a DSP peer that has transitioned to DETACHED_READY_TO_JOIN
    * to proactively trigger its own rejoin without waiting for the next group
-   * PL drain. Only accepts the peer if its change list marker matches the
-   * group consumer's marker (same position on the CL, verified by
-   * isReadyToRejoinGroup).
+   * PL drain. Revalidates the complete DSP readiness invariant immediately
+   * before collapse.
    * @param adjRib - The peer attempting to rejoin
    */
   void maybeAcceptDSPPeer(const std::shared_ptr<AdjRib>& adjRib) noexcept;
@@ -1126,6 +1124,18 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
    */
   size_t getNumPeersDetachedAfterJoin() const noexcept {
     return numPeersDetachedAfterJoin_;
+  }
+
+  /*
+   * Some peer holds entries in common with the group: a SYNC peer, or a
+   * detached peer that diverged after running with it. Such a peer needs the
+   * group consumer to keep advancing to the end of the change list. Negated,
+   * it is the condition for promoting a detached peer, since
+   * promoteDetachedPeerToSync deletes group-only entries that a sharing peer
+   * would still need.
+   */
+  bool hasEntrySharingPeers() const noexcept {
+    return numInSyncPeers_ > 0 || numPeersDetachedAfterJoin_ > 0;
   }
 
   /*

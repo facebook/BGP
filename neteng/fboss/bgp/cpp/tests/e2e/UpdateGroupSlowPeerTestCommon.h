@@ -306,8 +306,17 @@ class SlowPeerTestBase : public UpdateGroupDistributionTestBase {
    * Get member count for the update group of a peer.
    */
   size_t getGroupMemberCount(const folly::IPAddress& peerAddr) {
-    auto group = getUpdateGroupForPeer(peerAddr);
-    return group ? group->getMemberCount() : 0;
+    if (!peerManager_) {
+      return 0;
+    }
+    auto& evb = peerManager_->getEventBase();
+    return folly::via(
+               &evb,
+               [this, peerAddr]() {
+                 auto group = getUpdateGroupForPeer(peerAddr);
+                 return group ? group->getMemberCount() : 0;
+               })
+        .get();
   }
 
   /*

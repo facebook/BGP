@@ -282,14 +282,26 @@ class GroupWithNoSyncPeersE2ETest : public UpdateGroupPolicyReEvalE2EBase {
 
   /* In-sync peer count of the update group the peer belongs to. */
   size_t getNumInSyncPeers(const folly::IPAddress& peerAddr) {
-    auto group = getUpdateGroupForPeer(peerAddr);
-    return group ? group->getNumInSyncPeers() : 0;
+    auto& evb = peerManager_->getEventBase();
+    return folly::via(
+               &evb,
+               [this, peerAddr]() {
+                 auto group = getUpdateGroupForPeer(peerAddr);
+                 return group ? group->getNumInSyncPeers() : 0;
+               })
+        .get();
   }
 
   /* The group's cached change-list position. */
   uint64_t getGroupRibVersion(const folly::IPAddress& peerAddr) {
-    auto group = getUpdateGroupForPeer(peerAddr);
-    return group ? group->getLastSeenRibVersion() : 0;
+    auto& evb = peerManager_->getEventBase();
+    return folly::via(
+               &evb,
+               [this, peerAddr]() {
+                 auto group = getUpdateGroupForPeer(peerAddr);
+                 return group ? group->getLastSeenRibVersion() : 0;
+               })
+        .get();
   }
 
   /* Bring a set of peers down, one at a time. */
@@ -398,8 +410,14 @@ class GroupWithNoSyncPeersE2ETest : public UpdateGroupPolicyReEvalE2EBase {
 
   /* The group's count of members that detached AFTER joining (DEP-B). */
   size_t getNumPeersDetachedAfterJoin(const folly::IPAddress& peerAddr) {
-    auto group = getUpdateGroupForPeer(peerAddr);
-    return group ? group->getNumPeersDetachedAfterJoin() : 0;
+    auto& evb = peerManager_->getEventBase();
+    return folly::via(
+               &evb,
+               [this, peerAddr]() {
+                 auto group = getUpdateGroupForPeer(peerAddr);
+                 return group ? group->getNumPeersDetachedAfterJoin() : 0;
+               })
+        .get();
   }
 
   /*
@@ -784,6 +802,19 @@ TEST_P(GroupWithNoSyncPeersE2ETest, DfpPeersAcceptedIntoGroupWithNoSyncPeers) {
         << " never filled its queue";
   }
 
+  /*
+   * Let the group catch up to the RIB before detaching. The consume-timer
+   * callback assigns setLastSeenRibVersion(*maxRibVersion_) unconditionally,
+   * so a group still behind the RIB jumps forward on its very next tick --
+   * which would break isDFP()'s group-hasn't-moved clause after the detach,
+   * with no publish involved. Waiting here removes that race rather than
+   * running against it.
+   */
+  WITH_RETRIES_N(30, {
+    EXPECT_EVENTUALLY_EQ(
+        getGroupRibVersion(holder.peerAddr), rib_->getRibVersion());
+  });
+
   /* Detach only the candidates; this also un-suspends the group's send. */
   for (const auto& peerId : dfpPeers) {
     detachBlockedPeerDirectly(peerId.peerAddr);
@@ -818,6 +849,24 @@ TEST_P(GroupWithNoSyncPeersE2ETest, DfpPeersAcceptedIntoGroupWithNoSyncPeers) {
    * that pass skip both peers. The group is still suspended on the holder, so
    * neither marker moves while the candidates drain into DFPs.
    */
+
+  /*
+   * Pin isDFP()'s preconditions here, where they are established, rather than
+   * inferring them from the DFP flag once the peers have already parked: a
+   * lost race then fails at the cause instead of surfacing later as an
+   * unexplained "parked as a DSP".
+   */
+  const auto groupVersion = getGroupRibVersion(holder.peerAddr);
+  for (const auto& peerId : dfpPeers) {
+    ASSERT_EQ(getPeerLastSeenRibVersion(peerId.peerAddr), groupVersion)
+        << "peer " << peerId.peerAddr.str()
+        << " moved on the change list after the detach, so it can no longer "
+           "be a DFP";
+    ASSERT_EQ(getPeerDetachedRibVersion(peerId.peerAddr), groupVersion)
+        << "the group moved after peer " << peerId.peerAddr.str()
+        << " detached, so it can no longer be a DFP";
+  }
+
   unblockPeersRecording(dfpPeers);
   drainUntil(
       dfpPeers,
@@ -1243,6 +1292,124 @@ TEST_P(GroupWithNoSyncPeersE2ETest, DetachedInitDumpPeerPromotesAfterRelease) {
   expectAllPeersConverged({didPeer}, postRecoveryRoundComm);
 
   XLOGF(INFO, "=== TEST PASSED: DetachedInitDumpPeerPromotesAfterRelease ===");
+}
+
+/*
+ * Sibling of DetachedInitDumpPeerPromotesAfterRelease, for the case that test
+ * deliberately steers around: the released dump lands LEVEL with the frozen
+ * group instead of ahead of it.
+ *
+ * A level peer satisfies neither of the two rejoin doors.
+ * canWaitForGroupToRejoin requires both change-list consumers to be at the end
+ * of the list, and a frozen group parked mid-list cannot get there; the DEP-A
+ * self-promotion branch requires the peer to be strictly ahead, and a peer
+ * stopped at the group's marker by iterateChangesUntilExcluding can never climb
+ * above it. Without the level-with-frozen-group branch the peer and the group
+ * wait on each other forever, so what this asserts is simply that the peer
+ * still recovers.
+ */
+TEST_P(GroupWithNoSyncPeersE2ETest, LevelPeerPromotesAgainstFrozenGroup) {
+  XLOGF(INFO, "=== TEST: LevelPeerPromotesAgainstFrozenGroup ===");
+
+  setupPolicies();
+  auto peerIds = setupGroupDeferredJoin(
+      kNumPeers,
+      /*numInitial=*/9,
+      /*queueCapacity=*/10,
+      /*queueHighWm=*/8,
+      /*queueLowWm=*/2);
+  std::vector<BgpPeerId> initialPeers(peerIds.begin(), peerIds.begin() + 9);
+  const auto& didPeer = peerIds[9];
+
+  publishNextRound();
+  drainAll(initialPeers);
+
+  /* Pin the peer in DETACHED_INIT_DUMP, as the sibling test does. */
+  bringUpLatePeer(didPeer);
+  ASSERT_TRUE(
+      waitForPeerState(didPeer.peerAddr, PeerUpdateState::JOINED_RUNNING));
+  recordDrainedRoutes(didPeer);
+  bringDownPeer(didPeer.peerAddr);
+  unblockPeer(didPeer.peerAddr, /*maxRetries=*/0);
+  testOnlyDeferInitDump(didPeer.peerAddr, true);
+  bringUpPeer(didPeer.peerAddr);
+  sendEoRToPeer(didPeer);
+  ASSERT_TRUE(waitForPeerState(
+      didPeer.peerAddr,
+      PeerUpdateState::DETACHED_INIT_DUMP,
+      /*maxRetries=*/30));
+
+  /* Last sync peers down: the DID peer is not promotable, so the group freezes.
+   */
+  drainAll(initialPeers);
+  bringDownPeers(initialPeers);
+  EXPECT_EQ(getNumInSyncPeers(didPeer.peerAddr), 0u);
+  EXPECT_EQ(getGroupMemberCount(didPeer.peerAddr), 1u);
+  EXPECT_NE(getPeerState(didPeer.peerAddr), PeerUpdateState::DOWN);
+
+  /*
+   * Pin acceptance before releasing the dump. The dump then lands level with
+   * the frozen group -- both consumers at the end of the list -- and the peer
+   * parks at DETACHED_READY_TO_JOIN instead of being taken straight back in.
+   */
+  const auto frozenVersion = getGroupRibVersion(didPeer.peerAddr);
+  testOnlyDeferDrjAcceptance(didPeer.peerAddr, true);
+  testOnlyDeferInitDump(didPeer.peerAddr, false);
+  drainUntil(
+      {didPeer},
+      [&]() {
+        return getPeerState(didPeer.peerAddr) ==
+            PeerUpdateState::DETACHED_READY_TO_JOIN;
+      },
+      "pinned peer never reached DETACHED_READY_TO_JOIN",
+      60);
+
+  /*
+   * Publish with the peer pinned and the group frozen. Neither consumer can
+   * take these entries -- the group has no timer and the pinned peer has its
+   * packing timers cancelled -- so both markers come to rest on the same
+   * unconsumed entry. That is the level-with-a-mid-list-frozen-group state:
+   * the peer is no longer at the end of the change list, so it cannot satisfy
+   * canWaitForGroupToRejoin, and its RIB version still matches the group's, so
+   * it is not a DEP-A either.
+   */
+  publishNextRound();
+  WITH_RETRIES_N(
+      10, { EXPECT_EVENTUALLY_TRUE(rib_->getRibVersion() > frozenVersion); });
+  EXPECT_EQ(getGroupRibVersion(didPeer.peerAddr), frozenVersion)
+      << "the frozen group consumed the new round, so it is not parked "
+         "mid-list and this test is not covering the level case";
+
+  /* Releasing the pin drops the peer to DETACHED_RUNNING; it recovers itself.
+   */
+  testOnlyDeferDrjAcceptance(didPeer.peerAddr, false);
+  drainUntil(
+      {didPeer},
+      [&]() {
+        return getPeerState(didPeer.peerAddr) ==
+            PeerUpdateState::JOINED_RUNNING;
+      },
+      "level peer never reached JOINED_RUNNING against the frozen group",
+      60);
+  EXPECT_TRUE(
+      waitForPeerState(didPeer.peerAddr, PeerUpdateState::JOINED_RUNNING))
+      << "the level DETACHED_INIT_DUMP peer never recovered, so the group and "
+         "the peer are waiting on each other";
+
+  /*
+   * The group is consuming again: promotion re-armed its timer, so it takes
+   * the round it could not touch while frozen and moves past frozenVersion.
+   */
+  WITH_RETRIES_N(30, {
+    EXPECT_EVENTUALLY_TRUE(
+        getGroupRibVersion(didPeer.peerAddr) > frozenVersion);
+  });
+
+  /* The recovered group serves a fresh round. */
+  const auto postRecoveryRoundComm = publishNextRound();
+  expectAllPeersConverged({didPeer}, postRecoveryRoundComm);
+
+  XLOGF(INFO, "=== TEST PASSED: LevelPeerPromotesAgainstFrozenGroup ===");
 }
 
 /*
