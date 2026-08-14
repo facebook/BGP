@@ -2356,6 +2356,43 @@ BgpServiceBase::co_getPeerEgressStats() {
   co_return std::make_unique<std::vector<TPeerEgressStats>>();
 }
 
+folly::coro::Task<std::unique_ptr<TGetUpdateGroupSummariesResponse>>
+BgpServiceBase::co_getUpdateGroupSummaries() {
+  auto log = LOG_THRIFT_CALL(DBG2);
+  if (exitInitiated_) {
+    co_return std::make_unique<TGetUpdateGroupSummariesResponse>();
+  }
+
+  if (!continueExecution(true)) {
+    co_return std::make_unique<TGetUpdateGroupSummariesResponse>();
+  }
+  SCOPE_EXIT {
+    decrRequestsInExecution();
+  };
+
+  auto result = co_await co_runOnEvbWithTimeout(
+      peerMgr_.getEventBase(),
+      [this]() { return peerMgr_.getUpdateGroupSummaries(); },
+      kPeerMgrThriftHandlerTimeout);
+
+  if (result.hasValue()) {
+    auto response = std::make_unique<TGetUpdateGroupSummariesResponse>();
+    response->update_groups() = std::move(result.value());
+    response->enable_update_group() =
+        configManager_->getConfig()->getBgpGlobalConfig()->enableUpdateGroup;
+    co_return response;
+  }
+
+  if (result.exception().is_compatible_with<folly::FutureTimeout>()) {
+    XLOGF(
+        ERR,
+        "getUpdateGroupSummaries timed out — PeerManagerBase evb unresponsive");
+  } else {
+    XLOGF(ERR, "getUpdateGroupSummaries failed: {}", result.exception().what());
+  }
+  co_return std::make_unique<TGetUpdateGroupSummariesResponse>();
+}
+
 folly::coro::Task<std::unique_ptr<TGetUpdateGroupInfoResponse>>
 BgpServiceBase::co_getUpdateGroupInfo(
     std::unique_ptr<TGetUpdateGroupInfoRequest> request) {
@@ -2371,16 +2408,18 @@ BgpServiceBase::co_getUpdateGroupInfo(
     decrRequestsInExecution();
   };
 
-  std::optional<int64_t> groupIdFilter;
-  if (request && request->group_id().has_value()) {
-    groupIdFilter = request->group_id().value();
+  if (!request || !request->group_id().has_value()) {
+    XLOG(ERR, "getUpdateGroupInfo requires group_id");
+    auto response = std::make_unique<TGetUpdateGroupInfoResponse>();
+    response->enable_update_group() =
+        configManager_->getConfig()->getBgpGlobalConfig()->enableUpdateGroup;
+    co_return response;
   }
+  const auto groupId = request->group_id().value();
 
   auto result = co_await co_runOnEvbWithTimeout(
       peerMgr_.getEventBase(),
-      [this, groupIdFilter]() {
-        return peerMgr_.getUpdateGroupInfo(groupIdFilter);
-      },
+      [this, groupId]() { return peerMgr_.getUpdateGroupInfo(groupId); },
       kPeerMgrThriftHandlerTimeout);
 
   if (result.hasValue()) {

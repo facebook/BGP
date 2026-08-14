@@ -265,9 +265,13 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
       const std::shared_ptr<nettools::bgplib::BgpPeerDisplayInfo>&
           peerInfo) noexcept;
 
+  /* Get lightweight update group summaries without walking group members. */
+  std::vector<neteng::fboss::bgp::thrift::TUpdateGroupSummary>
+  getUpdateGroupSummaries();
+
   /* Get detailed update group information for CLI/thrift. */
   std::vector<neteng::fboss::bgp::thrift::TUpdateGroupInfo> getUpdateGroupInfo(
-      std::optional<int64_t> groupIdFilter = std::nullopt);
+      int64_t groupId);
 
   /* Get egress statistics on all peers. */
   std::vector<neteng::fboss::bgp::thrift::TPeerEgressStats> getPeerEgressStats(

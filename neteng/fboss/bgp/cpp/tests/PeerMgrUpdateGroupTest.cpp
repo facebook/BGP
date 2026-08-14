@@ -25,6 +25,8 @@
       PeerManagerUpdateGroupTestFixture, \
       GetUpdateGroupInfoSurfacesGroupStats);
 
+#include <algorithm>
+
 #include <folly/coro/BlockingWait.h>
 #include <folly/fibers/FiberManagerMap.h>
 #include <gmock/gmock.h>
@@ -185,6 +187,28 @@ TEST_F(
     EXPECT_EQ(kAnnV4, stats.total_sent_announcement_msgs_ipv4().value());
     EXPECT_EQ(kAnnV6, stats.total_sent_announcement_msgs_ipv6().value());
     EXPECT_EQ(kWithdrawals, stats.total_sent_withdrawal_msgs().value());
+
+    auto summaries = peerMgr_->getUpdateGroupSummaries();
+    auto summary = std::find_if(
+        summaries.begin(), summaries.end(), [&](const auto& candidate) {
+          return candidate.group_id().value() == groupId;
+        });
+    ASSERT_NE(summary, summaries.end());
+    EXPECT_EQ(
+        updateGroupKey.egressPolicyName.value_or(""),
+        summary->egress_policy_name().value());
+    EXPECT_EQ(group->getMemberCount(), summary->member_count().value());
+    EXPECT_EQ(
+        group->getNumInSyncPeers(), summary->in_sync_peer_count().value());
+    EXPECT_EQ(
+        group->getDetachedPeers().size(),
+        summary->detached_peer_count().value());
+    EXPECT_EQ(
+        group->getLastSeenRibVersion(),
+        summary->last_seen_rib_version().value());
+    EXPECT_EQ(
+        group->getStats().getPostOutPrefixCount(),
+        summary->post_out_prefix_count().value());
 
     cleanUp();
   });

@@ -175,6 +175,10 @@ class BgpServiceBase
 
   /* update group info */
   folly::coro::Task<std::unique_ptr<
+      facebook::neteng::fboss::bgp::thrift::TGetUpdateGroupSummariesResponse>>
+  co_getUpdateGroupSummaries() override;
+
+  folly::coro::Task<std::unique_ptr<
       facebook::neteng::fboss::bgp::thrift::TGetUpdateGroupInfoResponse>>
   co_getUpdateGroupInfo(
       std::unique_ptr<

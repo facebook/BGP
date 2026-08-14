@@ -140,9 +140,43 @@ std::vector<TPeerEgressStats> PeerManagerBase::getPeerEgressStats(
   return allStats;
 }
 
+/* Get lightweight update group summaries without walking peers or RIB trees. */
+std::vector<TUpdateGroupSummary> PeerManagerBase::getUpdateGroupSummaries() {
+  std::vector<TUpdateGroupSummary> result;
+
+  evb_.runImmediatelyOrRunInEventBaseThreadAndWait([&]() {
+    if (!updateGroupManager_) {
+      return;
+    }
+
+    const auto& allGroups = updateGroupManager_->getAllGroups();
+    result.reserve(allGroups.size());
+
+    for (const auto& [key, group] : allGroups) {
+      TUpdateGroupSummary summary;
+      summary.group_id() = group->getGroupId();
+      summary.egress_policy_name() = key.egressPolicyName.value_or("");
+      summary.group_state() = fmt::format("{}", group->getState());
+      summary.member_count() = group->getMemberCount();
+      summary.in_sync_peer_count() = group->getNumInSyncPeers();
+      summary.detached_peer_count() = group->getDetachedPeers().size();
+      summary.last_seen_rib_version() = group->getLastSeenRibVersion();
+
+      const auto& stats = group->getStats();
+      summary.post_out_prefix_count() = stats.getPostOutPrefixCount();
+      summary.post_out_prefix_count_ipv4() = stats.getPostOutPrefixCountIpv4();
+      summary.post_out_prefix_count_ipv6() = stats.getPostOutPrefixCountIpv6();
+
+      result.emplace_back(std::move(summary));
+    }
+  });
+
+  return result;
+}
+
 /* Get detailed update group information for CLI/thrift. */
 std::vector<TUpdateGroupInfo> PeerManagerBase::getUpdateGroupInfo(
-    std::optional<int64_t> groupIdFilter) {
+    int64_t groupId) {
   std::vector<TUpdateGroupInfo> result;
 
   evb_.runImmediatelyOrRunInEventBaseThreadAndWait([&]() {
@@ -151,11 +185,10 @@ std::vector<TUpdateGroupInfo> PeerManagerBase::getUpdateGroupInfo(
     }
 
     const auto& allGroups = updateGroupManager_->getAllGroups();
-    result.reserve(groupIdFilter.has_value() ? 1 : allGroups.size());
+    result.reserve(1);
 
     for (const auto& [key, group] : allGroups) {
-      if (groupIdFilter.has_value() &&
-          static_cast<int64_t>(group->getGroupId()) != groupIdFilter.value()) {
+      if (static_cast<int64_t>(group->getGroupId()) != groupId) {
         continue;
       }
 
@@ -231,9 +264,10 @@ std::vector<TUpdateGroupInfo> PeerManagerBase::getUpdateGroupInfo(
         peerInfo.bit_position() = bitPos;
         peerInfo.is_in_sync() = isInSync;
         peerInfo.is_blocked() = isBlocked;
-        peerInfo.is_detached() = adjRib->isDetachedPeer();
+        const bool isDetached = adjRib->isDetachedPeer();
+        peerInfo.is_detached() = isDetached;
 
-        if (adjRib->isDetachedPeer()) {
+        if (isDetached) {
           peerInfo.detach_type() =
               adjRib->isAdjRibFlagSet(AdjRib::IS_DETACHED_FAST_PEER) ? "DFP"
                                                                      : "DSP";
@@ -251,9 +285,15 @@ std::vector<TUpdateGroupInfo> PeerManagerBase::getUpdateGroupInfo(
         peerInfo.last_seen_rib_version() = adjRib->getLastSeenRibVersion();
         auto queue = adjRib->getBoundedAdjRibOutQueue();
         peerInfo.queue_size() = queue ? static_cast<int64_t>(queue->size()) : 0;
-        peerInfo.entry_count() =
-            static_cast<int64_t>(adjRib->getRibTreePeerEntriesCount(
-                /*ingress=*/false, groupKey.sendAddPath));
+        /*
+         * In-sync peers use group-owned RIB-OUT entries and therefore have no
+         * per-peer entries to count. Only detached peers can own entries under
+         * their peer key; avoid a full group-tree scan for every in-sync peer.
+         */
+        peerInfo.entry_count() = isDetached
+            ? static_cast<int64_t>(adjRib->getRibTreePeerEntriesCount(
+                  /*ingress=*/false, groupKey.sendAddPath))
+            : 0;
 
         auto eorTime = adjRib->eorSentTime();
         if (eorTime > 0) {
@@ -300,6 +340,7 @@ std::vector<TUpdateGroupInfo> PeerManagerBase::getUpdateGroupInfo(
       info.peers() = std::move(peers);
 
       result.emplace_back(std::move(info));
+      return;
     }
   });
 
