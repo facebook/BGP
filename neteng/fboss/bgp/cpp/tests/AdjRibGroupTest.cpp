@@ -16,6 +16,12 @@
 
 #include <gtest/gtest.h>
 
+#define AdjRib_TEST_FRIENDS                                                   \
+  FRIEND_TEST(                                                                \
+      AdjRibGroupDistributionFixture, CommittedUpdateCountDoesNotCrossClear); \
+  FRIEND_TEST(                                                                \
+      AdjRibGroupDistributionFixture, CommittedEorCountDoesNotCrossClear);
+
 #define AdjRibOutGroup_TEST_FRIENDS                                                  \
   friend class AdjRibGroupTest;                                                      \
   friend class AdjRibGroupPackingFixture;                                            \
@@ -41,6 +47,8 @@
       MovePeerMaterializedPathEntries_PeerOwnedPathNotOverwritten);
 
 #include <folly/coro/BlockingWait.h>
+#include <folly/coro/Collect.h>
+#include <folly/coro/GtestHelpers.h>
 #include <folly/io/async/EventBase.h>
 #include <folly/logging/xlog.h>
 
@@ -51,6 +59,7 @@
 #include "neteng/fboss/bgp/cpp/changeTracker/ConsumerBitmap.h"
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
 #include "neteng/fboss/bgp/cpp/policy/PolicyManager.h"
+#include "neteng/fboss/bgp/cpp/tests/BoundedWaitUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/Utils.h"
 
 namespace facebook::bgp {
@@ -2452,6 +2461,118 @@ TEST_F(AdjRibGroupDistributionFixture, DistributeNullMessage) {
   EXPECT_NO_THROW(
       folly::coro::blockingWait(adjRibOutGroup_->distributeMessageToInSyncPeers(
           nullptr, nullptr, nettools::bgplib::BgpUpdateAfi::AFI_IPv4)));
+}
+
+CO_TEST_F(
+    AdjRibGroupDistributionFixture,
+    CommittedUpdateCountDoesNotCrossClear) {
+  auto adjRib = registeredInSyncPeers_.back().second;
+  adjRib->setUpdateGroup(adjRibOutGroup_);
+  adjRib->setPeerState(PeerUpdateState::JOINED_RUNNING);
+  co_await adjRib->ensureAsyncScopeInitialized();
+  adjRib->boundedAdjRibOutQueue_ =
+      std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+          3 /* capacity */, 1 /* highWm */, 0 /* lowWm */);
+
+  nettools::bgplib::FiberBgpPeer::InputMessageT dummy =
+      nettools::bgplib::BgpEndOfRib();
+  adjRib->boundedAdjRibOutQueue_->push(dummy);
+
+  auto attrs1 = std::make_shared<BgpPath>(BgpPathFields());
+  attrs1->setLocalPref(100);
+  auto attrs2 = std::make_shared<BgpPath>(BgpPathFields());
+  attrs2->setLocalPref(200);
+  adjRibOutGroup_->tryUpdateAttrToPrefixMapForGroup(
+      {{folly::IPAddress("10.0.0.0"), 24}, kPlaceholderPathID},
+      nullptr,
+      attrs1);
+  adjRibOutGroup_->tryUpdateAttrToPrefixMapForGroup(
+      {{folly::IPAddress("20.0.0.0"), 24}, kPlaceholderPathID},
+      nullptr,
+      attrs2);
+
+  std::thread evbThread([this]() { evb_->loopForever(); });
+
+  auto clearAndUnblock = [&]() -> folly::coro::Task<void> {
+    while (!adjRibOutGroup_->hasBlockedPeers()) {
+      co_await folly::coro::co_reschedule_on_current_executor;
+    }
+
+    /*
+     * The first group UPDATE was built before the sender suspended, so its
+     * count must already be visible to counter clear.
+     */
+    EXPECT_EQ(1, adjRibOutGroup_->getStats().getSentUpdateMsgs());
+    adjRibOutGroup_->clearEgressMessageCounts();
+    EXPECT_EQ(0, adjRibOutGroup_->getStats().getSentUpdateMsgs());
+
+    co_await facebook::bgp::test::boundedPop(
+        *adjRib->boundedAdjRibOutQueue_, "adjRib->boundedAdjRibOutQueue_");
+    while (adjRib->boundedAdjRibOutQueue_->empty()) {
+      co_await folly::coro::co_reschedule_on_current_executor;
+    }
+    co_await facebook::bgp::test::boundedPop(
+        *adjRib->boundedAdjRibOutQueue_, "adjRib->boundedAdjRibOutQueue_");
+  };
+
+  co_await folly::coro::collectAll(
+      co_withExecutor(&*evb_, adjRibOutGroup_->buildAndSendGroupBgpMessages()),
+      co_withExecutor(&*evb_, clearAndUnblock()));
+
+  evb_->terminateLoopSoon();
+  evbThread.join();
+
+  /* Only the group UPDATE built after clear belongs to the new epoch. */
+  EXPECT_EQ(1, adjRibOutGroup_->getStats().getSentUpdateMsgs());
+  EXPECT_EQ(1, adjRib->boundedAdjRibOutQueue_->size());
+}
+
+CO_TEST_F(AdjRibGroupDistributionFixture, CommittedEorCountDoesNotCrossClear) {
+  auto adjRib = registeredInSyncPeers_.back().second;
+  adjRib->setUpdateGroup(adjRibOutGroup_);
+  adjRib->setPeerState(PeerUpdateState::JOINED_RUNNING);
+  co_await adjRib->ensureAsyncScopeInitialized();
+  adjRib->boundedAdjRibOutQueue_ =
+      std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+          3 /* capacity */, 1 /* highWm */, 0 /* lowWm */);
+
+  nettools::bgplib::FiberBgpPeer::InputMessageT dummy =
+      nettools::bgplib::BgpEndOfRib();
+  adjRib->boundedAdjRibOutQueue_->push(dummy);
+  adjRib->setEgressEoRsPending(true, true);
+  adjRibOutGroup_->markPeerInSync(adjRib);
+
+  std::thread evbThread([this]() { evb_->loopForever(); });
+
+  auto clearAndUnblock = [&]() -> folly::coro::Task<void> {
+    while (!adjRibOutGroup_->hasBlockedPeers()) {
+      co_await folly::coro::co_reschedule_on_current_executor;
+    }
+
+    EXPECT_EQ(1, adjRibOutGroup_->getStats().getSentEndOfRibMsgs());
+    adjRibOutGroup_->clearEgressMessageCounts();
+    EXPECT_EQ(0, adjRibOutGroup_->getStats().getSentEndOfRibMsgs());
+
+    co_await facebook::bgp::test::boundedPop(
+        *adjRib->boundedAdjRibOutQueue_, "adjRib->boundedAdjRibOutQueue_");
+    while (adjRib->boundedAdjRibOutQueue_->empty()) {
+      co_await folly::coro::co_reschedule_on_current_executor;
+    }
+    co_await facebook::bgp::test::boundedPop(
+        *adjRib->boundedAdjRibOutQueue_, "adjRib->boundedAdjRibOutQueue_");
+  };
+
+  co_await folly::coro::collectAll(
+      co_withExecutor(&*evb_, adjRibOutGroup_->buildAndSendGroupBgpMessages()),
+      co_withExecutor(&*evb_, clearAndUnblock()));
+
+  evb_->terminateLoopSoon();
+  evbThread.join();
+
+  /* Only the v6 group EoR accepted after clear belongs to the new epoch. */
+  EXPECT_EQ(1, adjRibOutGroup_->getStats().getSentEndOfRibMsgs());
+  EXPECT_EQ(2, adjRib->getStats().getSentEndOfRibMsgs());
+  EXPECT_EQ(1, adjRib->boundedAdjRibOutQueue_->size());
 }
 
 /**

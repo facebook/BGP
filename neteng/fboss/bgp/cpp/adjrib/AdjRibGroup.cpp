@@ -2032,6 +2032,12 @@ AdjRibOutGroup::buildAndSendGroupBgpMessages() noexcept {
 
     if (update) {
       msgCount++;
+      /*
+       * Building the shared PDU is the group counter commit point. Publish it
+       * before distribution can suspend so counter clear and cancellation
+       * cannot separate the PDU from its accounting.
+       */
+      stats_.incrementSentUpdateMsgs(1);
       // Update counters
       if (attr) {
         // Announcement
@@ -2087,16 +2093,6 @@ AdjRibOutGroup::buildAndSendGroupBgpMessages() noexcept {
   uint32_t eorCount = 0;
   if (!syncPeersWithPendingEoRs_.empty()) {
     eorCount = co_await distributePendingEoRs();
-  }
-
-  /* Group-level control-plane counts of PDUs generated once for this group.
-   * UPDATE counts are attributed to in-sync members by getSessionInfo. EoR is
-   * retained here as a group aggregate, while each resolved push increments
-   * the eligible peer's own EoR counter.
-   */
-  stats_.incrementSentUpdateMsgs(msgCount);
-  if (eorCount > 0) {
-    stats_.incrementSentEndOfRibMsgs(eorCount);
   }
 
   XLOGF(
@@ -2165,12 +2161,18 @@ folly::coro::Task<uint32_t> AdjRibOutGroup::distributePendingEoRs() noexcept {
     return distributed;
   };
 
+  /*
+   * Acceptance is the group EoR commit point. Publish each AFI before its
+   * pending pushes can suspend so a counter clear cannot be crossed.
+   */
   if (distributeEoRs(nettools::bgplib::BgpUpdateAfi::AFI_IPv4)) {
     eorMsgCount++;
+    stats_.incrementSentEndOfRibMsgs(1);
   }
   co_await waitForAllPendingPushes();
   if (distributeEoRs(nettools::bgplib::BgpUpdateAfi::AFI_IPv6)) {
     eorMsgCount++;
+    stats_.incrementSentEndOfRibMsgs(1);
   }
   co_await waitForAllPendingPushes();
 
