@@ -2432,7 +2432,15 @@ AdjRibOutGroup::PushResult AdjRibOutGroup::tryPushToPeer(
     return PushResult::PUSH_PENDING;
   } else {
     // Queue has space - push immediately, then run the continuation
-    boundedQueue->push(message);
+    if (!boundedQueue->push(message)) {
+      XLOGF(
+          WARN,
+          "Group {} failed to push message to peer {} at bit {}",
+          groupDescriptor_,
+          adjRib->getPeerName(),
+          bitPos);
+      return PushResult::PUSH_FAILED;
+    }
     if (onResolved) {
       onResolved();
     }

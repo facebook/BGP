@@ -313,5 +313,122 @@ TEST_F(
   EXPECT_EQ(postJoinPeerCounts.withdrawals, postJoinApiCounts.withdrawals);
 }
 
+TEST_F(
+    UpdateGroupPeerPduCounterE2ETest,
+    ClosedJoinedPeerQueueDoesNotIncrementPerPeerPduCounters) {
+  BgpPeerId peer3{kPeerAddr3, kPeerAddr3.asV4().toLongHBO()};
+  BgpPeerId peer4{kPeerAddr4, kPeerAddr4.asV4().toLongHBO()};
+
+  bringUpPeerAndWait(kPeerAddr3);
+  bringUpPeerAndWait(kPeerAddr4);
+  sendEoRToPeer(peer3);
+  sendEoRToPeer(peer4);
+  ASSERT_TRUE(waitForEoR(peer3));
+  ASSERT_TRUE(waitForEoR(peer3));
+  ASSERT_TRUE(waitForEoR(peer4));
+  ASSERT_TRUE(waitForEoR(peer4));
+
+  std::shared_ptr<AdjRib> livePeer;
+  std::shared_ptr<AdjRib> closedQueuePeer;
+  std::shared_ptr<AdjRibOutGroup> group;
+  ASSERT_TRUE(waitForPeerManagerCondition([&]() {
+    livePeer = getAdjRibByAddr(kPeerAddr3);
+    closedQueuePeer = getAdjRibByAddr(kPeerAddr4);
+    if (!livePeer || !closedQueuePeer || !livePeer->getUpdateGroup()) {
+      return false;
+    }
+    group = livePeer->getUpdateGroup();
+    return group == closedQueuePeer->getUpdateGroup() &&
+        livePeer->getPeerState() == PeerUpdateState::JOINED_RUNNING &&
+        closedQueuePeer->getPeerState() == PeerUpdateState::JOINED_RUNNING;
+  }));
+
+  struct CounterSnapshot {
+    PduCounts livePeer;
+    PduCounts closedQueuePeer;
+    PduCounts group;
+  };
+  auto readCounters = [&]() {
+    CounterSnapshot snapshot;
+    peerManager_->getEventBase().runInEventBaseThreadAndWait([&]() {
+      const auto toPduCounts = [](const auto& stats) {
+        return PduCounts{
+            .updates = stats.getSentUpdateMsgs(),
+            .announcementsV4 = stats.getSentAnnouncementsIpv4(),
+            .announcementsV6 = stats.getSentAnnouncementsIpv6(),
+            .withdrawals = stats.getSentWithdrawals(),
+        };
+      };
+      snapshot.livePeer = toPduCounts(livePeer->getStats());
+      snapshot.closedQueuePeer = toPduCounts(closedQueuePeer->getStats());
+      snapshot.group = toPduCounts(group->getStats());
+    });
+    return snapshot;
+  };
+
+  const auto before = readCounters();
+  const auto peer4Queues = getPeerQueues(peer4);
+  ASSERT_TRUE(peer4Queues.has_value());
+  ASSERT_NE(nullptr, peer4Queues->boundedAdjRibOutQ);
+  ASSERT_FALSE(peer4Queues->boundedAdjRibOutQ->isClosed());
+
+  peer4Queues->boundedAdjRibOutQ->close();
+  const bool queueClosed = peer4Queues->boundedAdjRibOutQ->isClosed();
+  bool peerStillJoined{false};
+  peerManager_->getEventBase().runInEventBaseThreadAndWait([&]() {
+    peerStillJoined =
+        closedQueuePeer->getPeerState() == PeerUpdateState::JOINED_RUNNING &&
+        closedQueuePeer->getUpdateGroup() == group;
+  });
+
+  injectLocalRoutesAtRuntime({kPostJoinRoute});
+  const bool routeReachedShadowRib =
+      waitForRouteInShadowRib(folly::IPAddress::createNetwork(kPostJoinRoute));
+  const bool distributionCompleted = waitForPeerManagerCondition([&]() {
+    return group->getStats().getSentUpdateMsgs() == before.group.updates + 1 &&
+        livePeer->getStats().getSentUpdateMsgs() == before.livePeer.updates + 1;
+  });
+  const bool livePeerReceivedRoute = drainAndFindRouteAdvertised(
+      "v4", "61.0.0.0", 8, kPeerAddr3, kNextHopV4_3.str());
+  const auto after = readCounters();
+  bool peerStillJoinedAtEnd{false};
+  peerManager_->getEventBase().runInEventBaseThreadAndWait([&]() {
+    peerStillJoinedAtEnd =
+        closedQueuePeer->getPeerState() == PeerUpdateState::JOINED_RUNNING &&
+        closedQueuePeer->getUpdateGroup() == group;
+  });
+  const auto peer4Session = testSessionManager_->getPeerStates().find(peer4);
+
+  ASSERT_TRUE(queueClosed);
+  ASSERT_TRUE(peerStillJoined);
+  ASSERT_TRUE(routeReachedShadowRib);
+  ASSERT_TRUE(distributionCompleted);
+  ASSERT_TRUE(livePeerReceivedRoute);
+  ASSERT_TRUE(peerStillJoinedAtEnd);
+  ASSERT_NE(testSessionManager_->getPeerStates().end(), peer4Session);
+  ASSERT_TRUE(peer4Session->second.established);
+
+  EXPECT_EQ(before.livePeer.updates + 1, after.livePeer.updates);
+  EXPECT_EQ(
+      before.livePeer.announcementsV4 + 1, after.livePeer.announcementsV4);
+  EXPECT_EQ(before.livePeer.announcementsV6, after.livePeer.announcementsV6);
+  EXPECT_EQ(before.livePeer.withdrawals, after.livePeer.withdrawals);
+
+  EXPECT_EQ(before.group.updates + 1, after.group.updates);
+  EXPECT_EQ(before.group.announcementsV4 + 1, after.group.announcementsV4);
+  EXPECT_EQ(before.group.announcementsV6, after.group.announcementsV6);
+  EXPECT_EQ(before.group.withdrawals, after.group.withdrawals);
+
+  EXPECT_EQ(before.closedQueuePeer.updates, after.closedQueuePeer.updates);
+  EXPECT_EQ(
+      before.closedQueuePeer.announcementsV4,
+      after.closedQueuePeer.announcementsV4);
+  EXPECT_EQ(
+      before.closedQueuePeer.announcementsV6,
+      after.closedQueuePeer.announcementsV6);
+  EXPECT_EQ(
+      before.closedQueuePeer.withdrawals, after.closedQueuePeer.withdrawals);
+}
+
 } // namespace
 } // namespace facebook::bgp
