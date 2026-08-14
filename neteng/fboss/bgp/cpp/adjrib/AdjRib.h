@@ -968,6 +968,34 @@ class AdjRib : boost::noncopyable,
     return adjRibOutGroup_->getStats().getPostOutPrefixCount();
   }
 
+  std::optional<uint32_t> getUpdateGroupPostOutPrefixCountIpv4() const {
+    if (!adjRibOutGroup_) {
+      return std::nullopt;
+    }
+    return adjRibOutGroup_->getStats().getPostOutPrefixCountIpv4();
+  }
+
+  std::optional<uint32_t> getUpdateGroupPostOutPrefixCountIpv6() const {
+    if (!adjRibOutGroup_) {
+      return std::nullopt;
+    }
+    return adjRibOutGroup_->getStats().getPostOutPrefixCountIpv6();
+  }
+
+  std::optional<uint32_t> getUpdateGroupPreOutPrefixCountIpv4() const {
+    if (!adjRibOutGroup_) {
+      return std::nullopt;
+    }
+    return adjRibOutGroup_->getStats().getPreOutPrefixCountIpv4();
+  }
+
+  std::optional<uint32_t> getUpdateGroupPreOutPrefixCountIpv6() const {
+    if (!adjRibOutGroup_) {
+      return std::nullopt;
+    }
+    return adjRibOutGroup_->getStats().getPreOutPrefixCountIpv6();
+  }
+
   /**
    * @brief  Effective advertised (egress / post-out) prefix count for this
    *         peer, independent of whether update-group is enabled.

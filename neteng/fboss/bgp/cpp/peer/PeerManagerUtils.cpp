@@ -713,7 +713,8 @@ TBgpSession PeerManagerBase::getDetailSessionInfo(
   if (!peerInfo->peeringParams.peerPrefix) {
     BgpPeerId bgpPeerId{peerAddr, peerInfo->remoteBgpId};
     if (adjRibs_.contains(bgpPeerId)) {
-      const auto stats = adjRibs_.at(bgpPeerId)->getStats();
+      const auto& adjRib = adjRibs_.at(bgpPeerId);
+      const auto stats = adjRib->getStats();
       tBgpSessionDetail.sent_update_announcements_ipv4() =
           stats.getSentAnnouncementsIpv4();
       tBgpSessionDetail.sent_update_announcements_ipv6() =
@@ -742,6 +743,26 @@ TBgpSession PeerManagerBase::getDetailSessionInfo(
           stats.getPostOutPrefixCountIpv4();
       tBgpSessionDetail.postpolicy_sent_prefix_count_ipv6() =
           stats.getPostOutPrefixCountIpv6();
+      const auto peerState = adjRib->getPeerState();
+      if (peerState == PeerUpdateState::JOINED_RUNNING ||
+          peerState == PeerUpdateState::JOINED_BLOCKED) {
+        if (auto groupV4 = adjRib->getUpdateGroupPreOutPrefixCountIpv4()) {
+          tBgpSessionDetail.prepolicy_sent_prefix_count_ipv4() =
+              groupV4.value();
+        }
+        if (auto groupV6 = adjRib->getUpdateGroupPreOutPrefixCountIpv6()) {
+          tBgpSessionDetail.prepolicy_sent_prefix_count_ipv6() =
+              groupV6.value();
+        }
+        if (auto groupV4 = adjRib->getUpdateGroupPostOutPrefixCountIpv4()) {
+          tBgpSessionDetail.postpolicy_sent_prefix_count_ipv4() =
+              groupV4.value();
+        }
+        if (auto groupV6 = adjRib->getUpdateGroupPostOutPrefixCountIpv6()) {
+          tBgpSessionDetail.postpolicy_sent_prefix_count_ipv6() =
+              groupV6.value();
+        }
+      }
       tBgpSessionDetail.eor_sent_time() = adjRibs_.at(bgpPeerId)->eorSentTime();
       tBgpSessionDetail.eor_received_time() =
           adjRibs_.at(bgpPeerId)->eorReceivedTime();

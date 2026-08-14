@@ -706,6 +706,26 @@ TEST_F(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest) {
   for (uint64_t i = 0; i < kPerPeerSentWithdrawals; ++i) {
     adjRib->stats_.incrementSentWithdrawals();
   }
+  adjRib->stats_.incrementPreInPrefixCount(
+      folly::IPAddress::createNetwork("192.0.2.0/24"), false, false);
+  adjRib->stats_.incrementPreInPrefixCount(
+      folly::IPAddress::createNetwork("2001:db8::/64"), false, false);
+  constexpr uint32_t kPerPeerPreOutV4 = 10;
+  constexpr uint32_t kPerPeerPreOutV6 = 11;
+  for (uint32_t i = 0; i < kPerPeerPreOutV4; ++i) {
+    adjRib->stats_.incrementPreOutPrefixCount(/*isIpv4=*/true);
+  }
+  for (uint32_t i = 0; i < kPerPeerPreOutV6; ++i) {
+    adjRib->stats_.incrementPreOutPrefixCount(/*isIpv4=*/false);
+  }
+  constexpr uint32_t kPerPeerPostOutV4 = 2;
+  constexpr uint32_t kPerPeerPostOutV6 = 3;
+  for (uint32_t i = 0; i < kPerPeerPostOutV4; ++i) {
+    adjRib->stats_.incrementPostOutPrefixCount(true);
+  }
+  for (uint32_t i = 0; i < kPerPeerPostOutV6; ++i) {
+    adjRib->stats_.incrementPostOutPrefixCount(false);
+  }
   mockPeerMgr->adjRibs_[adjRibKey] = adjRib;
 
   /*
@@ -760,6 +780,12 @@ TEST_F(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest) {
         kPerPeerSentAnnouncementsV6,
         d.sent_update_announcements_ipv6().value());
     EXPECT_EQ(kPerPeerSentWithdrawals, d.sent_update_withdrawals().value());
+    EXPECT_EQ(1, d.prepolicy_rcvd_prefix_count_ipv4().value());
+    EXPECT_EQ(1, d.prepolicy_rcvd_prefix_count_ipv6().value());
+    EXPECT_EQ(kPerPeerPreOutV4, d.prepolicy_sent_prefix_count_ipv4().value());
+    EXPECT_EQ(kPerPeerPreOutV6, d.prepolicy_sent_prefix_count_ipv6().value());
+    EXPECT_EQ(kPerPeerPostOutV4, d.postpolicy_sent_prefix_count_ipv4().value());
+    EXPECT_EQ(kPerPeerPostOutV6, d.postpolicy_sent_prefix_count_ipv6().value());
   }
 
   /*
@@ -785,6 +811,22 @@ TEST_F(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest) {
   for (uint64_t i = 0; i < kGroupSentWithdrawals; ++i) {
     group->stats_.incrementSentWithdrawals();
   }
+  constexpr uint32_t kGroupPreOutV4 = 6;
+  constexpr uint32_t kGroupPreOutV6 = 7;
+  for (uint32_t i = 0; i < kGroupPreOutV4; ++i) {
+    group->stats_.incrementPreOutPrefixCount(/*isIpv4=*/true);
+  }
+  for (uint32_t i = 0; i < kGroupPreOutV6; ++i) {
+    group->stats_.incrementPreOutPrefixCount(/*isIpv4=*/false);
+  }
+  constexpr uint32_t kGroupPostOutV4 = 4;
+  constexpr uint32_t kGroupPostOutV6 = 5;
+  for (uint32_t i = 0; i < kGroupPostOutV4; ++i) {
+    group->stats_.incrementPostOutPrefixCount(true);
+  }
+  for (uint32_t i = 0; i < kGroupPostOutV6; ++i) {
+    group->stats_.incrementPostOutPrefixCount(false);
+  }
   adjRib->setUpdateGroup(group);
   adjRib->setPeerState(PeerUpdateState::JOINED_RUNNING);
   {
@@ -801,6 +843,12 @@ TEST_F(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest) {
         kPerPeerSentAnnouncementsV6,
         d.sent_update_announcements_ipv6().value());
     EXPECT_EQ(kPerPeerSentWithdrawals, d.sent_update_withdrawals().value());
+    EXPECT_EQ(1, d.prepolicy_rcvd_prefix_count_ipv4().value());
+    EXPECT_EQ(1, d.prepolicy_rcvd_prefix_count_ipv6().value());
+    EXPECT_EQ(kGroupPreOutV4, d.prepolicy_sent_prefix_count_ipv4().value());
+    EXPECT_EQ(kGroupPreOutV6, d.prepolicy_sent_prefix_count_ipv6().value());
+    EXPECT_EQ(kGroupPostOutV4, d.postpolicy_sent_prefix_count_ipv4().value());
+    EXPECT_EQ(kGroupPostOutV6, d.postpolicy_sent_prefix_count_ipv6().value());
 
     auto session = std::find_if(
         sessions.begin(), sessions.end(), [&](const auto& candidate) {
@@ -808,6 +856,28 @@ TEST_F(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest) {
         });
     ASSERT_NE(sessions.end(), session);
     EXPECT_EQ(kPerPeerSentUpdates, session->sent_update_msgs().value());
+    EXPECT_EQ(2, session->prepolicy_rcvd_prefix_count().value());
+    EXPECT_EQ(
+        kGroupPostOutV4 + kGroupPostOutV6,
+        session->postpolicy_sent_prefix_count().value());
+  }
+
+  adjRib->setPeerState(PeerUpdateState::JOINED_BLOCKED);
+  {
+    const auto d = detailFor(mockPeerMgr->getDetailSessionInfos(allPeers));
+    EXPECT_EQ(kGroupPreOutV4, d.prepolicy_sent_prefix_count_ipv4().value());
+    EXPECT_EQ(kGroupPreOutV6, d.prepolicy_sent_prefix_count_ipv6().value());
+    EXPECT_EQ(kGroupPostOutV4, d.postpolicy_sent_prefix_count_ipv4().value());
+    EXPECT_EQ(kGroupPostOutV6, d.postpolicy_sent_prefix_count_ipv6().value());
+  }
+
+  adjRib->setPeerState(PeerUpdateState::DETACHED_BLOCKED);
+  {
+    const auto d = detailFor(mockPeerMgr->getDetailSessionInfos(allPeers));
+    EXPECT_EQ(kPerPeerPreOutV4, d.prepolicy_sent_prefix_count_ipv4().value());
+    EXPECT_EQ(kPerPeerPreOutV6, d.prepolicy_sent_prefix_count_ipv6().value());
+    EXPECT_EQ(kPerPeerPostOutV4, d.postpolicy_sent_prefix_count_ipv4().value());
+    EXPECT_EQ(kPerPeerPostOutV6, d.postpolicy_sent_prefix_count_ipv6().value());
   }
 
   // Detach the group before tearing down groupEvb, which must outlive it.
