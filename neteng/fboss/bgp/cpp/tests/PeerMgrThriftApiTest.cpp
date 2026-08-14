@@ -37,6 +37,8 @@
 #define AdjRibOutGroup_TEST_FRIENDS \
   FRIEND_TEST(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest);
 
+#include <algorithm>
+
 #include <fmt/core.h>
 #include <folly/coro/BlockingWait.h>
 #include <folly/coro/GtestHelpers.h>
@@ -645,11 +647,9 @@ TEST_F(PeerManagerTestFixture, GetBgpSessionSocketMessageCountsTest) {
  * (adjrib_recv_update_msgs / adjrib_recv_eor_msgs / adjrib_sent_update_msgs /
  * adjrib_sent_eor_msgs) come from the PeerManager-side AdjRib stats -- the
  * counterpart to the socket_* counts validated above. The recv side is always
- * per-peer; the sent side is attributed to the update-group for in-sync members
- * (JOINED_RUNNING / JOINED_BLOCKED), whose per-peer sent counters stay 0. Drive
- * known counts into a peer's AdjRib (and its update-group) and verify
- * getDetailSessionInfos surfaces them into TBgpSessionDetail, exercising both
- * the per-peer path and the update-group attribution branch.
+ * per-peer, as is the sent side for every update-group state. Drive distinct
+ * counts into a peer's AdjRib and its update-group and verify the peer APIs
+ * continue to surface the AdjRib values after the peer joins the group.
  */
 TEST_F(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest) {
   auto config = getConfig(
@@ -763,9 +763,9 @@ TEST_F(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest) {
   }
 
   /*
-   * Phase 2: peer JOINED_RUNNING in an update-group -> the sent side is
-   * attributed to the group's shared counts. The underlying EoR accounting
-   * remains per-peer, and the recv side also stays per-peer.
+   * Phase 2: peer JOINED_RUNNING in an update-group. The group has distinct
+   * lifetime totals, but peer-scoped APIs must continue to report the peer's
+   * own cumulative counts.
    */
   folly::EventBase groupEvb;
   auto group = std::make_shared<AdjRibOutGroup>(groupEvb, "test_group", 1);
@@ -792,17 +792,22 @@ TEST_F(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest) {
     const auto d = detailFor(sessions);
     EXPECT_EQ(kPerPeerRecvUpdates, d.adjrib_recv_update_msgs().value());
     EXPECT_EQ(kPerPeerRecvEoRs, d.adjrib_recv_eor_msgs().value());
-    EXPECT_EQ(kGroupSentUpdates, d.adjrib_sent_update_msgs().value());
-    EXPECT_EQ(kGroupSentEoRs, d.adjrib_sent_eor_msgs().value());
-    EXPECT_EQ(kPerPeerSentEoRs, adjRib->getStats().getSentEndOfRibMsgs());
-    EXPECT_EQ(kGroupSentEoRs, adjRib->getUpdateGroupSentEndOfRibMsgs().value());
-    // In-sync member: announcement/withdrawal PDU counts are attributed to the
-    // group's shared counts (the per-peer counters set above are ignored).
+    EXPECT_EQ(kPerPeerSentUpdates, d.adjrib_sent_update_msgs().value());
+    EXPECT_EQ(kPerPeerSentEoRs, d.adjrib_sent_eor_msgs().value());
     EXPECT_EQ(
-        kGroupSentAnnouncementsV4, d.sent_update_announcements_ipv4().value());
+        kPerPeerSentAnnouncementsV4,
+        d.sent_update_announcements_ipv4().value());
     EXPECT_EQ(
-        kGroupSentAnnouncementsV6, d.sent_update_announcements_ipv6().value());
-    EXPECT_EQ(kGroupSentWithdrawals, d.sent_update_withdrawals().value());
+        kPerPeerSentAnnouncementsV6,
+        d.sent_update_announcements_ipv6().value());
+    EXPECT_EQ(kPerPeerSentWithdrawals, d.sent_update_withdrawals().value());
+
+    auto session = std::find_if(
+        sessions.begin(), sessions.end(), [&](const auto& candidate) {
+          return candidate.peer_addr().value() == *staticPeer1_.peer_addr();
+        });
+    ASSERT_NE(sessions.end(), session);
+    EXPECT_EQ(kPerPeerSentUpdates, session->sent_update_msgs().value());
   }
 
   // Detach the group before tearing down groupEvb, which must outlive it.

@@ -93,6 +93,7 @@ class E2ETestSessionManager : public SessionManager {
     std::shared_ptr<AdjRib::AdjRibOutQueueT> adjRibOutQ;
     std::shared_ptr<AdjRib::BoundedAdjRibOutQueueT> boundedAdjRibOutQ;
     std::shared_ptr<nettools::bgplib::VersionNumber> versionNumber;
+    nettools::bgplib::BgpPeerDisplayInfo displayInfo;
     bool established{false};
   };
 

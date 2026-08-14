@@ -751,9 +751,8 @@ TBgpSession PeerManagerBase::getDetailSessionInfo(
           adjRibs_.at(bgpPeerId)->getUpdateGroupKey().legacyV4NlriEncoding;
 
       // Control-plane per-type message counts (PeerManager / AdjRib), the
-      // counterpart to the socket_* counts below. Recv side is per-peer; the
-      // sent counts are attributed to the update-group for in-sync members.
-      const auto& adjRib = adjRibs_.at(bgpPeerId);
+      // counterpart to the socket_* counts below. Both directions are
+      // cumulative per-peer counts.
       tBgpSessionDetail.adjrib_recv_update_msgs() =
           static_cast<int64_t>(stats.getRecvUpdateMsgs());
       tBgpSessionDetail.adjrib_recv_eor_msgs() =
@@ -762,35 +761,6 @@ TBgpSession PeerManagerBase::getDetailSessionInfo(
           static_cast<int64_t>(stats.getSentUpdateMsgs());
       tBgpSessionDetail.adjrib_sent_eor_msgs() =
           static_cast<int64_t>(stats.getSentEndOfRibMsgs());
-      auto peerState = adjRib->getPeerState();
-      if (peerState == PeerUpdateState::JOINED_RUNNING ||
-          peerState == PeerUpdateState::JOINED_BLOCKED) {
-        if (auto g = adjRib->getUpdateGroupSentUpdateMsgs(); g.has_value()) {
-          tBgpSessionDetail.adjrib_sent_update_msgs() =
-              static_cast<int64_t>(g.value());
-        }
-        if (auto g = adjRib->getUpdateGroupSentEndOfRibMsgs(); g.has_value()) {
-          tBgpSessionDetail.adjrib_sent_eor_msgs() =
-              static_cast<int64_t>(g.value());
-        }
-        // The announcement/withdrawal PDUs are likewise generated once at the
-        // group for in-sync members (per-peer counters set above stay 0), so
-        // attribute the group's counts to each member.
-        if (auto g = adjRib->getUpdateGroupSentAnnouncementsIpv4();
-            g.has_value()) {
-          tBgpSessionDetail.sent_update_announcements_ipv4() =
-              static_cast<int64_t>(g.value());
-        }
-        if (auto g = adjRib->getUpdateGroupSentAnnouncementsIpv6();
-            g.has_value()) {
-          tBgpSessionDetail.sent_update_announcements_ipv6() =
-              static_cast<int64_t>(g.value());
-        }
-        if (auto g = adjRib->getUpdateGroupSentWithdrawals(); g.has_value()) {
-          tBgpSessionDetail.sent_update_withdrawals() =
-              static_cast<int64_t>(g.value());
-        }
-      }
     }
   }
   // This is mainly for ACTIVE state peers to see how long the TCP socket has
@@ -1033,14 +1003,6 @@ TBgpSession PeerManagerBase::getSessionInfo(
           if (groupPrefixCount.has_value()) {
             tBgpSession.postpolicy_sent_prefix_count() =
                 groupPrefixCount.value();
-          }
-          // For in-sync UG peers the UPDATE PDU is generated once at the group,
-          // so attribute the group's generated count to each member (the
-          // per-peer AdjRib count stays 0 for these).
-          auto groupSentUpdateMsgs = adjRib->getUpdateGroupSentUpdateMsgs();
-          if (groupSentUpdateMsgs.has_value()) {
-            tBgpSession.sent_update_msgs() =
-                static_cast<int64_t>(groupSentUpdateMsgs.value());
           }
         }
       }

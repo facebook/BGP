@@ -115,6 +115,7 @@ uint64_t E2ETestSessionManager::simulateSessionEstablished(
   state.adjRibInQ = adjRibInQ;
   state.adjRibOutQ = adjRibOutQ;
   state.boundedAdjRibOutQ = boundedAdjRibOutQ;
+  state.displayInfo = displayInfo;
   state.established = true;
 
   uint64_t version = state.versionNumber->getWithoutLock();

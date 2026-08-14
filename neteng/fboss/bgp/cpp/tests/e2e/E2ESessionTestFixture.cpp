@@ -138,6 +138,8 @@ void E2ESessionTestFixture::bringUpPeer(
   displayInfo.peeringParams.isAfiIpv6Configured = true;
   displayInfo.peeringParams.nexthopV4 = cfg.nexthopV4;
   displayInfo.peeringParams.nexthopV6 = cfg.nexthopV6;
+  ASSERT_TRUE(cfg.bindAddr.has_value());
+  displayInfo.localAddr = cfg.bindAddr.value();
   displayInfo.remoteBgpId = peerId.remoteBgpId;
   displayInfo.negotiatedCapabilities.mpExtV4Unicast() = true;
   displayInfo.negotiatedCapabilities.mpExtV6Unicast() = true;
