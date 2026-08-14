@@ -963,6 +963,14 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
       std::shared_ptr<AdjRib> adjRib,
       const PeerToPolicyMap& peerToPolicyNames) noexcept;
 
+  /*
+   * Update-group counterpart of updateIngressEgressPolicyNames. A coroutine
+   * rather than a void entry point because it awaits each half's
+   * re-evaluation inline; callers schedule it on asyncScope_.
+   */
+  folly::coro::Task<void> updateIngressEgressPolicyNamesForUpdateGroups(
+      std::unique_ptr<PeerToPolicyMap> peerToPolicyNames);
+
   // Read saved GR state. Returns nullptr if no valid previous state exits.
   GrLoadResult readGrState() const noexcept;
 

@@ -983,6 +983,33 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
    * updates the config and pushes the resolved egress name onto the AdjRib's
    * egressPolicyName_.
    */
+  /*
+   * Apply one egress policy to several peers in a single update, the way a
+   * setPeersPolicy RPC carrying multiple peers does. Distinct from calling
+   * updatePeerEgressPolicyOnEvb per peer, which is several updates and so
+   * several re-evaluations -- peers then diverge one at a time instead of
+   * together.
+   */
+  void updatePeersEgressPolicyOnEvb(
+      TestContext& ctx,
+      const std::vector<BgpPeerId>& peerIds,
+      const std::string& newPolicyName) {
+    std::map<std::string, std::map<bgp_policy::DIRECTION, std::string>>
+        peersPolicy;
+    for (const auto& peerId : peerIds) {
+      peersPolicy[peerId.peerAddr.str()][bgp_policy::DIRECTION::OUT] =
+          newPolicyName;
+    }
+    auto newConfig = ctx.configMgr->updatePeerPolicies(peersPolicy);
+    applyResolvedPeerPolicies(
+        ctx,
+        newConfig,
+        [&](const folly::IPAddress& peerAddr, const BgpPeerConfig&) {
+          return peersPolicy.contains(peerAddr.str());
+        });
+    flushEventBase(ctx);
+  }
+
   void updatePeerEgressPolicyOnEvb(
       TestContext& ctx,
       const BgpPeerId& peerId,

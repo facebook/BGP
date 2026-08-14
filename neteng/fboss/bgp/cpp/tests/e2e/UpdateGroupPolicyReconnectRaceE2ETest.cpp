@@ -230,8 +230,13 @@ TEST_F(
    * behind the second gate. While the second gate holds, the production session
    * event and target-policy callback are queued ahead of that reconciliation.
    * The resulting FIFO order is: dummy apply, reconnect registration, target
-   * apply, checkpoint, fleet reconciliation, buffered dump. This reaches the
-   * cancellation race without mutating peer or group state from the test.
+   * apply plus fleet reconciliation, checkpoint. Applying the policy names and
+   * re-keying the groups is a single event-base item, and reconciliation
+   * cancels the reconnecting peer's scheduled dump to re-run it inline under
+   * the new policy, so the checkpoint observes the peer already carrying the
+   * target policy with that inline dump applied, before it rejoins its group.
+   * This reaches the cancellation race without mutating peer or group state
+   * from the test.
    */
   eventBase.runInEventBaseThread([firstGate] {
     firstGate->entered.post();
@@ -261,13 +266,11 @@ TEST_F(
     auto group = adjRib ? adjRib->getUpdateGroup() : nullptr;
     race->preconditionObserved = adjRib && group &&
         adjRib->getPeerState() == PeerUpdateState::DETACHED_INIT_DUMP &&
-        adjRib->isEgressPolicyUpdateRequired() &&
         adjRib->getUpdateGroupKey().egressPolicyName.value_or("") ==
-            kAcceptPolicyName &&
-        group->getGroupKey().egressPolicyName.value_or("") ==
-            kAcceptPolicyName &&
+            kTagPolicyName &&
+        group->getGroupKey().egressPolicyName.value_or("") == kTagPolicyName &&
         adjRib->getEgressPolicyName().value_or("") == kTagPolicyName &&
-        !adjRib->getChangeListConsumer();
+        adjRib->getChangeListConsumer();
     race->checkpoint.post();
   });
   secondGate->release.post();
@@ -284,8 +287,9 @@ TEST_F(
       neteng::fboss::bgp::thrift::BgpPolicyChangeResult::POLICIES_APPLIED,
       tagPolicyResult);
   ASSERT_TRUE(race->preconditionObserved)
-      << "reconnecting peer must have a buffered dump, the target policy, and "
-         "no consumer before fleet reconciliation";
+      << "fleet reconciliation must have moved the reconnecting peer onto the "
+         "target policy and re-run its cancelled dump inline, leaving it "
+         "detached with a consumer before it rejoins";
   ASSERT_TRUE(waitForEgressReEvalComplete());
 
   bool movedToTagGroup{false};

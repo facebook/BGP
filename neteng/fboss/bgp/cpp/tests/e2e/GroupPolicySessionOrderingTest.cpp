@@ -264,14 +264,14 @@ TEST_F(
   EXPECT_EQ(group3, group4);
 
   /*
-   * Captures the unfixed behavior. The reconnecting peer materialized its
-   * RIB-OUT under the new policy while still registered in a group keyed on
-   * the old one, so the collapse on its rejoin attempt found entry
-   * discrepancies and refused the rejoin (DETACHED_READY_TO_JOIN ->
-   * DETACHED_RUNNING). It only reaches JOINED_RUNNING on a later attempt, so
+   * The race this test guards: without the ordering fix the reconnecting peer
+   * materializes its RIB-OUT under the new policy while still registered in a
+   * group keyed on the old one, so the collapse on its rejoin attempt finds
+   * entry discrepancies and refuses the rejoin (DETACHED_READY_TO_JOIN ->
+   * DETACHED_RUNNING). It still reaches JOINED_RUNNING on a later attempt, so
    * peer state alone does not witness the race -- this counter does.
    */
-  EXPECT_GT(group3->getTotalDiscrepancies(), 0);
+  EXPECT_EQ(group3->getTotalDiscrepancies(), 0);
 
   /*
    * Retry around the drain: it gives up as soon as the queue is empty, and the
@@ -390,11 +390,11 @@ TEST_F(
   EXPECT_EQ(group3, group4);
 
   /*
-   * Captures the unfixed behavior, same as the dump variant above: the peer
-   * caught up on the changelist and collapsed against the group while the
-   * policy update was mid-flight, so the collapse found entry discrepancies.
+   * Same guard as the dump variant above, reached the other way: the peer
+   * caught up on the changelist and collapsed against a group holding the same
+   * entries, so the collapse finds nothing to reconcile.
    */
-  EXPECT_GT(group3->getTotalDiscrepancies(), 0);
+  EXPECT_EQ(group3->getTotalDiscrepancies(), 0);
 
   WITH_RETRIES_N(30, {
     EXPECT_EVENTUALLY_TRUE(drainAndFindRouteAdvertised(

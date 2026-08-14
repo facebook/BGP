@@ -485,14 +485,18 @@ TEST_P(
  * and its initial dump is deferred (testOnlyDeferInitDump) so it stays pinned
  * in DETACHED_INIT_DUMP. The append override is applied while peer3 is still
  * pinned; the re-eval splits peer3 into its own group and cancels its deferred
- * dump, re-evaluates it inline under the new policy, and activates detached
- * processing. The writable peer can therefore drain and rejoin its new group
- * immediately. Its RIB-OUT reflects append, and the other peers stay on
- * propagate-everything.
+ * dump, re-evaluating it inline under the new policy -- so peer3's RIB-OUT
+ * reflects append and it stays healthy (not DOWN), while the other peers stay
+ * on propagate-everything.
  *
- * The inline re-eval dump delivers peer3's full re-evaluated set to its egress
- * queue before it rejoins, so its on-wire delivery is verified by draining the
- * queue directly.
+ * Unlike the DETACHED_READY_TO_JOIN and DETACHED_BLOCKED cases, nothing holds
+ * peer3 detached past the re-eval: the deferred dump IS the pin, and the
+ * re-eval cancels it. The inline dump leaves peer3 with a materialized RIB-OUT
+ * at the group's RIB version and a registered detached consumer, so it drains
+ * and rejoins its own split group. That dump also delivers peer3's full
+ * re-evaluated set to its egress queue, so its on-wire delivery is verified by
+ * draining directly rather than via the JOINED_RUNNING-gated helper the other
+ * cases use.
  */
 TEST_P(
     SinglePeerPolicyReEvalE2ETest,
@@ -541,17 +545,19 @@ TEST_P(
   /*
    * The re-eval cancels peer3's deferred init dump and re-evaluates it inline
    * under the new policy, so peer3's RIB-OUT reflects append (all routes, the
-   * appended community on the i % 3 == 0 routes). Detached processing then
-   * drains the writable queue and rejoins the single-member target group.
+   * appended community on the i % 3 == 0 routes) and it stays healthy; the
+   * other peers stay on propagate-everything.
    */
   waitForRibOutAdvertisedCount(kPeerAddr3, kNumRoutes);
   expectRibOutForPolicy(kPeerAddr3, kMatchModifyAppendPolicyName, kNumRoutes);
   ASSERT_TRUE(waitForPeerState(kPeerAddr3, PeerUpdateState::JOINED_RUNNING));
   EXPECT_TRUE(isPeerInSync(kPeerAddr3));
+  EXPECT_NE(getPeerState(kPeerAddr3), PeerUpdateState::DOWN);
   /*
    * Wire: the inline re-eval dump delivers peer3's full re-evaluated set to its
-   * egress queue before rejoin, so draining captures every route with the
-   * appended community on the i % 3 == 0 routes.
+   * egress queue without waiting on a rejoin (not gated on JOINED_RUNNING), so
+   * draining captures every route with the appended community on the i % 3 == 0
+   * routes.
    */
   recordDrainedRoutes(subjectId);
   expectReceivedRoutesForPolicy(
@@ -562,11 +568,13 @@ TEST_P(
   }
 
   /*
-   * Clear the test defer after its scheduled dump was cancelled. This must not
-   * disturb the peer's already-converged target-group membership.
+   * Release the defer -- a no-op for the dump the re-eval already cancelled and
+   * ran inline -- and confirm peer3 converges back into its own split group as
+   * a normal in-sync member, with the other peers still in sync in theirs.
    */
   testOnlyDeferInitDump(kPeerAddr3, false);
   EXPECT_EQ(getPeerState(kPeerAddr3), PeerUpdateState::JOINED_RUNNING);
+  EXPECT_TRUE(waitForPeerState(kPeerAddr3, PeerUpdateState::JOINED_RUNNING));
   EXPECT_TRUE(isPeerInSync(kPeerAddr3));
   for (const auto& other : otherAddrs) {
     EXPECT_TRUE(isPeerInSync(other));

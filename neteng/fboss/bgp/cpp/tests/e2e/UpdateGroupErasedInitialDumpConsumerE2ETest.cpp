@@ -183,9 +183,11 @@ TEST_F(
   bringDownPeerAndWait(kPeerAddr5);
   ASSERT_TRUE(originalAcceptGroup.expired());
 
+  folly::Baton<> sourceCaptured;
   folly::Baton<> racePreconditionChecked;
   std::weak_ptr<AdjRibOutGroup> erasedSourceGroup;
   uint64_t erasedSourceGroupId{0};
+  bool sourceCaptureObserved{false};
   bool racePreconditionObserved{false};
   auto dummyPolicyResult =
       neteng::fboss::bgp::thrift::BgpPolicyChangeResult::INTERNAL_ERROR;
@@ -208,9 +210,10 @@ TEST_F(
   /*
    * The first gate lets the dummy-policy RPC queue its fleet reconciliation
    * behind the second gate. While that gate holds, the production session
-   * event and TAG-policy RPC are queued ahead of reconciliation. Processing
-   * the session event queues its initial dump after reconciliation, producing
-   * the required ordering without modifying production state from the test.
+   * event, the source-group capture and the TAG-policy RPC are queued in that
+   * order. Processing the session event creates the source group and queues
+   * its initial dump ahead of reconciliation, producing the required ordering
+   * without modifying production state from the test.
    */
   eventBase.runInEventBaseThread([firstGate, kGateTimeout] {
     firstGate->entered.post();
@@ -230,37 +233,73 @@ TEST_F(
   test::boundedBatonWait(secondGate->entered, "erased dump second gate");
 
   bringUpPeer(kPeerAddr5);
-  tagPolicyResult = setPeerPolicy(kPeerAddr5, kTagPolicyName);
+
+  /*
+   * Capture the source group BEFORE the TAG-policy RPC is issued. Applying the
+   * policy names and re-keying the groups is a single event-base item, so once
+   * reconciliation has run the peer already points at the target group and the
+   * source is gone from updateGroups_ -- there is no later point at which the
+   * source can still be found. Queuing this ahead of the RPC is what keeps a
+   * handle on it: the session event is queued first (creating the source
+   * group), this capture second, and the RPC enqueues its work before
+   * returning, so reconciliation is strictly third.
+   */
   eventBase.runInEventBaseThread([&]() {
     auto adjRib5 = getAdjRibByAddr(kPeerAddr5);
-    auto adjRib4 = getAdjRibByAddr(kPeerAddr4);
     auto sourceGroup = adjRib5 ? adjRib5->getUpdateGroup() : nullptr;
-    auto targetGroup = adjRib4 ? adjRib4->getUpdateGroup() : nullptr;
-    racePreconditionObserved = adjRib5 && sourceGroup && targetGroup &&
-        sourceGroup != targetGroup &&
+    sourceCaptureObserved = adjRib5 && sourceGroup &&
         sourceGroup->getState() == UpdateGroupState::UNINITIALIZED &&
         sourceGroup->getMemberCount() == 1 &&
         adjRib5->getPeerState() == PeerUpdateState::INIT &&
         sourceGroup->getGroupKey().egressPolicyName.value_or("") ==
             kAcceptPolicyName &&
-        targetGroup->getGroupKey().egressPolicyName.value_or("") ==
-            kTagPolicyName &&
-        adjRib5->getEgressPolicyName().value_or("") == kTagPolicyName &&
         !adjRib5->getChangeListConsumer() &&
-        !sourceGroup->getChangeListConsumer() &&
-        targetGroup->getChangeListConsumer();
+        !sourceGroup->getChangeListConsumer();
     erasedSourceGroup = sourceGroup;
     if (sourceGroup) {
       erasedSourceGroupId = sourceGroup->getGroupId();
     }
+    sourceCaptured.post();
+  });
+
+  tagPolicyResult = setPeerPolicy(kPeerAddr5, kTagPolicyName);
+
+  /*
+   * Post-reconciliation checkpoint. The peer has been moved to the TAG group
+   * and the source group has been erased from updateGroups_, but the source
+   * object is still alive: maybeDestroyUpdateGroups holds it in removedGroups
+   * and suspends on drainAsyncScope(), which is what lets this callback run
+   * before the group is destroyed. That suspension is the window in which the
+   * source group's queued initial dump could still register a consumer into an
+   * erased group -- the bug this test guards.
+   */
+  eventBase.runInEventBaseThread([&]() {
+    auto adjRib5 = getAdjRibByAddr(kPeerAddr5);
+    auto adjRib4 = getAdjRibByAddr(kPeerAddr4);
+    auto peerGroup = adjRib5 ? adjRib5->getUpdateGroup() : nullptr;
+    auto targetGroup = adjRib4 ? adjRib4->getUpdateGroup() : nullptr;
+    auto sourceGroup = erasedSourceGroup.lock();
+    racePreconditionObserved = adjRib5 && peerGroup && targetGroup &&
+        sourceGroup && sourceGroup != targetGroup && peerGroup == targetGroup &&
+        sourceGroup->getMemberCount() == 0 &&
+        adjRib5->getPeerState() == PeerUpdateState::DETACHED_INIT_DUMP &&
+        targetGroup->getGroupKey().egressPolicyName.value_or("") ==
+            kTagPolicyName &&
+        adjRib5->getEgressPolicyName().value_or("") == kTagPolicyName;
     racePreconditionChecked.post();
   });
   secondGate->release.post();
   secondGateGuard.dismiss();
   test::boundedBatonWait(secondGate->exited, "erased dump second gate exit");
+  test::boundedBatonWait(sourceCaptured, "erased dump source capture");
   test::boundedBatonWait(racePreconditionChecked, "erased dump precondition");
 
-  ASSERT_TRUE(racePreconditionObserved);
+  ASSERT_TRUE(sourceCaptureObserved)
+      << "reconnecting peer must own an uninitialized single-member source "
+         "group with the pre-update policy before reconciliation runs";
+  ASSERT_TRUE(racePreconditionObserved)
+      << "reconciliation must have moved the peer to the target group and "
+         "emptied the source while the peer's initial dump is still pending";
   ASSERT_EQ(
       neteng::fboss::bgp::thrift::BgpPolicyChangeResult::POLICIES_APPLIED,
       dummyPolicyResult);

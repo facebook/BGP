@@ -3767,6 +3767,14 @@ void PeerManagerBase::clearGoldenPrefixesPolicy() noexcept {
 
 void PeerManagerBase::updateIngressEgressPolicyNames(
     std::unique_ptr<PeerToPolicyMap> peerToPolicyNames) noexcept {
+  if (enableUpdateGroup_) {
+    asyncScope_.add(co_withExecutor(
+        &evb_,
+        updateIngressEgressPolicyNamesForUpdateGroups(
+            std::move(peerToPolicyNames))));
+    return;
+  }
+
   evb_.runInEventBaseThread([peerToPolicyNames = std::move(peerToPolicyNames),
                              this]() mutable {
     // Query current config version when executing (not when posting)
@@ -3830,6 +3838,93 @@ void PeerManagerBase::updateIngressEgressPolicyNames(
         processIngressAndEgressRouteFilterUpdate(
             ingressAffectedCount, egressAffectedCount)));
   });
+}
+
+folly::coro::Task<void>
+PeerManagerBase::updateIngressEgressPolicyNamesForUpdateGroups(
+    std::unique_ptr<PeerToPolicyMap> peerToPolicyNames) {
+  // Query current config version when executing (not when posting)
+  auto currentVersion = configManager_->getConfigVersion();
+
+  // Skip stale updates - if version hasn't changed since last applied,
+  // another update with newer config has already been processed
+  if (currentVersion <= lastAppliedPolicyVersion_) {
+    XLOGF(
+        INFO,
+        "Skipping stale policy update: config version {} <= last applied {}",
+        currentVersion,
+        lastAppliedPolicyVersion_);
+    co_return;
+  }
+
+  /*
+   * Apply both halves in one pass, before anything suspends, so no peer is
+   * ever left carrying one updated name and one stale one. Same loop and same
+   * per-peer helper as the non-update-group path.
+   */
+  size_t ingressAffectedCount = 0;
+  size_t egressAffectedCount = 0;
+  for (auto& [_, adjRib] : adjRibs_) {
+    auto [ingressChanged, egressChanged] =
+        updateIngressEgressPolicyNamesForAdjRib(adjRib, *peerToPolicyNames);
+
+    adjRib->setPendingIngressPolicyUpdate(ingressChanged);
+    adjRib->setPendingEgressPolicyUpdate(egressChanged);
+
+    if (adjRib->isPendingIngressPolicyUpdate()) {
+      ++ingressAffectedCount;
+    }
+    if (adjRib->isEgressPolicyUpdateRequired()) {
+      ++egressAffectedCount;
+    }
+  }
+  BgpStats::setIngressRoutingPolicyAffectedPeers(ingressAffectedCount);
+  BgpStats::setEgressRoutingPolicyAffectedPeers(egressAffectedCount);
+
+  /*
+   * Stamp once both halves are applied and before anything suspends: an update
+   * arriving while the re-evaluations are in flight is gated as stale rather
+   * than interleaving with them.
+   */
+  lastAppliedPolicyVersion_ = currentVersion;
+
+  if (ingressAffectedCount == 0 && egressAffectedCount == 0) {
+    XLOG(INFO, "Routing policy update: no adjRibs affected");
+    co_return;
+  }
+
+  /*
+   * Ingress is scheduled rather than awaited, as the non-update-group path
+   * does. Awaiting it would order nothing: the pass only enqueues onto
+   * ribInQ_, and the RIB recomputes and republishes on its own thread and
+   * batching interval well after either ordering has returned.
+   */
+  if (ingressAffectedCount > 0) {
+    XLOGF(
+        INFO,
+        "Routing policy update: {} ingress adjRibs",
+        ingressAffectedCount);
+    asyncScope_.add(co_withExecutor(
+        &evb_,
+        processIngressAndEgressRouteFilterUpdate(
+            ingressAffectedCount, /*egressAffectedCount=*/0)));
+  }
+
+  if (egressAffectedCount == 0) {
+    co_return;
+  }
+
+  XLOGF(INFO, "Routing policy update: {} egress adjRibs", egressAffectedCount);
+  /*
+   * Egress runs inline. Its effect -- unlike ingress -- is synchronous: it
+   * rebuilds the affected peers' update group keys and reconciles group
+   * membership and RIB-OUT directly, rather than issuing the per-peer
+   * RibDumpReqs the non-update-group path uses, which would corrupt the
+   * group's shared accounting. Nothing may run between the egress names
+   * landing above and that rekey, so it is awaited here; scheduling the
+   * ingress pass just above cannot intervene, since add() does not suspend.
+   */
+  co_await processUpdateGroupsEgressPolicyReevaluation();
 }
 
 std::tuple<bool, bool> PeerManagerBase::updateIngressEgressPolicyNamesForAdjRib(
@@ -4539,10 +4634,18 @@ void PeerManagerBase::processDetachedPeerEgressPolicyReEvaluation(
         adjRib->getPeerName());
     cancelRibDumpForAdjRib(adjRib);
   }
+  /*
+   * Gate on egressEoRsSent() rather than egressEoRsPending(): the latter only
+   * reports a debt the dump path already booked, and the dump cancelled above
+   * is what would have booked it, so absorbing the initial dump of a peer that
+   * has never dumped would silently drop its EoR. A peer that has not been
+   * sent an EoR for this session still owes one; passing sendWithEoR marks the
+   * pending flags in turn, via processRibOutAnnouncement.
+   */
   processRibDumpReq(
       adjRib,
       adjRib->sendAddPath(),
-      adjRib->egressEoRsPending() /* sendWithEoR */);
+      !adjRib->egressEoRsSent() /* sendWithEoR */);
 
   if (!adjRib->getChangeListConsumer()) {
     adjRib->registerDetachedConsumer(

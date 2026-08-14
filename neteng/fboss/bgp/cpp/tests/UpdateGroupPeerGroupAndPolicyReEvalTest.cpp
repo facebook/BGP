@@ -1963,10 +1963,9 @@ TEST_F(
    * Split peer 3 out onto policy 1 so a standing target group exists at that
    * key before the peer under test moves.
    */
-  disableAsyncEgressReEvalOnEvb(ctx);
   updatePeerEgressPolicyOnEvb(ctx, peer(3), kPolicy1);
-  markEgressPolicyUpdateRequiredOnEvb(ctx, {peer(3)});
-  runProcessUpdateGroupsEgressPolicyReevaluationOnEvb(ctx);
+  WITH_RETRIES(
+      { EXPECT_EVENTUALLY_TRUE(groupOf(ctx, peer(3)) != sourceGroup); });
 
   auto existingTarget = groupOf(ctx, peer(3));
   ASSERT_NE(existingTarget, sourceGroup);
@@ -1987,16 +1986,17 @@ TEST_F(
    * they target movePeers into it; peer 2 stays on policy 0 so the source group
    * survives.
    */
-  disableAsyncEgressReEvalOnEvb(ctx);
-  updatePeerEgressPolicyOnEvb(ctx, peer(0), kPolicy1);
-  updatePeerEgressPolicyOnEvb(ctx, peer(1), kPolicy1);
-  markEgressPolicyUpdateRequiredOnEvb(ctx, {peer(0), peer(1)});
-
   auto downGroupBefore = groupOf(ctx, peer(1));
   auto downKeyBefore = keyOf(ctx, peer(1));
   auto targetMembersBefore = existingTarget->getMemberCount();
 
-  runProcessUpdateGroupsEgressPolicyReevaluationOnEvb(ctx);
+  /*
+   * One update for both peers, so they are evaluated against the standing
+   * group together rather than one at a time.
+   */
+  updatePeersEgressPolicyOnEvb(ctx, {peer(0), peer(1)}, kPolicy1);
+  WITH_RETRIES(
+      { EXPECT_EVENTUALLY_EQ(groupOf(ctx, peer(0)), existingTarget); });
 
   // peer 0 (UP) was moved into the standing target group; peer 2 stayed behind.
   EXPECT_EQ(groupOf(ctx, peer(0)), existingTarget);
@@ -2061,18 +2061,16 @@ TEST_F(UpdateGroupsEgressReEvalTest, IgnoresDownPeerDuringEgressReevalRekey) {
   ASSERT_FALSE(isMemberOf(ctx, group, peer(1)));
   ASSERT_EQ(group->getMemberCount(), kN - 1);
 
-  // Every peer -- including the DOWN one -- gets the same egress policy change.
-  disableAsyncEgressReEvalOnEvb(ctx);
-  for (int i = 0; i < kN; ++i) {
-    updatePeerEgressPolicyOnEvb(ctx, peer(i), kPolicy1);
-  }
-  markEgressPolicyUpdateRequiredOnEvb(
-      ctx, {peer(0), peer(1), peer(2), peer(3)});
-
   auto downGroupBefore = groupOf(ctx, peer(1));
   auto downKeyBefore = keyOf(ctx, peer(1));
 
-  runProcessUpdateGroupsEgressPolicyReevaluationOnEvb(ctx);
+  /*
+   * Every peer -- including the DOWN one -- gets the same egress policy change,
+   * in one update so the live members diverge together. Applying the names
+   * drives the re-evaluation itself, so there is nothing to run by hand.
+   */
+  updatePeersEgressPolicyOnEvb(
+      ctx, {peer(0), peer(1), peer(2), peer(3)}, kPolicy1);
 
   /*
    * All 3 live members diverged together -> the group is rekeyed in place (same
@@ -3761,18 +3759,32 @@ TEST_F(UpdateGroupsEgressReEvalTest, SourceGroupNoSyncPeersIsRecoveredBySweep) {
       std::get<3>(clInfo));
   EXPECT_NE(std::get<1>(clInfo), std::get<3>(clInfo));
 
-  // --- Transition: three policy changes, reconciled by one reeval. ---
-  disableAsyncEgressReEvalOnEvb(ctx);
-  // P1,P2 (G1's joined peers) -> override to policy2: they join G2's key.
-  updatePeerEgressPolicyOnEvb(ctx, peer(0), kOverride);
-  updatePeerEgressPolicyOnEvb(ctx, peer(1), kOverride);
-  // P4,P5 -> override to policy1: a NEW group G3 (override stickiness keeps
-  // them out of G1's inheriting cohort even though the name matches).
-  updatePeerEgressPolicyOnEvb(ctx, peer(3), kInherited);
-  updatePeerEgressPolicyOnEvb(ctx, peer(4), kInherited);
-  // Peer-group policy -> policy2: only P3 (the sole override=false peer) is
-  // affected -> a NEW group G4.
-  updatePeerGroupEgressPolicyOnEvb(ctx, kPg, kOverride);
+  /*
+   * --- Transition: three policy changes, reconciled by one reeval. ---
+   *
+   * All three are staged into the config and then applied as a single update,
+   * because applying the policy names is what drives the re-evaluation: doing
+   * them one at a time would reconcile after each, and the peers would move
+   * separately instead of being reconciled together.
+   *
+   * P1,P2 (G1's joined peers) -> override to policy2: they join G2's key.
+   * P4,P5 -> override to policy1: a NEW group G3 (override stickiness keeps
+   * them out of G1's inheriting cohort even though the name matches).
+   * Peer-group policy -> policy2: only P3 (the sole override=false peer) is
+   * affected -> a NEW group G4.
+   */
+  std::map<std::string, std::map<bgp_policy::DIRECTION, std::string>>
+      peersPolicy;
+  peersPolicy[peer(0).peerAddr.str()][bgp_policy::DIRECTION::OUT] = kOverride;
+  peersPolicy[peer(1).peerAddr.str()][bgp_policy::DIRECTION::OUT] = kOverride;
+  peersPolicy[peer(3).peerAddr.str()][bgp_policy::DIRECTION::OUT] = kInherited;
+  peersPolicy[peer(4).peerAddr.str()][bgp_policy::DIRECTION::OUT] = kInherited;
+  ctx.configMgr->updatePeerPolicies(peersPolicy);
+
+  std::map<std::string, std::map<bgp_policy::DIRECTION, std::string>>
+      peerGroupsPolicy;
+  peerGroupsPolicy[kPg][bgp_policy::DIRECTION::OUT] = kOverride;
+  auto newConfig = ctx.configMgr->updatePeerGroupPolicies(peerGroupsPolicy);
 
   /*
    * P1 is the only G2-bound peer whose queue was never shrunk, so on the move
@@ -3792,12 +3804,15 @@ TEST_F(UpdateGroupsEgressReEvalTest, SourceGroupNoSyncPeersIsRecoveredBySweep) {
         kFillQueueLowWm);
   }).get();
 
-  std::vector<BgpPeerId> allPeers;
-  for (int i = 0; i < 6; ++i) {
-    allPeers.push_back(peer(i));
-  }
-  markEgressPolicyUpdateRequiredOnEvb(ctx, allPeers);
-  runProcessUpdateGroupsEgressPolicyReevaluationOnEvb(ctx);
+  /*
+   * Apply the staged config now that P1's queue is shrunk, so the single
+   * re-evaluation this kicks off sees the blocking queue size.
+   */
+  applyResolvedPeerPolicies(
+      ctx, newConfig, [](const folly::IPAddress&, const BgpPeerConfig&) {
+        return true;
+      });
+  flushEventBase(ctx);
 
   // G3 = {P4, P5}, {PG1, policy1, override=true}. Split into a fresh group,
   // which preserves the joined state, so both stay in-sync.
