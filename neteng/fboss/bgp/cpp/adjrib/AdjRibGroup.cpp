@@ -508,8 +508,13 @@ void AdjRibOutGroup::createChangeListConsumeTimer() noexcept {
     if (hasEntrySharingPeers()) {
       scheduleChangeListConsumeTimer();
     }
-    /* Trigger message building if route updates or EoRs are pending. */
-    if (state_ == UpdateGroupState::READY || state_ == UpdateGroupState::IDLE) {
+    /*
+     * Trigger message building if route updates or EoRs are pending. The group
+     * state does not gate this; packingInProgress_ does, so an in-flight
+     * buildAndSendGroupBgpMessages is neither duplicated nor reported as
+     * drained.
+     */
+    if (!packingInProgress_) {
       if (hasPendingMessages()) {
         state_ = UpdateGroupState::WAITING;
         asyncScope_.add(
@@ -1926,31 +1931,24 @@ AdjRibOutGroup::buildAndSendGroupBgpMessages() noexcept {
    * RAII guard to ensure cleanup even if exception occurs:
    * 1. Clear packingInProgress_ flag
    * 2. Reschedule changeListConsumeTimer_
-   * 3. Transition group to IDLE if packing list is empty, READY if not.
+   * 3. Transition group to IDLE if packing list is empty, WAITING if not.
    * 4. Check and accept all ready to join peers.
    */
   auto guard = folly::makeGuard([this]() {
     packingInProgress_ = false;
 
     /*
-     * Transition to IDLE and rejoin detached peers if packing list is now
-     * empty, otherwise transition to READY.
-     *
      * A non-empty packing list means work was appended while this
      * builder was suspended -- an in-place policy re-evaluation during the
      * EoR wait, for instance. This is because policy re-evaluation must
-     * happen inline and cannot check for the packingInProgress_ flag.
-     *
-     * The group is in WAITING state when it enters this coro. However,
-     * if we fail to transition to IDLE or READY,
-     * leaving it WAITING would gate the consume timer's build
-     * trigger, which only fires for READY or IDLE, and strand that work until
-     * an unrelated change item happened to move the group out of WAITING.
+     * happen inline and cannot check for the packingInProgress_ flag. That
+     * work is still pending, so the group stays WAITING and the consume timer
+     * picks it up.
      */
     if (attrToPrefixMap_.empty()) {
       tryRejoinDetachedPeersOnAllChangesProcessed();
     } else {
-      state_ = UpdateGroupState::READY;
+      state_ = UpdateGroupState::WAITING;
     }
 
     /* Keep advancing while a SYNC peer or a sharing DSP needs the group. */
@@ -3251,24 +3249,7 @@ void AdjRibOutGroup::copyGroupFieldsToNewGroup(
       changeListTracker_, *addPathConsumerBitmap_, *nonAddPathConsumerBitmap_);
   /* The scheduling latch is object-local: a task queued on this source group
    * cannot service newGroup. */
-  /*
-   * Don't inherit the source's state: WAITING means a build coroutine is
-   * running on the source, but none runs for newGroup, so inheriting it would
-   * wedge newGroup (its consume timer only builds when READY/IDLE). newGroup
-   * has a non-empty packing list and no builder -- that is READY.
-   *
-   * UNINITIALIZED is the one state that must carry over. It means the source
-   * has not run its initial dump yet, so newGroup inherits an empty packing
-   * list and peers still in PeerUpdateState::INIT. scheduleInitialDump() only
-   * runs for an UNINITIALIZED group, and the dump it starts is the only code
-   * that moves those peers to JOINED_RUNNING and arms the egress EoR flags --
-   * so forcing READY here would leave them advertised nothing, with an EoR
-   * that never comes, for the life of the session.
-   */
-  newGroup->setState(
-      state_ == UpdateGroupState::UNINITIALIZED
-          ? UpdateGroupState::UNINITIALIZED
-          : UpdateGroupState::READY);
+  newGroup->setState(state_);
   newGroup->setLastSeenRibVersion(lastSeenRibVersion_);
   newGroup->peeringParams_ = peeringParams_;
   newGroup->mraiInterval_ = mraiInterval_;

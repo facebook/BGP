@@ -615,6 +615,14 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   bool hasPendingMessages() const noexcept;
 
   /*
+   * Return whether a buildAndSendGroupBgpMessages invocation currently owns
+   * the group. This, not the group state, is what keeps a second one out.
+   */
+  bool isPackingInProgress() const noexcept {
+    return packingInProgress_;
+  }
+
+  /*
    * Mark every currently in-sync peer as owing each AFI negotiated by the
    * group. The per-peer EGRESS_EOR_PENDING flags are the single source of
    * truth for what each peer still owes.
