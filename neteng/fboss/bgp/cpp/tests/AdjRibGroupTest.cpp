@@ -20,7 +20,9 @@
   FRIEND_TEST(                                                                \
       AdjRibGroupDistributionFixture, CommittedUpdateCountDoesNotCrossClear); \
   FRIEND_TEST(                                                                \
-      AdjRibGroupDistributionFixture, CommittedEorCountDoesNotCrossClear);
+      AdjRibGroupDistributionFixture, CommittedEorCountDoesNotCrossClear);    \
+  FRIEND_TEST(                                                                \
+      AdjRibGroupTest, ClearEgressPrefixCountsPreservesCumulativeUpdateCount);
 
 #define AdjRibOutGroup_TEST_FRIENDS                                                  \
   friend class AdjRibGroupTest;                                                      \
@@ -194,6 +196,30 @@ TEST_F(AdjRibGroupTest, BasicConstruction) {
 
   EXPECT_EQ(adjRibOutGroup_->getAdjRibGroupName(), "test_group");
   EXPECT_EQ(adjRibOutGroup_->getGroupId(), 42);
+}
+
+TEST_F(AdjRibGroupTest, ClearEgressPrefixCountsPreservesCumulativeUpdateCount) {
+  auto adjRib = createMinimalAdjRib();
+  adjRib->incrementPreOutPrefixCount(/*isIpv4=*/true);
+  adjRib->incrementPostOutPrefixCount(/*isIpv4=*/true);
+  adjRib->incrementSentUpdateMsgs(3);
+  adjRib->stats_.incrementSentAnnouncementsIpv4();
+  adjRib->stats_.incrementSentAnnouncementsIpv6();
+  adjRib->stats_.incrementSentWithdrawals();
+
+  EXPECT_EQ(3, adjRib->getStats().getSentUpdateMsgs());
+  EXPECT_EQ(1, adjRib->getStats().getSentAnnouncementsIpv4());
+  EXPECT_EQ(1, adjRib->getStats().getSentAnnouncementsIpv6());
+  EXPECT_EQ(1, adjRib->getStats().getSentWithdrawals());
+
+  adjRib->clearEgressPrefixCounts();
+
+  EXPECT_EQ(0, adjRib->getStats().getPreOutPrefixCount());
+  EXPECT_EQ(0, adjRib->getStats().getPostOutPrefixCount());
+  EXPECT_EQ(3, adjRib->getStats().getSentUpdateMsgs());
+  EXPECT_EQ(1, adjRib->getStats().getSentAnnouncementsIpv4());
+  EXPECT_EQ(1, adjRib->getStats().getSentAnnouncementsIpv6());
+  EXPECT_EQ(1, adjRib->getStats().getSentWithdrawals());
 }
 
 /**
@@ -2290,13 +2316,12 @@ TEST_F(AdjRibGroupPackingFixture, BuildAndSendGroupBgpMessages_MixedMessages) {
   EXPECT_TRUE(adjRibOutGroup_->getAttrToPrefixMap().empty());
 
   // Group-level control-plane count: 2 UPDATE PDUs generated (1 announcement +
-  // 1 withdrawal). This is attributed to in-sync member peers in
-  // getSessionInfo.
+  // 1 withdrawal).
   EXPECT_EQ(2, adjRibOutGroup_->getStats().getSentUpdateMsgs());
   // EoR is a distinct PDU; a pure UPDATE flow must not touch the EoR counter.
   EXPECT_EQ(0, adjRibOutGroup_->getStats().getSentEndOfRibMsgs());
   // Announcement/withdrawal PDUs are tracked per-AFI on the group (1 IPv4
-  // announcement + 1 IPv4 withdrawal here) and attributed to in-sync members.
+  // announcement + 1 IPv4 withdrawal here).
   EXPECT_EQ(1, adjRibOutGroup_->getStats().getSentAnnouncementsIpv4());
   EXPECT_EQ(0, adjRibOutGroup_->getStats().getSentAnnouncementsIpv6());
   EXPECT_EQ(1, adjRibOutGroup_->getStats().getSentWithdrawals());
@@ -2305,9 +2330,7 @@ TEST_F(AdjRibGroupPackingFixture, BuildAndSendGroupBgpMessages_MixedMessages) {
 /**
  * Test: the group tracks announcement PDUs per AFI and withdrawal PDUs,
  * mirroring the per-peer AdjRibOut counters. An in-sync group builds each
- * UPDATE once, so these group counters (not the members' zeroed per-peer
- * counters) are the source of truth surfaced by `show bgp update-group` and
- * attributed to in-sync members.
+ * UPDATE once, so these counters remain available as group diagnostics.
  */
 TEST_F(
     AdjRibGroupPackingFixture,

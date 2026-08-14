@@ -2052,9 +2052,8 @@ AdjRibOutGroup::buildAndSendGroupBgpMessages() noexcept {
             update->v4Announced2()->size();
 
         /* Group-level count of announcement UPDATE PDUs generated once for this
-         * group, per AFI (one bump per PDU, mirroring the per-peer AdjRibOut
-         * sites). In-sync members' per-peer counters stay 0; getSessionInfo /
-         * getUpdateGroupInfo attribute these to the group's members. */
+         * group, per AFI. Per-peer total UPDATE counts are recorded when each
+         * queue push resolves. */
         if (afi == nettools::bgplib::BgpUpdateAfi::AFI_IPv4) {
           stats_.incrementSentAnnouncementsIpv4();
           /* Legacy classic-NLRI v4 announcements land in v4Announced2. */
@@ -2313,8 +2312,23 @@ folly::coro::Task<void> AdjRibOutGroup::distributeMessageToInSyncPeers(
       }
     }
 
-    // Try to push to this peer
-    auto result = tryPushToPeer(peerMessage, adjRib, bitPos);
+    /* deferredPushToPeer owns a shared_ptr to the peer until this callback
+     * runs, so the hot distribution path can avoid another shared_ptr copy. */
+    auto* peer = adjRib.get();
+    auto result = tryPushToPeer(
+        peerMessage,
+        adjRib,
+        bitPos,
+        [peer, afi, isAnnouncement = postOutAttrs != nullptr]() noexcept {
+          peer->incrementSentUpdateMsgs();
+          if (!isAnnouncement) {
+            peer->incrementSentWithdrawals();
+          } else if (afi == nettools::bgplib::BgpUpdateAfi::AFI_IPv4) {
+            peer->incrementSentAnnouncementsIpv4();
+          } else if (afi == nettools::bgplib::BgpUpdateAfi::AFI_IPv6) {
+            peer->incrementSentAnnouncementsIpv6();
+          }
+        });
 
     if (result == PushResult::PUSH_OK) {
       pushOkCount++;
@@ -2357,8 +2371,9 @@ folly::coro::Task<void> AdjRibOutGroup::distributeMessageToInSyncPeers(
  * If blocked, schedules a deferred push coroutine and returns PUSH_PENDING.
  *
  * onResolved (optional) runs once when the message resolves into the peer's
- * queue (inline, deferred, or no-queue); not run on PUSH_FAILED. Empty for
- * route distribution; the EoR phase supplies one to finalize the peer's EoR.
+ * queue (inline or deferred); not run on PUSH_FAILED. Route distribution uses
+ * it for per-peer UPDATE accounting; the EoR phase uses it to finalize the
+ * peer's EoR.
  *
  * @param  message - Message to push (InputMessageT variant)
  * @param  adjRib - Peer's AdjRib

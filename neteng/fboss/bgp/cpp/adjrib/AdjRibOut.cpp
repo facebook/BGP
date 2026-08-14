@@ -527,8 +527,10 @@ void AdjRib::onEgressEoRSent() noexcept {
  * egress queue. The group's EoR push supplies this as the onResolved
  * continuation to tryPushToPeer, so it runs on immediate push or from
  * deferredPushToPeer for a backpressured peer. The continuation carries the
- * AFI, so clear exactly this AFI's EGRESS_EOR_PENDING flag, increment this
- * peer's sent-EoR count, then fire the one-time bookkeeping if no AFI's EoR is
+ * AFI, so record the committed PDU, clear exactly this AFI's
+ * EGRESS_EOR_PENDING flag, increment this
+ * peer's sent-EoR count, then fire the one-time bookkeeping if no AFI's EoR
+ * is
  * still pending (this was the last).
  *
  * Only AFI_IPv4 and AFI_IPv6 carry egress EoR state. Match each AFI explicitly

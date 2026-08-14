@@ -36,12 +36,15 @@ namespace facebook::bgp {
 namespace {
 
 constexpr auto kRoute = "60.0.0.0/8";
+constexpr auto kPostJoinRoute = "61.0.0.0/8";
+constexpr auto kPostJoinV6Route = "2001:db8:61::/64";
 
 class UpdateGroupPeerPduCounterE2ETest : public E2ESessionTestFixture {
  protected:
   struct PduCounts {
     uint64_t updates{0};
     uint64_t announcementsV4{0};
+    uint64_t announcementsV6{0};
     uint64_t withdrawals{0};
   };
 
@@ -51,6 +54,7 @@ class UpdateGroupPeerPduCounterE2ETest : public E2ESessionTestFixture {
     int64_t sentUpdates{0};
     int64_t adjRibSentUpdates{0};
     int64_t announcementsV4{0};
+    int64_t announcementsV6{0};
     int64_t withdrawals{0};
   };
 
@@ -130,6 +134,17 @@ TEST_F(
   ASSERT_TRUE(waitForEoR(peer3));
   ASSERT_TRUE(waitForEoR(peer3));
 
+  ASSERT_TRUE(waitForPeerManagerCondition([&]() {
+    auto source = getAdjRibByAddr(kPeerAddr3);
+    return source && source->getPeerState() == PeerUpdateState::JOINED_RUNNING;
+  }));
+  uint64_t joinedPeerEoRs{0};
+  peerManager_->getEventBase().runInEventBaseThreadAndWait([&]() {
+    joinedPeerEoRs =
+        getAdjRibByAddr(kPeerAddr3)->getStats().getSentEndOfRibMsgs();
+  });
+  ASSERT_EQ(2, joinedPeerEoRs);
+
   injectLocalRoutesAtRuntime({kRoute});
   ASSERT_TRUE(waitForRouteInShadowRib(folly::IPAddress::createNetwork(kRoute)));
   ASSERT_TRUE(drainAndFindRouteAdvertised(
@@ -178,6 +193,7 @@ TEST_F(
     peerCounts = {
         .updates = peerStats.getSentUpdateMsgs(),
         .announcementsV4 = peerStats.getSentAnnouncementsIpv4(),
+        .announcementsV6 = peerStats.getSentAnnouncementsIpv6(),
         .withdrawals = peerStats.getSentWithdrawals(),
     };
 
@@ -185,6 +201,7 @@ TEST_F(
     groupCounts = {
         .updates = groupStats.getSentUpdateMsgs(),
         .announcementsV4 = groupStats.getSentAnnouncementsIpv4(),
+        .announcementsV6 = groupStats.getSentAnnouncementsIpv6(),
         .withdrawals = groupStats.getSentWithdrawals(),
     };
     countsRead = true;
@@ -206,29 +223,94 @@ TEST_F(
       std::make_shared<nettools::bgplib::BgpPeerDisplayInfo>(
           peerState->second.displayInfo));
 
-  ApiPduCounts apiCounts;
-  peerManager_->getEventBase().runInEventBaseThreadAndWait([&]() {
-    const auto sessions = peerManager_->getDetailSessionInfos(peerInfoMap);
-    apiCounts.sessionCount = sessions.size();
-    if (sessions.size() != 1 || !sessions.front().details().has_value()) {
-      return;
-    }
-    const auto& session = sessions.front();
-    const auto& details = session.details().value();
-    apiCounts.detailsPresent = true;
-    apiCounts.sentUpdates = session.sent_update_msgs().value();
-    apiCounts.adjRibSentUpdates = details.adjrib_sent_update_msgs().value();
-    apiCounts.announcementsV4 =
-        details.sent_update_announcements_ipv4().value();
-    apiCounts.withdrawals = details.sent_update_withdrawals().value();
-  });
+  auto readApiPduCounts = [&]() {
+    ApiPduCounts counts;
+    peerManager_->getEventBase().runInEventBaseThreadAndWait([&]() {
+      const auto sessions = peerManager_->getDetailSessionInfos(peerInfoMap);
+      counts.sessionCount = sessions.size();
+      if (sessions.size() != 1 || !sessions.front().details().has_value()) {
+        return;
+      }
+      const auto& session = sessions.front();
+      const auto& details = session.details().value();
+      counts.detailsPresent = true;
+      counts.sentUpdates = session.sent_update_msgs().value();
+      counts.adjRibSentUpdates = details.adjrib_sent_update_msgs().value();
+      counts.announcementsV4 = details.sent_update_announcements_ipv4().value();
+      counts.announcementsV6 = details.sent_update_announcements_ipv6().value();
+      counts.withdrawals = details.sent_update_withdrawals().value();
+    });
+    return counts;
+  };
 
-  ASSERT_EQ(1, apiCounts.sessionCount);
-  ASSERT_TRUE(apiCounts.detailsPresent);
-  EXPECT_EQ(peerCounts.updates, apiCounts.sentUpdates);
-  EXPECT_EQ(peerCounts.updates, apiCounts.adjRibSentUpdates);
-  EXPECT_EQ(peerCounts.announcementsV4, apiCounts.announcementsV4);
-  EXPECT_EQ(peerCounts.withdrawals, apiCounts.withdrawals);
+  const auto preJoinApiCounts = readApiPduCounts();
+  ASSERT_EQ(1, preJoinApiCounts.sessionCount);
+  ASSERT_TRUE(preJoinApiCounts.detailsPresent);
+  EXPECT_EQ(peerCounts.updates, preJoinApiCounts.sentUpdates);
+  EXPECT_EQ(peerCounts.updates, preJoinApiCounts.adjRibSentUpdates);
+  EXPECT_EQ(peerCounts.announcementsV4, preJoinApiCounts.announcementsV4);
+  EXPECT_EQ(peerCounts.announcementsV6, preJoinApiCounts.announcementsV6);
+  EXPECT_EQ(peerCounts.withdrawals, preJoinApiCounts.withdrawals);
+
+  injectLocalRoutesAtRuntime({kPostJoinRoute});
+  ASSERT_TRUE(
+      waitForRouteInShadowRib(folly::IPAddress::createNetwork(kPostJoinRoute)));
+  ASSERT_TRUE(drainAndFindRouteAdvertised(
+      "v4", "61.0.0.0", 8, kPeerAddr3, kNextHopV4_3.str()));
+  ASSERT_TRUE(drainAndFindRouteAdvertised(
+      "v4", "61.0.0.0", 8, kPeerAddr4, kNextHopV4_4.str()));
+
+  injectLocalRoutesAtRuntime({kPostJoinV6Route});
+  ASSERT_TRUE(waitForRouteInShadowRib(
+      folly::IPAddress::createNetwork(kPostJoinV6Route)));
+  ASSERT_TRUE(drainAndFindRouteAdvertised(
+      "v6", "2001:db8:61::", 64, kPeerAddr3, kNextHopV6_3.str()));
+  ASSERT_TRUE(drainAndFindRouteAdvertised(
+      "v6", "2001:db8:61::", 64, kPeerAddr4, kNextHopV6_4.str()));
+
+  withdrawLocalRoutesAtRuntime({kPostJoinRoute});
+  ASSERT_TRUE(verifyRouteWithdraws(
+      "v4", kPeerAddr3, {{.prefix = "61.0.0.0", .prefixLen = 8}}));
+  ASSERT_TRUE(verifyRouteWithdraws(
+      "v4", kPeerAddr4, {{.prefix = "61.0.0.0", .prefixLen = 8}}));
+  ASSERT_TRUE(verifyRouteNotInShadowRib(
+      folly::IPAddress::createNetwork(kPostJoinRoute)));
+
+  withdrawLocalRoutesAtRuntime({kPostJoinV6Route});
+  ASSERT_TRUE(verifyRouteWithdraws(
+      "v6", kPeerAddr3, {{.prefix = "2001:db8:61::", .prefixLen = 64}}));
+  ASSERT_TRUE(verifyRouteWithdraws(
+      "v6", kPeerAddr4, {{.prefix = "2001:db8:61::", .prefixLen = 64}}));
+  ASSERT_TRUE(verifyRouteNotInShadowRib(
+      folly::IPAddress::createNetwork(kPostJoinV6Route)));
+
+  PduCounts postJoinPeerCounts;
+  peerManager_->getEventBase().runInEventBaseThreadAndWait([&]() {
+    if (auto latePeer = getAdjRibByAddr(kPeerAddr4)) {
+      const auto& stats = latePeer->getStats();
+      postJoinPeerCounts = {
+          .updates = stats.getSentUpdateMsgs(),
+          .announcementsV4 = stats.getSentAnnouncementsIpv4(),
+          .announcementsV6 = stats.getSentAnnouncementsIpv6(),
+          .withdrawals = stats.getSentWithdrawals(),
+      };
+    }
+  });
+  ASSERT_EQ(peerCounts.updates + 4, postJoinPeerCounts.updates);
+  ASSERT_EQ(peerCounts.announcementsV4 + 1, postJoinPeerCounts.announcementsV4);
+  ASSERT_EQ(peerCounts.announcementsV6 + 1, postJoinPeerCounts.announcementsV6);
+  ASSERT_EQ(peerCounts.withdrawals + 2, postJoinPeerCounts.withdrawals);
+
+  const auto postJoinApiCounts = readApiPduCounts();
+  ASSERT_EQ(1, postJoinApiCounts.sessionCount);
+  ASSERT_TRUE(postJoinApiCounts.detailsPresent);
+  EXPECT_EQ(postJoinPeerCounts.updates, postJoinApiCounts.sentUpdates);
+  EXPECT_EQ(postJoinPeerCounts.updates, postJoinApiCounts.adjRibSentUpdates);
+  EXPECT_EQ(
+      postJoinPeerCounts.announcementsV4, postJoinApiCounts.announcementsV4);
+  EXPECT_EQ(
+      postJoinPeerCounts.announcementsV6, postJoinApiCounts.announcementsV6);
+  EXPECT_EQ(postJoinPeerCounts.withdrawals, postJoinApiCounts.withdrawals);
 }
 
 } // namespace
