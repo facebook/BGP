@@ -1044,6 +1044,16 @@ BgpServiceDC::co_setCrfPolicyFromFile() {
     co_return ret;
   }
 
+  validateUpdateGroupRouteFilterPolicy(validationResult, *policy, *config);
+  if (!*validationResult.success()) {
+    XLOGF(ERR, "[CRF] {}", *validationResult.err());
+    BgpStatsDC::incrCrfPolicyAppliedFailure();
+    auto ret = std::make_unique<TResult>();
+    ret->success() = false;
+    ret->err() = *validationResult.err();
+    co_return ret;
+  }
+
   bool wasFileModeActive = ribDC_.isCrfFileModeEnabled();
   ribDC_.setCrfFileModeEnabled(true);
   continueExecution(false);

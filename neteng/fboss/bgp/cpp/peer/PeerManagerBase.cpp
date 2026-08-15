@@ -1415,9 +1415,6 @@ PeerManagerBase::handleBufferedRibDumpsForDetachedPeers() {
    * and never served. Peers still buffered when that happens are picked up by
    * the next maybeBufferRibDumpReq.
    *
-   * Mirrors the clearFlagGuard on egressPolicyUpdateForUpdateGroupsScheduled_
-   * in processUpdateGroupsEgressPolicyReevaluation, which guards the same
-   * flag-gated-rescheduling pattern.
    */
   auto clearScheduledGuard =
       folly::makeGuard([this]() noexcept { handleRibDumpsScheduled_ = false; });
@@ -3642,12 +3639,9 @@ void PeerManagerBase::applyRouteFilterPolicy(
      * These flags will be cleared after policy re-evaluation:
      * - Ingress flag: cleared in processAdjRibReEvaluationTask() after
      *  calling adjRib->processAdjRibReEvaluation()
-     * - Egress flag: for non-update-group, cleared in
-     *  processRibDumpReqForEgressPolicyUpdate() after the per-peer dump
-     *  completes. For update-group, cleared once the scheduled rib dump
-     *  completes in processRibDumpReqWithCancellationCoro(), and
-     *  processGroupEgressPolicyReEvaluation() additionally clears it for
-     *  in-sync peers served by the group walk rather than a per-peer dump.
+     * - Egress flag: cleared in
+     *  processRibDumpReqForEgressPolicyUpdate() after a per-peer dump, or by
+     *  the update-group policy re-evaluation for in-sync peers.
      *
      */
 
@@ -3712,16 +3706,12 @@ void PeerManagerBase::setRouteFilterPolicy(
  *   - routeFilterPolicy_ is left intact.
  *
  * Update-group case:
- *   - Route through applyRouteFilterPolicy (directly, since we are already on
- *     the evb thread) to use the update-group-aware re-eval instead of a raw
- *     per-peer rib dump, which would corrupt the group's shared accounting.
- *     applyGoldenPrefixPolicy=false so this only clears route filters and, like
- *     the non-update-group case, leaves the golden prefix policy untouched.
+ *   - Route through applyRouteFilterPolicy to re-evaluate ingress filters.
+ *     Egress route filters are unsupported and require no group re-evaluation.
+ *     applyGoldenPrefixPolicy=false so this only clears route filters.
  *
  * Difference:
  *   - Non-UG: any clear issues a rib dump.
- *   - UG: a rib dump / group egress re-eval runs only when an egress filter is
- *     cleared; an ingress-only clear runs just the ingress re-eval, no dump.
  *   - Non-UG leaves the global routeFilterPolicy_ intact; UG nulls it, so the
  *     clear persists for peers that connect afterwards.
  */
@@ -4260,9 +4250,9 @@ folly::coro::Task<void>
 PeerManagerBase::processUpdateGroupsEgressPolicyReevaluation() {
   /*
    * Clear the scheduled flag if cancellation is requested or steps 1 and 2 (the
-   * key rebuild and group membership changes) throw -- leaving it set would
-   * make handleEgressPolicyUpdate reject all future re-evaluations. Dismissed
-   * once those steps complete so it does not fire on the normal path.
+   * key rebuild and group membership changes) throw, so completion observers
+   * do not wait indefinitely. Dismissed once those steps complete so it does
+   * not fire on the normal path.
    */
   auto clearFlagGuard = folly::makeGuard([this]() noexcept {
     egressPolicyUpdateForUpdateGroupsScheduled_ = false;
@@ -4555,24 +4545,6 @@ PeerManagerBase::processUpdateGroupsEgressPolicyReevaluation() {
   co_return;
 }
 
-void PeerManagerBase::handleEgressPolicyUpdate() {
-  if (enableUpdateGroup_) {
-    /*
-     * egressPolicyUpdateForUpdateGroupsScheduled_ stays true while a
-     * re-evaluation is scheduled or in flight on asyncScope_, so concurrent
-     * policy updates don't double-schedule. The coro clears the flag on
-     * completion.
-     */
-    if (!egressPolicyUpdateForUpdateGroupsScheduled_) {
-      egressPolicyUpdateForUpdateGroupsScheduled_ = true;
-      asyncScope_.add(co_withExecutor(
-          &evb_, processUpdateGroupsEgressPolicyReevaluation()));
-    }
-  } else {
-    schedulePolicyReEvalForAdjRibs();
-  }
-}
-
 void PeerManagerBase::distributeRibOutAnnouncementToAdjRibs(
     const RibOutAnnouncement& announcement) {
   auto ribMsg = std::make_shared<const RibOutMessage>(announcement);
@@ -4772,18 +4744,11 @@ PeerManagerBase::processIngressAndEgressRouteFilterUpdate(
         "Handling egress policy update for {} egress affected adjribs",
         egressAffectedCount);
 
-    /*
-     * Only the non-update-group path actually sends RibDumpReqs; with update
-     * groups enabled we schedule egress policy re-evaluation instead.
-     */
-    if (!enableUpdateGroup_) {
-      XLOGF(
-          INFO,
-          "Sending RibDumpReq for {} egress affected adjribs",
-          egressAffectedCount);
-    }
-
-    handleEgressPolicyUpdate();
+    XLOGF(
+        INFO,
+        "Sending RibDumpReq for {} egress affected adjribs",
+        egressAffectedCount);
+    schedulePolicyReEvalForAdjRibs();
   }
 
   co_return;

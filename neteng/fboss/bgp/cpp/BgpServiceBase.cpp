@@ -2086,6 +2086,15 @@ BgpServiceBase::co_setRouteFilterPolicy(
     co_return ret;
   }
 
+  validateUpdateGroupRouteFilterPolicy(validationResult, *policy, *config);
+  if (!*validationResult.success()) {
+    XLOGF(ERR, "{}", *validationResult.err());
+    auto ret = std::make_unique<TResult>();
+    ret->success() = false;
+    ret->err() = *validationResult.err();
+    co_return ret;
+  }
+
   continueExecution(false);
   SCOPE_EXIT {
     decrRequestsInExecution();
@@ -2445,7 +2454,7 @@ BgpServiceBase::co_getUpdateGroupInfo(
     auto response = std::make_unique<TGetUpdateGroupInfoResponse>();
     response->update_groups() = std::move(result.value());
     response->enable_update_group() =
-        configManager_->getConfig()->getBgpGlobalConfig()->enableUpdateGroup;
+        configManager_->getConfig()->isUpdateGroupEnabled();
     co_return response;
   }
 

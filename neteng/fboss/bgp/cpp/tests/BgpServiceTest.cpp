@@ -175,6 +175,25 @@ class BgpServiceNullPtrTestFixture : public BgpServiceTestFixture {
   TBgpAfi afi_{0};
 };
 
+class BgpServiceUpdateGroupRouteFilterTestFixture
+    : public BgpServiceTestFixture {
+ private:
+  std::shared_ptr<Config> createConfig() override {
+    thrift::BgpConfig thriftConfig;
+    thriftConfig.router_id() = kLocalAddr1.str();
+    thriftConfig.local_as() = kAsn1;
+    thriftConfig.hold_time() = kHoldTime.count();
+    thriftConfig.graceful_restart_convergence_seconds() =
+        kGrRestartTime.count();
+    thriftConfig.listen_addr() = kLocalAddr1.str();
+    thriftConfig.eor_time_s() = 45;
+    thrift::BgpSettingConfig settings;
+    settings.enable_update_group() = true;
+    thriftConfig.bgp_setting_config() = std::move(settings);
+    return std::make_shared<Config>(std::move(thriftConfig));
+  }
+};
+
 class BgpServiceBaseNullPtrTestFixture : public BgpServiceTestFixture {
  public:
   void SetUp() override {
@@ -420,6 +439,38 @@ CO_TEST_F(BgpServiceNullPtrTestFixture, SetRouteFilterPolicyNullPtrTest) {
   EXPECT_THAT(
       std::move(logHandler_->getMessageValues()),
       Contains(ContainsRegex(kExitNullPtrLogPrefix)));
+}
+
+CO_TEST_F(
+    BgpServiceUpdateGroupRouteFilterTestFixture,
+    SetRouteFilterPolicyRejectsEgressFilter) {
+  rib_policy::TRouteFilterPolicy policy;
+  policy.statements()->emplace(
+      ".*", createTRouteFilterStatement({kV4Prefix1}, false, true));
+
+  auto result = co_await service_->co_setRouteFilterPolicy(
+      std::make_unique<rib_policy::TRouteFilterPolicy>(std::move(policy)));
+
+  EXPECT_FALSE(*result->success());
+  EXPECT_THAT(
+      *result->err(),
+      HasSubstr(
+          "egress route filters are not supported when update groups are "
+          "enabled"));
+}
+
+CO_TEST_F(
+    BgpServiceUpdateGroupRouteFilterTestFixture,
+    SetRouteFilterPolicyAcceptsIngressOnlyFilter) {
+  rib_policy::TRouteFilterPolicy policy;
+  policy.statements()->emplace(
+      ".*", createTRouteFilterStatement({kV4Prefix1}, false, false));
+
+  auto result = co_await service_->co_setRouteFilterPolicy(
+      std::make_unique<rib_policy::TRouteFilterPolicy>(std::move(policy)));
+
+  EXPECT_TRUE(*result->success());
+  peerManager_->getEventBase().loopOnce();
 }
 
 // Helper function to create a peer group with AFI settings

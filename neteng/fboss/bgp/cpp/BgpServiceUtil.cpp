@@ -330,6 +330,26 @@ void validatePeerGroupConfigInPolicy(
   }
 }
 
+void validateUpdateGroupRouteFilterPolicy(
+    neteng::fboss::bgp::thrift::TResult& result,
+    const rib_policy::TRouteFilterPolicy& policy,
+    const Config& config) {
+  if (!config.isUpdateGroupEnabled()) {
+    setTResult(result, true);
+    return;
+  }
+
+  for (const auto& statement : *policy.statements()) {
+    const auto& egressFilter = *statement.second.egress_filter();
+    if (egressFilter.prefix_list().has_value() ||
+        egressFilter.permissive_mode().has_value()) {
+      setTResult(result, false, kUpdateGroupEgressFilterError);
+      return;
+    }
+  }
+  setTResult(result, true);
+}
+
 PolicyValidationResult validatePeersAndPolicies(
     const std::map<
         std::string,

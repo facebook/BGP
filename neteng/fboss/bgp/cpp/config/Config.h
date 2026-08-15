@@ -116,6 +116,10 @@ class Config {
     return globalConfig_;
   }
 
+  bool isUpdateGroupEnabled() const {
+    return globalConfig_->enableUpdateGroup;
+  }
+
   // return normal, aka, static peer -> config map
   const folly::F14NodeMap<
       folly::IPAddress /* peerAddr */,

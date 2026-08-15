@@ -70,6 +70,10 @@ enum class PolicyValidationResult {
 // default group
 constexpr auto kDefaultPathGroup = "default";
 
+constexpr auto kUpdateGroupEgressFilterError =
+    "Failed to apply route filter policy: egress route filters are not "
+    "supported when update groups are enabled";
+
 // Used in getRibEntries grouping to indicate a path is selected as part of
 // bestpath/ECMP vs when it is not (in that case it will be grouped
 // under "default").
@@ -141,6 +145,14 @@ void validatePeerGroupConfigInPolicy(
     neteng::fboss::bgp::thrift::TResult& result,
     const rib_policy::TRouteFilterPolicy& policy,
     const folly::F14NodeMap<std::string, thrift::PeerGroup>& peerGroups);
+
+/**
+ * Validates whether a route filter policy is supported with update groups.
+ */
+void validateUpdateGroupRouteFilterPolicy(
+    neteng::fboss::bgp::thrift::TResult& result,
+    const rib_policy::TRouteFilterPolicy& policy,
+    const Config& config);
 
 /**
  * Validates peers and their associated policies for setPeersPolicy API.

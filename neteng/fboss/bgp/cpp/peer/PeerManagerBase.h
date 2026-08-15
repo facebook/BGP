@@ -655,11 +655,6 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
       size_t ingressAffectedCount,
       size_t egressAffectedCount);
 
-  // Handle an egress route filter/routing policy update: schedule egress
-  // policy re-evaluation for affected update groups (or per-peer re-evaluation
-  // when update groups are disabled).
-  void handleEgressPolicyUpdate();
-
   // Collect update groups with pending egress policy re-evaluation
   folly::F14NodeSet<std::shared_ptr<AdjRibOutGroup>>
   getPolicyReEvalPendingGroups();
