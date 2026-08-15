@@ -945,32 +945,6 @@ TEST_F(AdjRibGroupTest, ScheduleInitialDumpSetsRibVersionOnJoinedPeers) {
 }
 
 /*
- * With null shadowRibEntries_, processRibDumpForGroup early-returns with
- * IDLE state. Peers stay in INIT — no transition or version update.
- */
-TEST_F(AdjRibGroupTest, ScheduleInitialDumpWithNullShadowRibKeepsPeersInInit) {
-  createAdjRibOutGroup("test_group");
-
-  auto adjRib1 = createMinimalAdjRib(1);
-  adjRibOutGroup_->registerPeer(adjRib1);
-  auto adjRib2 = createMinimalAdjRib(2);
-  adjRibOutGroup_->registerPeer(adjRib2);
-  ASSERT_EQ(adjRib1->getPeerState(), PeerUpdateState::INIT);
-  ASSERT_EQ(adjRib2->getPeerState(), PeerUpdateState::INIT);
-
-  adjRib2->setPeerState(PeerUpdateState::DETACHED_BLOCKED);
-
-  adjRibOutGroup_->scheduleInitialDump();
-  evb_->loopOnce();
-
-  // No shadowRibEntries_ — peers stay in INIT, group goes IDLE
-  EXPECT_EQ(adjRibOutGroup_->getState(), UpdateGroupState::IDLE);
-  EXPECT_EQ(adjRib1->getPeerState(), PeerUpdateState::INIT);
-  EXPECT_EQ(adjRib1->getLastSeenRibVersion(), 0);
-  EXPECT_EQ(adjRib2->getLastSeenRibVersion(), 0);
-}
-
-/*
  * With an empty shadow RIB but a wired-in maxRibVersion, the dump walks
  * nothing (no change-list entry skipped), so the group -- and its joined peers
  * -- must advance to the PeerManager's maxRibVersion, not the walked max

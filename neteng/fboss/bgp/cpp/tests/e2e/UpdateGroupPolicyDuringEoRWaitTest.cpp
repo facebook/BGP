@@ -28,7 +28,7 @@
  * The peer group's egress policy is then changed to append. Every member moves
  * to the same new key, so the manager rekeys the group in place rather than
  * splitting it, and reEvaluateSyncPeersEgressPolicy refills the packing list
- * behind the parked builder without touching the group's state.
+ * behind the parked builder, publishing READY as it leaves.
  *
  * Releasing the queue lets the EoR land and the builder return. The consume
  * timer is what carries the appended work out; it starts a build whenever
@@ -68,7 +68,8 @@ class UpdateGroupPolicyDuringEoRWaitE2ETest
   }
 
   /*
-   * Whether a build currently owns the group, read on the PeerManagerBase
+   * Whether sender coro is currently in progress for group,
+   * read on the PeerManagerBase
    * event base for the same reason as the packing list.
    */
   bool isPackingInProgress(const folly::IPAddress& peerAddr) {

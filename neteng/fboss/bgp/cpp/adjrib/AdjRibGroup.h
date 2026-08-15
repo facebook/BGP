@@ -398,9 +398,9 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   void scheduleChangeListConsumeTimer() noexcept;
 
   /*
-   * Cancel (without destroying) the group's change list consume timer, leaving
-   * the group frozen until the timer is rescheduled via
-   * scheduleChangeListConsumeTimer.
+   * Cancel (without destroying) the group's change list consume timer. Change
+   * list consumption remains inactive until
+   * scheduleChangeListConsumeTimer() is called.
    */
   void cancelChangeListConsumeTimer() noexcept;
 
@@ -509,30 +509,81 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
 
   /*
    * Build initial RIB dump from shadow RIB. Advances lastSeenRibVersion_.
+   * Production groups are constructed by PeerManagerBase with its shadow RIB,
+   * so shadowRibEntries_ is always present; the implementation's null guard is
+   * defensive for direct test construction.
    * @param sendWithEoR - true if the peer still has pending EoRs to send,
    *        false if the peer has already sent EoRs (e.g., group move).
    */
   void processRibDumpForGroup(bool sendWithEoR = true);
 
   /*
+   * Move peers parked in INIT to JOINED_RUNNING at the group's current RIB
+   * version. Runs after whichever walk stands in for the group's initial dump
+   * -- the dump itself, or an inline policy re-evaluation of a group that
+   * never dumped.
+   */
+  void transitionInitPeersToJoinedRunning() noexcept;
+
+  /*
    * Build initial dump, transition INIT peers to JOINED_RUNNING,
    * activate the change list consumer, and schedule the consume timer.
+   * state_ is expected to be UNINITIALIZED whenever this task starts;
+   * cancellation handles a queued task whose group is superseded first.
    */
   folly::coro::Task<void> buildAndScheduleSendInitialDumpFromShadowRib();
 
   /*
    * Re-evaluate all ShadowRib entries with the current egress policy.
-   * Called when the group's egress policy content changes.
-   * Reuses walkAndProcessShadowRib() -- same walk, no state transitions.
-   * Lazy clone (Phase 4) preserves detached peers' old-policy state
-   * before group entries are mutated.
+   * Called when the group's egress policy content changes, and for a group
+   * that has never dumped, where this walk stands in for the initial dump.
+   * Reuses walkAndProcessShadowRib(). Lazy clone (Phase 4) preserves detached
+   * peers' old-policy state before group entries are mutated.
+   *
+   * Leaves the group WAITING. For the never-dumped case it stands in for the
+   * initial dump and so does that dump's work as well: processes the RIB dump
+   * by walking the whole shadow RIB into the packing list, marks the egress
+   * EoR as owed by every in-sync peer, moves peers parked in INIT to
+   * JOINED_RUNNING, and registers the change list consumer. See the
+   * definition for why.
    */
   void reEvaluateSyncPeersEgressPolicy();
+
+  /*
+   * Whether a rib dump is currently scheduled or in flight for this group: a
+   * cancellation source exists and has not been cancelled.
+   */
+  bool isRibDumpScheduled() const noexcept {
+    return ribDumpCancellationSource_.has_value() &&
+        !ribDumpCancellationSource_->isCancellationRequested();
+  }
+
+  /*
+   * Cancel an in-flight rib dump -- the group was emptied or erased out from
+   * under the walk, or the walk is being superseded -- and clear the source so
+   * a subsequent dump can be scheduled. The in-flight task's token still
+   * observes the cancellation (the underlying state outlives the source via
+   * the token).
+   */
+  void cancelRibDump() noexcept {
+    if (ribDumpCancellationSource_) {
+      ribDumpCancellationSource_->requestCancellation();
+      ribDumpCancellationSource_.reset();
+    }
+  }
 
   /*
    * Schedule initial dump to start asynchronously
    */
   void scheduleInitialDump() noexcept;
+
+  /*
+   * Test-only: hold the group's queued initial dump. While set, the dump task
+   * re-queues itself instead of walking, so the group stays UNINITIALIZED with
+   * a dump outstanding -- the window a policy split has to land in for the new
+   * group to inherit UNINITIALIZED.
+   */
+  bool testOnlyDeferInitialDump{false};
 
   /*
    * Process individual announced entry for the group. Invoked per-entry by
@@ -610,9 +661,13 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   folly::coro::Task<void> buildAndSendGroupBgpMessages() noexcept;
 
   /*
-   * Return whether the group has route updates or per-peer EoRs to send.
+   * Return whether any in-sync peer still owes one of the group's egress
+   * EoRs. The per-peer EGRESS_EOR_PENDING flags remain the source of truth;
+   * this reports the group's incrementally maintained view of them.
    */
-  bool hasPendingMessages() const noexcept;
+  bool egressEoRsPending() const noexcept {
+    return !syncPeersWithPendingEoRs_.empty();
+  }
 
   /*
    * Return whether a buildAndSendGroupBgpMessages invocation currently owns
@@ -621,6 +676,11 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   bool isPackingInProgress() const noexcept {
     return packingInProgress_;
   }
+
+  /*
+   * Return whether the group has route updates or per-peer EoRs to send.
+   */
+  bool hasPendingMessages() const noexcept;
 
   /*
    * Mark every currently in-sync peer as owing each AFI negotiated by the
@@ -921,7 +981,8 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
    * Recover the group after its last SYNC peer leaves, leaving only detached
    * peers. Clears the packing list and tries to restore a SYNC peer. A sharing
    * DSP keeps the group consumer active until both consumers reach the end;
-   * with only DEP-As, the group stays frozen until one finishes draining.
+   * with only DEP-As, the consumer remains inactive until one finishes
+   * draining.
    */
   void handleNoSyncPeers() noexcept;
 
@@ -936,11 +997,11 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   void recoverIfNoSyncPeers() noexcept;
 
   /*
-   * Promote a detached peer (ahead of / caught up with the frozen group) to
+   * Promote a detached peer at or ahead of the group's change-list position to
    * SYNC: move its RIB-OUT entries to the group owner key, re-create the
    * group's change list consumer joined at the peer's CL position, adopt the
-   * peer's RIB version, tear down the peer's detached-mode processing, and
-   * mark it in sync.
+   * peer's RIB version, tear down the peer's detached-mode processing, and mark
+   * it in sync.
    */
   void promoteDetachedPeerToSync(std::shared_ptr<AdjRib> adjRib) noexcept;
 
@@ -1169,6 +1230,24 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
       const AdjRibEntry* entryToCopy) noexcept;
 
  private:
+  /*
+   * Create a fresh cancellation source for a newly scheduled group dump and
+   * return its token to merge into asyncScope_ when adding the walk.
+   */
+  folly::CancellationToken getCancellationTokenForNewGroupDump() noexcept {
+    ribDumpCancellationSource_.emplace();
+    return ribDumpCancellationSource_->getToken();
+  }
+
+  /*
+   * Clear rib-dump tracking on normal completion so a subsequent dump can be
+   * scheduled. The caller MUST only invoke this when its own task was not
+   * cancelled (a superseded/stopped task must not overwrite a newer one).
+   */
+  void resetRibDumpCancellationSource() noexcept {
+    ribDumpCancellationSource_.reset();
+  }
+
   /*
    * Promote a peer's RIB-OUT entries to group entries. Walks the
    * RIB-OUT tree: entries with the peer's owner key are moved to the
@@ -1452,10 +1531,12 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   UpdateGroupState state_{UpdateGroupState::UNINITIALIZED};
 
   /* scheduleInitialDump() leaves state_ UNINITIALIZED until its queued task
-   * runs, so this latch coalesces duplicate requests while that task is in
-   * flight. buildAndScheduleSendInitialDumpFromShadowRib() clears it on every
-   * exit, cancellation included. */
-  bool initialDumpScheduled_{false};
+   * runs, so an armed source doubles as the latch that coalesces duplicate
+   * requests while that task is in flight, and as the handle that cancels the
+   * walk when the group is emptied or the dump is superseded before it runs.
+   * buildAndScheduleSendInitialDumpFromShadowRib() clears it on every
+   * uncancelled exit; on a cancelled exit the canceller owns it instead. */
+  std::optional<folly::CancellationSource> ribDumpCancellationSource_;
 
   /*
    * Mapping from bit position (from bitmap) to actual AdjRib object pointer.

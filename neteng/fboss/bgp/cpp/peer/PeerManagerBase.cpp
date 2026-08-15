@@ -4368,6 +4368,7 @@ PeerManagerBase::processUpdateGroupsEgressPolicyReevaluation() {
   for (auto& [newKey, adjRibsToMoveFromSource] : newKeyToSourceGroups) {
     auto targetGroup = updateGroupManager_->getGroup(newKey);
     std::shared_ptr<AdjRibOutGroup> baseGroup;
+    bool baseGroupNeedsPolicyReEval = false;
 
     /* Case (2), a group did not exist for this key. */
     if (!targetGroup) {
@@ -4385,7 +4386,7 @@ PeerManagerBase::processUpdateGroupsEgressPolicyReevaluation() {
        * all other moving adjRibs.
        */
       const auto& adjRibsFromBaseGroup = adjRibsToMoveFromSource.at(baseGroup);
-      const bool baseGroupNeedsPolicyReEval =
+      baseGroupNeedsPolicyReEval =
           baseGroup->getGroupKey().egressPolicyName != newKey.egressPolicyName;
       if (adjRibsFromBaseGroup.size() == baseGroup->getMemberCount()) {
         /*
@@ -4403,18 +4404,26 @@ PeerManagerBase::processUpdateGroupsEgressPolicyReevaluation() {
         baseGroup->splitToNewGroup(targetGroup, adjRibsFromBaseGroup);
       }
 
-      /*
-       * If the egress policy changed, we need to update the RIB-OUT to
-       * the new policy for this set of peers.
-       *
-       * Not all adjRibs being moved into the group might require egress policy
-       * update, so we must evaluate the situation per set of
-       * <oldGroup, adjRibsToMove>.
-       */
-      if (baseGroupNeedsPolicyReEval) {
-        processGroupEgressPolicyReEvaluation(targetGroup);
-      }
       allAffectedGroups.insert(baseGroup);
+    }
+
+    /*
+     * If the egress policy changed, we need to update the RIB-OUT to
+     * the new policy for this set of peers.
+     *
+     * Not all adjRibs being moved into the group might require egress policy
+     * update, so we must evaluate the situation per set of
+     * <oldGroup, adjRibsToMove>.
+     *
+     * An uninitialized target needs the walk whatever the policy did: it has
+     * never dumped, so it holds no RIB-OUT, its peers sit in INIT, and it has
+     * no change list consumer for the peers moving in to bound themselves
+     * against. Walking here, before those peers are moved and activated
+     * below, is what gives it all three.
+     */
+    if (baseGroupNeedsPolicyReEval ||
+        targetGroup->getState() == UpdateGroupState::UNINITIALIZED) {
+      processGroupEgressPolicyReEvaluation(targetGroup);
     }
 
     /* Case (1), and fall-through handling from case (2). */
