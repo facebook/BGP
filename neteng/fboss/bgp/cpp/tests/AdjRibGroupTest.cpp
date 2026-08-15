@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 
 #define AdjRib_TEST_FRIENDS                                                   \
+  friend class AdjRibGroupTest;                                               \
   FRIEND_TEST(                                                                \
       AdjRibGroupDistributionFixture, CommittedUpdateCountDoesNotCrossClear); \
   FRIEND_TEST(                                                                \
@@ -49,7 +50,8 @@
       MovePeerMaterializedPathEntries_PeerOwnedPathNotOverwritten);                  \
   FRIEND_TEST(                                                                       \
       AdjRibGroupPolicyFixture,                                                      \
-      GetPostOutPolicyAttributesAndInfo_PopulatesLbwActionData);
+      GetPostOutPolicyAttributesAndInfo_PopulatesLbwActionData);                     \
+  FRIEND_TEST(AdjRibGroupPolicyFixture, PostOutPolicyAgreesWithPerPeerProducer);
 
 #include <folly/coro/BlockingWait.h>
 #include <folly/coro/Collect.h>
@@ -165,6 +167,46 @@ class AdjRibGroupTest : public ::testing::Test {
     adjRibOutGroup_->registerPeer(adjRib);
     registeredInSyncPeers_.emplace_back(adjRibOutGroup_, adjRib);
     return adjRib;
+  }
+
+  /*
+   * Build the per-peer producer with an explicit egress policy, so a test can
+   * run it against the group producer configured the same way.
+   */
+  std::shared_ptr<AdjRib> createAdjRibWithEgressPolicy(
+      const PeeringParams& peeringParams,
+      const std::shared_ptr<PolicyManager>& policyManager,
+      const std::string& egressPolicyName) {
+    auto peerId = nettools::bgplib::BgpPeerId(
+        folly::IPAddress("10.0.0.1"),
+        folly::IPAddressV4("255.0.0.1").toLongHBO());
+    return std::make_shared<AdjRib>(
+        peerId,
+        peeringParams,
+        *evb_,
+        ribInQ_,
+        observerQ_,
+        std::make_shared<folly::coro::Baton>(),
+        policyManager,
+        std::make_shared<std::atomic<bool>>(false),
+        std::nullopt /* ingressPolicyName */,
+        egressPolicyName);
+  }
+
+  /*
+   * Run the per-peer producer's policy step. Lives on the fixture because
+   * AdjRib::getPostOutPolicyAttributesAndInfo is private and friendship does
+   * not extend to the TEST_F subclasses.
+   */
+  static std::pair<std::shared_ptr<const BgpPath>, PostPolicyInfo>
+  runPeerPostOutPolicy(
+      const std::shared_ptr<AdjRib>& adjRib,
+      const RibOutAnnouncementEntry& update,
+      AdjRibEntry* adjRibEntry,
+      const std::shared_ptr<const BgpPath>& prePolicyAttrs) {
+    auto [attrs, info] = adjRib->getPostOutPolicyAttributesAndInfo(
+        update, adjRibEntry, prePolicyAttrs, "test_peer");
+    return {attrs, info};
   }
 
   std::unique_ptr<folly::EventBase> evb_;
@@ -2125,6 +2167,93 @@ TEST_F(
   EXPECT_EQ(kLocalAs, *postAttrs->getNonTransitiveLbwAsn());
   ASSERT_TRUE(postAttrs->getNonTransitiveLbwValue().has_value());
   EXPECT_EQ(kLinkBandwidthBps, *postAttrs->getNonTransitiveLbwValue());
+}
+
+/*
+ * Producer-parity test. The whole point of the update-group design is that a
+ * DETACHED peer running the per-peer producer and its group running the group
+ * producer emit the same thing. This asserts that directly for the policy step:
+ * same peering params, same egress policy, same announcement in, identical
+ * post-policy attributes, PostPolicyInfo and policy term name out.
+ *
+ * Audit finding M2 was exactly this invariant breaking -- the group
+ * default-constructed BgpPolicyActionData, so an LBW policy term produced a
+ * different post-policy attribute set than the detached peer did.
+ */
+TEST_F(AdjRibGroupPolicyFixture, PostOutPolicyAgreesWithPerPeerProducer) {
+  constexpr uint32_t kLocalAs = 65001;
+  constexpr float kLinkBandwidthBps = 5e9;
+  const std::string kPolicyName = "parity_egress_policy";
+
+  /*
+   * SET_LINK_BPS reads the action data both producers are supposed to build
+   * identically, so it makes any divergence in that data observable.
+   */
+  auto lbwAction = createBgpPolicyLbwExtCommunityAction(
+      bgp_policy::LbwExtCommunityActionType::SET_LINK_BPS);
+  auto policyManager = std::make_shared<PolicyManager>(
+      createBgpPolicies(kPolicyName, {}, {lbwAction}),
+      createTestBgpGlobalConfig());
+
+  PeeringParams peeringParams;
+  peeringParams.localAs = kLocalAs;
+  peeringParams.linkBandwidthBps = kLinkBandwidthBps;
+
+  /* Group producer */
+  auto groupKey = createDefaultGroupKey();
+  groupKey.egressPolicyName = kPolicyName;
+  createAdjRibOutGroup("test_group", 42, groupKey);
+  adjRibOutGroup_->policyManager_ = policyManager;
+  adjRibOutGroup_->peeringParams_ = peeringParams;
+
+  /* Per-peer producer, configured identically */
+  auto adjRib =
+      createAdjRibWithEgressPolicy(peeringParams, policyManager, kPolicyName);
+
+  RibOutAnnouncementEntry update(
+      kV4Prefix1_,
+      kDefaultPathID,
+      TinyPeerInfo(
+          folly::IPAddress("1.1.1.1"), 65000, 1, BgpSessionType::EBGP, false),
+      testAttrs_,
+      0,
+      0,
+      0,
+      0,
+      0);
+
+  AdjRibEntry groupEntry(kDefaultPathID);
+  AdjRibEntry peerEntry(kDefaultPathID);
+
+  /*
+   * The policy cache is a process-wide singleton keyed partly on the action
+   * data. Clear it around each call so both producers genuinely evaluate the
+   * policy instead of one of them answering from the other's cache entry.
+   */
+  AdjRibPolicyCache::get()->clearCache();
+  auto [groupAttrs, groupInfo] =
+      adjRibOutGroup_->getPostOutPolicyAttributesAndInfo(
+          update, &groupEntry, testAttrs_, "test_peer");
+
+  AdjRibPolicyCache::get()->clearCache();
+  auto [peerAttrs, peerInfo] =
+      runPeerPostOutPolicy(adjRib, update, &peerEntry, testAttrs_);
+
+  ASSERT_NE(nullptr, peerAttrs);
+  ASSERT_NE(nullptr, groupAttrs);
+
+  /* Deep compare: same contents, regardless of BgpPath identity. */
+  EXPECT_EQ(*peerAttrs, *groupAttrs)
+      << "Group and per-peer producers disagree on post-policy attributes. "
+      << "A detached peer would advertise something different from its group. "
+      << "peer LBW asn/value="
+      << peerAttrs->getNonTransitiveLbwAsn().value_or(0) << "/"
+      << peerAttrs->getNonTransitiveLbwValue().value_or(0)
+      << ", group=" << groupAttrs->getNonTransitiveLbwAsn().value_or(0) << "/"
+      << groupAttrs->getNonTransitiveLbwValue().value_or(0);
+  EXPECT_EQ(peerInfo.isMedSetByPolicy, groupInfo.isMedSetByPolicy);
+  EXPECT_EQ(peerInfo.isNexthopSetByPolicy, groupInfo.isNexthopSetByPolicy);
+  EXPECT_EQ(peerEntry.getPostOutPolicy(), groupEntry.getPostOutPolicy());
 }
 
 /**

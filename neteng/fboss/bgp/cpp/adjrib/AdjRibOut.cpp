@@ -1141,8 +1141,10 @@ void AdjRib::processRibAnnouncedEntry(
 
   // ignore announcement with unsupported nexthop encoding
   if (!newNexthop.empty() && !isNexthopSupported(update.prefix, newNexthop)) {
-    XLOGF(
-        DBG4,
+    PeerStats::incrInvalidNexthopEncoding();
+    XLOGF_EVERY_MS(
+        ERR,
+        600000,
         "Ignore RibAnnouncement of prefix {} with nexthop {}: Nexthop encoding "
         "is not supported for {}.",
         folly::IPAddress::networkToString(update.prefix),

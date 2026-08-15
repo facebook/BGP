@@ -1473,6 +1473,14 @@ void incrRejectedOutboundRoutes() {
 }
 
 DEFINE_timeseries(
+    peer_invalid_nexthop_encoding,
+    kInvalidNexthopEncoding,
+    fb303::COUNT);
+void incrInvalidNexthopEncoding() {
+  STATS_peer_invalid_nexthop_encoding.add(1);
+}
+
+DEFINE_timeseries(
     empty_gar_weights_rejects,
     kEmptyGarWeightsRejects,
     fb303::COUNT);

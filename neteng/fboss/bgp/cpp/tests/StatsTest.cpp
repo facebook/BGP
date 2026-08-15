@@ -1034,6 +1034,16 @@ TEST(StatsTest, PeerPolicyRejectIncrTest) {
   }
 }
 
+TEST(StatsTest, InvalidNexthopEncodingIncrTest) {
+  PeerStats::initCounters();
+  PeerStats::incrInvalidNexthopEncoding();
+
+  fb303::ThreadCachedServiceData::get()->publishStats();
+  auto counters = fb303::ThreadCachedServiceData::getShared();
+  EXPECT_EQ(
+      1, counters->getCounter(PeerStats::kInvalidNexthopEncoding + ".count"));
+}
+
 TEST(StatsTest, ConnectionCollisionIncrTest) {
   PeerStats::initCounters();
   {

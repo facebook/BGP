@@ -869,6 +869,15 @@ inline constexpr auto kRejectectedOutboundRoutes =
     "peer_rejected_outbound_routes"_fs;
 void incrRejectedOutboundRoutes();
 
+// Outbound peer announcement events rejected because the resolved nexthop
+// cannot be encoded for the negotiated AFI.
+DECLARE_timeseries(peer_invalid_nexthop_encoding);
+inline const auto kInvalidNexthopEncoding = fmt::format(
+    "{}.{}.peer_invalid_nexthop_encoding",
+    kEbbPlatform,
+    kBgpcppTag);
+void incrInvalidNexthopEncoding();
+
 DECLARE_timeseries(empty_gar_weights_rejects);
 inline constexpr auto kEmptyGarWeightsRejects = "empty_gar_weights_rejects"_fs;
 void incrEmptyGarWeightsRejects();
