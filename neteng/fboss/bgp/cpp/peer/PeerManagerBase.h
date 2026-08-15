@@ -1338,13 +1338,6 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   bool enableDynamicPolicyEvaluation_{false};
 
   /*
-   * Set to true when a policy re-evaluation has been triggered (any scope:
-   * PEER or PEER_GROUP) and the resulting RIB dumps / group re-evaluation are
-   * still in flight. Used only when enableUpdateGroup_ = true.
-   */
-  bool egressPolicyUpdateForUpdateGroupsScheduled_{false};
-
-  /*
    * Enable BGP Update Groups for shared update generation
    */
   bool enableUpdateGroup_{false};

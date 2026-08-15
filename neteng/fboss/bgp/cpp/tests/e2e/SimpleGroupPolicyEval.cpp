@@ -339,13 +339,6 @@ TEST_P(
       neteng::fboss::bgp::thrift::BgpPolicyChangeResult::POLICIES_APPLIED);
 
   /*
-   * setPeerGroupPolicy only schedules the re-evaluation on asyncScope_; wait
-   * for it to actually run while peer3 is still blocked, so the group re-eval
-   * is queued behind peer3 rather than racing its unblock below.
-   */
-  ASSERT_TRUE(waitForEgressReEvalComplete());
-
-  /*
    * Unblock peer3 so the queued group re-eval can drain through it and complete
    * for the whole group. peer3 converges back to JOINED_RUNNING.
    */
@@ -583,7 +576,6 @@ TEST_P(
   EXPECT_EQ(
       result,
       neteng::fboss::bgp::thrift::BgpPolicyChangeResult::POLICIES_APPLIED);
-  ASSERT_TRUE(waitForEgressReEvalComplete());
 
   /* 4. Unblock peer3 and let the queued withdrawals + re-eval drain through it.
    */

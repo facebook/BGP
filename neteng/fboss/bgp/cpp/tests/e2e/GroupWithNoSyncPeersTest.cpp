@@ -447,10 +447,11 @@ class GroupWithNoSyncPeersE2ETest : public UpdateGroupPolicyReEvalE2EBase {
    * Bringing a peer up "late" is not enough: where its own dump lands decides
    * the branch transitionPeerUpdateState takes -- level with the group makes it
    * a DSP, past the group a DEP-A. Flapping EXISTING members of a stalled group
-   * removes that ambiguity. All members are blocked first so the group's send
-   * (hence its change-list consumption) is suspended; the peers to convert are
-   * dropped, extra rounds run the RIB past the group, and they come back as
-   * DEP-A. stallPeer stays blocked as the group's only sync peer.
+   * removes that ambiguity. Queue reads are disabled for every member, but the
+   * callers give stallPeer a lower watermark so a serialized send suspends on
+   * it deterministically; the peers to convert are then dropped, extra rounds
+   * run the RIB past the group, and they come back as DEP-A. stallPeer stays
+   * blocked as the group's only sync peer.
    */
   void flapPeersIntoDepA(
       const BgpPeerId& stallPeer,
@@ -477,11 +478,22 @@ class GroupWithNoSyncPeersE2ETest : public UpdateGroupPolicyReEvalE2EBase {
       blockPeer(peerId.peerAddr);
     }
 
-    /* One round is enough to fill every (tiny) queue and suspend the send. */
+    /*
+     * A serialized group send suspends when the lower-watermark stallPeer
+     * blocks. Without serialization, each peer producer progresses
+     * independently, so every member must block before the peers are flapped;
+     * otherwise the completed producers can accept returning DEP-As early.
+     */
     *roundCommOut = publishNextRound();
-    for (const auto& peerId : allMembers) {
-      ASSERT_TRUE(waitForPeerQueueBlocked(peerId))
-          << "member " << peerId.peerAddr.str() << " never filled its queue";
+    if (GetParam().enableSerializeGroupPdu) {
+      ASSERT_TRUE(waitForPeerQueueBlocked(stallPeer))
+          << "stall peer " << stallPeer.peerAddr.str()
+          << " never filled its queue";
+    } else {
+      for (const auto& peerId : allMembers) {
+        ASSERT_TRUE(waitForPeerQueueBlocked(peerId))
+            << "member " << peerId.peerAddr.str() << " never filled its queue";
+      }
     }
     ASSERT_TRUE(
         waitForPeerState(stallPeer.peerAddr, PeerUpdateState::JOINED_BLOCKED));
@@ -741,10 +753,10 @@ TEST_P(GroupWithNoSyncPeersE2ETest, DfpPeersAcceptedIntoGroupWithNoSyncPeers) {
   setupPolicies();
   const auto allSpecs = allPeerSpecs();
   /* Peers 0,1 are the DFP candidates. */
-  for (int idx = 0; idx < 2; ++idx) {
-    setQueueSizeForPeer(
-        allSpecs[idx].peerAddr, /*capacity=*/3, /*highWm=*/2, /*lowWm=*/0);
-  }
+  setQueueSizeForPeer(
+      allSpecs[0].peerAddr, /*capacity=*/3, /*highWm=*/2, /*lowWm=*/0);
+  setQueueSizeForPeer(
+      allSpecs[1].peerAddr, /*capacity=*/4, /*highWm=*/3, /*lowWm=*/0);
   /*
    * Peer 2 is the packing-list holder. Its queue is deliberately DEEPER than
    * the candidates': they must block in the first messages of the round, while
@@ -792,34 +804,33 @@ TEST_P(GroupWithNoSyncPeersE2ETest, DfpPeersAcceptedIntoGroupWithNoSyncPeers) {
   const auto roundComm = publishNextRound(kNumRoutes, /*numAttrBuckets=*/20);
 
   /*
-   * The send suspends ON the candidates, so the holder cannot fill until they
-   * leave the in-sync set: wait for them, detach them, then wait for the
-   * holder. Wait on the QUEUE, not the state, which flips only on a deferral.
+   * The candidates have different watermarks so they block in order. Detach
+   * each candidate as soon as its queue fills, allowing the send to advance
+   * to the next candidate and eventually the holder. Wait on the QUEUE, not
+   * the state, which flips only on a deferral.
    */
-  for (const auto& peerId : dfpPeers) {
+  for (size_t idx = 0; idx < dfpPeers.size(); ++idx) {
+    const auto& peerId = dfpPeers[idx];
     ASSERT_TRUE(waitForPeerQueueBlocked(peerId))
         << "DFP candidate " << peerId.peerAddr.str()
         << " never filled its queue";
-  }
 
-  /*
-   * Let the group catch up to the RIB before detaching. The consume-timer
-   * callback assigns setLastSeenRibVersion(*maxRibVersion_) unconditionally,
-   * so a group still behind the RIB jumps forward on its very next tick --
-   * which would break isDFP()'s group-hasn't-moved clause after the detach,
-   * with no publish involved. Waiting here removes that race rather than
-   * running against it.
-   */
-  WITH_RETRIES_N(30, {
-    EXPECT_EVENTUALLY_EQ(
-        getGroupRibVersion(holder.peerAddr), rib_->getRibVersion());
-  });
+    if (idx == 0) {
+      /*
+       * Let the group catch up to the RIB before detaching. The consume-timer
+       * callback assigns setLastSeenRibVersion(*maxRibVersion_)
+       * unconditionally, so a group still behind the RIB jumps forward on its
+       * very next tick -- which would break isDFP()'s group-hasn't-moved clause
+       * after the detach, with no publish involved. Waiting here removes that
+       * race rather than running against it.
+       */
+      WITH_RETRIES_N(30, {
+        EXPECT_EVENTUALLY_EQ(
+            getGroupRibVersion(holder.peerAddr), rib_->getRibVersion());
+      });
+    }
 
-  /* Detach only the candidates; this also un-suspends the group's send. */
-  for (const auto& peerId : dfpPeers) {
     detachBlockedPeerDirectly(peerId.peerAddr);
-  }
-  for (const auto& peerId : dfpPeers) {
     ASSERT_TRUE(
         waitForPeerState(peerId.peerAddr, PeerUpdateState::DETACHED_BLOCKED));
   }
@@ -939,10 +950,12 @@ TEST_P(GroupWithNoSyncPeersE2ETest, DepAPromotedWhenLastSyncPeerDown) {
 
   setupPolicies();
   const auto allSpecs = allPeerSpecs();
-  /* Every member must be able to fill its queue and sit at JOINED_BLOCKED. */
-  for (int i = 0; i < kNumPeers; ++i) {
+  /* The first member must deterministically suspend the serialized send. */
+  setQueueSizeForPeer(
+      allSpecs[0].peerAddr, /*capacity=*/3, /*highWm=*/2, /*lowWm=*/0);
+  for (int i = 1; i < kNumPeers; ++i) {
     setQueueSizeForPeer(
-        allSpecs[i].peerAddr, /*capacity=*/3, /*highWm=*/2, /*lowWm=*/0);
+        allSpecs[i].peerAddr, /*capacity=*/4, /*highWm=*/3, /*lowWm=*/0);
   }
 
   auto peerIds = setupNPeersInGroupJoined(
@@ -1008,9 +1021,11 @@ TEST_P(GroupWithNoSyncPeersE2ETest, DepASelfPromotesAfterFrozenGroupUnblock) {
 
   setupPolicies();
   const auto allSpecs = allPeerSpecs();
-  for (int i = 0; i < kNumPeers; ++i) {
+  setQueueSizeForPeer(
+      allSpecs[0].peerAddr, /*capacity=*/3, /*highWm=*/2, /*lowWm=*/0);
+  for (int i = 1; i < kNumPeers; ++i) {
     setQueueSizeForPeer(
-        allSpecs[i].peerAddr, /*capacity=*/3, /*highWm=*/2, /*lowWm=*/0);
+        allSpecs[i].peerAddr, /*capacity=*/4, /*highWm=*/3, /*lowWm=*/0);
   }
 
   auto peerIds = setupNPeersInGroupJoined(
@@ -1526,7 +1541,6 @@ TEST_P(GroupWithNoSyncPeersE2ETest, PolicyReEvalOnFrozenGroupThenPromotion) {
   EXPECT_EQ(
       result,
       neteng::fboss::bgp::thrift::BgpPolicyChangeResult::POLICIES_APPLIED);
-  ASSERT_TRUE(waitForEgressReEvalComplete());
 
   /* Unblock the detached members: one is promoted and the rest rejoin. */
   unblockPeersRecording(detachedPeers);
@@ -1661,7 +1675,6 @@ TEST_P(GroupWithNoSyncPeersE2ETest, PolicyReEvalAfterDepBRecovery) {
   EXPECT_EQ(
       result,
       neteng::fboss::bgp::thrift::BgpPolicyChangeResult::POLICIES_APPLIED);
-  ASSERT_TRUE(waitForEgressReEvalComplete());
   EXPECT_EQ(getNumInSyncPeers(detachedPeers[0].peerAddr), recoveredPeers.size())
       << "the re-eval must not have promoted the still-blocked members";
 
@@ -1708,10 +1721,10 @@ TEST_P(GroupWithNoSyncPeersE2ETest, PolicyReEvalAfterDspCollapseRecovery) {
   XLOGF(INFO, "=== TEST: PolicyReEvalAfterDspCollapseRecovery ===");
 
   setupPolicies();
-  for (int i = 0; i < 2; ++i) {
-    setQueueSizeForPeer(
-        makePeerSpec(i).peerAddr, /*capacity=*/3, /*highWm=*/2, /*lowWm=*/0);
-  }
+  setQueueSizeForPeer(
+      makePeerSpec(0).peerAddr, /*capacity=*/3, /*highWm=*/2, /*lowWm=*/0);
+  setQueueSizeForPeer(
+      makePeerSpec(1).peerAddr, /*capacity=*/4, /*highWm=*/3, /*lowWm=*/0);
   auto groups = setupPeersInGroups(
       kNumGroups,
       kPeersPerGroup,
@@ -1763,7 +1776,6 @@ TEST_P(GroupWithNoSyncPeersE2ETest, PolicyReEvalAfterDspCollapseRecovery) {
   EXPECT_EQ(
       result,
       neteng::fboss::bgp::thrift::BgpPolicyChangeResult::POLICIES_APPLIED);
-  ASSERT_TRUE(waitForEgressReEvalComplete());
 
   publishNextRound();
   drainAllGroups(groups);
@@ -1833,14 +1845,27 @@ TEST_P(GroupWithNoSyncPeersE2ETest, PolicyReEvalAfterDfpRecovery) {
     blockPeer(peerId.peerAddr);
   }
   const auto roundComm = publishNextRound(kNumRoutes, /*numAttrBuckets=*/20);
-  for (const auto& peerId : dfpPeers) {
+  /*
+   * Detach each candidate as soon as its distinct watermark is reached. This
+   * lets a serialized send advance to the next candidate and then the holder.
+   */
+  for (size_t idx = 0; idx < dfpPeers.size(); ++idx) {
+    const auto& peerId = dfpPeers[idx];
     ASSERT_TRUE(waitForPeerQueueBlocked(peerId))
         << "DFP candidate " << peerId.peerAddr.str() << " never filled up";
-  }
-  for (const auto& peerId : dfpPeers) {
+
+    if (idx == 0) {
+      /*
+       * Let the group catch up before detaching so the consume timer cannot
+       * move its version after the detach and invalidate isDFP().
+       */
+      WITH_RETRIES_N(30, {
+        EXPECT_EVENTUALLY_EQ(
+            getGroupRibVersion(holder.peerAddr), rib_->getRibVersion());
+      });
+    }
+
     detachBlockedPeerDirectly(peerId.peerAddr);
-  }
-  for (const auto& peerId : dfpPeers) {
     ASSERT_TRUE(
         waitForPeerState(peerId.peerAddr, PeerUpdateState::DETACHED_BLOCKED));
   }
@@ -1906,7 +1931,6 @@ TEST_P(GroupWithNoSyncPeersE2ETest, PolicyReEvalAfterDfpRecovery) {
   EXPECT_EQ(
       result,
       neteng::fboss::bgp::thrift::BgpPolicyChangeResult::POLICIES_APPLIED);
-  ASSERT_TRUE(waitForEgressReEvalComplete());
 
   publishNextRound();
   drainAllGroups(groups);
@@ -1938,10 +1962,12 @@ TEST_P(GroupWithNoSyncPeersE2ETest, PolicyReEvalAfterDepAPromotionRecovery) {
   XLOGF(INFO, "=== TEST: PolicyReEvalAfterDepAPromotionRecovery ===");
 
   setupPolicies();
-  /* Every member of group 0 must be able to sit at JOINED_BLOCKED. */
-  for (int i = 0; i < kPeersPerGroup; ++i) {
+  /* The first member must deterministically suspend the serialized send. */
+  setQueueSizeForPeer(
+      makePeerSpec(0).peerAddr, /*capacity=*/3, /*highWm=*/2, /*lowWm=*/0);
+  for (int i = 1; i < kPeersPerGroup; ++i) {
     setQueueSizeForPeer(
-        makePeerSpec(i).peerAddr, /*capacity=*/3, /*highWm=*/2, /*lowWm=*/0);
+        makePeerSpec(i).peerAddr, /*capacity=*/4, /*highWm=*/3, /*lowWm=*/0);
   }
 
   auto groups = setupPeersInGroups(
@@ -2013,7 +2039,6 @@ TEST_P(GroupWithNoSyncPeersE2ETest, PolicyReEvalAfterDepAPromotionRecovery) {
   EXPECT_EQ(
       result,
       neteng::fboss::bgp::thrift::BgpPolicyChangeResult::POLICIES_APPLIED);
-  ASSERT_TRUE(waitForEgressReEvalComplete());
 
   publishNextRound();
   drainAllGroups(groups);

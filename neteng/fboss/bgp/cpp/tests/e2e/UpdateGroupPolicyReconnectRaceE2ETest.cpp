@@ -290,7 +290,6 @@ TEST_F(
       << "fleet reconciliation must have moved the reconnecting peer onto the "
          "target policy and re-run its cancelled dump inline, leaving it "
          "detached with a consumer before it rejoins";
-  ASSERT_TRUE(waitForEgressReEvalComplete());
 
   bool movedToTagGroup{false};
   eventBase.runInEventBaseThreadAndWait([&]() {

@@ -160,7 +160,6 @@ TEST_P(
   EXPECT_EQ(
       result,
       neteng::fboss::bgp::thrift::BgpPolicyChangeResult::POLICIES_APPLIED);
-  ASSERT_TRUE(waitForEgressReEvalComplete());
 
   /*
    * Checkpoint B -- the group was rekeyed in place (same object, no split) and

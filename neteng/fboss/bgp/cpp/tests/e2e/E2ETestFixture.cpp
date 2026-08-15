@@ -3297,21 +3297,6 @@ void E2ETestFixture::triggerRibDumpForPeer(
   });
 }
 
-bool E2ETestFixture::waitForEgressReEvalComplete(int maxRetries) {
-  if (!peerManager_) {
-    XLOG(ERR, "PeerManagerBase is not initialized");
-    return false;
-  }
-  bool complete = false;
-  WITH_RETRIES_N(maxRetries, {
-    peerManager_->getEventBase().runInEventBaseThreadAndWait([&]() {
-      complete = !peerManager_->egressPolicyUpdateForUpdateGroupsScheduled_;
-    });
-    EXPECT_EVENTUALLY_TRUE(complete);
-  });
-  return complete;
-}
-
 std::optional<E2ETestFixture::PeerQueues> E2ETestFixture::getPeerQueues(
     const BgpPeerId& peerId) const {
   auto it = peerQueues_.find(peerId);

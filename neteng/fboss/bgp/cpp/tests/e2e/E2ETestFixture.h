@@ -1168,17 +1168,6 @@ class E2ETestFixture : public ::testing::Test {
       bool sendAddPath = false,
       bool sendWithEoR = false);
 
-  /*
-   * Wait until a scheduled group egress-policy re-evaluation has run to
-   * completion, i.e. PeerManagerBase's
-   * egressPolicyUpdateForUpdateGroupsScheduled_ returns to false. Lets a test
-   * that applies a policy while a peer is JOINED_BLOCKED guarantee the re-eval
-   * runs before the peer is unblocked, rather than racing it. Requires
-   * friendship (PeerManager_TEST_FRIENDS). Returns false if the flag is still
-   * set after maxRetries.
-   */
-  bool waitForEgressReEvalComplete(int maxRetries = 50);
-
  public:
   /*
    * Route specification for batch operations

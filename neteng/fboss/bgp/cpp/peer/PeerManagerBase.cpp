@@ -4248,16 +4248,6 @@ void PeerManagerBase::schedulePolicyReEvalForAdjRibs() {
 
 folly::coro::Task<void>
 PeerManagerBase::processUpdateGroupsEgressPolicyReevaluation() {
-  /*
-   * Clear the scheduled flag if cancellation is requested or steps 1 and 2 (the
-   * key rebuild and group membership changes) throw, so completion observers
-   * do not wait indefinitely. Dismissed once those steps complete so it does
-   * not fire on the normal path.
-   */
-  auto clearFlagGuard = folly::makeGuard([this]() noexcept {
-    egressPolicyUpdateForUpdateGroupsScheduled_ = false;
-  });
-
   auto cancelToken = co_await folly::coro::co_current_cancellation_token;
   if (cancelToken.isCancellationRequested()) {
     co_return;
@@ -4532,8 +4522,6 @@ PeerManagerBase::processUpdateGroupsEgressPolicyReevaluation() {
    * that run. maybeDestroyUpdateGroups only drains already-emptied groups, so
    * an overlapping run cannot interleave with any group mutation.
    */
-  clearFlagGuard.dismiss();
-  egressPolicyUpdateForUpdateGroupsScheduled_ = false;
   co_await updateGroupManager_->maybeDestroyUpdateGroups(emptiedOldGroups);
 
   XLOGF_IF(

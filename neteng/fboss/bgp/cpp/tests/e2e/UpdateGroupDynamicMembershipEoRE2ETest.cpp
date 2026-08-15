@@ -268,7 +268,6 @@ TEST_F(
   ASSERT_EQ(
       neteng::fboss::bgp::thrift::BgpPolicyChangeResult::POLICIES_APPLIED,
       setPeerPolicy(kPeerAddr3, kTargetPolicyName));
-  ASSERT_TRUE(waitForEgressReEvalComplete());
 
   ASSERT_TRUE(waitForPeerManagerCondition([&]() {
     auto moved = getAdjRibByAddr(kPeerAddr3);

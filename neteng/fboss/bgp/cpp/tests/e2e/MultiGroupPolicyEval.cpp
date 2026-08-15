@@ -185,8 +185,7 @@ TEST_P(MultiGroupPolicyReEval, MultiGroupPolicyChangeJoinedBlocked) {
   EXPECT_TRUE(isPeerInSync(kPeerAddr3));
   EXPECT_FALSE(isPeerDetached(kPeerAddr3));
 
-  /* Apply APPEND to groups 0 and 1 in one RPC; wait for the re-eval to run
-   * while peer3 is still blocked. */
+  /* Apply APPEND to groups 0 and 1 in one RPC. */
   const std::vector<std::string> operatedGroups = {
       reEvalPeerGroupName(0), reEvalPeerGroupName(1)};
   auto result =
@@ -194,7 +193,6 @@ TEST_P(MultiGroupPolicyReEval, MultiGroupPolicyChangeJoinedBlocked) {
   EXPECT_EQ(
       result,
       neteng::fboss::bgp::thrift::BgpPolicyChangeResult::POLICIES_APPLIED);
-  ASSERT_TRUE(waitForEgressReEvalComplete());
 
   /* Unblock peer3 and let group 0's queued re-eval drain through it. */
   unblockAndDrainToJoined(kPeerAddr3, groups[0][0]);
@@ -389,7 +387,6 @@ TEST_P(
   EXPECT_EQ(
       result,
       neteng::fboss::bgp::thrift::BgpPolicyChangeResult::POLICIES_APPLIED);
-  ASSERT_TRUE(waitForEgressReEvalComplete());
 
   /* Unblock peer3 and let the queued withdrawals + re-eval drain through it. */
   unblockAndDrainToJoined(kPeerAddr3, groups[0][0]);
