@@ -1607,6 +1607,25 @@ BgpServiceBase::co_getAdvertisedNetworks(std::unique_ptr<string> peer) {
   co_return std::make_unique<std::vector<TBgpNetwork>>();
 }
 
+folly::coro::Task<std::unique_ptr<TGetDeduplicatorStatsResponse>>
+BgpServiceBase::co_getDeduplicatorStats(
+    std::unique_ptr<TGetDeduplicatorStatsRequest> /* request */) {
+  auto log = LOG_THRIFT_CALL(DBG2);
+  if (exitInitiated_) {
+    co_return std::make_unique<TGetDeduplicatorStatsResponse>();
+  }
+
+  if (!continueExecution(true)) {
+    co_return std::make_unique<TGetDeduplicatorStatsResponse>();
+  }
+  SCOPE_EXIT {
+    decrRequestsInExecution();
+  };
+
+  co_return std::make_unique<TGetDeduplicatorStatsResponse>(
+      PeerManagerBase::getDeduplicatorStats());
+}
+
 // used by fboss/bgp/consistency_check
 folly::coro::Task<std::unique_ptr<TAttributeStats>>
 BgpServiceBase::co_getAttributeStats() {

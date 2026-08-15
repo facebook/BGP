@@ -17,6 +17,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <folly/ScopeGuard.h>
 #include <folly/coro/BlockingWait.h>
 #include <folly/logging/LoggerDB.h>
 #include <folly/logging/test/TestLogHandler.h>
@@ -51,6 +52,24 @@ using namespace facebook::neteng::fboss::bgp::thrift;
 namespace facebook::bgp {
 
 static const std::string kExitNullPtrLogPrefix = "ExitOrNullPtr";
+
+namespace {
+constexpr int64_t kExpectedBgpPathEntries = 1;
+constexpr int64_t kExpectedBgpAttributesEntries = 2;
+constexpr int64_t kExpectedAsPathEntries = 3;
+constexpr int64_t kExpectedCommunitiesEntries = 4;
+constexpr int64_t kExpectedClusterListEntries = 5;
+constexpr int64_t kExpectedExtCommunitiesEntries = 6;
+
+void clearAttributeDeduplicators() {
+  nettools::bgplib::DeDuplicatedBgpPath::clearDeduplicator();
+  nettools::bgplib::DeDuplicatedBgpAttributesC::clearDeduplicator();
+  nettools::bgplib::DeDuplicatedAsPath::clearDeduplicator();
+  nettools::bgplib::DeDuplicatedCommunities::clearDeduplicator();
+  nettools::bgplib::DeDuplicatedClusterList::clearDeduplicator();
+  nettools::bgplib::DeDuplicatedExtCommunities::clearDeduplicator();
+}
+} // namespace
 
 class BgpServiceBaseTestFixture : public ::testing::Test {
  public:
@@ -290,6 +309,74 @@ TEST_F(
   service_->exitInitiated_ = true;
   EXPECT_EQ(-1, folly::coro::blockingWait(service_->co_getRibVersion()));
   EXPECT_EQ(-1, folly::coro::blockingWait(service_->co_getNumPrefixes()));
+}
+
+TEST_F(BgpServiceBaseTestFixture, GetDeduplicatorStatsReturnsTypedSnapshot) {
+  clearAttributeDeduplicators();
+  SCOPE_EXIT {
+    clearAttributeDeduplicators();
+  };
+
+  std::vector<nettools::bgplib::DeDuplicatedBgpPath> bgpPaths;
+  bgpPaths.emplace_back(
+      std::make_shared<BgpPath>(*buildBgpPathFields(0, 0, 0, 0)));
+
+  nettools::bgplib::BgpAttributesC attributes;
+  attributes.med = kMed + 1;
+  attributes.isMedSet = true;
+  std::vector<nettools::bgplib::DeDuplicatedBgpAttributesC> bgpAttributes;
+  bgpAttributes.emplace_back(std::move(attributes));
+
+  std::vector<nettools::bgplib::DeDuplicatedAsPath> asPaths;
+  for (int64_t value = 1; value <= kExpectedAsPathEntries; ++value) {
+    nettools::bgplib::BgpAttrAsPathC asPath;
+    asPath.push_back(
+        nettools::bgplib::BgpAttrAsPathSegmentC::fromAsSeq(
+            {static_cast<uint32_t>(value)}));
+    asPaths.emplace_back(std::move(asPath));
+  }
+
+  std::vector<nettools::bgplib::DeDuplicatedCommunities> communities;
+  for (int64_t value = 1; value <= kExpectedCommunitiesEntries; ++value) {
+    nettools::bgplib::BgpAttrCommunitiesC communityList;
+    communityList.emplace_back(
+        /*asn=*/1, static_cast<uint16_t>(value));
+    communities.emplace_back(std::move(communityList));
+  }
+
+  std::vector<nettools::bgplib::DeDuplicatedClusterList> clusterLists;
+  for (int64_t value = 1; value <= kExpectedClusterListEntries; ++value) {
+    nettools::bgplib::BgpAttrClusterListC clusterList;
+    clusterList.push_back(static_cast<uint32_t>(value));
+    clusterLists.emplace_back(std::move(clusterList));
+  }
+
+  std::vector<nettools::bgplib::DeDuplicatedExtCommunities> extCommunities;
+  for (int64_t value = 1; value <= kExpectedExtCommunitiesEntries; ++value) {
+    nettools::bgplib::BgpAttrExtCommunitiesC extCommunityList;
+    extCommunityList.emplace_back(
+        /*rawValHigh=*/0, static_cast<uint32_t>(value));
+    extCommunities.emplace_back(std::move(extCommunityList));
+  }
+
+  auto response = folly::coro::blockingWait(service_->co_getDeduplicatorStats(
+      std::make_unique<TGetDeduplicatorStatsRequest>()));
+  ASSERT_NE(nullptr, response);
+  EXPECT_EQ(
+      kExpectedBgpPathEntries, response->bgp_path()->entry_count().value());
+  EXPECT_EQ(
+      kExpectedBgpAttributesEntries,
+      response->bgp_attributes()->entry_count().value());
+  EXPECT_EQ(kExpectedAsPathEntries, response->as_path()->entry_count().value());
+  EXPECT_EQ(
+      kExpectedCommunitiesEntries,
+      response->communities()->entry_count().value());
+  EXPECT_EQ(
+      kExpectedClusterListEntries,
+      response->cluster_list()->entry_count().value());
+  EXPECT_EQ(
+      kExpectedExtCommunitiesEntries,
+      response->ext_communities()->entry_count().value());
 }
 
 // The getProcessUptimeSeconds handler returns a non-negative value that does

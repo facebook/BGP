@@ -1193,37 +1193,22 @@ void PeerManagerBase::getSubscriberNetworks(
   });
 }
 
-namespace {
-/**
- * Stamp the six DeDuplicator<T> sizes onto a TAttributeStats.
- *
- * O(1) per collection and independent of any RIB walk, so this is safe to
- * attach to both the plain and the filtered stats call. The values are global
- * by nature -- a deduplicator has no direction or policy-stage dimension -- so
- * a filtered request gets the same numbers as an unfiltered one. That is
- * intentional: they describe what the daemon STORES, not what a given slice of
- * the RIB references.
- */
-void populateDeduplicatorSizes(TAttributeStats& tStats) {
-  // L1: the path, i.e. the attribute bundle plus nexthop and topologyInfo.
-  tStats.dedup_bgp_path() =
-      nettools::bgplib::DeDuplicatedBgpPath::deduplicatorSize();
-
-  // L2: the attribute bundle the path points at.
-  tStats.dedup_bgp_attributes() =
-      nettools::bgplib::DeDuplicatedBgpAttributesC::deduplicatorSize();
-
-  // L3: the sub-attributes the bundle holds as deduplicated pointers.
-  tStats.dedup_as_path() =
-      nettools::bgplib::DeDuplicatedAsPath::deduplicatorSize();
-  tStats.dedup_communities() =
-      nettools::bgplib::DeDuplicatedCommunities::deduplicatorSize();
-  tStats.dedup_cluster_list() =
-      nettools::bgplib::DeDuplicatedClusterList::deduplicatorSize();
-  tStats.dedup_ext_communities() =
-      nettools::bgplib::DeDuplicatedExtCommunities::deduplicatorSize();
+TGetDeduplicatorStatsResponse PeerManagerBase::getDeduplicatorStats() noexcept {
+  TGetDeduplicatorStatsResponse stats;
+  stats.bgp_path()->entry_count() = static_cast<int64_t>(
+      nettools::bgplib::DeDuplicatedBgpPath::deduplicatorSize());
+  stats.bgp_attributes()->entry_count() = static_cast<int64_t>(
+      nettools::bgplib::DeDuplicatedBgpAttributesC::deduplicatorSize());
+  stats.as_path()->entry_count() = static_cast<int64_t>(
+      nettools::bgplib::DeDuplicatedAsPath::deduplicatorSize());
+  stats.communities()->entry_count() = static_cast<int64_t>(
+      nettools::bgplib::DeDuplicatedCommunities::deduplicatorSize());
+  stats.cluster_list()->entry_count() = static_cast<int64_t>(
+      nettools::bgplib::DeDuplicatedClusterList::deduplicatorSize());
+  stats.ext_communities()->entry_count() = static_cast<int64_t>(
+      nettools::bgplib::DeDuplicatedExtCommunities::deduplicatorSize());
+  return stats;
 }
-} // namespace
 
 void PeerManagerBase::getAttributeStatsHelper(
     const std::shared_ptr<const BgpPath>& attr,
@@ -1386,8 +1371,6 @@ TAttributeStats PeerManagerBase::getAttributeStats() noexcept {
       tStats.avg_cluster_list_len().value(),
       tStats.avg_topology_info_len().value());
 
-  populateDeduplicatorSizes(tStats);
-
   return tStats;
 }
 
@@ -1508,8 +1491,6 @@ TAttributeStats PeerManagerBase::getAttributeStatsFiltered(
     tStats.avg_cluster_list_len() = 0;
     tStats.avg_topology_info_len() = 0;
   }
-
-  populateDeduplicatorSizes(tStats);
 
   return tStats;
 }

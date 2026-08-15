@@ -464,6 +464,13 @@ class BgpServiceBase
       std::unique_ptr<facebook::neteng::fboss::bgp::thrift::TAttributeStats>>
   co_getAttributeStats() override;
 
+  folly::coro::Task<std::unique_ptr<
+      facebook::neteng::fboss::bgp::thrift::TGetDeduplicatorStatsResponse>>
+  co_getDeduplicatorStats(
+      std::unique_ptr<
+          facebook::neteng::fboss::bgp::thrift::TGetDeduplicatorStatsRequest>
+          request) override;
+
   folly::coro::Task<
       std::unique_ptr<facebook::neteng::routing::policy::thrift::TPolicyStats>>
   co_getPolicyStats() override;

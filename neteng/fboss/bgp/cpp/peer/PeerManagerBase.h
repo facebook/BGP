@@ -340,6 +340,14 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   neteng::fboss::bgp::thrift::TAttributeStats getAttributeStats() noexcept;
 
   /**
+   * Return an O(1) best-effort snapshot of the attribute deduplicators.
+   * DeDuplicator<T> synchronizes each size read, so this static collector is
+   * safe to call without dispatching to the PeerManager event base.
+   */
+  static neteng::fboss::bgp::thrift::TGetDeduplicatorStatsResponse
+  getDeduplicatorStats() noexcept;
+
+  /**
    * Get BGP path attribute statistics with optional filtering.
    * Returns aggregated statistics (use count, community entries, AS path
    * length, etc.) for BGP path attributes that match the provided filter

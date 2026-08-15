@@ -4174,18 +4174,19 @@ PeerManagerBase::startPeriodicUpdatePeerCountersRoutine() {
  * collection as ODS counters.
  */
 void publishDeduplicatedAttributesSizes() {
+  const auto stats = PeerManagerBase::getDeduplicatorStats();
   bgp::BgpStats::setDeduplicatedAttributesTotal(
-      nettools::bgplib::DeDuplicatedBgpAttributesC::deduplicatorSize());
+      stats.bgp_attributes()->entry_count().value());
   bgp::BgpStats::setDeduplicatedAttributesAsPath(
-      nettools::bgplib::DeDuplicatedAsPath::deduplicatorSize());
+      stats.as_path()->entry_count().value());
   bgp::BgpStats::setDeduplicatedAttributesCommunities(
-      nettools::bgplib::DeDuplicatedCommunities::deduplicatorSize());
+      stats.communities()->entry_count().value());
   bgp::BgpStats::setDeduplicatedAttributesClusterList(
-      nettools::bgplib::DeDuplicatedClusterList::deduplicatorSize());
+      stats.cluster_list()->entry_count().value());
   bgp::BgpStats::setDeduplicatedAttributesExtCommunities(
-      nettools::bgplib::DeDuplicatedExtCommunities::deduplicatorSize());
+      stats.ext_communities()->entry_count().value());
   bgp::BgpStats::setDeduplicatedAttributesBgpPath(
-      nettools::bgplib::DeDuplicatedBgpPath::deduplicatorSize());
+      stats.bgp_path()->entry_count().value());
 }
 
 /**
