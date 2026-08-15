@@ -648,7 +648,15 @@ const UpdateGroupKey& AdjRib::buildAndSetUpdateGroupKey() {
        */
       enableLegacyV4NlriEncoding_ && isAfiIpv4Negotiated_ && !remoteMpExtExist_,
       peeringParams_.peerGroupName.value_or(""),
-      hasPeerEgressPolicyOverride());
+      hasPeerEgressPolicyOverride(),
+      /*
+       * The group producer transforms attributes once using the first
+       * registered member's peering params. Both localAs and asConfedId are
+       * consumed by the AS_PATH transform, so peers whose values differ must
+       * key into separate groups.
+       */
+      peeringParams_.localAs,
+      peeringParams_.asConfedId);
   return updateGroupKey_;
 }
 

@@ -57,6 +57,16 @@ struct UpdateGroupKey {
   std::string peerGroupName; /* Peer group this peer belongs to */
   bool peerOverride{
       false}; /* Whether peer has per-peer egress policy override */
+  /*
+   * Local AS advertised to peers in this group. Overridable per peer and per
+   * peer-group via the local_as cascade (RFC-7705). The egress attribute
+   * transform prepends it to AS_PATH and substitutes it for policy-zeroed
+   * ASNs, and it is the ASN in a config-derived LBW ext-community, so peers
+   * with different local AS must not share a group.
+   */
+  uint32_t localAs{0};
+  /* Confederation identifier used by the shared AS_PATH transform. */
+  std::optional<uint32_t> asConfedId{std::nullopt};
 
   bool operator==(const UpdateGroupKey& other) const;
   size_t hash() const;
@@ -81,7 +91,9 @@ struct UpdateGroupKey {
       bool extNhEncodingCapable,
       bool legacyV4NlriEncoding,
       std::string peerGroupName,
-      bool peerOverride);
+      bool peerOverride,
+      uint32_t localAs,
+      std::optional<uint32_t> asConfedId = std::nullopt);
 
   static std::string toString(const UpdateGroupKey& key);
 

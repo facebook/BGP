@@ -1334,9 +1334,8 @@ void AdjRibOutGroup::processRibAnnouncedEntryForGroup(
   if (entry.isPartialDrain) {
     applyPartialDrainCommunities(prePolicyAttrs);
   }
-  if (groupKey_.advertiseLinkBandwidth.has_value()) {
-    CHECK(peeringParams_.has_value())
-        << "Group with advertiseLinkBandwidth has no cached peering params";
+  if (groupKey_.advertiseLinkBandwidth.has_value() &&
+      peeringParams_.has_value()) {
     updateAdvertiseLbwExtCommunityCommon(
         *peeringParams_, entry, prePolicyAttrs);
   }

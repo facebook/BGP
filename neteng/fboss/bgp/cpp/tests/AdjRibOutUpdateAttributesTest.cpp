@@ -1752,7 +1752,9 @@ TEST_F(AdjRibOutboundFixture, UpdateGroupKeyCreationTest) {
         false, /* extNhEncodingCapable */
         false, /* legacyV4NlriEncoding */
         "", /* peerGroupName */
-        false /* peerOverride */
+        false, /* peerOverride */
+        kLocalAs1, /* localAs */
+        std::nullopt /* asConfedId */
     );
     EXPECT_EQ(key, adjRib_->updateGroupKey_);
 

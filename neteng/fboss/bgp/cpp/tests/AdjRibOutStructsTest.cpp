@@ -172,6 +172,33 @@ TEST(UpdateGroupKeyTest, InequalityDifferentLegacyV4NlriEncoding) {
   EXPECT_FALSE(key1 == key2);
 }
 
+/*
+ * localAs is per-peer overridable (RFC-7705) and the group producer prepends
+ * the first registered member's localAs to AS_PATH for every member, so peers
+ * with different local AS must key into separate groups.
+ */
+TEST(UpdateGroupKeyTest, InequalityDifferentLocalAs) {
+  UpdateGroupKey key1;
+  key1.localAs = 65001;
+
+  UpdateGroupKey key2 = key1;
+  key2.localAs = 65002;
+
+  EXPECT_FALSE(key1 == key2);
+  EXPECT_NE(key1.hash(), key2.hash());
+}
+
+TEST(UpdateGroupKeyTest, InequalityDifferentAsConfedId) {
+  UpdateGroupKey key1;
+  key1.asConfedId = 65001;
+
+  UpdateGroupKey key2 = key1;
+  key2.asConfedId = 65002;
+
+  EXPECT_FALSE(key1 == key2);
+  EXPECT_NE(key1.hash(), key2.hash());
+}
+
 TEST(UpdateGroupKeyTest, HashConsistency) {
   UpdateGroupKey key1;
   key1.egressPolicyName = "policy1";
@@ -253,7 +280,8 @@ TEST(UpdateGroupKeyTest, CompleteFieldsTest) {
       false, /* extNhEncodingCapable */
       false, /* legacyV4NlriEncoding */
       "", /* peerGroupName */
-      false /* peerOverride */);
+      false, /* peerOverride */
+      65001 /* localAs */);
   auto key2 = UpdateGroupKey::buildUpdateGroupKey(
       "PROPAGATE_FSW_SSW_OUT", /* egress policy */
       "^10\\.0\\..*", /* routeFilterStmtName */
@@ -272,7 +300,8 @@ TEST(UpdateGroupKeyTest, CompleteFieldsTest) {
       false, /* extNhEncodingCapable */
       false, /* legacyV4NlriEncoding */
       "", /* peerGroupName */
-      false /* peerOverride */);
+      false, /* peerOverride */
+      65001 /* localAs */);
 
   EXPECT_TRUE(key1 == key2);
   EXPECT_EQ(key1.hash(), key2.hash());

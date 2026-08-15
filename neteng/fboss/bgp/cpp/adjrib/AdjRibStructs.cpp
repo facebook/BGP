@@ -39,7 +39,8 @@ bool UpdateGroupKey::operator==(const UpdateGroupKey& other) const {
       extNhEncodingCapable == other.extNhEncodingCapable &&
       legacyV4NlriEncoding == other.legacyV4NlriEncoding &&
       peerGroupName == other.peerGroupName &&
-      peerOverride == other.peerOverride;
+      peerOverride == other.peerOverride && localAs == other.localAs &&
+      asConfedId == other.asConfedId;
 }
 
 size_t UpdateGroupKey::hash() const {
@@ -61,7 +62,9 @@ size_t UpdateGroupKey::hash() const {
       extNhEncodingCapable,
       legacyV4NlriEncoding,
       peerGroupName,
-      peerOverride);
+      peerOverride,
+      localAs,
+      asConfedId);
 }
 
 UpdateGroupKey UpdateGroupKey::buildUpdateGroupKey(
@@ -84,7 +87,9 @@ UpdateGroupKey UpdateGroupKey::buildUpdateGroupKey(
     bool extNhEncodingCapable,
     bool legacyV4NlriEncoding,
     std::string peerGroupName,
-    bool peerOverride) {
+    bool peerOverride,
+    uint32_t localAs,
+    std::optional<uint32_t> asConfedId) {
   return UpdateGroupKey{
       std::move(policyName),
       std::move(routeFilterStmtName),
@@ -103,12 +108,14 @@ UpdateGroupKey UpdateGroupKey::buildUpdateGroupKey(
       extNhEncodingCapable,
       legacyV4NlriEncoding,
       std::move(peerGroupName),
-      peerOverride};
+      peerOverride,
+      localAs,
+      asConfedId};
 }
 
 std::string UpdateGroupKey::toString(const UpdateGroupKey& key) {
   return fmt::format(
-      "{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}",
+      "{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}-{}",
       key.egressPolicyName.value_or(""),
       key.routeFilterStmtName,
       key.outDelay.count(),
@@ -130,7 +137,9 @@ std::string UpdateGroupKey::toString(const UpdateGroupKey& key) {
       key.extNhEncodingCapable,
       key.legacyV4NlriEncoding,
       key.peerGroupName,
-      key.peerOverride);
+      key.peerOverride,
+      key.localAs,
+      key.asConfedId.has_value() ? static_cast<int64_t>(*key.asConfedId) : -1);
 }
 
 facebook::neteng::fboss::bgp::thrift::TUpdateGroupKey UpdateGroupKey::toThrift()
@@ -160,6 +169,10 @@ facebook::neteng::fboss::bgp::thrift::TUpdateGroupKey UpdateGroupKey::toThrift()
   t.legacy_v4_nlri_encoding() = legacyV4NlriEncoding;
   t.peer_group_name() = peerGroupName;
   t.peer_override() = peerOverride;
+  t.local_as() = localAs;
+  if (asConfedId.has_value()) {
+    t.as_confed_id() = *asConfedId;
+  }
   return t;
 }
 

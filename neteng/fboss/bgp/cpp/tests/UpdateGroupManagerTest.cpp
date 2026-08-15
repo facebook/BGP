@@ -89,7 +89,9 @@ UpdateGroupKey createTestKey(
     bool extNhEncodingCapable = false,
     bool legacyV4NlriEncoding = false,
     std::string peerGroupName = "",
-    bool peerOverride = false) {
+    bool peerOverride = false,
+    uint32_t localAs = 0,
+    std::optional<uint32_t> asConfedId = std::nullopt) {
   return UpdateGroupKey::buildUpdateGroupKey(
       std::move(policyName),
       std::move(routeFilterStmtName),
@@ -108,7 +110,9 @@ UpdateGroupKey createTestKey(
       extNhEncodingCapable,
       legacyV4NlriEncoding,
       std::move(peerGroupName),
-      peerOverride);
+      peerOverride,
+      localAs,
+      asConfedId);
 }
 
 TEST_F(UpdateGroupManagerTest, InitialStateEmpty) {
@@ -183,6 +187,50 @@ TEST_F(UpdateGroupManagerTest, MultipleGroups) {
    * Groups should be different
    */
   EXPECT_NE(group1.get(), group2.get());
+}
+
+/*
+ * Peers identical except for their local AS must land in separate update
+ * groups: the group producer runs the egress attribute transform once using
+ * the first registered member's peering params, so a shared group would
+ * prepend one member's local AS to the other member's AS_PATH.
+ */
+TEST_F(UpdateGroupManagerTest, DifferentLocalAsCreatesSeparateGroups) {
+  folly::EventBase evb;
+  UpdateGroupManager manager(evb, UpdateGroupConfig{});
+
+  auto key1 = createTestKey();
+  key1.localAs = 65001;
+
+  auto key2 = key1;
+  key2.localAs = 65002;
+
+  auto group1 = manager.findOrCreateGroup(key1);
+  auto group2 = manager.findOrCreateGroup(key2);
+
+  EXPECT_THAT(group1, NotNull());
+  EXPECT_THAT(group2, NotNull());
+  EXPECT_NE(group1.get(), group2.get());
+  EXPECT_EQ(2, manager.getGroupCount());
+}
+
+TEST_F(UpdateGroupManagerTest, DifferentAsConfedIdCreatesSeparateGroups) {
+  folly::EventBase evb;
+  UpdateGroupManager manager(evb, UpdateGroupConfig{});
+
+  auto key1 = createTestKey();
+  key1.asConfedId = 65001;
+
+  auto key2 = key1;
+  key2.asConfedId = 65002;
+
+  auto group1 = manager.findOrCreateGroup(key1);
+  auto group2 = manager.findOrCreateGroup(key2);
+
+  EXPECT_THAT(group1, NotNull());
+  EXPECT_THAT(group2, NotNull());
+  EXPECT_NE(group1.get(), group2.get());
+  EXPECT_EQ(2, manager.getGroupCount());
 }
 
 TEST_F(UpdateGroupManagerTest, GroupNameGeneration) {
@@ -464,7 +512,9 @@ TEST_F(UpdateGroupManagerTest, ToThriftConvertsAllFields) {
       /*extNhEncodingCapable=*/true,
       /*legacyV4NlriEncoding=*/true,
       "spine_peers",
-      /*peerOverride=*/true);
+      /*peerOverride=*/true,
+      /*localAs=*/65001,
+      /*asConfedId=*/65000);
 
   auto thriftKey = key.toThrift();
 
@@ -489,6 +539,8 @@ TEST_F(UpdateGroupManagerTest, ToThriftConvertsAllFields) {
   EXPECT_TRUE(thriftKey.ext_nh_encoding_capable().value());
   EXPECT_TRUE(thriftKey.legacy_v4_nlri_encoding().value());
   EXPECT_EQ("spine_peers", thriftKey.peer_group_name().value());
+  EXPECT_EQ(65001, thriftKey.local_as().value());
+  EXPECT_EQ(65000, thriftKey.as_confed_id().value());
   EXPECT_TRUE(thriftKey.peer_override().value());
 }
 
@@ -502,6 +554,7 @@ TEST_F(UpdateGroupManagerTest, ToThriftOmitsUnsetOptionals) {
   EXPECT_FALSE(thriftKey.advertise_link_bandwidth().has_value());
   EXPECT_FALSE(thriftKey.receive_link_bandwidth().has_value());
   EXPECT_FALSE(thriftKey.link_bandwidth_bps().has_value());
+  EXPECT_FALSE(thriftKey.as_confed_id().has_value());
 }
 
 TEST_F(UpdateGroupManagerTest, InitialDumpTimestampAndDiscrepancies) {
