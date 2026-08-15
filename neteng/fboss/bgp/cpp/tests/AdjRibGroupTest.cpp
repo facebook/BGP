@@ -134,13 +134,15 @@ class AdjRibGroupTest : public ::testing::Test {
         changeListTracker_, addPathConsumerBitmap_, nonAddPathConsumerBitmap_);
   }
 
-  std::shared_ptr<AdjRib> createMinimalAdjRib(uint8_t id = 1) {
+  std::shared_ptr<AdjRib> createMinimalAdjRib(
+      uint8_t id = 1,
+      PeeringParams peeringParams = PeeringParams{}) {
     auto peerId = nettools::bgplib::BgpPeerId(
         folly::IPAddress(fmt::format("10.0.0.{}", id)),
         folly::IPAddressV4("255.0.0.1").toLongHBO());
     return std::make_shared<AdjRib>(
         peerId,
-        PeeringParams(),
+        std::move(peeringParams),
         *evb_,
         ribInQ_,
         observerQ_,
@@ -153,8 +155,9 @@ class AdjRibGroupTest : public ::testing::Test {
    * Register a real in-sync peer so the group's packing list accepts entries
    * (the group only queues when it has an in-sync peer).
    */
-  std::shared_ptr<AdjRib> addInSyncPeer() {
-    auto adjRib = createMinimalAdjRib();
+  std::shared_ptr<AdjRib> addInSyncPeer(
+      PeeringParams peeringParams = PeeringParams{}) {
+    auto adjRib = createMinimalAdjRib(1, std::move(peeringParams));
     adjRibOutGroup_->registerPeer(adjRib);
     registeredInSyncPeers_.emplace_back(adjRibOutGroup_, adjRib);
     return adjRib;
@@ -1246,6 +1249,45 @@ TEST_F(
   EXPECT_EQ(1, adjRibOutGroup_->getStats().getPostOutPrefixCount());
   EXPECT_EQ(1, adjRibOutGroup_->getStats().getPostOutPrefixCountIpv4());
   EXPECT_EQ(0, adjRibOutGroup_->getStats().getPostOutPrefixCountIpv6());
+}
+
+TEST_F(
+    AdjRibGroupPackingFixture,
+    ProcessRibAnnouncedEntryForGroup_AppliesAdvertiseLinkBandwidth) {
+  constexpr uint32_t kLocalAs = 65001;
+  constexpr float kLinkBandwidth = 5e9;
+
+  auto groupKey = createDefaultGroupKey();
+  groupKey.advertiseLinkBandwidth = AdvertiseLinkBandwidth::SET_LINK_BPS;
+  groupKey.linkBandwidthBps = kLinkBandwidth;
+  AdjRibGroupTest::createAdjRibOutGroup("test_group", 42, groupKey);
+
+  PeeringParams peeringParams;
+  peeringParams.localAs = kLocalAs;
+  peeringParams.advertiseLinkBandwidth = AdvertiseLinkBandwidth::SET_LINK_BPS;
+  peeringParams.linkBandwidthBps = kLinkBandwidth;
+  addInSyncPeer(std::move(peeringParams));
+
+  RibOutAnnouncementEntry entry(
+      kV4Prefix1_,
+      kDefaultPathID,
+      TinyPeerInfo(
+          folly::IPAddress("1.1.1.1"), 65000, 1, BgpSessionType::EBGP, false),
+      announcementAttrs_);
+
+  adjRibOutGroup_->processRibAnnouncedEntryForGroup(entry);
+
+  auto* adjRibEntry = adjRibOutGroup_->getFromLiteTree(
+      adjRibOutGroup_->LiteTree_,
+      kV4Prefix1_,
+      AdjRibOutOwnerKey::forGroup(adjRibOutGroup_->getGroupId()));
+  ASSERT_NE(adjRibEntry, nullptr);
+  const auto& postAttrs = adjRibEntry->getPostAttr();
+  ASSERT_NE(postAttrs, nullptr);
+  ASSERT_TRUE(postAttrs->getNonTransitiveLbwAsn().has_value());
+  EXPECT_EQ(kLocalAs, *postAttrs->getNonTransitiveLbwAsn());
+  ASSERT_TRUE(postAttrs->getNonTransitiveLbwValue().has_value());
+  EXPECT_EQ(kLinkBandwidth, *postAttrs->getNonTransitiveLbwValue());
 }
 
 TEST_F(

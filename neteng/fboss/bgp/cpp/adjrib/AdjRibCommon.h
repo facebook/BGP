@@ -97,6 +97,15 @@ struct AdjRibCommonUtils {
       bool isAfiIpv6Negotiated);
 };
 
+/*
+ * Apply the configured outbound link-bandwidth transformation before egress
+ * policy evaluation.
+ */
+void updateAdvertiseLbwExtCommunityCommon(
+    const PeeringParams& peeringParams,
+    const RibOutAnnouncementEntry& update,
+    const std::shared_ptr<BgpPath>& attrs) noexcept;
+
 /**
  * @brief Update packing list (attrToPrefixMap) with attribute-to-prefix mapping
  *

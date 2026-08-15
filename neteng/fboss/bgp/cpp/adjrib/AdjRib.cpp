@@ -151,66 +151,7 @@ AdjRib::~AdjRib() {
 void AdjRib::updateAdvertiseLbwExtCommunity(
     const RibOutAnnouncementEntry& update,
     const std::shared_ptr<BgpPath> postPolicyAttrs) noexcept {
-  if (!postPolicyAttrs) {
-    return;
-  }
-  if (!peeringParams_.advertiseLinkBandwidth.has_value()) {
-    /* Do not modify LBW if AdvertiseLinkBandwidth is not configured. */
-    return;
-  }
-  // prune invalid extended community e.g. "transitive" lbw
-  postPolicyAttrs->pruneTransitiveLbwExtCommunity();
-
-  switch (*peeringParams_.advertiseLinkBandwidth) {
-    case AdvertiseLinkBandwidth::DISABLE:
-      postPolicyAttrs->pruneNonTransitiveLbwExtCommunity();
-      break;
-    case AdvertiseLinkBandwidth::SET_LINK_BPS:
-      CHECK(peeringParams_.linkBandwidthBps.has_value())
-          << "linkBandwidthBps not set for UCMP SET_LINK_BPS";
-      postPolicyAttrs->setNonTransitiveLbwExtCommunity(
-          peeringParams_.localAs, peeringParams_.linkBandwidthBps.value());
-      break;
-    case AdvertiseLinkBandwidth::BEST_PATH:
-      // If any ECMP path is missing LBW then prune LBW community of the best
-      // path, else keept it as is.
-      if (!update.aggregateReceivedUcmpWeight.has_value()) {
-        postPolicyAttrs->pruneNonTransitiveLbwExtCommunity();
-      }
-      break;
-    case AdvertiseLinkBandwidth::AGGREGATE_RECEIVED:
-      // If any ECMP path is missing LBW then prune LBW community of the best
-      // path, else advertise the aggregated value of LBW community of ECMP
-      // paths.
-      if (!update.aggregateReceivedUcmpWeight.has_value()) {
-        postPolicyAttrs->pruneNonTransitiveLbwExtCommunity();
-      } else {
-        postPolicyAttrs->setNonTransitiveLbwExtCommunity(
-            peeringParams_.localAs, update.aggregateReceivedUcmpWeight.value());
-      }
-      break;
-    case AdvertiseLinkBandwidth::AGGREGATE_LOCAL:
-      // If any ECMP path is missing peer LBW then prune LBW community of the
-      // best path, else advertise the aggregated value of LBW ECMP path-peers.
-      if (!update.aggregateLocalUcmpWeight.has_value()) {
-        postPolicyAttrs->pruneNonTransitiveLbwExtCommunity();
-      } else {
-        postPolicyAttrs->setNonTransitiveLbwExtCommunity(
-            peeringParams_.localAs, update.aggregateLocalUcmpWeight.value());
-      }
-      break;
-    case AdvertiseLinkBandwidth::RIB_POLICY_LBW:
-      // advertise the rib policy lbw value
-      if (!update.ribPolicyUcmpWeight.has_value()) {
-        postPolicyAttrs->pruneNonTransitiveLbwExtCommunity();
-      } else {
-        postPolicyAttrs->setNonTransitiveLbwExtCommunity(
-            peeringParams_.localAs, update.ribPolicyUcmpWeight.value());
-      }
-      break;
-    default:
-      CHECK(0);
-  }
+  updateAdvertiseLbwExtCommunityCommon(peeringParams_, update, postPolicyAttrs);
 }
 
 void AdjRib::updateReceiveLbwExtCommunity(

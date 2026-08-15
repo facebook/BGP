@@ -1330,10 +1330,15 @@ void AdjRibOutGroup::processRibAnnouncedEntryForGroup(
   adjRibEntry->setRibVersion(entry.ribVersion);
 
   // Clone attributes for policy evaluation
-  // NOTE: Skip per-peer LBW config (no per-peer config at group level)
   auto prePolicyAttrs = entry.attrs->clone();
   if (entry.isPartialDrain) {
     applyPartialDrainCommunities(prePolicyAttrs);
+  }
+  if (groupKey_.advertiseLinkBandwidth.has_value()) {
+    CHECK(peeringParams_.has_value())
+        << "Group with advertiseLinkBandwidth has no cached peering params";
+    updateAdvertiseLbwExtCommunityCommon(
+        *peeringParams_, entry, prePolicyAttrs);
   }
 
   // Get post policy attributes

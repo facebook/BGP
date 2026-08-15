@@ -66,6 +66,60 @@ bool AdjRibCommonUtils::isAfiNegotiated(
       (prefix.first.isV6() && isAfiIpv6Negotiated);
 }
 
+void updateAdvertiseLbwExtCommunityCommon(
+    const PeeringParams& peeringParams,
+    const RibOutAnnouncementEntry& update,
+    const std::shared_ptr<BgpPath>& attrs) noexcept {
+  if (!attrs || !peeringParams.advertiseLinkBandwidth.has_value()) {
+    return;
+  }
+
+  attrs->pruneTransitiveLbwExtCommunity();
+
+  switch (*peeringParams.advertiseLinkBandwidth) {
+    case AdvertiseLinkBandwidth::DISABLE:
+      attrs->pruneNonTransitiveLbwExtCommunity();
+      break;
+    case AdvertiseLinkBandwidth::SET_LINK_BPS:
+      CHECK(peeringParams.linkBandwidthBps.has_value())
+          << "linkBandwidthBps not set for UCMP SET_LINK_BPS";
+      attrs->setNonTransitiveLbwExtCommunity(
+          peeringParams.localAs, *peeringParams.linkBandwidthBps);
+      break;
+    case AdvertiseLinkBandwidth::BEST_PATH:
+      if (!update.aggregateReceivedUcmpWeight.has_value()) {
+        attrs->pruneNonTransitiveLbwExtCommunity();
+      }
+      break;
+    case AdvertiseLinkBandwidth::AGGREGATE_RECEIVED:
+      if (!update.aggregateReceivedUcmpWeight.has_value()) {
+        attrs->pruneNonTransitiveLbwExtCommunity();
+      } else {
+        attrs->setNonTransitiveLbwExtCommunity(
+            peeringParams.localAs, *update.aggregateReceivedUcmpWeight);
+      }
+      break;
+    case AdvertiseLinkBandwidth::AGGREGATE_LOCAL:
+      if (!update.aggregateLocalUcmpWeight.has_value()) {
+        attrs->pruneNonTransitiveLbwExtCommunity();
+      } else {
+        attrs->setNonTransitiveLbwExtCommunity(
+            peeringParams.localAs, *update.aggregateLocalUcmpWeight);
+      }
+      break;
+    case AdvertiseLinkBandwidth::RIB_POLICY_LBW:
+      if (!update.ribPolicyUcmpWeight.has_value()) {
+        attrs->pruneNonTransitiveLbwExtCommunity();
+      } else {
+        attrs->setNonTransitiveLbwExtCommunity(
+            peeringParams.localAs, *update.ribPolicyUcmpWeight);
+      }
+      break;
+    default:
+      CHECK(false);
+  }
+}
+
 // Global cache for policy result strings (shared between AdjRib and
 // AdjRibGroup) Each AdjRibEntry contains a postPolicyResult_ string_view that
 // points to the string key in this cache.
