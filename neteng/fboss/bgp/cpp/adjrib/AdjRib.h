@@ -2018,27 +2018,14 @@ class AdjRib : boost::noncopyable,
       const std::optional<float> aggregateReceivedUcmpWeight = std::nullopt,
       const std::optional<float> aggregateLocalUcmpWeight = std::nullopt,
       const std::optional<float> ribPolicyUcmpWeight = std::nullopt) {
-    if (attrs == nullptr) {
-      return nullptr;
-    }
-
-    // here we intend to capture ORIGINAL LBW state prior to per-peer config.
-    // e.g
-    // per-peer: DISABLE, per-route: ACCEPT. we expect the output-route to
-    // contain original LBW even it gets pruned by per-peer config.
-    // details: https://fb.quip.com/xqf4Ai6ySsDm
-    auto originalAsnLbw = attrs->getNonTransitiveLbw();
-    LbwActionData lbwActionData{
-        std::move(originalAsnLbw),
-        peeringParams_.localAs,
-        static_cast<std::optional<float>>(peeringParams_.linkBandwidthBps),
+    return createPolicyActionDataCommon(
+        peeringParams_,
+        attrs,
+        switchId,
+        multiPathSize,
         aggregateReceivedUcmpWeight,
         aggregateLocalUcmpWeight,
-        ribPolicyUcmpWeight};
-
-    bgp::BgpPolicyActionData policyActionData{
-        switchId, multiPathSize, std::move(lbwActionData)};
-    return std::make_shared<BgpPolicyActionData>(policyActionData);
+        ribPolicyUcmpWeight);
   }
 
   // Return the post policy attribute, the accept/deny policy term name (if

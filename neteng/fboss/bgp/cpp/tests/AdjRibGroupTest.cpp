@@ -46,7 +46,10 @@
       ProcessRibAnnouncedEntryForGroup_NoEgressPolicyWithPolicyManagerDoesNotCrash); \
   FRIEND_TEST(                                                                       \
       AdjRibGroupTest,                                                               \
-      MovePeerMaterializedPathEntries_PeerOwnedPathNotOverwritten);
+      MovePeerMaterializedPathEntries_PeerOwnedPathNotOverwritten);                  \
+  FRIEND_TEST(                                                                       \
+      AdjRibGroupPolicyFixture,                                                      \
+      GetPostOutPolicyAttributesAndInfo_PopulatesLbwActionData);
 
 #include <folly/coro/BlockingWait.h>
 #include <folly/coro/Collect.h>
@@ -62,6 +65,7 @@
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
 #include "neteng/fboss/bgp/cpp/policy/PolicyManager.h"
 #include "neteng/fboss/bgp/cpp/tests/BoundedWaitUtils.h"
+#include "neteng/fboss/bgp/cpp/tests/PolicyUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/Utils.h"
 
 namespace facebook::bgp {
@@ -2060,6 +2064,67 @@ TEST_F(AdjRibGroupPolicyFixture, GetPostOutPolicyAttributesAndInfo_NullEntry) {
   };
 
   EXPECT_DEATH(callWithNullEntry(), "");
+}
+
+/*
+ * Regression test: the group producer must build BgpPolicyActionData from the
+ * announcement the way AdjRib::getPostOutPolicyAttributesAndInfo does for a
+ * detached peer. It used to default-construct it, leaving lbwActionData unset,
+ * so an egress policy term reading that data (here SET_LINK_BPS) was a silent
+ * no-op for the group while the detached member applied it.
+ */
+TEST_F(
+    AdjRibGroupPolicyFixture,
+    GetPostOutPolicyAttributesAndInfo_PopulatesLbwActionData) {
+  constexpr uint32_t kLocalAs = 65001;
+  constexpr float kLinkBandwidthBps = 5e9;
+  const std::string kPolicyName = "test_lbw_policy";
+
+  auto groupKey = createDefaultGroupKey();
+  groupKey.egressPolicyName = kPolicyName;
+  createAdjRibOutGroup("test_group", 42, groupKey);
+
+  /*
+   * SET_LINK_BPS derives the LBW ext-community purely from the action data
+   * (lbwActionData.asn / .linkBandwidthBps), so its output is a direct
+   * readout of what the group handed to policy evaluation.
+   */
+  auto lbwAction = createBgpPolicyLbwExtCommunityAction(
+      bgp_policy::LbwExtCommunityActionType::SET_LINK_BPS);
+  adjRibOutGroup_->policyManager_ = std::make_shared<PolicyManager>(
+      createBgpPolicies(kPolicyName, {}, {lbwAction}),
+      createTestBgpGlobalConfig());
+
+  PeeringParams peeringParams;
+  peeringParams.localAs = kLocalAs;
+  peeringParams.linkBandwidthBps = kLinkBandwidthBps;
+  adjRibOutGroup_->peeringParams_ = peeringParams;
+
+  RibOutAnnouncementEntry update(
+      kV4Prefix1_,
+      kDefaultPathID,
+      TinyPeerInfo(
+          folly::IPAddress("1.1.1.1"), 65000, 1, BgpSessionType::EBGP, false),
+      testAttrs_,
+      0,
+      0,
+      0,
+      0,
+      0);
+
+  auto* entry =
+      adjRibOutGroup_->tryInsertRibOutEntry(kV4Prefix1_, kNexthop_, kPathId1_);
+  ASSERT_NE(entry, nullptr);
+
+  auto [postAttrs, postPolicyInfo] =
+      adjRibOutGroup_->getPostOutPolicyAttributesAndInfo(
+          update, entry, testAttrs_, "test_peer");
+
+  ASSERT_NE(postAttrs, nullptr);
+  ASSERT_TRUE(postAttrs->getNonTransitiveLbwAsn().has_value());
+  EXPECT_EQ(kLocalAs, *postAttrs->getNonTransitiveLbwAsn());
+  ASSERT_TRUE(postAttrs->getNonTransitiveLbwValue().has_value());
+  EXPECT_EQ(kLinkBandwidthBps, *postAttrs->getNonTransitiveLbwValue());
 }
 
 /**

@@ -32,6 +32,7 @@ namespace facebook::bgp {
 
 class AdjRibStats;
 class PolicyManager;
+struct BgpPolicyActionData;
 struct PeeringParams;
 struct PolicyAttributesMask;
 struct RibOutAnnouncementEntry;
@@ -105,6 +106,37 @@ void updateAdvertiseLbwExtCommunityCommon(
     const PeeringParams& peeringParams,
     const RibOutAnnouncementEntry& update,
     const std::shared_ptr<BgpPath>& attrs) noexcept;
+
+/**
+ * @brief Build the dynamic policy action data for an egress policy evaluation
+ *
+ * @details Captures the state an egress policy action needs but that cannot be
+ * pre-configured, currently the link-bandwidth inputs: the ORIGINAL (pre
+ * per-peer-config, pre-policy) ASN/LBW carried on the route, the local AS and
+ * configured link bandwidth, and the aggregated/rib-policy UCMP weights.
+ * Details: https://fb.quip.com/xqf4Ai6ySsDm
+ *
+ * Shared by the per-peer producer (AdjRib::createPolicyActionData) and the
+ * group producer (AdjRibOutGroup::getPostOutPolicyAttributesAndInfo) so a
+ * detached peer and its update group feed policy evaluation the same inputs.
+ *
+ * @param peeringParams - Peer configuration parameters (local AS, link bw)
+ * @param attrs - Pre-policy, pre-per-peer-config route attributes
+ * @param switchId - Switch ID of the announcing peer, if known
+ * @param multiPathSize - Number of multipaths for the prefix, if known
+ * @param aggregateReceivedUcmpWeight - Aggregated received LBW across peers
+ * @param aggregateLocalUcmpWeight - Aggregated configured LBW across peers
+ * @param ribPolicyUcmpWeight - LBW set by rib-policy, if any
+ * @return Action data, or nullptr when attrs is null
+ */
+std::shared_ptr<BgpPolicyActionData> createPolicyActionDataCommon(
+    const PeeringParams& peeringParams,
+    const std::shared_ptr<const BgpPath>& attrs,
+    const std::optional<size_t>& switchId = std::nullopt,
+    const std::optional<size_t>& multiPathSize = std::nullopt,
+    const std::optional<float>& aggregateReceivedUcmpWeight = std::nullopt,
+    const std::optional<float>& aggregateLocalUcmpWeight = std::nullopt,
+    const std::optional<float>& ribPolicyUcmpWeight = std::nullopt);
 
 /**
  * @brief Update packing list (attrToPrefixMap) with attribute-to-prefix mapping

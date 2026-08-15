@@ -120,6 +120,36 @@ void updateAdvertiseLbwExtCommunityCommon(
   }
 }
 
+std::shared_ptr<BgpPolicyActionData> createPolicyActionDataCommon(
+    const PeeringParams& peeringParams,
+    const std::shared_ptr<const BgpPath>& attrs,
+    const std::optional<size_t>& switchId,
+    const std::optional<size_t>& multiPathSize,
+    const std::optional<float>& aggregateReceivedUcmpWeight,
+    const std::optional<float>& aggregateLocalUcmpWeight,
+    const std::optional<float>& ribPolicyUcmpWeight) {
+  if (attrs == nullptr) {
+    return nullptr;
+  }
+
+  /*
+   * Here we intend to capture the ORIGINAL LBW state prior to per-peer config.
+   * e.g. per-peer: DISABLE, per-route: ACCEPT. We expect the output route to
+   * contain the original LBW even if it gets pruned by per-peer config.
+   * Details: https://fb.quip.com/xqf4Ai6ySsDm
+   */
+  LbwActionData lbwActionData{
+      attrs->getNonTransitiveLbw(),
+      peeringParams.localAs,
+      peeringParams.linkBandwidthBps,
+      aggregateReceivedUcmpWeight,
+      aggregateLocalUcmpWeight,
+      ribPolicyUcmpWeight};
+
+  return std::make_shared<BgpPolicyActionData>(
+      switchId, multiPathSize, std::move(lbwActionData));
+}
+
 // Global cache for policy result strings (shared between AdjRib and
 // AdjRibGroup) Each AdjRibEntry contains a postPolicyResult_ string_view that
 // points to the string key in this cache.

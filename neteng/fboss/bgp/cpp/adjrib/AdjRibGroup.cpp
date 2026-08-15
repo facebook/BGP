@@ -1711,7 +1711,27 @@ AdjRibOutGroup::getPostOutPolicyAttributesAndInfo(
   CHECK(adjRibEntry != nullptr);
 
   if (egressPolicyConfigured()) {
-    auto policyActionData = std::make_shared<BgpPolicyActionData>();
+    /*
+     * Snapshot the policy action data from the announcement, exactly as
+     * AdjRib::getPostOutPolicyAttributesAndInfo does for a detached peer.
+     * A default-constructed BgpPolicyActionData carries no LBW inputs, so any
+     * policy term reading them (LBW / UCMP actions) evaluated differently for
+     * the group than it did for a detached member.
+     *
+     * peeringParams_ is the first registered member's; the only field this
+     * reads that is not part of UpdateGroupKey is localAs (tracked separately
+     * as audit finding M3).
+     */
+    auto policyActionData = peeringParams_
+        ? createPolicyActionDataCommon(
+              *peeringParams_,
+              update.attrs,
+              update.switchId,
+              update.multiPathSize,
+              update.aggregateReceivedUcmpWeight,
+              update.aggregateLocalUcmpWeight,
+              update.ribPolicyUcmpWeight)
+        : std::make_shared<BgpPolicyActionData>();
 
     const auto& [attrs, postTermName, postPolicyInfo] =
         getPostPolicyAttributesPolicyTermAndInfo(
