@@ -234,58 +234,7 @@ TModuleHealthReport HealthValidator::checkGlobalSystem() {
     }
   }
 
-  /* 1.1.8 Attribute dedup efficiency */
-  {
-    if (!peerMgr_) {
-      checks.emplace_back(makeResult(
-          HealthCheckId::GLOBAL_SYSTEM_ATTR_DEDUP,
-          HealthCheckCategory::GLOBAL_SYSTEM,
-          HealthCheckStatus::FAIL,
-          "PeerManagerBase not available"));
-    } else {
-      auto stats = peerMgr_->getAttributeStats();
-      int64_t totalAttrs = *stats.total_num_of_attributes();
-      int64_t uniqueAttrs = *stats.total_unique_attributes();
-      double ratio =
-          totalAttrs > 0 ? static_cast<double>(uniqueAttrs) / totalAttrs : 0.0;
-
-      /* Skip dedup check when total attributes is too small —
-       * on small-scale boxes, dedup ratio is naturally high. */
-      constexpr int64_t kMinAttrsForDedupCheck = 100;
-      if (totalAttrs < kMinAttrsForDedupCheck) {
-        checks.emplace_back(makeResult(
-            HealthCheckId::GLOBAL_SYSTEM_ATTR_DEDUP,
-            HealthCheckCategory::GLOBAL_SYSTEM,
-            HealthCheckStatus::PASS,
-            fmt::format(
-                "unique_attrs/total_attrs = {}/{} = {:.3f} "
-                "(below {} threshold, skipping dedup evaluation)",
-                uniqueAttrs,
-                totalAttrs,
-                ratio,
-                kMinAttrsForDedupCheck)));
-      } else {
-        HealthCheckStatus status = HealthCheckStatus::PASS;
-        if (ratio >= kAttrDedupCriticalThreshold) {
-          status = HealthCheckStatus::FAIL;
-        }
-
-        checks.emplace_back(makeResult(
-            HealthCheckId::GLOBAL_SYSTEM_ATTR_DEDUP,
-            HealthCheckCategory::GLOBAL_SYSTEM,
-            status,
-            fmt::format(
-                "unique_attrs/total_attrs = {}/{} = {:.3f}",
-                uniqueAttrs,
-                totalAttrs,
-                ratio),
-            ratio,
-            kAttrDedupCriticalThreshold));
-      }
-    }
-  }
-
-  /* 1.1.9 Previous exit was planned (no crash) */
+  /* 1.1.8 Previous exit was planned (no crash) */
   checks.emplace_back(checkPlannedExit());
 
   report.overallStatus() = computeOverallStatus(checks);

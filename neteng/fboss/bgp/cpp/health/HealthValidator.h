@@ -183,12 +183,6 @@ inline constexpr double kSessionFlapThresholdPct = 0.5;
  * transient lag that varies by deployment size. */
 inline constexpr int64_t kRibVersionLagThreshold = 1000;
 
-/* Attribute deduplication efficiency thresholds.
- * WARNING (0.5-0.8): treated as PASS — normal on small-scale boxes.
- * CRITICAL (>0.8): treated as FAIL — poor dedup at scale. */
-inline constexpr double kAttrDedupWarningThreshold = 0.5;
-inline constexpr double kAttrDedupCriticalThreshold = 0.8;
-
 /* Maximum acceptable path selection duration */
 inline constexpr int64_t kMaxPathSelectionMs = 5000;
 

@@ -245,15 +245,10 @@ CO_TEST_F(HealthValidatorTest, CpuUsage_Fail) {
   EXPECT_EQ(*check->status(), HealthCheckStatus::FAIL);
 }
 
-CO_TEST_F(HealthValidatorTest, AttrDedup_Error_NoPeerManager) {
-  /* PeerManagerBase is nullptr -> ERROR */
+CO_TEST_F(HealthValidatorTest, AttrDedupCheckIsAbsent) {
   auto report = co_await validator_->generateReport();
-  auto* check = findCheck(report, HealthCheckId::GLOBAL_SYSTEM_ATTR_DEDUP);
-  EXPECT_NE(check, nullptr);
-  if (!check) {
-    co_return;
-  }
-  EXPECT_EQ(*check->status(), HealthCheckStatus::FAIL);
+  EXPECT_EQ(
+      nullptr, findCheck(report, HealthCheckId::GLOBAL_SYSTEM_ATTR_DEDUP));
 }
 
 CO_TEST_F(HealthValidatorTest, PlannedExit_Pass) {
