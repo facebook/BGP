@@ -1626,36 +1626,14 @@ BgpServiceBase::co_getDeduplicatorStats(
       PeerManagerBase::getDeduplicatorStats());
 }
 
-// used by fboss/bgp/consistency_check
+/**
+ * Deprecated wire-compatibility placeholder. Deduplicator statistics are
+ * served by getDeduplicatorStats() without walking the Adj-RIB; the legacy
+ * total, reference-count, and average fields are intentionally unavailable.
+ * Keep this handler empty until the legacy Thrift method can be removed.
+ */
 folly::coro::Task<std::unique_ptr<TAttributeStats>>
 BgpServiceBase::co_getAttributeStats() {
-  auto log = LOG_THRIFT_CALL(DBG2);
-  if (exitInitiated_) {
-    co_return std::make_unique<TAttributeStats>();
-  }
-
-  if (!continueExecution(true)) {
-    co_return std::make_unique<TAttributeStats>();
-  }
-  SCOPE_EXIT {
-    decrRequestsInExecution();
-  };
-
-  auto result = co_await co_runOnEvbWithTimeout(
-      peerMgr_.getEventBase(),
-      [this]() { return peerMgr_.getAttributeStats(); },
-      kPeerMgrThriftHandlerTimeout);
-
-  if (result.hasValue()) {
-    co_return std::make_unique<TAttributeStats>(std::move(result.value()));
-  }
-
-  if (result.exception().is_compatible_with<folly::FutureTimeout>()) {
-    XLOGF(
-        ERR, "getAttributeStats timed out — PeerManagerBase evb unresponsive");
-  } else {
-    XLOGF(ERR, "getAttributeStats failed: {}", result.exception().what());
-  }
   co_return std::make_unique<TAttributeStats>();
 }
 
@@ -2889,41 +2867,15 @@ BgpServiceBase::co_getNexthopInfos(
       std::vector<neteng::fboss::bgp::thrift::TNexthopInfo>>();
 }
 
+/**
+ * Deprecated wire-compatibility placeholder. Filtered attribute statistics
+ * required the same full Adj-RIB walk as getAttributeStats(), so this handler
+ * intentionally returns an empty response without dispatching to PeerManager.
+ */
 folly::coro::Task<std::unique_ptr<TAttributeStats>>
 BgpServiceBase::co_getAttributeStatsFiltered(
     std::unique_ptr<facebook::neteng::fboss::bgp::thrift::TAttributeStatsFilter>
-        filter) {
-  auto log = LOG_THRIFT_CALL(DBG2);
-  if (exitInitiated_) {
-    co_return std::make_unique<TAttributeStats>();
-  }
-
-  if (!continueExecution(true)) {
-    co_return std::make_unique<TAttributeStats>();
-  }
-  SCOPE_EXIT {
-    decrRequestsInExecution();
-  };
-
-  auto result = co_await co_runOnEvbWithTimeout(
-      peerMgr_.getEventBase(),
-      [this, f = std::move(filter)]() mutable {
-        return peerMgr_.getAttributeStatsFiltered(f);
-      },
-      kPeerMgrThriftHandlerTimeout);
-
-  if (result.hasValue()) {
-    co_return std::make_unique<TAttributeStats>(std::move(result.value()));
-  }
-
-  if (result.exception().is_compatible_with<folly::FutureTimeout>()) {
-    XLOGF(
-        ERR,
-        "getAttributeStatsFiltered timed out — PeerManagerBase evb unresponsive");
-  } else {
-    XLOGF(
-        ERR, "getAttributeStatsFiltered failed: {}", result.exception().what());
-  }
+    /*filter*/) {
   co_return std::make_unique<TAttributeStats>();
 }
 

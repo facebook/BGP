@@ -336,9 +336,6 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
           entry,
       const std::function<bool(const RouteInfo&)>& pathFilter);
 
-  // get attribute stats
-  neteng::fboss::bgp::thrift::TAttributeStats getAttributeStats() noexcept;
-
   /**
    * Return an O(1) best-effort snapshot of the attribute deduplicators.
    * DeDuplicator<T> synchronizes each size read, so this static collector is
@@ -346,21 +343,6 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
    */
   static neteng::fboss::bgp::thrift::TGetDeduplicatorStatsResponse
   getDeduplicatorStats() noexcept;
-
-  /**
-   * Get BGP path attribute statistics with optional filtering.
-   * Returns aggregated statistics (use count, community entries, AS path
-   * length, etc.) for BGP path attributes that match the provided filter
-   * criteria.
-   *
-   * @param filter Optional filter to restrict which attributes are included
-   *               in the statistics (e.g., filter by peer, prefix, etc.)
-   * @return TAttributeStats containing aggregated statistics for the filtered
-   *         attributes
-   */
-  neteng::fboss::bgp::thrift::TAttributeStats getAttributeStatsFiltered(
-      const std::unique_ptr<neteng::fboss::bgp::thrift::TAttributeStatsFilter>&
-          filter) noexcept;
 
   // get policy stats
   void getPolicyStats(
@@ -589,25 +571,6 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   }
 
  private:
-  // Struct to accumulate attribute statistics
-  struct AttributeStatsAccumulator {
-    uint64_t totalUseCount{0};
-    uint64_t totalCommunityEntries{0};
-    uint64_t totalExtCommunityEntries{0};
-    uint64_t totalAsPathLen{0};
-    uint64_t totalClusterListLen{0};
-    uint64_t totalTopologyInfoLen{0};
-  };
-
-  void getAttributeStatsHelper(
-      const std::shared_ptr<const BgpPath>& attr,
-      std::unordered_set<std::shared_ptr<const BgpPath>>& allAttributes,
-      std::unordered_set<
-          std::shared_ptr<const BgpPath>,
-          facebook::bgp::BgpPath::Hash,
-          facebook::bgp::BgpPath::Compare>& uniqueAttributes,
-      AttributeStatsAccumulator& accumulator) noexcept;
-
   folly::coro::Task<void> updatePeerCounters();
 
   std::shared_ptr<folly::coro::Baton> testOnlyPolicyUpdateProcessingEntered_;

@@ -60,6 +60,8 @@ constexpr int64_t kExpectedAsPathEntries = 3;
 constexpr int64_t kExpectedCommunitiesEntries = 4;
 constexpr int64_t kExpectedClusterListEntries = 5;
 constexpr int64_t kExpectedExtCommunitiesEntries = 6;
+constexpr int64_t kEmptyAttributeCount = 0;
+constexpr double kEmptyAttributeAverage = 0.0;
 
 void clearAttributeDeduplicators() {
   nettools::bgplib::DeDuplicatedBgpPath::clearDeduplicator();
@@ -68,6 +70,24 @@ void clearAttributeDeduplicators() {
   nettools::bgplib::DeDuplicatedCommunities::clearDeduplicator();
   nettools::bgplib::DeDuplicatedClusterList::clearDeduplicator();
   nettools::bgplib::DeDuplicatedExtCommunities::clearDeduplicator();
+}
+
+void expectEmptyAttributeStats(const TAttributeStats& stats) {
+  EXPECT_EQ(kEmptyAttributeCount, stats.total_num_of_attributes().value());
+  EXPECT_EQ(kEmptyAttributeCount, stats.total_unique_attributes().value());
+  EXPECT_EQ(kEmptyAttributeAverage, stats.avg_attribute_refcount().value());
+  EXPECT_EQ(kEmptyAttributeAverage, stats.avg_community_list_len().value());
+  EXPECT_EQ(kEmptyAttributeAverage, stats.avg_extcommunity_list_len().value());
+  EXPECT_EQ(kEmptyAttributeAverage, stats.avg_as_path_len().value());
+  EXPECT_EQ(kEmptyAttributeAverage, stats.avg_cluster_list_len().value());
+  EXPECT_EQ(kEmptyAttributeAverage, stats.avg_topology_info_len().value());
+  EXPECT_FALSE(stats.dedup_bgp_path().has_value());
+  EXPECT_FALSE(stats.dedup_bgp_attributes().has_value());
+  EXPECT_FALSE(stats.dedup_as_path().has_value());
+  EXPECT_FALSE(stats.dedup_communities().has_value());
+  EXPECT_FALSE(stats.dedup_cluster_list().has_value());
+  EXPECT_FALSE(stats.dedup_ext_communities().has_value());
+  EXPECT_EQ(TAttributeStatsPayloadKind::UNKNOWN, stats.payload_kind().value());
 }
 } // namespace
 
@@ -379,6 +399,27 @@ TEST_F(BgpServiceBaseTestFixture, GetDeduplicatorStatsReturnsTypedSnapshot) {
       response->ext_communities()->entry_count().value());
 }
 
+TEST_F(
+    BgpServiceBaseTestFixture,
+    GetAttributeStatsReturnsEmptyCompatibilityPlaceholder) {
+  auto response = folly::coro::blockingWait(service_->co_getAttributeStats());
+
+  ASSERT_NE(nullptr, response);
+  expectEmptyAttributeStats(*response);
+}
+
+TEST_F(
+    BgpServiceBaseTestFixture,
+    GetAttributeStatsFilteredReturnsEmptyCompatibilityPlaceholder) {
+  auto filter = std::make_unique<TAttributeStatsFilter>();
+  filter->direction() = TDirectionFilter::EGRESS;
+  filter->policyStage() = TPolicyStageFilter::POST_POLICY;
+  auto response = folly::coro::blockingWait(
+      service_->co_getAttributeStatsFiltered(std::move(filter)));
+
+  ASSERT_NE(nullptr, response);
+  expectEmptyAttributeStats(*response);
+}
 // The getProcessUptimeSeconds handler returns a non-negative value that does
 // not go backwards across samples. (A deterministic positive value with a
 // controlled start time is verified in WatchdogTest.GetUptimeSecondsTest.)
