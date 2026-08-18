@@ -312,6 +312,15 @@ inline const auto kNumUpdateGroups =
 void incrNumUpdateGroups();
 void decrNumUpdateGroups();
 
+/*
+ * Whether the update group feature is enabled on this device, as resolved
+ * from bgp_setting_config.enable_update_group. Set to 1 when enabled and 0
+ * when disabled, and refreshed on every config load.
+ */
+inline const auto kUpdateGroupEnabled =
+    fmt::format("{}.update_group_enabled", kBgpcppTag);
+void setUpdateGroupEnabled(bool val);
+
 // Number of adjacency RIB out groups
 inline const auto kAdjRibOutGroupsCount =
     fmt::format("{}.adj_rib_out_groups.count", kBgpcppTag);

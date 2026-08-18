@@ -1084,6 +1084,9 @@ void Config::populateConfigDatabase(
   fb303::ThreadCachedServiceData::get()->setCounter(
       "bgpd.config.ucmp_enabled", ucmpEnabled);
 
+  // update group enabled or not
+  BgpStats::setUpdateGroupEnabled(globalConfig_->enableUpdateGroup);
+
   // total configured peers
   BgpStats::setConfiguredPeers(config_.peers()->size());
 }

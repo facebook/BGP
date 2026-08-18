@@ -38,6 +38,7 @@
 #include "neteng/fboss/bgp/cpp/config/ThriftServerUtils.h"
 #include "neteng/fboss/bgp/cpp/config/facebook/ConfigBB.h"
 #include "neteng/fboss/bgp/cpp/policy/PolicyManager.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "neteng/fboss/bgp/cpp/tests/ConfigTestFixture.h"
 #include "neteng/fboss/bgp/cpp/tests/PolicyUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/Utils.h"
@@ -3213,6 +3214,11 @@ TEST_F(ConfigTestFixture, BgpSettingConfigTest) {
     EXPECT_FALSE(globalConfig->enableNextHopTracking);
     EXPECT_FALSE(globalConfig->enableUpdateGroup);
     EXPECT_FALSE(globalConfig->enableOptimizedGR);
+
+    std::map<std::string, int64_t> counters;
+    fb303::ThreadCachedServiceData::getShared()->getCounters(counters);
+    ASSERT_EQ(1, counters.count(BgpStats::kUpdateGroupEnabled));
+    EXPECT_EQ(0, counters.at(BgpStats::kUpdateGroupEnabled));
   }
 
   {
@@ -3230,6 +3236,11 @@ TEST_F(ConfigTestFixture, BgpSettingConfigTest) {
     EXPECT_TRUE(globalConfig->enableNextHopTracking);
     EXPECT_TRUE(globalConfig->enableUpdateGroup);
     EXPECT_TRUE(globalConfig->enableOptimizedGR);
+
+    std::map<std::string, int64_t> counters;
+    fb303::ThreadCachedServiceData::getShared()->getCounters(counters);
+    ASSERT_EQ(1, counters.count(BgpStats::kUpdateGroupEnabled));
+    EXPECT_EQ(1, counters.at(BgpStats::kUpdateGroupEnabled));
   }
 }
 

@@ -224,6 +224,31 @@ TEST(StatsTest, AdjRibOutGroupsCountTest) {
   EXPECT_EQ(1, tcData->getCounter(BgpStats::kAdjRibOutGroupsCount));
 }
 
+TEST(StatsTest, UpdateGroupEnabledCounterTest) {
+  BgpStats::initCounters();
+  auto tcData = facebook::fb303::ThreadCachedServiceData::get();
+
+  /*
+   * The counter name is the ODS key contract: it is scraped by collection
+   * model Arista_Ebb_Bgpcpp_Fb303_Dynamic via the ^bgpcpp\..* fb303 regex
+   * and published as FBNet:bgpcpp.update_group_enabled. Renaming it breaks
+   * every chart and detector built on that key.
+   */
+  EXPECT_EQ("bgpcpp.update_group_enabled", BgpStats::kUpdateGroupEnabled);
+
+  // Disabled is the default, so the counter must exist and read 0
+  EXPECT_EQ(0, tcData->getCounter(BgpStats::kUpdateGroupEnabled));
+
+  BgpStats::setUpdateGroupEnabled(true);
+  tcData->publishStats();
+  EXPECT_EQ(1, tcData->getCounter(BgpStats::kUpdateGroupEnabled));
+
+  // A later config load that turns the feature off must clear the counter
+  BgpStats::setUpdateGroupEnabled(false);
+  tcData->publishStats();
+  EXPECT_EQ(0, tcData->getCounter(BgpStats::kUpdateGroupEnabled));
+}
+
 TEST(StatsTest, EstablishedGrPeersCountTest) {
   BgpStats::initCounters();
   auto tcData = facebook::fb303::ThreadCachedServiceData::get();

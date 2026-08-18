@@ -89,6 +89,7 @@ void initCounters() {
   fb303::ThreadCachedServiceData::get()->addStatExportType(
       kStreamingSessionsRejected, fb303::SUM);
   fb303::ThreadCachedServiceData::get()->setCounter(kNumUpdateGroups, 0);
+  fb303::ThreadCachedServiceData::get()->setCounter(kUpdateGroupEnabled, 0);
   fb303::ThreadCachedServiceData::get()->setCounter(kAdjRibOutGroupsCount, 0);
   fb303::ThreadCachedServiceData::get()->setCounter(
       kEstablishedGrPeersCount, 0);
@@ -145,6 +146,11 @@ void incrNumUpdateGroups() {
 
 void decrNumUpdateGroups() {
   fb303::ThreadCachedServiceData::get()->incrementCounter(kNumUpdateGroups, -1);
+}
+
+void setUpdateGroupEnabled(bool val) {
+  fb303::ThreadCachedServiceData::get()->setCounter(
+      kUpdateGroupEnabled, val ? 1 : 0);
 }
 
 void incrAdjRibOutGroupsCount() {
