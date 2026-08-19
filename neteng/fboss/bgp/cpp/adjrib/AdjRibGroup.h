@@ -796,7 +796,6 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
       const UpdateGroupConfig& config) noexcept {
     updateGroupConfig_ = config;
   }
-  bool containsBitToAdjRibForTesting(uint64_t bitPos) const noexcept;
 
   void setSyncBitForTesting(uint64_t bit) noexcept {
     const auto it = bitToAdjRibs_.find(bit);

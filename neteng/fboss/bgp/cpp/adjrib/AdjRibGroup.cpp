@@ -2634,11 +2634,6 @@ void AdjRibOutGroup::setBitToAdjRibForTesting(
   }
 }
 
-bool AdjRibOutGroup::containsBitToAdjRibForTesting(
-    uint64_t bitPos) const noexcept {
-  return bitToAdjRibs_.find(bitPos) != bitToAdjRibs_.end();
-}
-
 /*
  * Register a peer with this update group
  * Assigns bit position and updates tracking structures
