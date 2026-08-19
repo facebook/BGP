@@ -324,7 +324,6 @@ class UpdateGroupDetachedPeerTest : public ::testing::Test {
 
   /*
    * Create a minimal AdjRib and register it at the given bit position.
-   * Uses setBitToAdjRibForTesting to avoid full registerPeer() flow.
    */
   std::shared_ptr<AdjRib> createAndRegisterPeer(uint64_t bit) {
     auto peerId = nettools::bgplib::BgpPeerId(
@@ -339,10 +338,17 @@ class UpdateGroupDetachedPeerTest : public ::testing::Test {
         std::make_shared<folly::coro::Baton>(),
         nullptr /* policyManager */,
         std::make_shared<std::atomic<bool>>(false));
-    adjRib->setGroupBitPosition(bit);
     adjRib->setUpdateGroup(group_);
     adjRib->enableUpdateGroup_ = true;
-    group_->setBitToAdjRibForTesting(bit, adjRib);
+    /*
+     * Map the peer onto its bit without going through registerPeer(): these
+     * fixtures need a peer that is registered but neither in sync nor
+     * detached, and no public entry point produces that state. Reaching in
+     * directly is possible because both fixtures are friends of
+     * AdjRibOutGroup.
+     */
+    adjRib->setGroupBitPosition(bit);
+    group_->bitToAdjRibs_[bit] = adjRib;
     peers_.push_back(adjRib);
     return adjRib;
   }
@@ -996,8 +1002,8 @@ TEST_F(
     UpdateGroupDetachedPeerTest,
     RegisterPeerInRunningGroupResetsStaleConsumer) {
   /*
-   * Build a peer directly so we exercise the real registerPeer() flow;
-   * createAndRegisterPeer() bypasses it via setBitToAdjRibForTesting().
+   * Build a peer directly so the registration happens inline in the test
+   * body, where the stale-consumer precondition can be set up first.
    */
   auto peerId = nettools::bgplib::BgpPeerId(
       folly::IPAddress(fmt::format(kPeerIpFmt, 1)),
@@ -3185,10 +3191,17 @@ class UpdateGroupDetachLifecycleTest : public ::testing::Test {
         std::make_shared<folly::coro::Baton>(),
         nullptr /* policyManager */,
         std::make_shared<std::atomic<bool>>(false));
-    adjRib->setGroupBitPosition(bit);
     adjRib->setUpdateGroup(group_);
     adjRib->enableUpdateGroup_ = true;
-    group_->setBitToAdjRibForTesting(bit, adjRib);
+    /*
+     * Map the peer onto its bit without going through registerPeer(): these
+     * fixtures need a peer that is registered but neither in sync nor
+     * detached, and no public entry point produces that state. Reaching in
+     * directly is possible because both fixtures are friends of
+     * AdjRibOutGroup.
+     */
+    adjRib->setGroupBitPosition(bit);
+    group_->bitToAdjRibs_[bit] = adjRib;
     peers_.push_back(adjRib);
     return adjRib;
   }

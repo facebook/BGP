@@ -105,8 +105,12 @@ class UpdateGroupPeerJoinTest : public ::testing::Test {
         std::make_shared<folly::coro::Baton>(),
         nullptr /* policyManager */,
         std::make_shared<std::atomic<bool>>(false));
-    adjRib->setGroupBitPosition(bit);
-    group_->setBitToAdjRibForTesting(bit, adjRib);
+    group_->registerPeer(adjRib);
+    /*
+     * Bits are handed out lowest-free-first, so peers registered in order
+     * land on the bit the caller expects.
+     */
+    EXPECT_EQ(bit, adjRib->getGroupBitPosition());
     peers_.push_back(adjRib);
     return adjRib;
   }

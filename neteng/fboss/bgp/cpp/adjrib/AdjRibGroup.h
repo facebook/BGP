@@ -783,13 +783,6 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
       PrefixSet& prefixPathIds) noexcept;
 
   /*
-   * Test helpers for peer bit management
-   */
-  void setBitToAdjRibForTesting(
-      uint64_t bitPos,
-      std::shared_ptr<AdjRib> adjRib) noexcept;
-
-  /*
    * Override update group config for testing.
    */
   void setUpdateGroupConfigForTesting(

@@ -108,9 +108,13 @@ class UpdateGroupSlowPeerDetectionTest : public ::testing::Test {
         std::make_shared<folly::coro::Baton>(),
         nullptr /* policyManager */,
         std::make_shared<std::atomic<bool>>(false));
-    adjRib->setGroupBitPosition(bit);
     adjRib->setUpdateGroup(group_);
-    group_->setBitToAdjRibForTesting(bit, adjRib);
+    group_->registerPeer(adjRib);
+    /*
+     * Bits are handed out lowest-free-first, so peers registered in order
+     * land on the bit the caller expects.
+     */
+    EXPECT_EQ(bit, adjRib->getGroupBitPosition());
 
     adjRib->setPeerState(state);
     switch (state) {
@@ -125,6 +129,12 @@ class UpdateGroupSlowPeerDetectionTest : public ::testing::Test {
       case PeerUpdateState::DETACHED_BLOCKED:
       case PeerUpdateState::DETACHED_RUNNING:
       default:
+        /*
+         * registerPeer() marks the peer in sync while the group is still
+         * UNINITIALIZED; these states model a peer that is not sharing the
+         * group's stream, so undo it.
+         */
+        group_->markPeerDetached(adjRib);
         break;
     }
 
@@ -625,9 +635,9 @@ TEST_F(
       std::make_shared<folly::coro::Baton>(),
       nullptr,
       std::make_shared<std::atomic<bool>>(false));
-  peer0->setGroupBitPosition(0);
   peer0->setUpdateGroup(customGroup);
-  customGroup->setBitToAdjRibForTesting(0, peer0);
+  customGroup->registerPeer(peer0);
+  ASSERT_EQ(0, peer0->getGroupBitPosition());
   customGroup->setSyncBitForTesting(0);
   peer0->setPeerState(PeerUpdateState::JOINED_RUNNING);
 
@@ -640,9 +650,9 @@ TEST_F(
       std::make_shared<folly::coro::Baton>(),
       nullptr,
       std::make_shared<std::atomic<bool>>(false));
-  peer1->setGroupBitPosition(1);
   peer1->setUpdateGroup(customGroup);
-  customGroup->setBitToAdjRibForTesting(1, peer1);
+  customGroup->registerPeer(peer1);
+  ASSERT_EQ(1, peer1->getGroupBitPosition());
   customGroup->setSyncBitForTesting(1);
   peer1->setPeerState(PeerUpdateState::JOINED_RUNNING);
 

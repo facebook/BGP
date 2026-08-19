@@ -325,8 +325,7 @@ TEST_F(AdjRibGroupTest, RegisterGroupConsumer) {
 
   // An in-sync peer so the group is not frozen (numInSyncPeers_ > 0).
   auto adjRib = createMinimalAdjRib();
-  adjRib->setGroupBitPosition(0);
-  adjRibOutGroup_->setBitToAdjRibForTesting(0, adjRib);
+  adjRibOutGroup_->registerPeer(adjRib);
   adjRibOutGroup_->markPeerInSync(adjRib);
 
   // Activate the consumer and schedule the timer
@@ -4736,8 +4735,7 @@ TEST_F(
 
   // One in-sync peer.
   auto adjRib = createMinimalAdjRib();
-  adjRib->setGroupBitPosition(0);
-  adjRibOutGroup_->setBitToAdjRibForTesting(0, adjRib);
+  adjRibOutGroup_->registerPeer(adjRib);
   adjRibOutGroup_->markPeerInSync(adjRib);
   ASSERT_EQ(adjRibOutGroup_->getNumInSyncPeers(), 1);
 

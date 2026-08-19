@@ -2625,15 +2625,6 @@ folly::coro::Task<void> AdjRibOutGroup::waitForAllPendingPushes() noexcept {
       groupDescriptor_);
 }
 
-void AdjRibOutGroup::setBitToAdjRibForTesting(
-    uint64_t bitPos,
-    std::shared_ptr<AdjRib> adjRib) noexcept {
-  bitToAdjRibs_[bitPos] = adjRib;
-  if (adjRib) {
-    adjRib->setGroupBitPosition(bitPos);
-  }
-}
-
 /*
  * Register a peer with this update group
  * Assigns bit position and updates tracking structures
