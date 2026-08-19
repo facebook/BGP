@@ -500,6 +500,23 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
       uint64_t& currentRibVersion);
 
   /*
+   * Flush one full (== kRibChunkSize) RibOut chunk onto ribOutQ_ (may pause),
+   * then reset the buffer and reserve capacity on the vector selected by
+   * reserveAddPath for the next chunk. The XLOGF stays inside so formatRibOut*
+   * is only built under DBG1. Callers keep their post-flush
+   * incrementRibVersion() at the call site, so per-chunk RIB versions and
+   * ribOutQ_ push order are unchanged.
+   */
+  void flushAnnouncementChunk(
+      RibOutAnnouncement& announcement,
+      bool reserveAddPath,
+      bool sendWithEoR);
+  void flushWithdrawalChunk(
+      RibOutWithdrawal& withdrawal,
+      bool reserveAddPath,
+      bool logAsAddPath);
+
+  /*
    * Captured prior state used as the baseline for change detection at the
    * end of selectBestPath. Produced by snapshotAndResetForPathSelection()
    * (Phase 1 of the path-selection pipeline) which also clears the

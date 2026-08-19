@@ -1944,6 +1944,34 @@ void RibBase::prepareFibProgramming(bool fullSync) noexcept {
   toFibMessageQ_.push(TriggerFibProgMessage(fullSync));
 }
 
+void RibBase::flushAnnouncementChunk(
+    RibOutAnnouncement& announcement,
+    bool reserveAddPath,
+    bool sendWithEoR) {
+  if (sendWithEoR) {
+    announcement.initialDump = true;
+  }
+
+  XLOGF(DBG1, "{}", formatRibOutAnnouncementLog(announcement));
+
+  ribOutQPushAndMayPauseBestPathAndFibProgramming(std::move(announcement));
+  announcement = RibOutAnnouncement();
+  (reserveAddPath ? announcement.addPathEntries : announcement.entries)
+      .reserve(kRibChunkSize);
+}
+
+void RibBase::flushWithdrawalChunk(
+    RibOutWithdrawal& withdrawal,
+    bool reserveAddPath,
+    bool logAsAddPath) {
+  XLOGF(DBG1, "{}", formatRibOutWithdrawalLog(withdrawal, logAsAddPath));
+
+  ribOutQPushAndMayPauseBestPathAndFibProgramming(std::move(withdrawal));
+  withdrawal = RibOutWithdrawal();
+  (reserveAddPath ? withdrawal.addPathEntries : withdrawal.entries)
+      .reserve(kRibChunkSize);
+}
+
 void RibBase::handleFullAddPathWithdrawal(
     const RibEntry& ribEntry,
     RibOutWithdrawal& withdrawalAddPath,
@@ -1952,11 +1980,8 @@ void RibBase::handleFullAddPathWithdrawal(
     for (const auto& advWeightedNhIter :
          *ribEntry.getAdvertisedMultipathWeightedNexthops()) {
       if (withdrawalAddPath.addPathEntries.size() == kRibChunkSize) {
-        XLOGF(DBG1, "{}", formatRibOutWithdrawalLog(withdrawalAddPath, true));
-        ribOutQPushAndMayPauseBestPathAndFibProgramming(
-            std::move(withdrawalAddPath));
-        withdrawalAddPath = RibOutWithdrawal();
-        withdrawalAddPath.addPathEntries.reserve(kRibChunkSize);
+        flushWithdrawalChunk(
+            withdrawalAddPath, /*reserveAddPath=*/true, /*logAsAddPath=*/true);
 
         /*
          * rule 2: this prefix's remaining add-path withdrawals land in a new
@@ -2166,14 +2191,8 @@ void RibBase::handleFibProgrammedMessage(
         const auto advMultPaths = entry.getAdvertisedMultipaths();
         for (const auto& [_, advMultPath] : advMultPaths) {
           if (announcementAddPath.addPathEntries.size() == kRibChunkSize) {
-            if (sendWithEoR) {
-              announcementAddPath.initialDump = true;
-            }
-            XLOGF(DBG1, "{}", formatRibOutAnnouncementLog(announcementAddPath));
-            ribOutQPushAndMayPauseBestPathAndFibProgramming(
-                std::move(announcementAddPath));
-            announcementAddPath = RibOutAnnouncement();
-            announcementAddPath.addPathEntries.reserve(kRibChunkSize);
+            flushAnnouncementChunk(
+                announcementAddPath, /*reserveAddPath=*/true, sendWithEoR);
 
             /*
              * rule 2: this prefix's remaining add-path entries land in a new
@@ -2217,11 +2236,10 @@ void RibBase::handleFibProgrammedMessage(
             if (newAdvMultipathNHs->find(oldNhIter.first) ==
                 newAdvMultipathNHs->end()) {
               if (withdrawal.addPathEntries.size() == kRibChunkSize) {
-                XLOGF(DBG1, "{}", formatRibOutWithdrawalLog(withdrawal));
-                ribOutQPushAndMayPauseBestPathAndFibProgramming(
-                    std::move(withdrawal));
-                withdrawal = RibOutWithdrawal();
-                withdrawal.addPathEntries.reserve(kRibChunkSize);
+                flushWithdrawalChunk(
+                    withdrawal,
+                    /*reserveAddPath=*/true,
+                    /*logAsAddPath=*/false);
 
                 /*
                  * rule 2: this prefix's remaining add-path withdrawals land in
@@ -2263,14 +2281,8 @@ void RibBase::handleFibProgrammedMessage(
       // while Rib is processing remaining message, adjRib, FiberBgp etc will
       // start working on previous chunks.
       if (announcement.entries.size() == kRibChunkSize) {
-        if (sendWithEoR) {
-          announcement.initialDump = true;
-        }
-        XLOGF(DBG1, "{}", formatRibOutAnnouncementLog(announcement));
-        ribOutQPushAndMayPauseBestPathAndFibProgramming(
-            std::move(announcement));
-        announcement = RibOutAnnouncement();
-        announcement.entries.reserve(kRibChunkSize);
+        flushAnnouncementChunk(
+            announcement, /*reserveAddPath=*/false, sendWithEoR);
       }
       announcement.entries.emplace_back(
           prefix,
