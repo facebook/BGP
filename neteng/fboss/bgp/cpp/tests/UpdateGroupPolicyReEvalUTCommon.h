@@ -552,7 +552,7 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
       for (auto& [peerId, adjRib] : ctx.adjRibs) {
         if (adjRib->getUpdateGroup().get() == group.get()) {
           adjRib->setPeerState(PeerUpdateState::JOINED_RUNNING);
-          group->setSyncBitForTesting(adjRib->getGroupBitPosition());
+          group->markPeerInSync(adjRib);
         }
       }
 

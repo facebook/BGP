@@ -591,7 +591,7 @@ TEST_F(UpdateGroupDetachedPeerTest, ClonedPackingListContainsAllEntries) {
 TEST_F(UpdateGroupDetachedPeerTest, DetachSinglePeerGroupSkipsDetachment) {
   auto adjRib = createAndRegisterPeer(0);
   adjRib->setPeerState(PeerUpdateState::JOINED_BLOCKED);
-  group_->setSyncBitForTesting(0);
+  group_->markPeerInSync(adjRib);
   group_->markPeerBlocked(adjRib);
 
   auto slowPeersBefore = getNumSlowPeersCounter();
@@ -657,9 +657,9 @@ TEST_F(UpdateGroupDetachedPeerTest, DetachPeerInMultiPeerGroup) {
   adjRib0->setPeerState(PeerUpdateState::JOINED_BLOCKED);
   adjRib1->setPeerState(PeerUpdateState::JOINED_RUNNING);
 
-  // Set sync bits for both peers
-  group_->setSyncBitForTesting(0);
-  group_->setSyncBitForTesting(1);
+  // Mark both peers in sync
+  group_->markPeerInSync(adjRib0);
+  group_->markPeerInSync(adjRib1);
 
   // Mark peer 0 as blocked
   group_->markPeerBlocked(adjRib0);
@@ -3212,8 +3212,10 @@ class UpdateGroupDetachLifecycleTest : public ::testing::Test {
   void setUpJoinedRunningPeer(
       const std::shared_ptr<AdjRib>& adjRib,
       uint64_t bit) {
+    /* markPeerInSync() resolves the bit off the peer; check they agree. */
+    ASSERT_EQ(bit, adjRib->getGroupBitPosition());
     adjRib->setPeerState(PeerUpdateState::JOINED_RUNNING);
-    group_->setSyncBitForTesting(bit);
+    group_->markPeerInSync(adjRib);
   }
 
   /*
@@ -4817,8 +4819,8 @@ TEST_F(UpdateGroupDetachedPeerTest, DetachSlowPeerRetainsPendingEgressEoR) {
 
   adjRib0->setPeerState(PeerUpdateState::JOINED_BLOCKED);
   adjRib1->setPeerState(PeerUpdateState::JOINED_RUNNING);
-  group_->setSyncBitForTesting(0);
-  group_->setSyncBitForTesting(1);
+  group_->markPeerInSync(adjRib0);
+  group_->markPeerInSync(adjRib1);
   group_->markPeerBlocked(adjRib0);
 
   EXPECT_FALSE(adjRib0->egressEoRsPending());
@@ -4872,8 +4874,8 @@ TEST_F(
 
   adjRib0->setPeerState(PeerUpdateState::JOINED_BLOCKED);
   adjRib1->setPeerState(PeerUpdateState::JOINED_RUNNING);
-  group_->setSyncBitForTesting(0);
-  group_->setSyncBitForTesting(1);
+  group_->markPeerInSync(adjRib0);
+  group_->markPeerInSync(adjRib1);
   group_->markPeerBlocked(adjRib0);
 
   EXPECT_FALSE(adjRib0->egressEoRsPending());
@@ -4983,11 +4985,11 @@ TEST_F(UpdateGroupDetachedPeerTest, RibWalkDetachCopiesEgressEoRsPending) {
       std::make_unique<TrackableObject<ShadowRibEntry>>(std::move(clEntry));
   changeTracker->publishChange(trackable.get());
 
-  /* Set peer states and sync bits */
+  /* Set peer states and mark both in sync */
   adjRib0->setPeerState(PeerUpdateState::JOINED_RUNNING);
   adjRib1->setPeerState(PeerUpdateState::JOINED_RUNNING);
-  group_->setSyncBitForTesting(0);
-  group_->setSyncBitForTesting(1);
+  group_->markPeerInSync(adjRib0);
+  group_->markPeerInSync(adjRib1);
 
   /* Peer should not have egressEoRsPending before rib walk */
   EXPECT_FALSE(adjRib0->egressEoRsPending());
@@ -5034,7 +5036,7 @@ TEST_F(UpdateGroupDetachedPeerTest, RibWalkDetachCopiesEgressEoRsPending) {
 TEST_F(UpdateGroupDetachedPeerTest, DetachDoesNotResendCommittedEgressEoR) {
   auto adjRib0 = createAndRegisterPeer(0);
   adjRib0->setPeerState(PeerUpdateState::JOINED_RUNNING);
-  group_->setSyncBitForTesting(0);
+  group_->markPeerInSync(adjRib0);
 
   /*
    * Peer0 was marked to send both AFIs (distributePendingEoRs step A), then its

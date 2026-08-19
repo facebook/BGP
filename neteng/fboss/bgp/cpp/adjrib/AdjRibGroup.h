@@ -790,13 +790,6 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
     updateGroupConfig_ = config;
   }
 
-  void setSyncBitForTesting(uint64_t bit) noexcept {
-    const auto it = bitToAdjRibs_.find(bit);
-    if (it != bitToAdjRibs_.end() && it->second) {
-      setSyncBit(bit, it->second);
-    }
-  }
-
   const ConsumerBitmap& getBlockedBitmap() const noexcept {
     return adjRibBlockedBitmap_;
   }

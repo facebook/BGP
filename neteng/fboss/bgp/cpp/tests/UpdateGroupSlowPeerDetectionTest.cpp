@@ -120,7 +120,7 @@ class UpdateGroupSlowPeerDetectionTest : public ::testing::Test {
     switch (state) {
       case PeerUpdateState::JOINED_RUNNING:
       case PeerUpdateState::JOINED_BLOCKED:
-        group_->setSyncBitForTesting(bit);
+        group_->markPeerInSync(adjRib);
         break;
       case PeerUpdateState::DOWN:
       case PeerUpdateState::INIT:
@@ -312,8 +312,8 @@ TEST_F(
     SlowPeerLifecycleRecoveryAndEventualDetection) {
   auto adjRib = createAndRegisterPeer(0);
   auto adjRib1 = createAndRegisterPeer(1);
-  group_->setSyncBitForTesting(0);
-  group_->setSyncBitForTesting(1);
+  group_->markPeerInSync(adjRib);
+  group_->markPeerInSync(adjRib1);
 
   auto slowPeersBefore = getNumSlowPeersCounter();
 
@@ -474,8 +474,8 @@ TEST_F(
     SlowPeerDetachDisabledPreventsDetachment) {
   auto adjRib0 = createAndRegisterPeer(0);
   auto adjRib1 = createAndRegisterPeer(1);
-  group_->setSyncBitForTesting(0);
-  group_->setSyncBitForTesting(1);
+  group_->markPeerInSync(adjRib0);
+  group_->markPeerInSync(adjRib1);
 
   auto slowPeersBefore = getNumSlowPeersCounter();
 
@@ -509,8 +509,8 @@ TEST_F(
     SlowPeerDetachDisabledPreventsDurationDetachment) {
   auto adjRib0 = createAndRegisterPeer(0);
   auto adjRib1 = createAndRegisterPeer(1);
-  group_->setSyncBitForTesting(0);
-  group_->setSyncBitForTesting(1);
+  group_->markPeerInSync(adjRib0);
+  group_->markPeerInSync(adjRib1);
 
   auto slowPeersBefore = getNumSlowPeersCounter();
 
@@ -547,8 +547,8 @@ TEST_F(
     SlowPeerDetachReenabledAllowsDetachment) {
   auto adjRib0 = createAndRegisterPeer(0);
   auto adjRib1 = createAndRegisterPeer(1);
-  group_->setSyncBitForTesting(0);
-  group_->setSyncBitForTesting(1);
+  group_->markPeerInSync(adjRib0);
+  group_->markPeerInSync(adjRib1);
 
   // Disable detach, set frequency threshold to 2 blocks
   {
@@ -638,7 +638,7 @@ TEST_F(
   peer0->setUpdateGroup(customGroup);
   customGroup->registerPeer(peer0);
   ASSERT_EQ(0, peer0->getGroupBitPosition());
-  customGroup->setSyncBitForTesting(0);
+  customGroup->markPeerInSync(peer0);
   peer0->setPeerState(PeerUpdateState::JOINED_RUNNING);
 
   auto peer1 = std::make_shared<AdjRib>(
@@ -653,7 +653,7 @@ TEST_F(
   peer1->setUpdateGroup(customGroup);
   customGroup->registerPeer(peer1);
   ASSERT_EQ(1, peer1->getGroupBitPosition());
-  customGroup->setSyncBitForTesting(1);
+  customGroup->markPeerInSync(peer1);
   peer1->setPeerState(PeerUpdateState::JOINED_RUNNING);
 
   // Block peer0 3 times to hit the custom countThreshold of 3
