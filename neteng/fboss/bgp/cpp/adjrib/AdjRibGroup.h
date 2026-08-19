@@ -98,13 +98,7 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
         groupId_(groupId),
         enableUpdateGroup_(enableUpdateGroup),
         groupKey_(groupKey),
-        groupDescriptor_(
-            fmt::format(
-                "{}({}/{},peerOverride={})",
-                groupId,
-                groupKey.egressPolicyName.value_or(""),
-                buildAfiLabel(groupKey),
-                groupKey.peerOverride)),
+        groupDescriptor_(buildGroupDescriptor(groupId, groupKey)),
         shadowRibEntries_(shadowRib.first),
         maxRibVersion_(shadowRib.second),
         policyManager_(std::move(policyManager)),
@@ -1087,8 +1081,14 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
     return groupKey_;
   }
 
-  void setGroupKey(const UpdateGroupKey& key) noexcept {
+  /*
+   * groupDescriptor_ is derived from groupKey_, so it must be rebuilt here.
+   * Otherwise every log line emitted after a rekey still names the previous
+   * egress policy, AFI set and peerOverride.
+   */
+  void setGroupKey(const UpdateGroupKey& key) {
     groupKey_ = key;
+    groupDescriptor_ = buildGroupDescriptor(groupId_, groupKey_);
   }
 
   /*
@@ -1460,6 +1460,7 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   /*
    * Friendly descriptor for logging: "groupId(egressPolicyName/afiLabel)"
    * More readable than the full groupName_ (which encodes all 17 key fields).
+   * Derived from groupKey_; kept in sync by setGroupKey().
    */
   std::string groupDescriptor_;
 
@@ -1482,6 +1483,21 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
       label += "v4ov6";
     }
     return label.empty() ? "none" : label;
+  }
+
+  /*
+   * Build the logging descriptor from the group's identity and key.
+   * Example: "2(EB-FA-OUT/v4,peerOverride=false)"
+   */
+  static std::string buildGroupDescriptor(
+      uint64_t groupId,
+      const UpdateGroupKey& key) {
+    return fmt::format(
+        "{}({}/{},peerOverride={})",
+        groupId,
+        key.egressPolicyName.value_or(""),
+        buildAfiLabel(key),
+        key.peerOverride);
   }
 
   /*

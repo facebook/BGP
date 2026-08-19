@@ -107,6 +107,35 @@ TEST_P(
   EXPECT_EQ(getGroupMemberCount(peers[0]), kNumPeers);
 
   /*
+   * The logging descriptor is derived from the update group key, so an in-place
+   * rekey has to regenerate it. Read it on the PeerManager event base, which is
+   * where the rekey writes it.
+   */
+  auto groupDescriptor = [&]() {
+    std::string descriptor;
+    peerManager_->getEventBase().runInEventBaseThreadAndWait(
+        [&]() { descriptor = group->getGroupDescriptor(); });
+    return descriptor;
+  };
+  /*
+   * The descriptor is "groupId(egressPolicyName/afiLabel,peerOverride=...)";
+   * match through the policy field and leave the AFI label to the unit tests.
+   */
+  auto expectDescriptorNamesPolicy = [&](const std::string& policyName,
+                                         const char* phase) {
+    const auto descriptor = groupDescriptor();
+    const auto expected =
+        fmt::format("{}({}/", group->getGroupId(), policyName);
+    EXPECT_EQ(expected, descriptor.substr(0, expected.size()))
+        << phase << ": group descriptor \"" << descriptor
+        << "\" does not name egress policy \"" << policyName << "\"";
+  };
+
+  /* No egress policy is applied yet, so the policy field is empty. */
+  expectDescriptorNamesPolicy("", "before any policy change");
+  const auto baseDescriptor = groupDescriptor();
+
+  /*
    * Inject kNumRoutes routes tagged with ingress communities (odd carry
    * kCommNoAdvt, i % 3 == 0 carry kCommModify). With no egress policy they are
    * all advertised to every member.
@@ -143,6 +172,10 @@ TEST_P(
     expectReceivedRoutesForPolicy(
         peerId, kMatchNoAdvtDenyPolicyName, injectedPrefixes);
   }
+  /* The in-place rekey regenerated the descriptor with the new policy. */
+  expectDescriptorNamesPolicy(kMatchNoAdvtDenyPolicyName, "after deny re-eval");
+  const auto denyDescriptor = groupDescriptor();
+  EXPECT_NE(baseDescriptor, denyDescriptor);
 
   /*
    * Group-level policy matching kCommModify -> APPEND kCommAppend: a single
@@ -164,6 +197,10 @@ TEST_P(
     expectReceivedRoutesForPolicy(
         peerId, kMatchModifyAppendPolicyName, injectedPrefixes);
   }
+  /* Second rekey on the same group object regenerates the descriptor again. */
+  expectDescriptorNamesPolicy(
+      kMatchModifyAppendPolicyName, "after append re-eval");
+  EXPECT_NE(denyDescriptor, groupDescriptor());
 
   /*
    * In-place rekey throughout: the group object and membership are unchanged
