@@ -994,8 +994,9 @@ namespace {
 // clearPeerCounters apply their operation through this helper, ensuring
 // symmetry. Add new per-peer counters here to get init + cleanup for free.
 //
-// Note: kPeerSessionStateChanges is a Stat (not a Counter) and is handled
-// separately by callers via addStatExportType / clearStat.
+// kPeerSessionStateChanges and kNoGrRestartPeer are Stats rather than
+// Counters. clearPeerCounters removes their global and thread-local storage
+// separately after this helper clears the flat counters.
 template <typename Fn>
 void forEachPeerCounterKey(const std::string& peerIdOdsStr, Fn&& fn) {
   // peer_{} — single arg (peerId)
@@ -1094,6 +1095,16 @@ void forEachPeerIngressMessageKey(const std::string& peerIdOdsStr, Fn&& fn) {
   fn(fmt::format(
       kPeerMessagesRecvRouteRefresh, kEbbPlatform, kBgpcppTag, peerIdOdsStr));
 }
+
+void removeTimeseries(const std::string& key) {
+  auto& serviceData = *CHECK_NOTNULL(fb303::ThreadCachedServiceData::get());
+  serviceData.getStatMap()->unExportStatAll(key);
+  auto& threadLocalStats =
+      fb303::ThreadCachedServiceData::getStatsThreadLocal();
+  for (auto& stats : threadLocalStats.accessAllThreads()) {
+    stats.clearTimeseriesSafe(key);
+  }
+}
 } // namespace
 
 void initPeerCounters(const std::string& peerIdOdsStr) {
@@ -1102,12 +1113,16 @@ void initPeerCounters(const std::string& peerIdOdsStr) {
   });
 }
 
-void clearPeerCounters(const std::string& peerIdOdsStr) {
+void clearPeerCounters(
+    const std::string& peerIdOdsStr,
+    const std::string& noGrRestartPeerId) {
   forEachPeerCounterKey(peerIdOdsStr, [](const std::string& key) {
     fb303::ThreadCachedServiceData::get()->clearCounter(key);
   });
   fb303::ThreadCachedServiceData::get()->clearCounter(
       fmt::format(kPeerStatus, peerIdOdsStr));
+  removeTimeseries(fmt::format(kPeerSessionStateChanges, peerIdOdsStr));
+  removeTimeseries(fmt::format(kNoGrRestartPeer, noGrRestartPeerId));
 }
 
 void clearPeerEgressMessageCounters(const std::string& peerIdOdsStr) {

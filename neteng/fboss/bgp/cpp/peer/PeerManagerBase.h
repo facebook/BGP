@@ -770,6 +770,8 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
    */
   bool isPeerDynamic(const folly::IPAddress& peerAddr);
 
+  bool isDynamicVipPeer(const folly::IPAddress& peerAddr, uint32_t remoteAs);
+
   // process observable event received from adj rib notify queue
   folly::coro::Task<void> processAdjRibMsgLoop() noexcept;
   virtual folly::coro::Task<void> processAdjRibEvent(

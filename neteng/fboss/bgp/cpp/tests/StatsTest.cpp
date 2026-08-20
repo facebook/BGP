@@ -16,6 +16,9 @@
 
 #include <boost/filesystem.hpp>
 
+#include <future>
+#include <thread>
+
 #include <gtest/gtest.h>
 #include <thrift/lib/cpp/util/EnumUtils.h>
 
@@ -1420,49 +1423,113 @@ TEST(StatsTest, DecisionProcessRunsCountTest) {
 }
 
 TEST(StatsTest, ClearPeerCountersTest) {
-  const std::string peerId = "10.99.0.1";
-  auto tcData = fb303::ThreadCachedServiceData::get();
+  const std::string peerIdOdsStr = "peer_10.99.0.1_192.0.2.1";
+  const std::string noGrRestartPeerId =
+      "peerAddr 10.99.0.1, remoteBgpId 192.0.2.1";
+  auto& tcData = *CHECK_NOTNULL(fb303::ThreadCachedServiceData::get());
 
   // Initialize counters via initPeerCounters.
-  PeerStats::initPeerCounters(peerId);
+  PeerStats::initPeerCounters(peerIdOdsStr);
 
   // Counters set elsewhere in production (not via initPeerCounters) are
   // also expected to be cleared. Set them here to simulate that.
-  auto postInKey = fmt::format(PeerStats::kPeerPostInPrefixes, peerId);
-  auto statusKey = fmt::format(PeerStats::kPeerStatus, peerId);
-  tcData->setCounter(postInKey, 7);
-  tcData->setCounter(statusKey, 1);
+  auto postInKey = fmt::format(PeerStats::kPeerPostInPrefixes, peerIdOdsStr);
+  auto statusKey = fmt::format(PeerStats::kPeerStatus, peerIdOdsStr);
+  tcData.setCounter(postInKey, 7);
+  tcData.setCounter(statusKey, 1);
 
   // Sample of counters set by initPeerCounters.
-  auto preInKey = fmt::format(PeerStats::kPeerPreInPrefixes, peerId);
-  auto postOutKey = fmt::format(PeerStats::kPeerPostOutPrefixes, peerId);
-  auto preOutKey = fmt::format(PeerStats::kPeerPreOutPrefixes, peerId);
+  auto preInKey = fmt::format(PeerStats::kPeerPreInPrefixes, peerIdOdsStr);
+  auto postOutKey = fmt::format(PeerStats::kPeerPostOutPrefixes, peerIdOdsStr);
+  auto preOutKey = fmt::format(PeerStats::kPeerPreOutPrefixes, peerIdOdsStr);
   auto updateKey = fmt::format(
-      PeerStats::kPeerMessagesSentUpdate, kEbbPlatform, kBgpcppTag, peerId);
+      PeerStats::kPeerMessagesSentUpdate,
+      kEbbPlatform,
+      kBgpcppTag,
+      peerIdOdsStr);
   auto recvUpdateKey = fmt::format(
-      PeerStats::kPeerMessagesRecvUpdate, kEbbPlatform, kBgpcppTag, peerId);
+      PeerStats::kPeerMessagesRecvUpdate,
+      kEbbPlatform,
+      kBgpcppTag,
+      peerIdOdsStr);
 
-  EXPECT_TRUE(tcData->hasCounter(preInKey));
-  EXPECT_TRUE(tcData->hasCounter(postInKey));
-  EXPECT_TRUE(tcData->hasCounter(postOutKey));
-  EXPECT_TRUE(tcData->hasCounter(preOutKey));
-  EXPECT_TRUE(tcData->hasCounter(statusKey));
-  EXPECT_TRUE(tcData->hasCounter(updateKey));
-  EXPECT_TRUE(tcData->hasCounter(recvUpdateKey));
+  EXPECT_TRUE(tcData.hasCounter(preInKey));
+  EXPECT_TRUE(tcData.hasCounter(postInKey));
+  EXPECT_TRUE(tcData.hasCounter(postOutKey));
+  EXPECT_TRUE(tcData.hasCounter(preOutKey));
+  EXPECT_TRUE(tcData.hasCounter(statusKey));
+  EXPECT_TRUE(tcData.hasCounter(updateKey));
+  EXPECT_TRUE(tcData.hasCounter(recvUpdateKey));
 
   // Set some non-zero values to verify clear is unconditional.
-  tcData->setCounter(preInKey, 42);
-  tcData->setCounter(updateKey, 10);
+  tcData.setCounter(preInKey, 42);
+  tcData.setCounter(updateKey, 10);
 
-  PeerStats::clearPeerCounters(peerId);
+  PeerStats::clearPeerCounters(peerIdOdsStr, noGrRestartPeerId);
 
-  EXPECT_FALSE(tcData->hasCounter(preInKey));
-  EXPECT_FALSE(tcData->hasCounter(postInKey));
-  EXPECT_FALSE(tcData->hasCounter(postOutKey));
-  EXPECT_FALSE(tcData->hasCounter(preOutKey));
-  EXPECT_FALSE(tcData->hasCounter(statusKey));
-  EXPECT_FALSE(tcData->hasCounter(updateKey));
-  EXPECT_FALSE(tcData->hasCounter(recvUpdateKey));
+  EXPECT_FALSE(tcData.hasCounter(preInKey));
+  EXPECT_FALSE(tcData.hasCounter(postInKey));
+  EXPECT_FALSE(tcData.hasCounter(postOutKey));
+  EXPECT_FALSE(tcData.hasCounter(preOutKey));
+  EXPECT_FALSE(tcData.hasCounter(statusKey));
+  EXPECT_FALSE(tcData.hasCounter(updateKey));
+  EXPECT_FALSE(tcData.hasCounter(recvUpdateKey));
+}
+
+TEST(StatsTest, ClearPeerCountersDestroysPerPeerTimeseriesOnAllThreads) {
+  const std::string peerIdOdsStr = "peer_10.99.0.1_192.0.2.1";
+  const std::string noGrRestartPeerId =
+      "peerAddr 10.99.0.1, remoteBgpId 192.0.2.1";
+  const auto sessionStateKey =
+      fmt::format(PeerStats::kPeerSessionStateChanges, peerIdOdsStr);
+  const auto noGrRestartKey =
+      fmt::format(PeerStats::kNoGrRestartPeer, noGrRestartPeerId);
+  auto& tcData = *CHECK_NOTNULL(fb303::ThreadCachedServiceData::get());
+
+  std::promise<void> statsCreated;
+  auto statsCreatedFuture = statsCreated.get_future();
+  std::promise<void> cleanupComplete;
+  auto cleanupCompleteFuture = cleanupComplete.get_future();
+  std::promise<std::pair<bool, bool>> timeseriesExpired;
+  auto timeseriesExpiredFuture = timeseriesExpired.get_future();
+
+  std::thread worker([&,
+                      cleanupCompleteFutureForWorker =
+                          std::move(cleanupCompleteFuture)]() mutable {
+    PeerStats::addPeerSessionStateChanges(peerIdOdsStr);
+    PeerStats::incrPeerNoGrRestart(noGrRestartPeerId);
+
+    auto& threadLocalStats =
+        fb303::ThreadCachedServiceData::getStatsThreadLocal();
+    auto sessionStateTimeseries =
+        threadLocalStats->getTimeseriesSafe(sessionStateKey);
+    auto noGrRestartTimeseries =
+        threadLocalStats->getTimeseriesSafe(noGrRestartKey);
+    std::weak_ptr sessionStateWeak = sessionStateTimeseries;
+    std::weak_ptr noGrRestartWeak = noGrRestartTimeseries;
+    sessionStateTimeseries.reset();
+    noGrRestartTimeseries.reset();
+
+    statsCreated.set_value();
+    cleanupCompleteFutureForWorker.wait();
+    timeseriesExpired.set_value(
+        {sessionStateWeak.expired(), noGrRestartWeak.expired()});
+  });
+
+  statsCreatedFuture.wait();
+  EXPECT_TRUE(tcData.getStatMap()->contains(sessionStateKey));
+  EXPECT_TRUE(tcData.getStatMap()->contains(noGrRestartKey));
+
+  PeerStats::clearPeerCounters(peerIdOdsStr, noGrRestartPeerId);
+
+  EXPECT_FALSE(tcData.getStatMap()->contains(sessionStateKey));
+  EXPECT_FALSE(tcData.getStatMap()->contains(noGrRestartKey));
+  cleanupComplete.set_value();
+  const auto [sessionStateExpired, noGrRestartExpired] =
+      timeseriesExpiredFuture.get();
+  EXPECT_TRUE(sessionStateExpired);
+  EXPECT_TRUE(noGrRestartExpired);
+  worker.join();
 }
 
 TEST(StatsTest, NhtCacheInitCounterTest) {

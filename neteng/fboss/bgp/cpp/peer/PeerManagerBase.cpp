@@ -2003,15 +2003,15 @@ folly::coro::Task<void> PeerManagerBase::cleanupPeerState(
       co_return;
     }
     stopMonitoring(peerId.toOdsKey());
-    PeerStats::clearPeerCounters(adjRib->getStats().getPeerIdOdsStr());
+    PeerStats::clearPeerCounters(
+        adjRib->getStats().getPeerIdOdsStr(), peerId.str());
     adjRib->resetChangeListConsumer();
     adjRibs_.erase(peerId);
     RibStats::decrAdjRibCount();
     XLOGF(INFO, "cleanupPeerState: erased AdjRib for {}", peerId.str());
 
     // 3. Erase per-peer states
-    // Note: dynamicPeerEoRReceived_ not erased since we do not support
-    // removal of dynamic peers
+    dynamicPeerEoRReceived_.erase(peerId);
     auto addrIt = peerAddrToIds_.find(peerAddr);
     if (addrIt != peerAddrToIds_.end()) {
       if (addrIt->second.erase(peerId) > 0) {
@@ -2308,7 +2308,7 @@ folly::coro::Task<void> PeerManagerBase::sessionEstablished(
   onSessionEstablishedEorHook();
 
   addSessionStateChanges();
-  if (peerInfo->peeringParams.remoteAs == kVipAsn) {
+  if (isDynamicVipPeer(peerAddr, peerInfo->peeringParams.remoteAs)) {
     runningVipSessions_ += 1;
     setRunningVipSessions(runningVipSessions_);
   }
@@ -2371,6 +2371,22 @@ folly::coro::Task<void> PeerManagerBase::sessionTerminated(
         peerId.str(),
         versionNumber);
     co_return;
+  }
+
+  const auto remoteAs = adjRib->getPeeringParams().remoteAs;
+  const bool isVipPeer = isDynamicVipPeer(peerAddr, remoteAs);
+  if (isVipPeer) {
+    co_await sessionMgr_->co_deleteTerminatedSession(
+        peerId, versionNumber, kVipAsn);
+    if (findAdjRib(peerId) != adjRib || !adjRib->isStateEstablished()) {
+      XLOGF(
+          DBG2,
+          "Ignoring session terminate for peer {} version {}: "
+          "AdjRib changed while deleting terminated session.",
+          peerId.str(),
+          versionNumber);
+      co_return;
+    }
   }
 
   XLOGF(
@@ -2440,7 +2456,7 @@ folly::coro::Task<void> PeerManagerBase::sessionTerminated(
   runningSessions_ -= 1;
   setRunningSessions(runningSessions_);
   addSessionStateChanges();
-  if (adjRib->getPeeringParams().remoteAs == kVipAsn) {
+  if (isVipPeer) {
     runningVipSessions_ -= 1;
     setRunningVipSessions(runningVipSessions_);
   }
@@ -2457,11 +2473,14 @@ folly::coro::Task<void> PeerManagerBase::sessionTerminated(
   }
   adjRib->logPeerEvent("SHUTDOWN_COMPLETE", BGP_LOG_SRC());
 
-  if (evt.peerDelete) {
+  if (evt.peerDelete || isVipPeer) {
     XLOGF(
         INFO,
-        "sessionTerminated for {}: peerDelete set, running cleanupPeerState",
-        peerId.str());
+        "sessionTerminated for {}: peerDelete={}, remoteAs={}, running "
+        "cleanupPeerState",
+        peerId.str(),
+        evt.peerDelete,
+        remoteAs);
     co_await cleanupPeerState(peerId, peerAddr);
   }
   co_return;
@@ -3314,6 +3333,12 @@ bool PeerManagerBase::isPeerDynamic(const folly::IPAddress& peerAddr) {
   }
 
   return false;
+}
+
+bool PeerManagerBase::isDynamicVipPeer(
+    const folly::IPAddress& peerAddr,
+    uint32_t remoteAs) {
+  return remoteAs == kVipAsn && isPeerDynamic(peerAddr);
 }
 
 folly::coro::Task<void> PeerManagerBase::co_clearCounters(

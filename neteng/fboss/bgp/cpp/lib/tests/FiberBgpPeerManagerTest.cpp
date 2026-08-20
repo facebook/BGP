@@ -28,7 +28,16 @@
       FiberBgpPeerManagerFixture, ActiveConnectUseAfterFreeViaPeerStart);     \
   FRIEND_TEST(                                                                \
       FiberBgpPeerManagerFixture,                                             \
-      ActiveConnectUseAfterFreeViaSessionTeardown);
+      ActiveConnectUseAfterFreeViaSessionTeardown);                           \
+  FRIEND_TEST(                                                                \
+      FiberBgpPeerManagerFixture,                                             \
+      DeleteTerminatedSessionPreservesPeerWithoutConnectionInfo);             \
+  FRIEND_TEST(                                                                \
+      FiberBgpPeerManagerFixture,                                             \
+      DeleteTerminatedSessionPreservesNewerSession);                          \
+  FRIEND_TEST(                                                                \
+      FiberBgpPeerManagerFixture,                                             \
+      DeleteTerminatedSessionRemovesSessionFromDynamicPassivePeer);
 
 #define FiberBgpPeer_TEST_FRIENDS                                       \
   friend class FiberBgpPeerManagerFixture;                              \
@@ -198,6 +207,18 @@ class FiberBgpPeerManagerFixture : public ::testing::Test {
   TestFiberBgpPeerCallback callback2;
   shared_ptr<TestFiberBgpPeerManager> peerMgr2;
 
+  template <typename T>
+  T runCoroOnEventBase(folly::coro::Task<T>&& task) {
+    return folly::fibers::await([this, task = std::move(task)](
+                                    folly::fibers::Promise<T> promise) mutable {
+      folly::coro::co_withExecutor(&evb, std::move(task))
+          .start(
+              [promise = std::move(promise)](folly::Try<T>&& result) mutable {
+                promise.setValue(std::move(result));
+              });
+    });
+  }
+
   void initTwoPeerMgrs(
       folly::fibers::FiberManager& fm,
       const std::optional<SocketAddress>& listenAddr = std::nullopt,
@@ -294,7 +315,7 @@ class FiberBgpPeerManagerFixture : public ::testing::Test {
         make_shared<TestFiberBgpPeerManager>(bgpGlobalConfig, &cb, fm, evb);
 
     // start all fibers for peerMgr
-    fm.addTask([&peerMgr] { peerMgr->run(); });
+    fm.addTask([peerMgr] { peerMgr->run(); });
     return peerMgr;
   }
 };
@@ -375,6 +396,150 @@ TEST(BgpPeerId, BgpPeerIdOdsKeyEqualityTest) {
   EXPECT_NE(bgpPeerId1.peerDescription, bgpPeerId2.peerDescription);
   EXPECT_NE(bgpPeerId2.peerDescription, bgpPeerId3.peerDescription);
   EXPECT_NE(bgpPeerId3.peerDescription, bgpPeerId1.peerDescription);
+}
+
+TEST_F(
+    FiberBgpPeerManagerFixture,
+    DeleteTerminatedSessionPreservesPeerWithoutConnectionInfo) {
+  auto& fm = fmWrapper.get();
+  initTwoPeerMgrs(fm);
+
+  fm.addTask([this] {
+    constexpr uint64_t kTerminatedVersion = 7;
+    auto peerInfo = std::make_shared<BgpPeerInfoInternal>();
+    peerInfo->peeringParams.remoteAs =
+        facebook::bgp::AsNum(facebook::bgp::kVipAsn);
+    auto sessionInfo = std::make_shared<BgpSessionInfo>();
+    sessionInfo->versionNumber =
+        std::make_shared<VersionNumber>(kTerminatedVersion);
+    peerInfo->sessionInfos.emplace(peerId1.remoteBgpId, sessionInfo);
+    auto dynamicPeerInfo = std::make_shared<BgpDynamicPeerGroupInfo>();
+    dynamicPeerInfo->activePeers.insert(peerAddr1);
+    peerMgr1
+        ->dynamicPeerGroups_[folly::IPAddress::createNetwork("127.0.0.0/8")] =
+        dynamicPeerInfo;
+    peerMgr1->allPeers_[peerAddr1] = std::move(peerInfo);
+    facebook::bgp::BgpStats::incrAllPeersCount();
+    facebook::bgp::BgpStats::incrDynamicPeersCount();
+
+    EXPECT_TRUE(peerMgr1->getBgpSessionInfo(peerId1).has_value());
+    EXPECT_TRUE(runCoroOnEventBase(peerMgr1->co_deleteTerminatedSession(
+        peerId1, kTerminatedVersion, facebook::bgp::kVipAsn)));
+    EXPECT_FALSE(peerMgr1->getBgpSessionInfo(peerId1).has_value());
+    EXPECT_TRUE(peerMgr1->allPeers_.contains(peerAddr1));
+    EXPECT_TRUE(dynamicPeerInfo->activePeers.contains(peerAddr1));
+
+    peerMgr1->allPeers_.erase(peerAddr1);
+    dynamicPeerInfo->activePeers.erase(peerAddr1);
+    facebook::bgp::BgpStats::decrAllPeersCount();
+    facebook::bgp::BgpStats::decrDynamicPeersCount();
+
+    peerMgr1->shutdownWithGR(false);
+    peerMgr2->shutdownWithGR(false);
+  });
+
+  evb.loop();
+}
+
+TEST_F(
+    FiberBgpPeerManagerFixture,
+    DeleteTerminatedSessionPreservesNewerSession) {
+  auto& fm = fmWrapper.get();
+  initTwoPeerMgrs(fm);
+
+  fm.addTask([this] {
+    constexpr uint64_t kTerminatedVersion = 7;
+    auto peerInfo = std::make_shared<BgpPeerInfoInternal>();
+    peerInfo->peeringParams.remoteAs =
+        facebook::bgp::AsNum(facebook::bgp::kVipAsn);
+    auto sessionInfo = std::make_shared<BgpSessionInfo>();
+    sessionInfo->versionNumber =
+        std::make_shared<VersionNumber>(kTerminatedVersion + 1);
+    sessionInfo->establishedSessionInfo =
+        std::make_shared<BgpPeerActiveSessionInfo>();
+    peerInfo->sessionInfos.emplace(peerId1.remoteBgpId, sessionInfo);
+    auto dynamicPeerInfo = std::make_shared<BgpDynamicPeerGroupInfo>();
+    dynamicPeerInfo->activePeers.insert(peerAddr1);
+    peerMgr1
+        ->dynamicPeerGroups_[folly::IPAddress::createNetwork("127.0.0.0/8")] =
+        dynamicPeerInfo;
+    peerMgr1->allPeers_[peerAddr1] = std::move(peerInfo);
+
+    EXPECT_FALSE(runCoroOnEventBase(peerMgr1->co_deleteTerminatedSession(
+        peerId1, kTerminatedVersion, facebook::bgp::kVipAsn)));
+    const auto retainedSessionInfo = peerMgr1->getBgpSessionInfo(peerId1);
+    ASSERT_TRUE(retainedSessionInfo.has_value());
+    EXPECT_EQ(sessionInfo, retainedSessionInfo.value());
+
+    peerMgr1->shutdownWithGR(false);
+    peerMgr2->shutdownWithGR(false);
+  });
+
+  evb.loop();
+}
+
+TEST_F(
+    FiberBgpPeerManagerFixture,
+    DeleteTerminatedSessionRemovesSessionFromDynamicPassivePeer) {
+  auto& fm = fmWrapper.get();
+  initTwoPeerMgrs(fm);
+
+  fm.addTask([this] {
+    constexpr uint64_t kTerminatedVersion = 7;
+    const auto peerPrefix = folly::IPAddress::createNetwork("127.0.0.0/8");
+    auto params = PeeringParams(
+        peerAddr1,
+        peerPrefix,
+        100,
+        100,
+        facebook::bgp::kVipAsn,
+        kR1Lo1.asV4(),
+        kR1Lo1.asV4(),
+        180s,
+        120s,
+        constants::kBgpPort,
+        {kR1Lo1, 0},
+        TBgpSessionConnectMode::PASSIVE_ONLY);
+    auto dynamicPeerInfo = std::make_shared<BgpDynamicPeerGroupInfo>();
+    dynamicPeerInfo->peeringParams = params;
+    peerMgr1->dynamicPeerGroups_[peerPrefix] = dynamicPeerInfo;
+    ASSERT_FALSE(
+        peerMgr1
+            ->addPeerHelper(
+                peerAddr1,
+                params,
+                ConnTimeParams(
+                    kDefaultStartAfterDelayMs, kDefaultConnRetryTimeoutMs))
+            .hasError());
+    dynamicPeerInfo->activePeers.insert(peerAddr1);
+    facebook::bgp::BgpStats::incrDynamicPeersCount();
+
+    auto sessionInfo = std::make_shared<BgpSessionInfo>();
+    sessionInfo->versionNumber =
+        std::make_shared<VersionNumber>(kTerminatedVersion);
+    peerMgr1->allPeers_.at(peerAddr1)->sessionInfos.emplace(
+        peerId1.remoteBgpId, sessionInfo);
+
+    const auto& connectionInfos =
+        peerMgr1->allPeers_.at(peerAddr1)->connectionInfos;
+    ASSERT_EQ(connectionInfos.size(), 1);
+    ASSERT_NE(connectionInfos.begin()->second->activeConnectInfo, nullptr);
+
+    EXPECT_TRUE(runCoroOnEventBase(peerMgr1->co_deleteTerminatedSession(
+        peerId1, kTerminatedVersion, facebook::bgp::kVipAsn)));
+    EXPECT_FALSE(peerMgr1->getBgpSessionInfo(peerId1).has_value());
+    EXPECT_TRUE(peerMgr1->allPeers_.contains(peerAddr1));
+    EXPECT_TRUE(dynamicPeerInfo->activePeers.contains(peerAddr1));
+
+    peerMgr1->allPeers_.erase(peerAddr1);
+    dynamicPeerInfo->activePeers.erase(peerAddr1);
+    facebook::bgp::BgpStats::decrAllPeersCount();
+    facebook::bgp::BgpStats::decrDynamicPeersCount();
+    peerMgr1->shutdownWithGR(false);
+    peerMgr2->shutdownWithGR(false);
+  });
+
+  evb.loop();
 }
 
 /*

@@ -748,7 +748,9 @@ constexpr auto kPeerMessagesRecvRouteRefresh =
 
 void initCounters();
 void initPeerCounters(const std::string& peerId);
-void clearPeerCounters(const std::string& peerId);
+void clearPeerCounters(
+    const std::string& peerIdOdsStr,
+    const std::string& noGrRestartPeerId);
 // Clears only the per-peer EGRESS (sent) message counters (not prefix gauges
 // or recv counters). Used by the clearEgressCounters debug RPC.
 void clearPeerEgressMessageCounters(const std::string& peerId);

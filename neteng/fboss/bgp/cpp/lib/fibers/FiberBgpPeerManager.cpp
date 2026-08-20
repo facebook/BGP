@@ -2316,6 +2316,55 @@ folly::coro::Task<void> FiberBgpPeerManager::co_clearSocketCounters(
       }());
 }
 
+folly::coro::Task<bool> FiberBgpPeerManager::co_deleteTerminatedSession(
+    const BgpPeerId& peerId,
+    uint64_t terminatedVersion,
+    uint32_t expectedRemoteAs) noexcept {
+  co_return co_await co_withExecutor(
+      &evb_,
+      [this, peerId, terminatedVersion, expectedRemoteAs]()
+          -> folly::coro::Task<bool> {
+        const auto peerIt = allPeers_.find(peerId.peerAddr);
+        if (peerIt == allPeers_.end()) {
+          co_return false;
+        }
+
+        const auto& peerInfo = peerIt->second;
+        if (peerInfo->peeringParams.remoteAs != expectedRemoteAs) {
+          co_return false;
+        }
+
+        /*
+         * A static peer can use the VIP ASN. Require a configured dynamic
+         * prefix so this path only removes state created from a peer group.
+         */
+        const auto peerPrefix = getPeerPrefix(peerId.peerAddr);
+        if (!peerPrefix || !dynamicPeerGroups_.contains(*peerPrefix)) {
+          co_return false;
+        }
+
+        auto& sessionInfos = peerInfo->sessionInfos;
+        const auto sessionIt = sessionInfos.find(peerId.remoteBgpId);
+        if (sessionIt == sessionInfos.end()) {
+          co_return false;
+        }
+
+        /*
+         * The address and BGP ID can be reused by a newer session. Delete
+         * only the terminated incarnation after it has released live state.
+         */
+        const auto& sessionInfo = sessionIt->second;
+        if (sessionInfo->versionNumber->getWithoutLock() != terminatedVersion ||
+            sessionInfo->connectionInfo ||
+            sessionInfo->establishedSessionInfo) {
+          co_return false;
+        }
+
+        sessionInfos.erase(sessionIt);
+        co_return true;
+      }());
+}
+
 std::optional<std::shared_ptr<BgpSessionInfo>>
 FiberBgpPeerManager::getBgpSessionInfo(const BgpPeerId& peerId) const noexcept {
   const auto& peerAddr = peerId.peerAddr;

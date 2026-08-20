@@ -28,7 +28,9 @@
 
 #include <folly/logging/xlog.h>
 
+#include "fb303/ThreadCachedServiceData.h"
 #include "fboss/lib/CommonUtils.h"
+#include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "neteng/fboss/bgp/cpp/tests/Utils.h"
 #include "neteng/fboss/bgp/cpp/tests/e2e/E2ETestFixture.h"
 
@@ -37,6 +39,100 @@ using namespace facebook::bgp;
 namespace facebook::bgp {
 
 class E2EPeerManagerTest : public E2ERibTestFixture {};
+
+struct VipAdjRibCleanupCase {
+  uint32_t remoteAs;
+  bool dynamic;
+  bool expectCleanup;
+  bool expectVipSession;
+  const char* name;
+};
+
+class VipAdjRibCleanupTest
+    : public E2ETestFixture,
+      public testing::WithParamInterface<VipAdjRibCleanupCase> {
+ protected:
+  void SetUp() override {
+    RibStats::setAdjRibCount(0);
+    BgpStats::setRunningVipSessions(0);
+    if (GetParam().dynamic) {
+      peers_.push_back(createBgpPeer(
+          GetParam().remoteAs,
+          kLocalAddr2,
+          kPeerPrefix4,
+          kNextHopV4_2,
+          kNextHopV6_2,
+          true,
+          kPeerTypeShiv));
+      peerAddr_ = kDynamicPeerAddr4;
+    } else {
+      auto peer = kDefaultPeerSpec3;
+      peer.asn = GetParam().remoteAs;
+      addPeer(peer);
+      peerAddr_ = kPeerAddr3;
+    }
+    createRib();
+    createPeerManager();
+  }
+
+  folly::IPAddress peerAddr_{kPeerAddr3};
+};
+
+TEST_P(VipAdjRibCleanupTest, SessionDisconnectUpdatesTotalAdjRibs) {
+  auto* stats = facebook::fb303::ThreadCachedServiceData::get();
+  stats->publishStats();
+  const auto adjRibsBefore = stats->getCounter(RibStats::kTotalAdjRibs);
+
+  bringUpPeer(peerAddr_);
+  auto adjRib = getAdjRibByAddr(peerAddr_);
+  ASSERT_NE(nullptr, adjRib);
+  stats->publishStats();
+  const auto adjRibsAfterEstablishment =
+      stats->getCounter(RibStats::kTotalAdjRibs);
+  ASSERT_EQ(adjRibsBefore + 1, adjRibsAfterEstablishment);
+  EXPECT_EQ(
+      GetParam().expectVipSession ? 1 : 0,
+      stats->getCounter(BgpStats::kRunningVipSessions));
+
+  bringDownPeer(peerAddr_);
+  stats->publishStats();
+  EXPECT_EQ(0, stats->getCounter(BgpStats::kRunningVipSessions));
+
+  if (GetParam().expectCleanup) {
+    EXPECT_EQ(nullptr, getAdjRibByAddr(peerAddr_));
+    EXPECT_EQ(adjRibsBefore, stats->getCounter(RibStats::kTotalAdjRibs));
+  } else {
+    EXPECT_EQ(adjRib, getAdjRibByAddr(peerAddr_));
+    EXPECT_EQ(
+        adjRibsAfterEstablishment, stats->getCounter(RibStats::kTotalAdjRibs));
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    RemoteAs,
+    VipAdjRibCleanupTest,
+    testing::Values(
+        VipAdjRibCleanupCase{
+            .remoteAs = kVipAsn,
+            .dynamic = true,
+            .expectCleanup = true,
+            .expectVipSession = true,
+            .name = "DynamicVip"},
+        VipAdjRibCleanupCase{
+            .remoteAs = kVipAsn,
+            .dynamic = false,
+            .expectCleanup = false,
+            .expectVipSession = false,
+            .name = "StaticPeerWithVipAsn"},
+        VipAdjRibCleanupCase{
+            .remoteAs = kPeerAsn3,
+            .dynamic = false,
+            .expectCleanup = false,
+            .expectVipSession = false,
+            .name = "NonVip"}),
+    [](const testing::TestParamInfo<VipAdjRibCleanupCase>& info) {
+      return info.param.name;
+    });
 
 /*
  * Fixture that intentionally does NOT add peer3 — used to exercise delPeers
