@@ -143,6 +143,12 @@ constexpr auto kNetlinkSyncReadTimeout = std::chrono::milliseconds(1000);
 constexpr auto kNetlinkSyncRetries = 5;
 // Directly connected next hop weight
 constexpr auto kDirectlyConnectedNexthopWeight = 1;
+/*
+ * The initial and maximum link-up hold-down times passed to
+ * InterfaceEntry::recordLinkDown.
+ */
+constexpr auto kInitialLinkUpHoldDownTime = std::chrono::milliseconds(200);
+constexpr auto kMaxLinkUpHoldDownTime = std::chrono::milliseconds(8000);
 
 // Default maximum number of IPs to enumerate from a CIDR network
 constexpr uint64_t kDefaultMaxIPsInCIDR = 2;

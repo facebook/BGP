@@ -16,6 +16,8 @@
 
 #include "neteng/fboss/bgp/cpp/nexthopTracker/InterfaceEntry.h"
 
+#include <algorithm>
+
 #include <gflags/gflags.h>
 
 #include "neteng/fboss/bgp/cpp/common/Utils.h"
@@ -128,6 +130,68 @@ bool InterfaceEntry::setUp(bool isUp) {
 
 bool InterfaceEntry::isUp() const {
   return isUp_;
+}
+
+void InterfaceEntry::recordLinkDown(
+    std::chrono::steady_clock::time_point now,
+    std::chrono::milliseconds initialHoldDownTime,
+    std::chrono::milliseconds maxHoldDownTime) {
+  holdEndTime_.reset();
+  /*
+   * holdTime_ is set to initialHoldDownTime on the first link-down, and on any
+   * later link-down that comes maxHoldDownTime or more after the previous one.
+   * Otherwise holdTime_ doubles, up to maxHoldDownTime.
+   *
+   * The window is maxHoldDownTime, the same length as the longest hold. A flap
+   * that is farther apart than the longest hold cannot be absorbed by a hold.
+   * To add a penalty for it gives only more downtime. Open/R uses the same
+   * rule (openr/link-monitor/InterfaceEntry.cpp:70-74).
+   */
+  const bool isRepeatFlap =
+      lastDownTime_.has_value() && (now - *lastDownTime_) < maxHoldDownTime;
+  holdTime_ = isRepeatFlap ? std::min(holdTime_ * 2, maxHoldDownTime)
+                           : initialHoldDownTime;
+  lastDownTime_ = now;
+}
+
+bool InterfaceEntry::startLinkUpHold(
+    std::chrono::steady_clock::time_point now) {
+  /*
+   * There is no hold before the first link-down of the process. It is the
+   * same state as Open/R currentBackoff_ == 0, where canTryNow returns true.
+   */
+  if (!lastDownTime_.has_value()) {
+    return false;
+  }
+  /*
+   * The hold runs from the link-down time. A long outage therefore serves the
+   * whole hold while the link is down, and the link returns with no delay.
+   */
+  const auto endTime = *lastDownTime_ + holdTime_;
+  if (now >= endTime) {
+    return false;
+  }
+  holdEndTime_ = endTime;
+  return true;
+}
+
+bool InterfaceEntry::canUseLink(
+    std::chrono::steady_clock::time_point now) const {
+  return isUp_ && (!holdEndTime_.has_value() || now >= *holdEndTime_);
+}
+
+bool InterfaceEntry::isHoldEnded(
+    std::chrono::steady_clock::time_point now) const {
+  return holdEndTime_.has_value() && now >= *holdEndTime_;
+}
+
+void InterfaceEntry::removeHold() {
+  holdEndTime_.reset();
+}
+
+std::optional<std::chrono::steady_clock::time_point>
+InterfaceEntry::getHoldEndTime() const {
+  return holdEndTime_;
 }
 
 bool InterfaceEntry::addPrefix(const folly::CIDRNetwork& prefix) {

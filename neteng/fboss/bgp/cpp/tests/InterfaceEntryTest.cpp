@@ -17,6 +17,7 @@
 #include <folly/IPAddress.h>
 #include <gtest/gtest.h>
 
+#include "neteng/fboss/bgp/cpp/common/Consts.h"
 #include "neteng/fboss/bgp/cpp/nexthopTracker/InterfaceEntry.h"
 #include "neteng/fboss/bgp/cpp/tests/Utils.h"
 
@@ -242,6 +243,126 @@ TEST(InterfaceEntryTest, PrefixTrackingTest) {
   // Removing a prefix that was never added is a no-op.
   EXPECT_FALSE(ifEntry.removePrefix(
       folly::CIDRNetwork{folly::IPAddress("172.16.0.1"), 16}));
+}
+
+// --- Link-up hold (link-flap dampening): state and ladder ---
+
+namespace {
+/*
+ * A fixed clock origin. Each hold test owns its own time, so no test sleeps
+ * and no test needs an injected clock. The origin is one hour after the epoch,
+ * so a test can subtract time without going below the epoch. The epoch is the
+ * value that means "no hold".
+ */
+const auto kT0 =
+    std::chrono::steady_clock::time_point{} + std::chrono::hours(1);
+constexpr auto kInitial = kInitialLinkUpHoldDownTime;
+constexpr auto kMax = kMaxLinkUpHoldDownTime;
+} // namespace
+
+/**
+ * The first flap starts a hold. Open/R penalizes the first link-down as well
+ * (ExponentialBackoff.cpp:51-52), and this design matches it.
+ */
+TEST(InterfaceEntryTest, FirstFlapStartsHold) {
+  InterfaceEntry ifEntry{"po245"};
+  ifEntry.setUp(true);
+
+  ifEntry.recordLinkDown(kT0, kInitial, kMax);
+  EXPECT_TRUE(ifEntry.startLinkUpHold(kT0));
+  EXPECT_EQ(kT0 + kInitial, ifEntry.getHoldEndTime());
+}
+
+/*
+ * A long outage serves the whole hold while the link is down. A planned drain
+ * or a cable repair therefore returns with no delay.
+ */
+TEST(InterfaceEntryTest, NoHoldAfterLongOutage) {
+  InterfaceEntry ifEntry{"po245"};
+  ifEntry.setUp(true);
+
+  ifEntry.recordLinkDown(kT0, kInitial, kMax);
+  const auto upTime = kT0 + std::chrono::hours(1);
+  EXPECT_FALSE(ifEntry.startLinkUpHold(upTime));
+  EXPECT_FALSE(ifEntry.getHoldEndTime().has_value());
+  EXPECT_TRUE(ifEntry.canUseLink(upTime));
+}
+
+/*
+ * An outage shorter than the hold serves part of it. The link owes only the
+ * rest, and the hold still ends at one hold length after the link-down.
+ */
+TEST(InterfaceEntryTest, ShortOutageOwesOnlyTheRemainingHold) {
+  InterfaceEntry ifEntry{"po245"};
+  ifEntry.setUp(true);
+
+  ifEntry.recordLinkDown(kT0, kInitial, kMax);
+  const auto upTime = kT0 + std::chrono::milliseconds(120);
+  EXPECT_TRUE(ifEntry.startLinkUpHold(upTime));
+  EXPECT_EQ(kT0 + kInitial, ifEntry.getHoldEndTime());
+
+  // 80ms of the 200ms hold are left, so the link is not usable yet.
+  EXPECT_FALSE(ifEntry.canUseLink(upTime));
+  EXPECT_TRUE(ifEntry.canUseLink(kT0 + kInitial));
+}
+
+/**
+ * A new entry has no hold on its first link-up. holdTime_ is zero until the
+ * first link-down, which is the same as Open/R currentBackoff_ == 0.
+ */
+TEST(InterfaceEntryTest, NoHoldBeforeFirstLinkDown) {
+  InterfaceEntry ifEntry{"po245"};
+  ifEntry.setUp(true);
+
+  EXPECT_FALSE(ifEntry.startLinkUpHold(kT0));
+  EXPECT_FALSE(ifEntry.getHoldEndTime().has_value());
+  EXPECT_TRUE(ifEntry.canUseLink(kT0));
+}
+
+/**
+ * The ladder doubles on each repeat flap and stops at max.
+ */
+TEST(InterfaceEntryTest, LadderDoublesOnRepeatFlapAndStopsAtMax) {
+  InterfaceEntry ifEntry{"po245"};
+  ifEntry.setUp(true);
+
+  // Each link-down is 1ms after the last one, so none of them decays.
+  const std::vector<int64_t> expectedMs{
+      200, 400, 800, 1600, 3200, 6400, 8000, 8000};
+  std::vector<int64_t> actualMs;
+  auto now = kT0;
+  for (size_t i = 0; i < expectedMs.size(); ++i) {
+    ifEntry.recordLinkDown(now, kInitial, kMax);
+    EXPECT_TRUE(ifEntry.startLinkUpHold(now));
+    actualMs.push_back(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            *ifEntry.getHoldEndTime() - now)
+            .count());
+    now += std::chrono::milliseconds(1);
+  }
+  EXPECT_EQ(expectedMs, actualMs);
+}
+
+/**
+ * A link that stays quiet for the whole max hold returns to the initial hold.
+ */
+TEST(InterfaceEntryTest, LadderReturnsToInitialAfterQuietPeriod) {
+  InterfaceEntry ifEntry{"po245"};
+  ifEntry.setUp(true);
+
+  // Two flaps close together take the ladder to 400ms.
+  ifEntry.recordLinkDown(kT0, kInitial, kMax);
+  ifEntry.recordLinkDown(kT0 + std::chrono::milliseconds(1), kInitial, kMax);
+  ifEntry.startLinkUpHold(kT0 + std::chrono::milliseconds(1));
+  EXPECT_EQ(
+      std::chrono::milliseconds(400),
+      *ifEntry.getHoldEndTime() - (kT0 + std::chrono::milliseconds(1)));
+
+  // A link-down max after the last one wipes the history.
+  const auto quietDown = kT0 + std::chrono::milliseconds(1) + kMax;
+  ifEntry.recordLinkDown(quietDown, kInitial, kMax);
+  ifEntry.startLinkUpHold(quietDown);
+  EXPECT_EQ(kInitial, *ifEntry.getHoldEndTime() - quietDown);
 }
 
 } // namespace facebook::bgp
