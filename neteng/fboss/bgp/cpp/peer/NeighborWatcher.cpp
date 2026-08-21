@@ -596,7 +596,7 @@ void FsdbSwitchReachabilityWatcher::stop() noexcept {
     fsdbSubMgr_->stop();
   } else {
     CHECK(fsdbPubSubMgr_);
-    const auto path = fsdbStateRootPath_.agent().config().sw();
+    const auto path = fsdbStateRootPath_.agent().dsfSwitchReachability();
     fsdbPubSubMgr_->removeStatePathSubscription(path.tokens());
   }
 }
