@@ -119,6 +119,10 @@ std::shared_ptr<Config> E2ETestFixture::getConfig(
   if (enableLegacyV4NlriEncoding_) {
     tBgpSettingConfig.enable_legacy_v4_nlri_encoding() = true;
   }
+  if (enableStreamSubscriberBackpressure_.has_value()) {
+    tBgpSettingConfig.enable_stream_subscriber_backpressure() =
+        *enableStreamSubscriberBackpressure_;
+  }
   thriftConfig.bgp_setting_config() = std::move(tBgpSettingConfig);
 
   FeatureFlags::LoadFromThriftConfig(thriftConfig);
@@ -2488,6 +2492,141 @@ std::shared_ptr<AdjRib> E2ETestFixture::getAdjRibByAddr(
     }
   }
   return nullptr;
+}
+
+// ========== STREAM SUBSCRIBER (MP-BGP MONITOR) HELPER IMPLEMENTATIONS =====
+
+std::optional<size_t> E2ETestFixture::getSubscriberQueueSize(
+    const std::string& subscriberName) {
+  std::optional<size_t> size;
+  if (!peerManager_) {
+    return size;
+  }
+  peerManager_->getEventBase().runInEventBaseThreadAndWait([&]() {
+    auto* subscriber = peerManager_->getStreamSubscriber(subscriberName);
+    if (subscriber && subscriber->boundedPeerInputQ) {
+      size = subscriber->boundedPeerInputQ->size();
+    }
+  });
+  return size;
+}
+
+std::optional<bool> E2ETestFixture::isSubscriberQueueBlocked(
+    const std::string& subscriberName) {
+  std::optional<bool> blocked;
+  if (!peerManager_) {
+    return blocked;
+  }
+  peerManager_->getEventBase().runInEventBaseThreadAndWait([&]() {
+    auto* subscriber = peerManager_->getStreamSubscriber(subscriberName);
+    if (subscriber && subscriber->boundedPeerInputQ) {
+      blocked = subscriber->boundedPeerInputQ->isBlocked();
+    }
+  });
+  return blocked;
+}
+
+bool E2ETestFixture::waitForSubscriberQueueBlocked(
+    const std::string& subscriberName,
+    int maxRetries) {
+  bool blocked = false;
+  WITH_RETRIES_N(maxRetries, {
+    auto state = isSubscriberQueueBlocked(subscriberName);
+    blocked = state.has_value() && *state;
+    EXPECT_EVENTUALLY_TRUE(blocked);
+  });
+  return blocked;
+}
+
+bool E2ETestFixture::waitForSubscriberQueueUnblocked(
+    const std::string& subscriberName,
+    int maxRetries) {
+  bool unblocked = false;
+  WITH_RETRIES_N(maxRetries, {
+    /*
+     * The has_value() test is necessary. A subscriber that bgpd tore down has
+     * no queue. If this code read an absent queue as unblocked, each recovery
+     * assertion in this suite would pass on the failure that it must catch.
+     */
+    auto state = isSubscriberQueueBlocked(subscriberName);
+    unblocked = state.has_value() && !*state;
+    EXPECT_EVENTUALLY_TRUE(unblocked);
+  });
+  return unblocked;
+}
+
+bool E2ETestFixture::waitForSubscriberQueueSizeAtMost(
+    const std::string& subscriberName,
+    size_t maxSize,
+    int maxRetries) {
+  bool drained = false;
+  WITH_RETRIES_N(maxRetries, {
+    auto size = getSubscriberQueueSize(subscriberName);
+    drained = size.has_value() && *size <= maxSize;
+    EXPECT_EVENTUALLY_TRUE(drained);
+  });
+  return drained;
+}
+
+std::optional<bool> E2ETestFixture::isSubscriberChangeListTimerScheduled(
+    const std::string& subscriberName) {
+  std::optional<bool> scheduled;
+  if (!peerManager_) {
+    return scheduled;
+  }
+  peerManager_->getEventBase().runInEventBaseThreadAndWait([&]() {
+    auto* subscriber = peerManager_->getStreamSubscriber(subscriberName);
+    if (!subscriber) {
+      return;
+    }
+    auto adjRib = peerManager_->findAdjRib(subscriber->peerId);
+    if (!adjRib) {
+      return;
+    }
+    scheduled = adjRib->changeListConsumeTimer_ &&
+        adjRib->changeListConsumeTimer_->isScheduled();
+  });
+  return scheduled;
+}
+
+bool E2ETestFixture::waitForSubscriberChangeListTimer(
+    const std::string& subscriberName,
+    bool scheduled,
+    int maxRetries) {
+  bool matched = false;
+  WITH_RETRIES_N(maxRetries, {
+    auto state = isSubscriberChangeListTimerScheduled(subscriberName);
+    matched = state.has_value() && *state == scheduled;
+    EXPECT_EVENTUALLY_TRUE(matched);
+  });
+  return matched;
+}
+
+bool E2ETestFixture::isSubscriberEstablished(
+    const std::string& subscriberName) {
+  if (!peerManager_) {
+    return false;
+  }
+  bool established = false;
+  peerManager_->getEventBase().runInEventBaseThreadAndWait([&]() {
+    auto* subscriber = peerManager_->getStreamSubscriber(subscriberName);
+    established = subscriber != nullptr &&
+        subscriber->state ==
+            neteng::fboss::bgp::thrift::TBgpPeerState::ESTABLISHED;
+  });
+  return established;
+}
+
+bool E2ETestFixture::waitForSubscriberEstablished(
+    const std::string& subscriberName,
+    bool established,
+    int maxRetries) {
+  bool matched = false;
+  WITH_RETRIES_N(maxRetries, {
+    matched = isSubscriberEstablished(subscriberName) == established;
+    EXPECT_EVENTUALLY_TRUE(matched);
+  });
+  return matched;
 }
 
 bool E2ETestFixture::waitForChangeListConsumerReady(

@@ -906,6 +906,86 @@ class E2ETestFixture : public ::testing::Test {
   std::shared_ptr<AdjRib> getAdjRibByAddr(const folly::IPAddress& peerAddr);
 
   /*
+   * ============ STREAM SUBSCRIBER (MP-BGP MONITOR) HELPERS ============
+   *
+   * The subscriber-side mirror of the peer-side queue helpers above. Every
+   * one of them hops onto PeerManagerBase's event base: streamSubscribers_,
+   * adjRibs_ and the AdjRib timers are owned by that thread and reading them
+   * directly races session transitions.
+   */
+
+  /*
+   * Sets BgpGlobalConfig::enableStreamSubscriberBackpressure in the config
+   * that this fixture builds. Call this function before createRib() and
+   * before createPeerManager().
+   *
+   * The value has three states, and the fixture keeps all three. std::nullopt
+   * leaves the field out of the config, and then
+   * FLAGS_enable_stream_subscriber_backpressure decides. A set value goes
+   * into the config and overrides that gflag.
+   */
+  void setEnableStreamSubscriberBackpressure(std::optional<bool> enable) {
+    enableStreamSubscriberBackpressure_ = enable;
+  }
+
+  /*
+   * Current depth of a subscriber's bounded egress queue. std::nullopt if the
+   * subscriber or its bounded queue is absent -- callers MUST distinguish
+   * that from "empty", otherwise a subscriber that was torn down looks
+   * perfectly drained.
+   */
+  std::optional<size_t> getSubscriberQueueSize(
+      const std::string& subscriberName);
+
+  /*
+   * Whether a subscriber's bounded egress queue is at/above its high
+   * watermark. std::nullopt if the subscriber or its bounded queue is absent;
+   * see getSubscriberQueueSize() for why that is not folded into `false`.
+   */
+  std::optional<bool> isSubscriberQueueBlocked(
+      const std::string& subscriberName);
+
+  // Wait for a subscriber's bounded egress queue to reach the blocked state.
+  bool waitForSubscriberQueueBlocked(
+      const std::string& subscriberName,
+      int maxRetries = 100);
+
+  // Wait for a subscriber's bounded egress queue to leave the blocked state.
+  bool waitForSubscriberQueueUnblocked(
+      const std::string& subscriberName,
+      int maxRetries = 100);
+
+  // Wait for a subscriber's bounded egress queue to drain to at most maxSize.
+  bool waitForSubscriberQueueSizeAtMost(
+      const std::string& subscriberName,
+      size_t maxSize,
+      int maxRetries = 100);
+
+  /*
+   * Whether the subscriber AdjRib's change-list consume timer is scheduled.
+   * False while the AdjRib is backpressured (waitForQueueSpace() cancels it),
+   * true once it resumes. std::nullopt if the subscriber or its AdjRib is
+   * not present. Requires AdjRib_TEST_FRIENDS.
+   */
+  std::optional<bool> isSubscriberChangeListTimerScheduled(
+      const std::string& subscriberName);
+
+  // Wait for the subscriber's change-list consume timer to reach `scheduled`.
+  bool waitForSubscriberChangeListTimer(
+      const std::string& subscriberName,
+      bool scheduled,
+      int maxRetries = 100);
+
+  // Whether a subscriber is present and in ESTABLISHED state.
+  bool isSubscriberEstablished(const std::string& subscriberName);
+
+  // Wait for a subscriber to reach (or leave) ESTABLISHED state.
+  bool waitForSubscriberEstablished(
+      const std::string& subscriberName,
+      bool established,
+      int maxRetries = 100);
+
+  /*
    * Walk a peer's RIB-OUT entries in its update group's LiteTree on the
    * PeerManager event base and return the count of entries for which
    * verifyOnRouteIndexFunc returns true, restricted to routes whose index octet
@@ -1350,6 +1430,10 @@ class E2ETestFixture : public ::testing::Test {
 
   // Legacy v4 NLRI encoding for capability-less peers (thrift config gate)
   bool enableLegacyV4NlriEncoding_ = false;
+
+  // Bounded, backpressured stream subscriber egress (thrift config gate).
+  // std::nullopt leaves the field out of the config.
+  std::optional<bool> enableStreamSubscriberBackpressure_;
 
   // Update group config override (call setUpdateGroupConfig before
   // createPeerManager to override slow peer thresholds etc.)
