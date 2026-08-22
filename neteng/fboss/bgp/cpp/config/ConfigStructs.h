@@ -134,7 +134,9 @@ struct BgpGlobalConfig {
       const bool enableOptimizedGR = false,
       const bool enablePolicyDefaultAction = false,
       const bool enableAddPathGrReconcile = false,
-      const bool enableLegacyV4NlriEncoding = false)
+      const bool enableLegacyV4NlriEncoding = false,
+      const std::optional<bool> enableStreamSubscriberBackpressure =
+          std::nullopt)
       : localAsn(localAsn),
         routerId(routerId),
         clusterId(clusterId),
@@ -168,7 +170,9 @@ struct BgpGlobalConfig {
         enableOptimizedGR(enableOptimizedGR),
         enablePolicyDefaultAction(enablePolicyDefaultAction),
         enableAddPathGrReconcile(enableAddPathGrReconcile),
-        enableLegacyV4NlriEncoding(enableLegacyV4NlriEncoding) {}
+        enableLegacyV4NlriEncoding(enableLegacyV4NlriEncoding),
+        enableStreamSubscriberBackpressure(enableStreamSubscriberBackpressure) {
+  }
 
   const uint32_t localAsn;
   const folly::IPAddress routerId;
@@ -310,6 +314,28 @@ struct BgpGlobalConfig {
    * off: every peer keeps MP_REACH and existing update groups are unchanged.
    */
   const bool enableLegacyV4NlriEncoding{false};
+
+  /**
+   * This value controls the bounded egress path of a thrift stream
+   * subscriber. The MP-BGP monitor is such a subscriber.
+   *
+   * If the value is true, the AdjRib of the subscriber uses a bounded queue.
+   * The queue applies backpressure in the same way as the queue of a peer.
+   * An AsyncGenerator reads the bounded queue. It reads an item only when the
+   * client gives stream credit. If the subscriber does not read the stream,
+   * the change-list consumer also stops.
+   *
+   * If the value is false, the AdjRib of the subscriber uses an unbounded
+   * queue. The publish loop moves the data to an unbounded thrift publisher.
+   * A slow subscriber makes both buffers increase without a limit.
+   *
+   * The value has three states. std::nullopt means that the config does not
+   * set the behavior. Then FLAGS_enable_stream_subscriber_backpressure sets
+   * the behavior. A value in the config replaces the value of the gflag.
+   * Thus you can set false in the config to disable the feature while the
+   * gflag stays true.
+   */
+  const std::optional<bool> enableStreamSubscriberBackpressure;
 };
 
 struct BgpCommonPeerGroupConfig {

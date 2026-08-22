@@ -943,6 +943,7 @@ void Config::populateConfigDatabase(
   bool enableOptimizedGR{false};
   bool enableAddPathGrReconcile{false};
   bool enableLegacyV4NlriEncoding{false};
+  std::optional<bool> enableStreamSubscriberBackpressure;
   std::vector<std::string> includeInterfaceRegexes{};
 
   if (auto setting = config_.bgp_setting_config()) {
@@ -979,6 +980,10 @@ void Config::populateConfigDatabase(
     if (auto legacyV4NlriEncodingFlag =
             setting->enable_legacy_v4_nlri_encoding()) {
       enableLegacyV4NlriEncoding = *legacyV4NlriEncodingFlag;
+    }
+    if (auto streamSubscriberBackpressureFlag =
+            setting->enable_stream_subscriber_backpressure()) {
+      enableStreamSubscriberBackpressure = *streamSubscriberBackpressureFlag;
     }
     if (auto ugConfig = setting->update_group_config()) {
       updateGroupConfig.enableSerializeGroupPdu =
@@ -1044,7 +1049,8 @@ void Config::populateConfigDatabase(
       enableOptimizedGR,
       false /* enablePolicyDefaultAction */,
       enableAddPathGrReconcile,
-      enableLegacyV4NlriEncoding);
+      enableLegacyV4NlriEncoding,
+      enableStreamSubscriberBackpressure);
 
   // populate peer groups
   if (config_.peer_groups().has_value()) {

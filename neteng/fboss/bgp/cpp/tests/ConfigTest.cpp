@@ -342,6 +342,62 @@ TEST_F(ConfigTestFixture, enableLegacyV4NlriEncodingTest) {
   }
 }
 
+/*
+ * This test checks that Config reads enable_stream_subscriber_backpressure
+ * from thrift::BgpConfig into BgpGlobalConfig. The result has three states.
+ *
+ * The unset state and the false state are different. In the unset state the
+ * gflag FLAGS_enable_stream_subscriber_backpressure sets the behavior. In the
+ * false state the config disables the bounded egress path of the MP-BGP
+ * monitor. The gflag is true by default. Thus the false state is the only way
+ * to disable the feature from the config.
+ */
+TEST_F(ConfigTestFixture, enableStreamSubscriberBackpressureTest) {
+  thrift::BgpConfig thriftConfig;
+  thriftConfig.router_id() = kLocalAddr1.str();
+
+  // The config has no bgp_setting_config. The value stays unset.
+  {
+    Config config(thriftConfig);
+    EXPECT_FALSE(config.getBgpGlobalConfig()
+                     ->enableStreamSubscriberBackpressure.has_value());
+  }
+
+  // bgp_setting_config is present but the field is unset. The value stays
+  // unset.
+  {
+    thriftConfig.bgp_setting_config() = thrift::BgpSettingConfig();
+    Config config(thriftConfig);
+    EXPECT_FALSE(config.getBgpGlobalConfig()
+                     ->enableStreamSubscriberBackpressure.has_value());
+  }
+
+  // The config sets true. The value is set and it is true.
+  {
+    thriftConfig.bgp_setting_config() = thrift::BgpSettingConfig();
+    thriftConfig.bgp_setting_config()->enable_stream_subscriber_backpressure() =
+        true;
+    Config config(thriftConfig);
+    const auto& backpressure =
+        config.getBgpGlobalConfig()->enableStreamSubscriberBackpressure;
+    ASSERT_TRUE(backpressure.has_value());
+    EXPECT_TRUE(*backpressure);
+  }
+
+  // The config sets false. The value is set and it is false. This state is
+  // different from the unset state above.
+  {
+    thriftConfig.bgp_setting_config() = thrift::BgpSettingConfig();
+    thriftConfig.bgp_setting_config()->enable_stream_subscriber_backpressure() =
+        false;
+    Config config(thriftConfig);
+    const auto& backpressure =
+        config.getBgpGlobalConfig()->enableStreamSubscriberBackpressure;
+    ASSERT_TRUE(backpressure.has_value());
+    EXPECT_FALSE(*backpressure);
+  }
+}
+
 TEST_F(ConfigTestFixture, ThriftServerConfigTest) {
   thrift::BgpConfig bgpConfig;
   bgpConfig.router_id() = kLocalAddr1.str();
