@@ -265,6 +265,10 @@ DEFINE_timeseries(
     stream_subscriber_backpressured_events,
     kStreamSubscriberBackpressuredEvents,
     fb303::COUNT);
+DEFINE_timeseries(
+    stream_subscriber_idle_timeouts,
+    kStreamSubscriberIdleTimeouts,
+    fb303::COUNT);
 // One sample of the block length of a stream subscriber egress queue.
 DEFINE_quantile_stat(
     streamSubscriberBlockDurationMs,
@@ -333,6 +337,10 @@ void initStreamSubscriberBackpressureStats() {
       kStreamSubscriberBackpressuredEvents + ".count", 0);
   fb303::ThreadCachedServiceData::get()->setCounter(
       kStreamSubscriberBackpressuredEvents + ".count.60", 0);
+  fb303::ThreadCachedServiceData::get()->setCounter(
+      kStreamSubscriberIdleTimeouts + ".count", 0);
+  fb303::ThreadCachedServiceData::get()->setCounter(
+      kStreamSubscriberIdleTimeouts + ".count.60", 0);
   /*
    * The initial value is -1. A value of 0 means that bgpd sampled the queue
    * and the queue is empty. Thus -1 means that bgpd did not sample the queue.
@@ -360,6 +368,10 @@ void setStreamSubscriberLastBlockTime(uint64_t lastBlockTimeMs) {
 void addStreamSubscriberBlockDuration(uint64_t durationMs) {
   STATS_streamSubscriberBlockDurationMs.addValue(
       static_cast<int64_t>(durationMs));
+}
+
+void incStreamSubscriberIdleTimeouts() {
+  STATS_stream_subscriber_idle_timeouts.add(1);
 }
 
 void incrementEgressTransientRouteUpdatesSuppressed() {

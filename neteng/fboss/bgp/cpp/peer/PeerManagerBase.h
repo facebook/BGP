@@ -63,6 +63,24 @@ DECLARE_int32(counter_update_time_s);
 DECLARE_string(gr_state_file);
 DECLARE_string(safemode_file);
 DECLARE_bool(enable_stream_subscriber_backpressure);
+DECLARE_int32(stream_subscriber_idle_timeout_ms);
+
+namespace facebook::bgp {
+/*
+ * The message that the server puts in the error that ends an evicted stream.
+ * A client can match this text to tell an eviction from another error.
+ *
+ * The error reaches the client without a type. bgp_stream.thrift declares
+ * TBgpServiceException on the initial response of subscribe() and it declares
+ * no exception on the stream itself. Therefore thrift delivers this error as
+ * a TApplicationException that carries the text. The client can still tell an
+ * error from an orderly end of the stream, which is what a reconnect needs.
+ */
+inline constexpr auto kStreamSubscriberEvictedMessage =
+    "Stream subscriber evicted: the egress queue stayed blocked and the "
+    "client took no message before stream_subscriber_idle_timeout_ms. "
+    "Subscribe again to resume.";
+} // namespace facebook::bgp
 
 namespace facebook {
 namespace bgp {
@@ -80,6 +98,56 @@ struct StreamSubscriber {
 
   std::shared_ptr<nettools::bgplib::FiberBgpPeer::BoundedInputQueueT>
       boundedPeerInputQ;
+
+  /*
+   * The state that evb_ shares with the generator of the session.
+   *
+   * The generator runs on the executor of thrift and evb_ runs the stats
+   * task. Both read and write these members, so both members are atomic. A
+   * shared_ptr holds the object, because the coroutine frame must keep it
+   * alive after a re-subscribe gives the subscriber a new object.
+   */
+  struct StreamSessionState {
+    /*
+     * The count of the messages that the generator took from
+     * boundedPeerInputQ. The generator raises the count. The stats task reads
+     * it to learn whether the client makes progress.
+     *
+     * The depth of the queue alone does not show progress. A consumer that
+     * drains the queue and a producer that refills it can leave the same
+     * depth at two readings. Two readings of this count differ only when the
+     * consumer took a message between them.
+     */
+    std::atomic<uint64_t> consumedCount{0};
+
+    /*
+     * True when the idle timeout ended this session. The stats task sets it
+     * and the generator reads it.
+     *
+     * The generator ends the stream with an error when it sees this flag, so
+     * the client can tell an eviction from an orderly end of the stream. A
+     * client that reconnects on a stream error then reconnects.
+     *
+     * Other reasons to end a session leave the flag false. A re-subscribe and
+     * a shutdown of the daemon end the stream without an error, as before.
+     */
+    std::atomic<bool> evicted{false};
+  };
+  std::shared_ptr<StreamSessionState> sessionState;
+
+  /*
+   * The start of the run in which the client took no message, and the reading
+   * of sessionState->consumedCount at that start. Both are steady-clock
+   * milliseconds and a count, and evb_ owns both.
+   *
+   * These two are separate from blockStartTimeMs on purpose. blockStartTimeMs
+   * measures one whole block and feeds the block-duration stat. The pair
+   * below measures only the current run of no progress and feeds the idle
+   * timeout. A client that takes a message during a block restarts the run of
+   * no progress but does not end the block.
+   */
+  std::optional<uint64_t> noProgressStartTimeMs;
+  std::optional<uint64_t> noProgressConsumedCount;
 
   std::shared_ptr<nettools::bgplib::FiberBgpPeer::OutputQueueT> peerOutputQ;
 
@@ -952,6 +1020,7 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   subscriberStreamGenerator(
       std::shared_ptr<nettools::bgplib::FiberBgpPeer::BoundedInputQueueT> queue,
       folly::CancellationToken cancelToken,
+      std::shared_ptr<StreamSubscriber::StreamSessionState> sessionState,
       nettools::bgplib::BgpPeerId peerId,
       std::string subscriberName,
       SubscriberStreamTeardown teardown);
@@ -1035,6 +1104,27 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   void setSubscriberAdjRib(
       StreamSubscriber& subscriber,
       std::shared_ptr<AdjRib>& adjRib);
+
+  /*
+   * End the session of a subscriber whose bounded egress queue stayed blocked
+   * for longer than FLAGS_stream_subscriber_idle_timeout_ms.
+   *
+   * A client of a bounded subscriber can hold its stream open and can stop to
+   * give thrift stream credit. Then the generator of that subscriber waits at
+   * its co_yield, and only thrift can resume it. Therefore the server has no
+   * other way to end such a session.
+   *
+   * The function ends a session only when the queue stays blocked for the
+   * whole time and the client takes no message in that time. A client with an
+   * empty queue keeps its session, because such a queue is not blocked. A
+   * client that reads slowly also keeps its session, because its count of
+   * consumed messages rises.
+   *
+   * The caller must run on evb_ and must hold an ESTABLISHED subscriber.
+   */
+  void reclaimIdleStreamSubscriber(
+      const std::string& subscriberName,
+      StreamSubscriber& subscriber);
 
   void cancelSubscriberStream(
       const nettools::bgplib::BgpPeerId& peerId,

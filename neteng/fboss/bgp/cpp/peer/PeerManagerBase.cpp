@@ -85,6 +85,36 @@ DEFINE_bool(
     "(the MP-BGP monitor). The BgpConfig field of the same name overrides this "
     "gflag when the config sets it.");
 
+/*
+ * A client of a bounded stream subscriber can hold its stream open and can
+ * stop to give thrift stream credit. Then the generator of that subscriber
+ * waits at its co_yield. Thrift resumes such a generator only on new credit
+ * or on a disconnect of the client, so the server alone cannot end the
+ * stream. The subscriber would stay ESTABLISHED, would keep its AdjRib, would
+ * hold a slot of streamSubscriberLimit, and would keep a change-list consumer
+ * that never advances.
+ *
+ * This gflag sets the time after which the peer manager ends such a session.
+ * The peer manager ends a session only when both of these are true for the
+ * whole time:
+ *   - the egress queue stays blocked, and
+ *   - the client takes no message out of the queue.
+ *
+ * The second test is necessary. The stats task samples the blocked flag one
+ * time in each thrift_stream_publish_gap_ms period. A client that reads
+ * slowly can drain the queue and let the producer refill it between two
+ * samples. Then every sample reads the queue as blocked, although the client
+ * reads. The count of the consumed messages separates the two cases.
+ *
+ * Set the value to 0 to switch the reclamation off.
+ */
+DEFINE_int32(
+    stream_subscriber_idle_timeout_ms,
+    600000,
+    "End the session of a bounded thrift stream subscriber when its egress "
+    "queue stays blocked for this many milliseconds and the client takes no "
+    "message in that time. 0 switches the reclamation off.");
+
 // Connection retry parameters
 DEFINE_int32(
     min_conn_retry_time_ms,
@@ -159,7 +189,15 @@ void StreamSubscriber::resetQueues() {
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
   peerOutputQ =
       std::make_shared<FiberBgpPeer::OutputQueueT>(kMaxIngressQueueSize);
+  /*
+   * A new object gives the new session its own state. A generator of an
+   * earlier session can still hold the earlier object and can still write to
+   * it. Those writes must not reach the new session.
+   */
+  sessionState = std::make_shared<StreamSessionState>();
   blockStartTimeMs.reset();
+  noProgressStartTimeMs.reset();
+  noProgressConsumedCount.reset();
 }
 
 PeerManagerBase::PeerManagerBase(
@@ -1016,6 +1054,7 @@ folly::coro::AsyncGenerator<TBgpRouteDelta&&>
 PeerManagerBase::subscriberStreamGenerator(
     std::shared_ptr<FiberBgpPeer::BoundedInputQueueT> queue,
     folly::CancellationToken cancelToken,
+    std::shared_ptr<StreamSubscriber::StreamSessionState> sessionState,
     nettools::bgplib::BgpPeerId peerId,
     std::string subscriberName,
     SubscriberStreamTeardown teardown) {
@@ -1066,6 +1105,10 @@ PeerManagerBase::subscriberStreamGenerator(
           "Stream generator for subscriber {} cancelled: {}",
           subscriberName,
           maybeMsg.exception().what());
+      if (sessionState->evicted.load(std::memory_order_relaxed)) {
+        co_yield folly::coro::co_error(
+            TBgpServiceException(kStreamSubscriberEvictedMessage));
+      }
       co_return;
     }
     if (!(*maybeMsg).has_value()) {
@@ -1075,6 +1118,18 @@ PeerManagerBase::subscriberStreamGenerator(
           subscriberName);
       co_return;
     }
+
+    /*
+     * The pop above took a message out of the queue and thus made room for
+     * the producer. Count it here, at the one place that consumes the queue.
+     * reclaimIdleStreamSubscriber() reads this count on evb_ to tell a client
+     * that reads slowly from a client that stopped to read.
+     *
+     * The count rises for every message that leaves the queue, also for a
+     * message that the code below drops. A drop still frees queue space, so
+     * it is progress for the producer.
+     */
+    sessionState->consumedCount.fetch_add(1, std::memory_order_relaxed);
 
     /*
      * Drop the message if the server tore the subscriber down while the
@@ -1092,6 +1147,10 @@ PeerManagerBase::subscriberStreamGenerator(
           DBG2,
           "Subscriber {} torn down while message in flight; dropping",
           subscriberName);
+      if (sessionState->evicted.load(std::memory_order_relaxed)) {
+        co_yield folly::coro::co_error(
+            TBgpServiceException(kStreamSubscriberEvictedMessage));
+      }
       co_return;
     }
 
@@ -1194,6 +1253,10 @@ void PeerManagerBase::reportStreamSubscriberBackpressureStats() noexcept {
        * reports a wall-clock time on purpose.
        */
       subscriber.blockStartTimeMs = static_cast<uint64_t>(nowSteadyMs());
+      subscriber.noProgressStartTimeMs = subscriber.blockStartTimeMs;
+      subscriber.noProgressConsumedCount =
+          subscriber.sessionState->consumedCount.load(
+              std::memory_order_relaxed);
       BgpStats::incStreamSubscriberBackpressuredEvents();
       BgpStats::setStreamSubscriberLastBlockTime(
           static_cast<uint64_t>(nowEpochMs()));
@@ -1207,17 +1270,125 @@ void PeerManagerBase::reportStreamSubscriberBackpressureStats() noexcept {
       BgpStats::addStreamSubscriberBlockDuration(
           static_cast<uint64_t>(nowSteadyMs()) - *subscriber.blockStartTimeMs);
       subscriber.blockStartTimeMs.reset();
+      subscriber.noProgressStartTimeMs.reset();
+      subscriber.noProgressConsumedCount.reset();
       XLOGF(
           INFO,
           "Stream subscriber {} egress queue unblocked at depth {}",
           subscriberName,
           subscriber.boundedPeerInputQ->size());
     }
+
+    reclaimIdleStreamSubscriber(subscriberName, subscriber);
   }
 
   if (anyBoundedSubscriber) {
     BgpStats::setStreamSubscriberQueueDepth(deepestQueue);
   }
+}
+
+void PeerManagerBase::reclaimIdleStreamSubscriber(
+    const std::string& subscriberName,
+    StreamSubscriber& subscriber) {
+  if (FLAGS_stream_subscriber_idle_timeout_ms <= 0) {
+    return;
+  }
+  if (!subscriber.blockStartTimeMs.has_value() ||
+      !subscriber.noProgressStartTimeMs.has_value() ||
+      !subscriber.noProgressConsumedCount.has_value()) {
+    return;
+  }
+
+  const uint64_t nowMs = static_cast<uint64_t>(nowSteadyMs());
+  const uint64_t noProgressMs = nowMs - *subscriber.noProgressStartTimeMs;
+  if (noProgressMs <
+      static_cast<uint64_t>(FLAGS_stream_subscriber_idle_timeout_ms)) {
+    return;
+  }
+
+  /*
+   * The client must have taken no message at all in that time.
+   *
+   * The blocked flag alone is not enough. The stats task samples the flag one
+   * time in each thrift_stream_publish_gap_ms period. A client that reads
+   * slowly takes the queue below the low watermark and the producer refills
+   * it. If both steps happen between two samples, every sample reads the
+   * queue as blocked, although the client reads. The count of the consumed
+   * messages separates the two cases, because it rises for each message that
+   * leaves the queue.
+   */
+  const uint64_t consumed =
+      subscriber.sessionState->consumedCount.load(std::memory_order_relaxed);
+  if (consumed != *subscriber.noProgressConsumedCount) {
+    /*
+     * The client makes progress. Start the next run of no progress here. The
+     * block itself continues, so blockStartTimeMs keeps its value and the
+     * block-duration stat still reports the whole block.
+     */
+    const uint64_t progressed = consumed - *subscriber.noProgressConsumedCount;
+    subscriber.noProgressStartTimeMs = nowMs;
+    subscriber.noProgressConsumedCount = consumed;
+    XLOGF(
+        INFO,
+        "Stream subscriber {} egress queue stayed blocked for {} ms and the "
+        "client took {} messages in that time, so the session continues",
+        subscriberName,
+        noProgressMs,
+        progressed);
+    return;
+  }
+
+  /*
+   * The block ends here, so record its whole length. The unblock branch above
+   * cannot record it, because the queue never unblocks in this case.
+   */
+  BgpStats::addStreamSubscriberBlockDuration(
+      nowMs - *subscriber.blockStartTimeMs);
+  BgpStats::incStreamSubscriberIdleTimeouts();
+
+  XLOGF(
+      ERR,
+      "{}Stream subscriber {} egress queue stayed blocked at depth {} and the "
+      "client took no message for {} ms. The limit is {} ms. Ending the "
+      "session to free the AdjRib, the subscriber slot, and the change-list "
+      "consumer.",
+      facebook::fboss::BGPAlert().str(),
+      subscriberName,
+      subscriber.boundedPeerInputQ->size(),
+      noProgressMs,
+      FLAGS_stream_subscriber_idle_timeout_ms);
+
+  subscriber.blockStartTimeMs.reset();
+  subscriber.noProgressStartTimeMs.reset();
+  subscriber.noProgressConsumedCount.reset();
+
+  /*
+   * Set the flag before the teardown below requests the cancellation. The
+   * generator reads the flag only after the cancellation wakes it, so this
+   * order makes the flag visible to it.
+   *
+   * The generator then ends the stream with an error and the client learns
+   * about the eviction. A client that gives no credit at all does not wake
+   * and does not learn. Only thrift can resume a generator that waits for
+   * credit, so the server has no way to reach such a client. That client
+   * finds out when it gives credit again or when its connection ends.
+   */
+  subscriber.sessionState->evicted.store(true, std::memory_order_relaxed);
+
+  /*
+   * This call sets the state to IDLE. The loop of the caller skips a
+   * subscriber that is not ESTABLISHED, so the next sample skips this entry.
+   * The call does not erase the entry of streamSubscribers_, so the iterator
+   * of the caller stays valid.
+   *
+   * The generator of the session stays parked at its co_yield until the
+   * client disconnects, because only thrift can resume a generator that waits
+   * for credit. That generator writes nothing more: the AdjRib is terminated
+   * and its queue is closed. When thrift destroys the frame of the generator,
+   * the teardown object calls cancelSubscriberStream(), which returns early
+   * for a state that is not ESTABLISHED.
+   */
+  resetSubscriberAdjRib(subscriber);
 }
 
 void PeerManagerBase::markRibInitialAnnouncementDone() noexcept {
@@ -3773,6 +3944,7 @@ apache::thrift::ServerStream<TBgpRouteDelta> PeerManagerBase::subscribe(
               subscriberStreamGenerator(
                   subscriber.boundedPeerInputQ,
                   subscriber.streamCancelSource->getToken(),
+                  subscriber.sessionState,
                   peerId,
                   subscriberName,
                   SubscriberStreamTeardown(

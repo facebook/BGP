@@ -241,11 +241,25 @@ inline constexpr auto kStreamSubscriberBlockDuration =
     "bgpd.stream_subscriber.block_duration_ms";
 DECLARE_quantile_stat(streamSubscriberBlockDurationMs);
 
+/*
+ * The count of the sessions that bgpd ended because their egress queue stayed
+ * blocked for longer than FLAGS_stream_subscriber_idle_timeout_ms. A client
+ * that holds its stream open and gives no thrift stream credit produces such
+ * a session.
+ *
+ * A value above 0 means that a monitor could not keep up, or that a monitor
+ * stopped to read. Each event frees one slot of streamSubscriberLimit.
+ */
+DECLARE_timeseries(stream_subscriber_idle_timeouts);
+constexpr auto kStreamSubscriberIdleTimeouts =
+    "bgpd.stream_subscriber.idle_timeouts"_fs;
+
 void initStreamSubscriberBackpressureStats();
 void setStreamSubscriberQueueDepth(int64_t depth);
 void incStreamSubscriberBackpressuredEvents();
 void setStreamSubscriberLastBlockTime(uint64_t lastBlockTimeMs);
 void addStreamSubscriberBlockDuration(uint64_t durationMs);
+void incStreamSubscriberIdleTimeouts();
 
 // Set isSafeModeOn
 void setIsSafeModeOn(bool val);

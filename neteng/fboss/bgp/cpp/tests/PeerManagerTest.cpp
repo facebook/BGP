@@ -106,6 +106,14 @@
       StreamSubscriberFixture, ThriftStreamSubscribeForceCompletionTest);      \
   FRIEND_TEST(StreamSubscriberFixture, NumStreamSubscribersTest);              \
   FRIEND_TEST(StreamSubscriberFixture, ExceedsStreamSubscriberLimitTest);      \
+  FRIEND_TEST(                                                                 \
+      StreamSubscriberFixture, StreamSubscriberIdleTimeoutReclaimsSession);    \
+  FRIEND_TEST(StreamSubscriberFixture, StreamSubscriberIdleTimeoutDisabled);   \
+  FRIEND_TEST(                                                                 \
+      StreamSubscriberFixture, StreamSubscriberIdleTimeoutDrainedQueue);       \
+  FRIEND_TEST(StreamSubscriberFixture, StreamSubscriberIdleTimeoutSlowClient); \
+  FRIEND_TEST(                                                                 \
+      StreamSubscriberFixture, StreamSubscriberIdleTimeoutNotifiesClient);     \
   FRIEND_TEST(SafeModeTestFixture, InitializeAdjRibWithGoldenPrefixPolicy);    \
   FRIEND_TEST(PeerManagerTestFixture, PolicyCachePeriodicEvictionTest);        \
   FRIEND_TEST(PeerManagerTestFixture, GetSessionManagerTest);                  \
@@ -232,6 +240,7 @@
 #include <folly/logging/LoggerDB.h>
 #include <folly/logging/test/TestLogHandler.h>
 #include <folly/logging/xlog.h>
+#include <folly/synchronization/Baton.h>
 #include "fboss/lib/CommonUtils.h"
 
 #include <fb303/ThreadCachedServiceData.h>
@@ -5550,6 +5559,335 @@ TEST_F(StreamSubscriberFixture, ExceedsStreamSubscriberLimitTest) {
       TBgpPeerState::IDLE, peerMgr->streamSubscribers_.at(*subscriber2).state);
   EXPECT_EQ(0, peerMgr->numStreamSubscribers());
   EXPECT_FALSE(peerMgr->exceedsStreamSubscriberLimit());
+
+  XLOG(INFO, "Done");
+}
+
+namespace {
+
+/*
+ * The number of milliseconds after which the peer manager ends the session of
+ * a subscriber whose egress queue stays blocked. The tests below set the
+ * gflag to this value.
+ */
+constexpr int32_t kTestIdleTimeoutMs = 5000;
+
+/*
+ * The number of milliseconds by which a test moves the start of a block into
+ * the past. The value is above kTestIdleTimeoutMs, so the block counts as too
+ * long. A test moves the recorded time instead of a sleep. Thus the test is
+ * deterministic and it is fast.
+ */
+constexpr uint64_t kTestElapsedMs = kTestIdleTimeoutMs + 1000;
+
+/*
+ * Push messages into the bounded egress queue of a subscriber until the queue
+ * reaches its high watermark. Then the queue reports the blocked state. The
+ * caller must run on the peer-manager EventBase.
+ */
+void fillEgressQueueToHighWatermark(StreamSubscriber& subscriber) {
+  for (size_t i = 0; i < kEgressQueueHighWatermark; ++i) {
+    subscriber.boundedPeerInputQ->push(BgpEndOfRib{});
+  }
+}
+
+/*
+ * Move the recorded start of the block and the recorded start of the run of
+ * no progress further into the past. A test uses this instead of a sleep, so
+ * the test is deterministic and fast. The subtraction stops at 0, because the
+ * values are unsigned. The caller must run on the peer-manager EventBase.
+ */
+void ageBlockStart(StreamSubscriber& subscriber, uint64_t elapsedMs) {
+  const uint64_t blockStart = subscriber.blockStartTimeMs.value_or(0);
+  subscriber.blockStartTimeMs =
+      blockStart > elapsedMs ? blockStart - elapsedMs : 0;
+  const uint64_t noProgressStart = subscriber.noProgressStartTimeMs.value_or(0);
+  subscriber.noProgressStartTimeMs =
+      noProgressStart > elapsedMs ? noProgressStart - elapsedMs : 0;
+}
+
+/*
+ * Stand in for the generator of the subscriber. The generator takes a message
+ * out of the queue and then raises the count of the consumed messages. The
+ * caller must run on the peer-manager EventBase.
+ */
+void consumeOneEgressMessage(StreamSubscriber& subscriber) {
+  subscriber.boundedPeerInputQ->get();
+  subscriber.sessionState->consumedCount.fetch_add(
+      1, std::memory_order_relaxed);
+}
+
+} // namespace
+
+/*
+ * A client of a bounded stream subscriber can hold its stream open and can
+ * give no thrift stream credit. Then the generator of that subscriber waits
+ * at its co_yield and only thrift can resume it. The peer manager must end
+ * such a session after FLAGS_stream_subscriber_idle_timeout_ms and must free
+ * the slot of the subscriber.
+ */
+TEST_F(StreamSubscriberFixture, StreamSubscriberIdleTimeoutReclaimsSession) {
+  gflags::FlagSaver flags;
+  FLAGS_enable_stream_subscriber_backpressure = true;
+  FLAGS_stream_subscriber_idle_timeout_ms = kTestIdleTimeoutMs;
+
+  SetUp(true /* configureMonitorPeer */, true /* initialAnnouncementDone */);
+  auto& evb = peerMgr->getEventBase();
+
+  const std::unique_ptr<std::string> subscriberName =
+      std::make_unique<std::string>("subscriber1");
+  /*
+   * The test keeps the stream and never subscribes a client to it. Therefore
+   * the generator never gets credit and never starts. This is the state that
+   * the timeout must reclaim.
+   */
+  auto stream = peerMgr->subscribe(subscriberName);
+  EXPECT_EQ(1, peerMgr->numStreamSubscribers());
+
+  /*
+   * All of the work below runs in one hop on the peer-manager EventBase.
+   * reportStreamSubscriberStatsRoutine() also runs on that EventBase, so one
+   * hop keeps the periodic task out of the middle of the sequence.
+   */
+  evb.runInEventBaseThreadAndWait([&]() {
+    auto& subscriber = peerMgr->streamSubscribers_.at(*subscriberName);
+    EXPECT_TRUE(subscriber.boundedEgress);
+    EXPECT_NE(nullptr, subscriber.boundedPeerInputQ);
+
+    fillEgressQueueToHighWatermark(subscriber);
+    EXPECT_TRUE(subscriber.boundedPeerInputQ->isBlocked());
+
+    // The first sample records the start of the block.
+    peerMgr->reportStreamSubscriberBackpressureStats();
+    EXPECT_TRUE(subscriber.blockStartTimeMs.has_value());
+    EXPECT_EQ(TBgpPeerState::ESTABLISHED, subscriber.state);
+
+    // The next sample sees a block that is longer than the limit.
+    ageBlockStart(subscriber, kTestElapsedMs);
+    peerMgr->reportStreamSubscriberBackpressureStats();
+
+    EXPECT_EQ(TBgpPeerState::IDLE, subscriber.state);
+    EXPECT_FALSE(subscriber.blockStartTimeMs.has_value());
+
+    /*
+     * The reclaimed session no longer holds a slot of
+     * streamSubscriberLimit. The entry of the subscriber stays, because the
+     * client still holds the stream.
+     */
+    EXPECT_EQ(0, peerMgr->numStreamSubscribers());
+    EXPECT_TRUE(peerMgr->streamSubscribers_.contains(*subscriberName));
+  });
+
+  XLOG(INFO, "Done");
+}
+
+/*
+ * The value 0 switches the reclamation off. Then a block of any length keeps
+ * the session.
+ */
+TEST_F(StreamSubscriberFixture, StreamSubscriberIdleTimeoutDisabled) {
+  gflags::FlagSaver flags;
+  FLAGS_enable_stream_subscriber_backpressure = true;
+  FLAGS_stream_subscriber_idle_timeout_ms = 0;
+
+  SetUp(true /* configureMonitorPeer */, true /* initialAnnouncementDone */);
+  auto& evb = peerMgr->getEventBase();
+
+  const std::unique_ptr<std::string> subscriberName =
+      std::make_unique<std::string>("subscriber1");
+  auto stream = peerMgr->subscribe(subscriberName);
+  EXPECT_EQ(1, peerMgr->numStreamSubscribers());
+
+  evb.runInEventBaseThreadAndWait([&]() {
+    auto& subscriber = peerMgr->streamSubscribers_.at(*subscriberName);
+    fillEgressQueueToHighWatermark(subscriber);
+    EXPECT_TRUE(subscriber.boundedPeerInputQ->isBlocked());
+
+    peerMgr->reportStreamSubscriberBackpressureStats();
+    EXPECT_TRUE(subscriber.blockStartTimeMs.has_value());
+
+    ageBlockStart(subscriber, kTestElapsedMs);
+    peerMgr->reportStreamSubscriberBackpressureStats();
+
+    EXPECT_EQ(TBgpPeerState::ESTABLISHED, subscriber.state);
+    EXPECT_TRUE(subscriber.blockStartTimeMs.has_value());
+    EXPECT_EQ(1, peerMgr->numStreamSubscribers());
+  });
+
+  XLOG(INFO, "Done");
+}
+
+/*
+ * A client that reads slowly but makes progress takes the queue below the low
+ * watermark. That break clears the record of the block. Therefore the length
+ * of the next block starts again from 0 and the session survives.
+ */
+TEST_F(StreamSubscriberFixture, StreamSubscriberIdleTimeoutDrainedQueue) {
+  gflags::FlagSaver flags;
+  FLAGS_enable_stream_subscriber_backpressure = true;
+  FLAGS_stream_subscriber_idle_timeout_ms = kTestIdleTimeoutMs;
+
+  SetUp(true /* configureMonitorPeer */, true /* initialAnnouncementDone */);
+  auto& evb = peerMgr->getEventBase();
+
+  const std::unique_ptr<std::string> subscriberName =
+      std::make_unique<std::string>("subscriber1");
+  auto stream = peerMgr->subscribe(subscriberName);
+  EXPECT_EQ(1, peerMgr->numStreamSubscribers());
+
+  evb.runInEventBaseThreadAndWait([&]() {
+    auto& subscriber = peerMgr->streamSubscribers_.at(*subscriberName);
+    fillEgressQueueToHighWatermark(subscriber);
+    peerMgr->reportStreamSubscriberBackpressureStats();
+    EXPECT_TRUE(subscriber.blockStartTimeMs.has_value());
+
+    /*
+     * Take the queue to the low watermark. The queue leaves the blocked state
+     * at that depth.
+     */
+    while (subscriber.boundedPeerInputQ->isBlocked()) {
+      consumeOneEgressMessage(subscriber);
+    }
+
+    /*
+     * This sample sees the queue unblocked, so it clears the record of the
+     * block. A later sample therefore measures a new block from its own
+     * start.
+     */
+    peerMgr->reportStreamSubscriberBackpressureStats();
+    EXPECT_FALSE(subscriber.blockStartTimeMs.has_value());
+    EXPECT_EQ(TBgpPeerState::ESTABLISHED, subscriber.state);
+
+    /*
+     * A block that starts now is far shorter than the limit, even though the
+     * earlier block plus this one would be longer.
+     */
+    fillEgressQueueToHighWatermark(subscriber);
+    peerMgr->reportStreamSubscriberBackpressureStats();
+    peerMgr->reportStreamSubscriberBackpressureStats();
+    EXPECT_EQ(TBgpPeerState::ESTABLISHED, subscriber.state);
+    EXPECT_EQ(1, peerMgr->numStreamSubscribers());
+  });
+
+  XLOG(INFO, "Done");
+}
+
+/*
+ * A client that reads slowly can take the queue below the low watermark and
+ * let the producer refill it between two samples of the stats task. Then
+ * every sample reads the queue as blocked, although the client reads. The
+ * count of the consumed messages must keep such a session.
+ */
+TEST_F(StreamSubscriberFixture, StreamSubscriberIdleTimeoutSlowClient) {
+  gflags::FlagSaver flags;
+  FLAGS_enable_stream_subscriber_backpressure = true;
+  FLAGS_stream_subscriber_idle_timeout_ms = kTestIdleTimeoutMs;
+
+  SetUp(true /* configureMonitorPeer */, true /* initialAnnouncementDone */);
+  auto& evb = peerMgr->getEventBase();
+
+  const std::unique_ptr<std::string> subscriberName =
+      std::make_unique<std::string>("subscriber1");
+  auto stream = peerMgr->subscribe(subscriberName);
+
+  evb.runInEventBaseThreadAndWait([&]() {
+    auto& subscriber = peerMgr->streamSubscribers_.at(*subscriberName);
+    fillEgressQueueToHighWatermark(subscriber);
+    peerMgr->reportStreamSubscriberBackpressureStats();
+    EXPECT_TRUE(subscriber.blockStartTimeMs.has_value());
+    EXPECT_TRUE(subscriber.noProgressStartTimeMs.has_value());
+    EXPECT_TRUE(subscriber.noProgressConsumedCount.has_value());
+
+    /*
+     * The client takes one message and the producer puts one back. The queue
+     * holds the same depth and stays blocked, so the sampler never sees it
+     * unblocked.
+     */
+    consumeOneEgressMessage(subscriber);
+    subscriber.boundedPeerInputQ->push(BgpEndOfRib{});
+    EXPECT_TRUE(subscriber.boundedPeerInputQ->isBlocked());
+
+    ageBlockStart(subscriber, kTestElapsedMs);
+    peerMgr->reportStreamSubscriberBackpressureStats();
+
+    // The count of the consumed messages rose, so the session continues.
+    EXPECT_EQ(TBgpPeerState::ESTABLISHED, subscriber.state);
+    EXPECT_EQ(1, peerMgr->numStreamSubscribers());
+
+    /*
+     * The sampler measures the next run of no progress from the sample above.
+     * A client that then stops to read loses its session.
+     */
+    EXPECT_TRUE(subscriber.blockStartTimeMs.has_value());
+    ageBlockStart(subscriber, kTestElapsedMs);
+    peerMgr->reportStreamSubscriberBackpressureStats();
+
+    EXPECT_EQ(TBgpPeerState::IDLE, subscriber.state);
+    EXPECT_EQ(0, peerMgr->numStreamSubscribers());
+  });
+
+  XLOG(INFO, "Done");
+}
+
+/*
+ * The server cannot reach a client that gives no credit. Such a client learns
+ * about the eviction when it gives credit again. It must then get an error
+ * and not an orderly end of the stream, so that it can subscribe again.
+ */
+TEST_F(StreamSubscriberFixture, StreamSubscriberIdleTimeoutNotifiesClient) {
+  gflags::FlagSaver flags;
+  FLAGS_enable_stream_subscriber_backpressure = true;
+  FLAGS_stream_subscriber_idle_timeout_ms = kTestIdleTimeoutMs;
+
+  SetUp(true /* configureMonitorPeer */, true /* initialAnnouncementDone */);
+  auto& evb = peerMgr->getEventBase();
+
+  const std::unique_ptr<std::string> subscriberName =
+      std::make_unique<std::string>("subscriber1");
+  auto stream = peerMgr->subscribe(subscriberName);
+
+  // Evict the session while the client has given no credit.
+  evb.runInEventBaseThreadAndWait([&]() {
+    auto& subscriber = peerMgr->streamSubscribers_.at(*subscriberName);
+    fillEgressQueueToHighWatermark(subscriber);
+    peerMgr->reportStreamSubscriberBackpressureStats();
+    ageBlockStart(subscriber, kTestElapsedMs);
+    peerMgr->reportStreamSubscriberBackpressureStats();
+
+    EXPECT_EQ(TBgpPeerState::IDLE, subscriber.state);
+    EXPECT_TRUE(
+        subscriber.sessionState->evicted.load(std::memory_order_relaxed));
+  });
+
+  /*
+   * The client gives credit now. Thrift starts the generator, the generator
+   * sees the eviction, and it ends the stream with an error.
+   */
+  folly::Baton<> streamEnded;
+  std::optional<std::string> streamError;
+  bool streamEndedCleanly = false;
+  auto subscription =
+      std::move(stream).toClientStreamUnsafeDoNotUse().subscribeExTry(
+          &evb, [&](auto&& t) {
+            if (t.hasException()) {
+              streamError = t.exception().what().toStdString();
+              streamEnded.post();
+            } else if (!t.hasValue()) {
+              streamEndedCleanly = true;
+              streamEnded.post();
+            }
+          });
+
+  ASSERT_TRUE(streamEnded.try_wait_for(std::chrono::seconds(30)))
+      << "the stream of the evicted subscriber neither ended nor failed";
+  std::move(subscription).detach();
+
+  ASSERT_TRUE(streamError.has_value())
+      << "the evicted stream ended cleanly (endedCleanly=" << streamEndedCleanly
+      << "), so the client cannot tell an eviction from an orderly end and "
+         "its reconnect logic does not run";
+  EXPECT_NE(std::string::npos, streamError->find("evicted"))
+      << "actual stream error: " << *streamError;
 
   XLOG(INFO, "Done");
 }
