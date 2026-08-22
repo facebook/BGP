@@ -854,7 +854,7 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
       std::shared_ptr<AdjRib>& adjRib);
 
   void cancelSubscriberStream(
-      nettools::bgplib::BgpPeerId peerId,
+      const nettools::bgplib::BgpPeerId& peerId,
       const std::string& subscriberName,
       uint32_t publisherId);
 

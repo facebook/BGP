@@ -2955,7 +2955,7 @@ void PeerManagerBase::setSubscriberAdjRib(
  * @params publisherId     unique id assigned when subscriber was created
  */
 void PeerManagerBase::cancelSubscriberStream(
-    nettools::bgplib::BgpPeerId peerId,
+    const nettools::bgplib::BgpPeerId& peerId,
     const std::string& subscriberName,
     uint32_t publisherId) {
   auto adjRib = findAdjRib(peerId);
@@ -3018,74 +3018,114 @@ bool PeerManagerBase::exceedsStreamSubscriberLimit() {
 
 apache::thrift::ServerStream<TBgpRouteDelta> PeerManagerBase::subscribe(
     const std::unique_ptr<std::string>& subscriberName_p) {
-  std::unique_ptr<apache::thrift::ServerStream<TBgpRouteDelta>> result_stream{
+  std::unique_ptr<apache::thrift::ServerStream<TBgpRouteDelta>> resultStream{
       nullptr};
-  bool failed_already = false;
-  std::string exception_msg("Undefined exception");
+  bool failedAlready = false;
+  std::string exceptionMsg("Undefined exception");
   auto subscriberName = *subscriberName_p;
 
   XLOGF(INFO, "Received stream subscribe request from {}", subscriberName);
-  if (!streamPeeringParams_) {
-    exception_msg =
-        "Subscription failed: stream peering params not initialized";
-    failed_already = true;
-  } else if (exceedsStreamSubscriberLimit()) {
-    XLOGF(
-        INFO,
-        "Max stream subscribers reached: Rejecting connection from {}",
-        subscriberName);
-    exception_msg = "Subscription failed: Max stream subscribers reached";
-    failed_already = true;
-    BgpStats::incStreamingSessionsRejected();
-  } else {
+
+  /*
+   * evb_ owns streamSubscribers_. publishUpdates() iterates the map on evb_
+   * one time in each thrift_stream_publish_gap_ms period.
+   * cancelSubscriberStream() also runs only on evb_.
+   *
+   * subscribe() runs on a thread of the thrift server. Therefore its lookups,
+   * its emplace, and its increment of lastStreamPeerId_ must also run on
+   * evb_. An emplace can rehash the map. A rehash during the iteration in
+   * publishUpdates() makes the iterator of that loop invalid.
+   *
+   * No code erases an entry from streamSubscribers_, and F14NodeMap keeps a
+   * reference to an element valid across a rehash. Therefore the pointer that
+   * this function takes stays valid after the hop returns. The evb_ block
+   * below writes through the same reference and depends on the same rule.
+   *
+   * The code calls complete() after the hop and not inside the hop.
+   * ServerStreamPublisher::complete() calls the completion callback of
+   * createPublisher on the calling thread. That callback calls
+   * evb_.runInEventBaseThreadAndWait(). That function logs DFATAL and drops
+   * its functor when it is already on the EventBase thread.
+   */
+  StreamSubscriber* subscriberPtr = nullptr;
+  bool completePublisher = false;
+
+  evb_.runInEventBaseThreadAndWait([&]() {
+    if (!streamPeeringParams_) {
+      exceptionMsg =
+          "Subscription failed: stream peering params not initialized";
+      failedAlready = true;
+      return;
+    }
+    if (exceedsStreamSubscriberLimit()) {
+      XLOGF(
+          INFO,
+          "Max stream subscribers reached: Rejecting connection from {}",
+          subscriberName);
+      exceptionMsg = "Subscription failed: Max stream subscribers reached";
+      failedAlready = true;
+      BgpStats::incStreamingSessionsRejected();
+      return;
+    }
+
     if (streamSubscribers_.contains(subscriberName)) {
-      auto& subscriber = streamSubscribers_.at(subscriberName);
-      if (subscriber.state != TBgpPeerState::IDLE) {
+      auto& existing = streamSubscribers_.at(subscriberName);
+      if (existing.state != TBgpPeerState::IDLE) {
         XLOGF(
             INFO,
             "subscription already exists in non IDLE state for peer {}",
-            subscriber.peerId.peerAddr.str());
-        if (subscriber.peerId.peerAddr != streamPeerAddr_) {
+            existing.peerId.peerAddr.str());
+        if (existing.peerId.peerAddr != streamPeerAddr_) {
           XLOGF(
               INFO,
               "duplicate subscription request for {}",
               streamPeerAddr_.str());
-          exception_msg =
+          exceptionMsg =
               "Subscription failed: duplicate subscription attempted";
-          failed_already = true;
-        } else {
-          /**
-           * Must run in blocking mode. The baton in the code below
-           * confirms only execution of BgpSessionStop message. It
-           * does not confirm resetSubscriberAdjRib() is fully
-           * executed, and hence blocking call to complete the call
-           */
-          evb_.runInEventBaseThreadAndWait(
-              [&]() { resetSubscriberAdjRib(subscriber); });
-          std::move(*subscriber.publisher.get()).complete();
+          failedAlready = true;
+          return;
         }
+        /**
+         * Already on evb_, so this runs inline. The baton in the code below
+         * confirms only execution of BgpSessionStop message. It
+         * does not confirm resetSubscriberAdjRib() is fully
+         * executed, and hence this must complete before the hop returns
+         */
+        resetSubscriberAdjRib(existing);
+        completePublisher = true;
       }
     }
+
+    if (!streamSubscribers_.contains(subscriberName)) {
+      uint32_t remoteBgpId = ++lastStreamPeerId_;
+      const BgpPeerId newPeerId{streamPeerAddr_, remoteBgpId};
+      XLOGF(
+          INFO,
+          "Assign peerId {} to subscriber {}",
+          newPeerId.str(),
+          subscriberName);
+      StreamSubscriber newSubscriber(newPeerId);
+      streamSubscribers_.emplace(subscriberName, std::move(newSubscriber));
+    }
+
+    subscriberPtr = &streamSubscribers_.at(subscriberName);
+  });
+
+  /*
+   * The hop sets subscriberPtr on every path that leaves failedAlready false.
+   * Both are tested here so the dereference below has a branch in front of it.
+   */
+  if (failedAlready || subscriberPtr == nullptr) {
+    XLOGF(ERR, "{}", exceptionMsg);
+    throw TBgpServiceException(exceptionMsg);
   }
 
-  if (failed_already) {
-    XLOGF(ERR, "{}", exception_msg);
-    throw TBgpServiceException(exception_msg);
+  auto& subscriber = *subscriberPtr;
+
+  if (completePublisher) {
+    std::move(*subscriber.publisher.get()).complete();
   }
 
-  if (!streamSubscribers_.contains(subscriberName)) {
-    uint32_t remoteBgpId = ++lastStreamPeerId_;
-    const BgpPeerId peerId{streamPeerAddr_, remoteBgpId};
-    XLOGF(
-        INFO,
-        "Assign peerId {} to subscriber {}",
-        peerId.str(),
-        subscriberName);
-    StreamSubscriber subscriber(peerId);
-    streamSubscribers_.emplace(subscriberName, std::move(subscriber));
-  }
-
-  auto& subscriber = streamSubscribers_.at(subscriberName);
   auto peerId = subscriber.peerId;
   auto publisherId = subscriber.publisherId + 1;
 
@@ -3187,18 +3227,18 @@ apache::thrift::ServerStream<TBgpRouteDelta> PeerManagerBase::subscribe(
 
     setSubscriberAdjRib(subscriber, adjRib);
 
-    result_stream =
+    resultStream =
         std::make_unique<apache::thrift::ServerStream<TBgpRouteDelta>>(
             std::move(streamAndPublisher.first));
     XLOGF(INFO, "Start publishing to peer {}", peerId.str());
   });
 
-  if (!result_stream) {
-    XLOGF(ERR, "{}", exception_msg);
-    throw TBgpServiceException(exception_msg);
+  if (!resultStream) {
+    XLOGF(ERR, "{}", exceptionMsg);
+    throw TBgpServiceException(exceptionMsg);
   }
   // Return the stream
-  return std::move(*result_stream);
+  return std::move(*resultStream);
 }
 
 /**
