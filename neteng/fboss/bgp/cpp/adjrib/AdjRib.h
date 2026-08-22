@@ -1127,6 +1127,23 @@ class AdjRib : boost::noncopyable,
   }
 
   /*
+   * This function enables or disables the update-group state machine for this
+   * AdjRib. It is independent of the global enableUpdateGroup knob.
+   *
+   * Some AdjRibs are never registered with UpdateGroupManager. They have no
+   * update group, so they must not run the update-group transitions. The
+   * AdjRib of a thrift stream subscriber is such an AdjRib. createAdjRib()
+   * builds its AdjRibOutGroup with enableUpdateGroup=false.
+   */
+  void setEnableUpdateGroup(bool enable) {
+    enableUpdateGroup_ = enable;
+  }
+
+  bool isUpdateGroupEnabled() const {
+    return enableUpdateGroup_;
+  }
+
+  /*
    * Schedule sendBgpUpdates on the AdjRib's asyncScope_.
    * When tryPullNewChangeItems is true, sendBgpUpdates may exit early
    * on backpressure to pull the newest updates from CL, after which

@@ -1054,6 +1054,14 @@ TEST_F(StreamSubscriberFixture, ThriftStreamSubscribePostInitializationTest) {
  * @brief Verify peerInputQ is drained when subscriber goes IDLE
  */
 TEST_F(StreamSubscriberFixture, ThriftStreamSubscribeIdlePeerQDrainedTest) {
+  /*
+   * This test reads peerInputQ. Only a subscriber that uses the unbounded
+   * egress path writes into that queue. A bounded subscriber writes into
+   * boundedPeerInputQ. Therefore the test sets the flag to false.
+   */
+  gflags::FlagSaver flags;
+  FLAGS_enable_stream_subscriber_backpressure = false;
+
   // Initial setup
   SetUp(true /* configureMonitorPeer */, true /* initialAnnouncementDone */);
   auto& evb = peerMgr->getEventBase();
@@ -1127,6 +1135,15 @@ TEST_F(StreamSubscriberFixture, ThriftStreamSubscribeIdlePeerQDrainedTest) {
  *        in established state
  */
 TEST_F(StreamSubscriberFixture, ThriftStreamSubscribeForceCompletionTest) {
+  /*
+   * This test calls publishUpdates() and then reads peerInputQ.
+   * publishUpdates() skips a subscriber that uses the bounded egress path, and
+   * only an unbounded subscriber writes into peerInputQ. Therefore the test
+   * sets the flag to false.
+   */
+  gflags::FlagSaver flags;
+  FLAGS_enable_stream_subscriber_backpressure = false;
+
   // Initial setup
   SetUp(true /* configureMonitorPeer */, true /* initialAnnouncementDone */);
   auto& evb = peerMgr->getEventBase();

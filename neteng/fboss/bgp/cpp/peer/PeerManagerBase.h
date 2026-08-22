@@ -18,8 +18,10 @@
 
 #include <string_view>
 
+#include <folly/CancellationToken.h>
 #include <folly/IPAddress.h>
 #include <folly/Portability.h>
+#include <folly/coro/AsyncGenerator.h>
 #include <folly/coro/AsyncScope.h>
 #include <folly/coro/Baton.h>
 #include <folly/coro/BlockingWait.h>
@@ -60,6 +62,7 @@ DECLARE_int32(max_session_dampen_time_ms);
 DECLARE_int32(counter_update_time_s);
 DECLARE_string(gr_state_file);
 DECLARE_string(safemode_file);
+DECLARE_bool(enable_stream_subscriber_backpressure);
 
 namespace facebook {
 namespace bgp {
@@ -68,31 +71,96 @@ struct BgpPeerConfig;
 
 struct StreamSubscriber {
   explicit StreamSubscriber(nettools::bgplib::BgpPeerId peerId)
-      : peerId(peerId) {}
+      : peerId(peerId) {
+    resetQueues();
+  }
 
   nettools::bgplib::BgpPeerId peerId;
-  std::shared_ptr<nettools::bgplib::FiberBgpPeer::InputQueueT> peerInputQ =
-      std::make_shared<nettools::bgplib::FiberBgpPeer::InputQueueT>();
+  std::shared_ptr<nettools::bgplib::FiberBgpPeer::InputQueueT> peerInputQ;
 
   std::shared_ptr<nettools::bgplib::FiberBgpPeer::BoundedInputQueueT>
-      boundedPeerInputQ =
-          std::make_shared<nettools::bgplib::FiberBgpPeer::BoundedInputQueueT>(
-              nettools::bgplib::kMaxEgressQueueSize,
-              nettools::bgplib::kEgressQueueHighWatermark,
-              nettools::bgplib::kEgressQueueLowWatermark);
+      boundedPeerInputQ;
 
-  std::shared_ptr<nettools::bgplib::FiberBgpPeer::OutputQueueT> peerOutputQ =
-      std::make_shared<nettools::bgplib::FiberBgpPeer::OutputQueueT>(
-          nettools::bgplib::kMaxIngressQueueSize);
+  std::shared_ptr<nettools::bgplib::FiberBgpPeer::OutputQueueT> peerOutputQ;
 
+  /*
+   * The unbounded path uses this publisher. The bounded path uses an
+   * AsyncGenerator and leaves this member empty.
+   *
+   * ServerStreamPublisher::next() never blocks and gives no access to the
+   * stream credit of the client. Therefore a publisher cannot throttle
+   * itself, and the bounded path needs a generator.
+   */
   std::unique_ptr<apache::thrift::ServerStreamPublisher<
       neteng::fboss::bgp::thrift::TBgpRouteDelta>>
       publisher;
 
+  /*
+   * True when the egress path of this subscriber is bounded and
+   * backpressured. subscribe() reads the mode one time for each session and
+   * writes it here. If the code read the mode again later, a config change
+   * during the session could leave the AdjRib writing to one queue while the
+   * reader takes from the other queue.
+   */
+  bool boundedEgress{false};
+
+  /*
+   * The server uses this source to end the stream generator of the bounded
+   * mode. The server ends the generator on a session reset, on a
+   * re-subscribe, and on a subscriber teardown. A cancellation from the
+   * client comes through the cancellation of thrift instead.
+   */
+  std::shared_ptr<folly::CancellationSource> streamCancelSource;
+
+  /*
+   * The steady-clock time in ms when bgpd saw boundedPeerInputQ enter the
+   * blocked state. bgpd clears the value when it sees the queue unblocked.
+   *
+   * The value comes from the steady clock because the duration that bgpd
+   * computes from it is unsigned. If the wall clock stepped back during the
+   * block, the subtraction would underflow. Do not compare this value with a
+   * wall-clock time. The stats task samples this value on the peer-manager
+   * EventBase, and only for ODS.
+   */
+  std::optional<uint64_t> blockStartTimeMs;
+
   neteng::fboss::bgp::thrift::TBgpPeerState state;
   std::chrono::steady_clock::time_point upSince;
   uint32_t numFlaps{0};
+
+  /*
+   * These two ids identify the session of the subscriber.
+   *
+   * nextPublisherId is the allocator. subscribe() takes an id from it in the
+   * first evb_ hop, which is the hop that finds the entry. evb_ owns
+   * streamSubscribers_, so each call of subscribe() gets its own id.
+   *
+   * publisherId is the id of the session that runs now. subscribe() writes it
+   * in the later hop, which is the hop that starts the session.
+   *
+   * The two ids are separate because subscribe() leaves evb_ between the two
+   * hops and can fail there. Such a call takes an id and never starts a
+   * session. It must not change publisherId, because the session that runs
+   * now keeps its own id and must stay able to end itself.
+   *
+   * cancelSubscriberStream() compares the id of the caller with publisherId.
+   * The comparison is an equality test. A generator whose id differs is not
+   * the session that runs now, so it must not end the subscriber.
+   */
   uint32_t publisherId{0};
+  uint32_t nextPublisherId{0};
+
+  /*
+   * This function builds a new set of session queues.
+   *
+   * AdjRib::sessionTerminated() closes the bounded egress queue. Its
+   * documentation states that a new queue arrives when a new session starts.
+   * A subscriber outlives its sessions, because streamSubscribers_ keys it by
+   * subscriber name and reuses it on each re-subscribe. Therefore the
+   * subscriber must give the AdjRib new queues each time. A push into a
+   * closed MPMCWatermarkQueue returns false and loses the message.
+   */
+  void resetQueues();
 };
 
 struct GrLoadResult {
@@ -102,6 +170,51 @@ struct GrLoadResult {
   static GrLoadResult NotLoaded(void) {
     return {.loaded = false, .peers = nullptr};
   }
+};
+
+class PeerManagerBase;
+
+/**
+ * @brief Tears the bounded stream subscriber down when the generator of the
+ *        subscriber ends.
+ *
+ * subscriberStreamGenerator() takes one of these objects by value. Thus the
+ * coroutine frame owns the object, and the destructor runs when thrift
+ * destroys the frame.
+ *
+ * The frame ownership is necessary. Thrift starts the body of the generator
+ * only at the first resume, and a client can disconnect before that resume. A
+ * guard inside the body does not exist yet at that moment. Then no code calls
+ * cancelSubscriberStream(), the subscriber stays ESTABLISHED, it keeps its
+ * AdjRib, and it counts against streamSubscriberLimit for the life of the
+ * daemon. The destructor of a parameter runs also in that case, because the
+ * frame holds the parameter copy.
+ */
+class SubscriberStreamTeardown {
+ public:
+  SubscriberStreamTeardown(
+      PeerManagerBase* peerManager,
+      const nettools::bgplib::BgpPeerId& peerId,
+      std::string subscriberName,
+      uint32_t publisherId);
+
+  /*
+   * The move constructor disarms the source. Thus the teardown runs one time
+   * when the caller moves the object into the coroutine frame.
+   */
+  SubscriberStreamTeardown(SubscriberStreamTeardown&& other) noexcept;
+
+  SubscriberStreamTeardown(const SubscriberStreamTeardown&) = delete;
+  SubscriberStreamTeardown& operator=(const SubscriberStreamTeardown&) = delete;
+  SubscriberStreamTeardown& operator=(SubscriberStreamTeardown&&) = delete;
+
+  ~SubscriberStreamTeardown();
+
+ private:
+  PeerManagerBase* peerManager_;
+  nettools::bgplib::BgpPeerId peerId_;
+  std::string subscriberName_;
+  uint32_t publisherId_;
 };
 
 class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
@@ -409,6 +522,24 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
    */
   bool exceedsStreamSubscriberLimit();
 
+  /**
+   * Returns true when a new subscription must use the bounded, backpressured
+   * egress path. The BgpConfig field
+   * enable_stream_subscriber_backpressure decides when the config sets it.
+   * Otherwise FLAGS_enable_stream_subscriber_backpressure decides.
+   */
+  bool streamSubscriberBackpressureEnabled() const;
+
+  /**
+   * Returns the stream subscriber with this name, or nullptr when no
+   * subscriber has this name.
+   *
+   * Call this function only from a test or from code that already runs on the
+   * peer-manager EventBase. That thread owns streamSubscribers_.
+   */
+  StreamSubscriber* FOLLY_NULLABLE
+  getStreamSubscriber(const std::string& subscriberName);
+
   void logEoRPeers(const bool isIngressEoR) noexcept;
 
   void setRouteFilterPolicy(
@@ -571,6 +702,11 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   }
 
  private:
+  /*
+   * The destructor of this class calls cancelSubscriberStream().
+   */
+  friend class SubscriberStreamTeardown;
+
   folly::coro::Task<void> updatePeerCounters();
 
   std::shared_ptr<folly::coro::Baton> testOnlyPolicyUpdateProcessingEntered_;
@@ -784,6 +920,53 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   // thrift stream subscribers
   folly::coro::Task<void> publishUpdatesRoutine();
   folly::coro::Task<void> publishUpdates();
+
+  /**
+   * @brief The stream body of the bounded mode. It pops the bounded egress
+   *        queue of the subscriber and yields one TBgpRouteDelta for each BGP
+   *        message.
+   *
+   * Thrift runs this generator on its own server executor. It does not run on
+   * evb_. Thrift resumes the generator only while the client gives stream
+   * credit. That suspension is the signal that the receiver is slow. While
+   * the suspension lasts, no code pops `queue`, the queue fills to its high
+   * watermark, and the AdjRib of the subscriber applies backpressure. The
+   * AdjRib cancels its change-list consume timer, which is the same behavior
+   * as for a slow peer.
+   *
+   * The generator does not run on evb_, so its body reads only `queue` and
+   * the message that it converts. To reach the state of PeerManagerBase, for
+   * example to tear the subscriber down at the end of the stream, the body
+   * posts the work to evb_.
+   *
+   * @param queue          bounded egress queue of the subscriber
+   * @param cancelToken    end-of-stream signal from the server
+   * @param peerId         synthetic peer id of the subscriber
+   * @param subscriberName name of the subscriber, for lookup and for logs
+   * @param teardown       frame-owned object that ends the session of the
+   *                       subscriber. See SubscriberStreamTeardown for the
+   *                       reason that this is a parameter and not a local
+   *                       object in the body.
+   */
+  folly::coro::AsyncGenerator<neteng::fboss::bgp::thrift::TBgpRouteDelta&&>
+  subscriberStreamGenerator(
+      std::shared_ptr<nettools::bgplib::FiberBgpPeer::BoundedInputQueueT> queue,
+      folly::CancellationToken cancelToken,
+      nettools::bgplib::BgpPeerId peerId,
+      std::string subscriberName,
+      SubscriberStreamTeardown teardown);
+
+  /**
+   * @brief Periodic task that samples the stream subscriber counters. It has
+   *        its own task, so a slow publish tick cannot delay a sample.
+   */
+  folly::coro::Task<void> reportStreamSubscriberStatsRoutine();
+
+  /**
+   * @brief Reports the queue depth and the block transitions of the bounded
+   *        subscribers to ODS. Runs on evb_.
+   */
+  void reportStreamSubscriberBackpressureStats() noexcept;
 
   // coro task to process neighbor event from FSDB
   // Bring down session if no arp/ndp entry resolution
