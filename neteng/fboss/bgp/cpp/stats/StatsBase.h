@@ -200,6 +200,53 @@ DECLARE_timeseries(egress_queue_backpressured_events);
 constexpr auto kEgressQueueBackpressuredEvents =
     "bgpd.egress_queue_backpressured_events"_fs;
 
+/*
+ * These counters report the egress backpressure of a thrift stream
+ * subscriber. The MP-BGP monitor is such a subscriber.
+ *
+ * bgpd reports these counters only when the subscriber uses the bounded
+ * egress path. In the unbounded mode the egress path has no limit to report.
+ *
+ * A periodic task in the peer manager samples the queue depth and the block
+ * state. The task runs on the peer-manager EventBase and samples one time in
+ * each period. FLAGS_thrift_stream_publish_gap_ms sets the length of the
+ * period. Therefore a block that is shorter than one period can stay
+ * uncounted. These counters are a health signal for a receiver that stays
+ * slow. They are not an exact event log.
+ */
+DECLARE_timeseries(stream_subscriber_backpressured_events);
+constexpr auto kStreamSubscriberBackpressuredEvents =
+    "bgpd.stream_subscriber.backpressured_events"_fs;
+
+/*
+ * The largest bounded egress queue of all stream subscribers, in messages.
+ * The initial value is -1. A value of 0 means that bgpd sampled the queue and
+ * the queue is empty. Thus -1 means that bgpd did not sample the queue.
+ */
+constexpr auto kStreamSubscriberQueueDepth =
+    "bgpd.stream_subscriber.queue_depth"_fs;
+
+// The wall-clock time in ms when the queue of a subscriber last blocked.
+constexpr auto kStreamSubscriberLastBlockTime =
+    "bgpd.stream_subscriber.last_block_time_ms"_fs;
+
+/*
+ * The length of one block of the egress queue of a stream subscriber, in
+ * milliseconds. bgpd records one sample for each block. It records the sample
+ * when it sees the queue unblocked again. The quantile stat gives the
+ * distribution of the block lengths in a sliding window. A running total only
+ * increases, so a total does not show the present state.
+ */
+inline constexpr auto kStreamSubscriberBlockDuration =
+    "bgpd.stream_subscriber.block_duration_ms";
+DECLARE_quantile_stat(streamSubscriberBlockDurationMs);
+
+void initStreamSubscriberBackpressureStats();
+void setStreamSubscriberQueueDepth(int64_t depth);
+void incStreamSubscriberBackpressuredEvents();
+void setStreamSubscriberLastBlockTime(uint64_t lastBlockTimeMs);
+void addStreamSubscriberBlockDuration(uint64_t durationMs);
+
 // Set isSafeModeOn
 void setIsSafeModeOn(bool val);
 

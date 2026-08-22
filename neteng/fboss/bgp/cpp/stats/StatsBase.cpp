@@ -135,6 +135,7 @@ void initCounters() {
       kCrfForceUpdateBypass, fb303::SUM);
 
   initEgressBackpressureStats();
+  initStreamSubscriberBackpressureStats();
   initWellKnownCommunityStats();
 }
 
@@ -261,6 +262,17 @@ DEFINE_timeseries(
     kEgressTransientUpdatesSuppressed,
     fb303::COUNT);
 DEFINE_timeseries(
+    stream_subscriber_backpressured_events,
+    kStreamSubscriberBackpressuredEvents,
+    fb303::COUNT);
+// One sample of the block length of a stream subscriber egress queue.
+DEFINE_quantile_stat(
+    streamSubscriberBlockDurationMs,
+    kStreamSubscriberBlockDuration,
+    fb303::ExportTypeConsts::kAvg,
+    fb303::QuantileConsts::kP50_P95_P99,
+    fb303::SlidingWindowPeriodConsts::kOneMinTenMin);
+DEFINE_timeseries(
     well_known_community_no_advertise_suppressed,
     kWellKnownCommunityNoAdvertiseSuppressed,
     fb303::COUNT);
@@ -314,6 +326,40 @@ void initEgressBackpressureStats() {
 
 void incrementEgressQueueBackpressuredEvents() {
   STATS_egress_queue_backpressured_events.add(1);
+}
+
+void initStreamSubscriberBackpressureStats() {
+  fb303::ThreadCachedServiceData::get()->setCounter(
+      kStreamSubscriberBackpressuredEvents + ".count", 0);
+  fb303::ThreadCachedServiceData::get()->setCounter(
+      kStreamSubscriberBackpressuredEvents + ".count.60", 0);
+  /*
+   * The initial value is -1. A value of 0 means that bgpd sampled the queue
+   * and the queue is empty. Thus -1 means that bgpd did not sample the queue.
+   */
+  fb303::ThreadCachedServiceData::get()->setCounter(
+      kStreamSubscriberQueueDepth, -1);
+  fb303::ThreadCachedServiceData::get()->setCounter(
+      kStreamSubscriberLastBlockTime, -1);
+}
+
+void setStreamSubscriberQueueDepth(int64_t depth) {
+  fb303::ThreadCachedServiceData::get()->setCounter(
+      kStreamSubscriberQueueDepth, depth);
+}
+
+void incStreamSubscriberBackpressuredEvents() {
+  STATS_stream_subscriber_backpressured_events.add(1);
+}
+
+void setStreamSubscriberLastBlockTime(uint64_t lastBlockTimeMs) {
+  fb303::ThreadCachedServiceData::get()->setCounter(
+      kStreamSubscriberLastBlockTime, static_cast<int64_t>(lastBlockTimeMs));
+}
+
+void addStreamSubscriberBlockDuration(uint64_t durationMs) {
+  STATS_streamSubscriberBlockDurationMs.addValue(
+      static_cast<int64_t>(durationMs));
 }
 
 void incrementEgressTransientRouteUpdatesSuppressed() {
