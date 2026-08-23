@@ -72,6 +72,35 @@ void SetNexthop::applyAction(
   attr->setNexthop(nexthop_);
 }
 
+folly::IPAddress AddBackupAddr::validateAndGetBackupAddr(
+    const bgp_policy::BgpPolicyAction& policyAction) {
+  if (!policyAction.add_backup_addr()) {
+    throw BgpError("Missing add_backup_addr");
+  }
+
+  const auto& addBackupAddr = *policyAction.add_backup_addr();
+  if (!addBackupAddr.address().is_set()) {
+    throw BgpError("Malformed add_backup_addr config. address missing");
+  }
+
+  const auto& address = *addBackupAddr.address();
+  try {
+    auto backupAddr = folly::IPAddress(address);
+    if (!backupAddr.isV6()) {
+      throw BgpError("Backup address must be IPv6: ", address);
+    }
+    return backupAddr;
+  } catch (const folly::IPAddressFormatException&) {
+    throw BgpError("Malformed backup address: ", address);
+  }
+}
+
+void AddBackupAddr::applyAction(
+    std::shared_ptr<BgpPath>& attr,
+    std::optional<std::shared_ptr<BgpPolicyActionData>>) const noexcept {
+  attr->setBackupAddr(backupAddr_);
+}
+
 void SetMed::ValidateMed() const {
   if (med_.update_pattern()) {
     throw BgpError("Unsupported MED config. update_pattern");

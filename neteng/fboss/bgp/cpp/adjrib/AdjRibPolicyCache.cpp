@@ -75,6 +75,12 @@ std::size_t AdjRibPolicyCache::PolicyCacheMaskedKeyHash::operator()(
     if (mask->weight) {
       seed = folly::hash::hash_combine(seed, path->getWeight());
     }
+    if (mask->backupAddr) {
+      seed = folly::hash::hash_combine(seed, path->getBackupAddr().has_value());
+      if (path->getBackupAddr()) {
+        seed = folly::hash::hash_combine(seed, *path->getBackupAddr());
+      }
+    }
   }
   // Hash BgpPolicyActionData.
   auto& policyActionData = std::get<3>(key);
@@ -134,6 +140,10 @@ bool AdjRibPolicyCache::PolicyCacheMaskedKeyEqualTo::operator()(
       return false;
     }
     if (mask->weight && valid && lpath->getWeight() != rpath->getWeight()) {
+      return false;
+    }
+    if (mask->backupAddr && valid &&
+        lpath->getBackupAddr() != rpath->getBackupAddr()) {
       return false;
     }
     if (mask->localPref && valid &&

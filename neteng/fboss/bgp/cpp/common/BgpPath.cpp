@@ -77,6 +77,10 @@ std::size_t BgpPath::hash() const {
     seed = folly::hash::hash_combine(seed, extCommHash);
   }
   seed = folly::hash::hash_combine(seed, getWeight());
+  seed = folly::hash::hash_combine(seed, getBackupAddr().has_value());
+  if (getBackupAddr()) {
+    seed = folly::hash::hash_combine(seed, *getBackupAddr());
+  }
 
   return seed;
 }

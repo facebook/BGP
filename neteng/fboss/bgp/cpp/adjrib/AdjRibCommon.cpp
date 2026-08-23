@@ -600,6 +600,9 @@ void overridePrePolicyAttributesCommon(
   if (mask->weight) {
     attrsToOverride->setWeight(policyCachedAttrs->getWeight());
   }
+  if (mask->backupAddr) {
+    attrsToOverride->setBackupAddr(policyCachedAttrs->getBackupAddr());
+  }
   if (mask->localPref) {
     attrsToOverride->setLocalPref(policyCachedAttrs->getLocalPref());
   }

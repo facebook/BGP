@@ -45,6 +45,7 @@ struct PolicyAttributesMask {
   bool clusterList = false;
   bool extCommunities = false;
   bool weight = false;
+  bool backupAddr = false;
 
   // ------------ External attributes ---------------
   bool prefix = false;

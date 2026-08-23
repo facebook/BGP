@@ -174,6 +174,12 @@ std::shared_ptr<PolicyAttributesAction> createPolicyAttributesActionItem(
         return std::make_shared<SetNexthop>(action);
       }
       break;
+    case BgpPolicyActionType::ADD_BACKUP_ADDR:
+      if (action.add_backup_addr()) {
+        mask.backupAddr = true;
+        return std::make_shared<AddBackupAddr>(action);
+      }
+      break;
     case BgpPolicyActionType::AS_PATH:
       if (action.as_path_overwrite_list()) {
         mask.asPath = true;

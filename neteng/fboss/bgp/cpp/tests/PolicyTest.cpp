@@ -1585,6 +1585,58 @@ TEST_F(PolicyTest, NexthopActionTest) {
   }
 }
 
+TEST_F(PolicyTest, AddBackupAddrActionTest) {
+  const auto backupAddr = folly::IPAddress("2001:db8::1");
+  bgp_policy::BgpPolicyAction bgpAction;
+  bgpAction.type() = BgpPolicyActionType::ADD_BACKUP_ADDR;
+  bgp_policy::AddBackupAddr addBackupAddr;
+  addBackupAddr.address() = backupAddr.str();
+  bgpAction.add_backup_addr() = addBackupAddr;
+
+  const std::string policyName = "Policy Statement";
+  const auto policyConfig = createBgpPolicies(policyName, {}, {bgpAction});
+  PolicyManager policyManager(policyConfig, createTestBgpGlobalConfig());
+  const auto& action = policyManager.getPolicyFromName(policyName)
+                           ->getPolicyTerms()[0]
+                           ->getPolicyActions()[0];
+
+  auto original = std::make_shared<BgpPath>(*buildBgpPathFields(0, 0, 0, 0));
+  auto attrs = original->clone();
+  action->applyAction(attrs);
+
+  EXPECT_EQ(backupAddr, attrs->getBackupAddr());
+  EXPECT_NE(*original, *attrs);
+  EXPECT_NE(original->hash(), attrs->hash());
+}
+
+TEST_F(PolicyTest, AddBackupAddrActionRejectsInvalidAddressTest) {
+  auto makeAction = [](const std::string& address) {
+    bgp_policy::BgpPolicyAction action;
+    action.type() = BgpPolicyActionType::ADD_BACKUP_ADDR;
+    bgp_policy::AddBackupAddr addBackupAddr;
+    addBackupAddr.address() = address;
+    action.add_backup_addr() = addBackupAddr;
+    return action;
+  };
+
+  bgp_policy::BgpPolicyAction missingAddressAction;
+  missingAddressAction.type() = BgpPolicyActionType::ADD_BACKUP_ADDR;
+  missingAddressAction.add_backup_addr() = bgp_policy::AddBackupAddr();
+  auto missingAddressError = parseActionConfigGetError(missingAddressAction);
+  ASSERT_TRUE(missingAddressError);
+  EXPECT_EQ(
+      "Malformed add_backup_addr config. address missing",
+      *missingAddressError);
+
+  auto malformedError = parseActionConfigGetError(makeAction("not-an-ip"));
+  ASSERT_TRUE(malformedError);
+  EXPECT_EQ("Malformed backup address: not-an-ip", *malformedError);
+
+  auto ipv4Error = parseActionConfigGetError(makeAction("192.0.2.1"));
+  ASSERT_TRUE(ipv4Error);
+  EXPECT_EQ("Backup address must be IPv6: 192.0.2.1", *ipv4Error);
+}
+
 // Test we can overwrite as path overwrite using correct input
 TEST_F(PolicyTest, AsPathOverwriteTest) {
   std::vector<std::vector<int64_t>> asPathOverwriteLists = {

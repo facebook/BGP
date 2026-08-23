@@ -237,6 +237,26 @@ class SetNexthop : public PolicyAttributesAction {
   const folly::IPAddress nexthop_;
 };
 
+class AddBackupAddr : public PolicyAttributesAction {
+ public:
+  explicit AddBackupAddr(const bgp_policy::BgpPolicyAction& policyAction)
+      : PolicyAttributesAction(""),
+        backupAddr_(validateAndGetBackupAddr(policyAction)) {}
+  ~AddBackupAddr() override = default;
+  const folly::IPAddress& getBackupAddr() const {
+    return backupAddr_;
+  }
+  virtual void applyAction(
+      std::shared_ptr<BgpPath>& attr,
+      std::optional<std::shared_ptr<BgpPolicyActionData>> policyActionData =
+          std::nullopt) const noexcept override;
+
+ private:
+  static folly::IPAddress validateAndGetBackupAddr(
+      const bgp_policy::BgpPolicyAction& policyAction);
+  folly::IPAddress backupAddr_;
+};
+
 class SetMed : public PolicyAttributesAction {
  public:
   explicit SetMed(const bgp_policy::BgpPolicyAction& policyAction)

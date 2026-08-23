@@ -38,6 +38,8 @@
   FRIEND_TEST(                                                                 \
       AdjRibInPolicyCacheFixture, MultipleAcceptedModifiedByPolicyTest);       \
   FRIEND_TEST(                                                                 \
+      AdjRibInPolicyCacheFixture, BackupAddrPreservedAfterIngressPolicyTest);  \
+  FRIEND_TEST(                                                                 \
       AdjRibInPolicyCacheFixture, MultipleAcceptedNotModifiedByPolicyTest);    \
   FRIEND_TEST(AdjRibInPolicyCacheFixture, MultipleRejectedByPolicyTest);       \
   FRIEND_TEST(AdjRibInPolicyCacheFixture, ImmutablePolicyCacheKeyTest);        \
@@ -52,6 +54,7 @@
   FRIEND_TEST(AdjRibPolicyCacheFixture, PolicyCacheMaskedKeyHashTest);         \
   FRIEND_TEST(AdjRibPolicyCacheFixture, PolicyCacheMaskedKeyEqualToTest);      \
   FRIEND_TEST(AdjRibPolicyCacheFixture, PrefixMaskTest);                       \
+  FRIEND_TEST(AdjRibPolicyCacheFixture, BackupAddrMaskTest);                   \
   FRIEND_TEST(AdjRibPolicyCacheFixture, LookupPolicyCacheTest);                \
   FRIEND_TEST(AdjRibPolicyCacheFixture, AddToPolicyCacheTest);                 \
   FRIEND_TEST(AdjRibPolicyCacheFixture, MatchOriginEgpSetMedNoopTest);         \
@@ -447,6 +450,68 @@ TEST_F(AdjRibPolicyCacheFixture, PrefixMaskTest) {
     EXPECT_NE(hasher(key1), hasher(key2));
     EXPECT_FALSE(equals(key1, key2));
   }
+}
+
+TEST_F(AdjRibPolicyCacheFixture, BackupAddrMaskTest) {
+  const PolicyAttributesMask noBackupAddr;
+  const PolicyAttributesMask withBackupAddr{.backupAddr = true};
+  auto path1 = std::make_shared<BgpPath>(*buildBgpPathFields(0, 0, 0, 0));
+  auto path2 = path1->clone();
+  path1->setBackupAddr(folly::IPAddress("2001:db8::1"));
+  path2->setBackupAddr(folly::IPAddress("2001:db8::2"));
+
+  const auto maskedKey = [&](const PolicyAttributesMask& mask,
+                             std::shared_ptr<const BgpPath> path) {
+    return AdjRibPolicyCache::PolicyCacheMaskedKey(
+        &mask,
+        kV6Prefix1,
+        std::move(path),
+        nullptr /* policyActionData */,
+        false /* isPartialDrain */);
+  };
+  AdjRibPolicyCache::PolicyCacheMaskedKeyHash hasher;
+  AdjRibPolicyCache::PolicyCacheMaskedKeyEqualTo equals;
+
+  const auto unmaskedKey1 = maskedKey(noBackupAddr, path1);
+  const auto unmaskedKey2 = maskedKey(noBackupAddr, path2);
+  EXPECT_EQ(hasher(unmaskedKey1), hasher(unmaskedKey2));
+  EXPECT_TRUE(equals(unmaskedKey1, unmaskedKey2));
+
+  const auto maskedKey1 = maskedKey(withBackupAddr, path1);
+  const auto maskedKey2 = maskedKey(withBackupAddr, path2);
+  EXPECT_NE(hasher(maskedKey1), hasher(maskedKey2));
+  EXPECT_FALSE(equals(maskedKey1, maskedKey2));
+}
+
+TEST_F(AdjRibPolicyCacheFixture, BackupAddrPreservedOnCacheHitTest) {
+  auto cache = AdjRibPolicyCache::get();
+  cache->setCacheSize(1);
+  const PolicyAttributesMask dummyMask;
+  auto attrs = std::make_shared<BgpPath>(*buildBgpPathFields(0, 0, 0, 0));
+  const auto backupAddr = folly::IPAddress("2001:db8::1");
+  attrs->setBackupAddr(backupAddr);
+  auto attrsAndPolicy =
+      std::make_shared<routing::AttributesAndPolicy<BgpPath>>(attrs, "term");
+
+  cache->addToPolicyCache(
+      "Dummy",
+      &dummyMask,
+      kV4Prefix1,
+      nullptr /* attrs */,
+      nullptr /* policyActionData */,
+      attrsAndPolicy);
+  auto result = cache->lookupPolicyCache(
+      "Dummy",
+      &dummyMask,
+      kV4Prefix1,
+      nullptr /* attrs */,
+      nullptr /* policyActionData */);
+
+  ASSERT_TRUE(result.has_value());
+  ASSERT_NE(nullptr, result->attrsAndPolicy);
+  ASSERT_NE(nullptr, result->attrsAndPolicy->attrs);
+  EXPECT_EQ(backupAddr, result->attrsAndPolicy->attrs->getBackupAddr());
+  cache->setCacheSize(0);
 }
 
 /**
@@ -1506,9 +1571,8 @@ TEST_F(AdjRibOutPolicyCacheFixture, MatchOriginEgpSetMedExpectedCacheHitTest) {
   auto result1 = FindEntry(
       adjRib_->getRibEntry(/*ingress=*/false, kV4Prefix1), kV4Prefix1, path1);
   EXPECT_TRUE(result1);
-  auto& [attrs1, isMedSet1, nhSet1] = *result1;
-  EXPECT_EQ(kMed, attrs1->attrs->getMed());
-  EXPECT_TRUE(isMedSet1);
+  EXPECT_EQ(kMed, result1->attrsAndPolicy->attrs->getMed());
+  EXPECT_TRUE(result1->isMedSetByPolicy);
 
   /**
    * 1c. Verify that path2 will result in cache hit from path1 already
@@ -1612,9 +1676,8 @@ TEST_F(AdjRibOutPolicyCacheFixture, MatchOriginEgpSetMedExpectedCacheMissTest) {
   auto result1 = FindEntry(
       adjRib_->getRibEntry(/*ingress=*/false, kV4Prefix1), kV4Prefix1, path1);
   EXPECT_TRUE(result1);
-  auto& [attrs1, isMedSet1, nhSet1] = *result1;
-  EXPECT_EQ(kMed, attrs1->attrs->getMed());
-  EXPECT_TRUE(isMedSet1);
+  EXPECT_EQ(kMed, result1->attrsAndPolicy->attrs->getMed());
+  EXPECT_TRUE(result1->isMedSetByPolicy);
 
   // 2. Process kV4Prefix2, path2.
   auto update2 =
@@ -1641,8 +1704,7 @@ TEST_F(AdjRibOutPolicyCacheFixture, MatchOriginEgpSetMedExpectedCacheMissTest) {
   auto result2 = FindEntry(
       adjRib_->getRibEntry(/*ingress=*/false, kV4Prefix2), kV4Prefix2, path2);
   EXPECT_TRUE(result2);
-  auto& [attrs2, isMedSet2, nhSet2] = *result2;
-  EXPECT_TRUE(isMedSet2);
+  EXPECT_TRUE(result2->isMedSetByPolicy);
 }
 
 /**
@@ -1705,8 +1767,7 @@ TEST_F(AdjRibPolicyCacheFixture, MatchOriginEgpSetMedNoopTest) {
   auto guard = adjRib_->policyCache_->policyLruCache_.wlock();
   auto iter = guard->find(key);
 
-  auto& [attrs1, isMedSet1, nhSet1] = iter->second;
-  EXPECT_FALSE(isMedSet1);
+  EXPECT_FALSE(iter->second.isMedSetByPolicy);
 }
 
 /**
@@ -1769,9 +1830,8 @@ TEST_F(AdjRibPolicyCacheFixture, CheckIsMedSetByPolicyWithRejectedTest) {
   auto guard = adjRib_->policyCache_->policyLruCache_.wlock();
   auto iter = guard->find(key);
 
-  auto& [attrs1, isMedSet1, nhSet1] = iter->second;
-  EXPECT_FALSE(attrs1->attrs);
-  EXPECT_FALSE(isMedSet1);
+  EXPECT_FALSE(iter->second.attrsAndPolicy->attrs);
+  EXPECT_FALSE(iter->second.isMedSetByPolicy);
 }
 
 /**
@@ -1803,10 +1863,8 @@ TEST_F(
   EXPECT_EQ(1, adjRib_->policyCache_->size());
 
   auto entry = adjRib_->policyCache_->policyLruCache_.rlock()->begin();
-  auto& [attrs1, isMedSet1, nhSet1] = entry->second;
-
-  EXPECT_FALSE(attrs1);
-  EXPECT_FALSE(isMedSet1);
+  EXPECT_FALSE(entry->second.attrsAndPolicy);
+  EXPECT_FALSE(entry->second.isMedSetByPolicy);
 }
 
 /**
@@ -1893,6 +1951,46 @@ TEST_F(AdjRibInPolicyCacheFixture, MultipleAcceptedModifiedByPolicyTest) {
       postPolicyAttrs1->getAggregator());
   EXPECT_EQ(1, postPolicyAttrs1->getCommunities()->size());
   EXPECT_EQ(kCommunity1, postPolicyAttrs1->getCommunities()->at(0).to_string());
+}
+
+TEST_F(AdjRibInPolicyCacheFixture, BackupAddrPreservedAfterIngressPolicyTest) {
+  const auto backupAddr = folly::IPAddress("2001:db8::1");
+  bgp_policy::BgpPolicyAction action;
+  action.type() = BgpPolicyActionType::ADD_BACKUP_ADDR;
+  action.add_backup_addr() = bgp_policy::AddBackupAddr();
+  action.add_backup_addr()->address() = backupAddr.str();
+  auto policy = std::make_shared<PolicyManager>(
+      createBgpPolicies(kIngressPolicyName, {}, {std::move(action)}),
+      createTestBgpGlobalConfig());
+  setupAdjRib(
+      kShortGrRestartTime,
+      std::nullopt, // remoteGrRestartTime
+      false, // callSessionEstablished
+      kLocalAs1,
+      kLocalAs1,
+      kRemoteAs1,
+      AfiIpv4Negotiated(true),
+      AfiIpv6Negotiated(true),
+      policy,
+      kIngressPolicyName);
+
+  const PolicyAttributesMask expectedMask{.backupAddr = true};
+  EXPECT_EQ(expectedMask, *policy->getPolicyAttributesMask(kIngressPolicyName));
+
+  RiggedIPPrefix pfx1;
+  pfx1.prefix() = toIPPrefix(kV4Prefix1);
+  RiggedIPPrefix pfx2;
+  pfx2.prefix() = toIPPrefix(kV4Prefix2);
+  auto path = std::make_shared<BgpPath>(*buildBgpPathFields(1, 0, 1, 1));
+  folly::coro::blockingWait(adjRib_->processPeerAnnounced({pfx1, pfx2}, path));
+
+  ASSERT_EQ(1, adjRib_->policyCache_->size());
+  for (const auto& prefix : {kV4Prefix1, kV4Prefix2}) {
+    const auto* entry = adjRib_->getRibEntry(true /* ingress */, prefix);
+    ASSERT_NE(nullptr, entry);
+    ASSERT_NE(nullptr, entry->getPostAttr());
+    EXPECT_EQ(backupAddr, entry->getPostAttr()->getBackupAddr());
+  }
 }
 
 /**

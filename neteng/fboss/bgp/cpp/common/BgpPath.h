@@ -44,6 +44,13 @@ struct BgpPathFields : nettools::bgplib::BgpPathC {
   template <typename Fn>
   void forEachChild(Fn /*fn*/) {}
 
+  bool operator==(const BgpPathFields& other) const {
+    return nettools::bgplib::BgpPathC::operator==(other) &&
+        backupAddr == other.backupAddr;
+  }
+
+  std::optional<folly::IPAddress> backupAddr;
+
   folly::dynamic toFollyDynamic() const;
 };
 
@@ -216,6 +223,13 @@ class BgpPath : public fboss::NodeBaseT<BgpPath, BgpPathFields> {
   void setTopologyInfo(
       std::optional<std::unordered_map<std::string, int64_t>> topologyInfo) {
     writableFields()->topologyInfo = std::move(topologyInfo);
+  }
+
+  const std::optional<folly::IPAddress>& getBackupAddr() const {
+    return getFields()->backupAddr;
+  }
+  void setBackupAddr(std::optional<folly::IPAddress> backupAddr) {
+    writableFields()->backupAddr = std::move(backupAddr);
   }
 
   bool hasNonTransitiveLbwExtCommunity() const;
