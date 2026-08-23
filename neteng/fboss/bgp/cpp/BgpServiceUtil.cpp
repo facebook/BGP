@@ -162,6 +162,9 @@ TBgpPath createTBgpPath(const facebook::bgp::BgpPath& attr) {
   if (auto topoInfo = attr.getTopologyInfo()) {
     path.topologyInfo() = std::move(*topoInfo);
   }
+  if (const auto& backupAddr = attr.getBackupAddr()) {
+    path.backup_addr() = createTIpPrefix(*backupAddr);
+  }
 
   path.as_path() = std::move(tAsPath);
 

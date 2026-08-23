@@ -130,6 +130,9 @@ TBgpDedupedPath toTBgpDedupedPathBase(const BgpPath& path) {
   if (const auto& topoInfo = path.getTopologyInfo()) {
     attrs.topology_info() = topoInfo.value();
   }
+  if (const auto& backupAddr = path.getBackupAddr()) {
+    attrs.backup_addr() = createTIpPrefix(*backupAddr);
+  }
   /* weight is optional; 0 is the default (non-UCMP) value, so omit it then. */
   if (auto weight = path.getWeight()) {
     attrs.weight() = weight;

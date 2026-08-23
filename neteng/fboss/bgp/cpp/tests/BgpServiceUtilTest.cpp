@@ -518,6 +518,18 @@ TEST_F(BgpServiceUtilTest, TopologyInfoTest) {
   EXPECT_EQ(pathTopoInfo.at("rack_id"), 456);
 }
 
+TEST_F(BgpServiceUtilTest, BackupAddrTest) {
+  auto attr =
+      std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
+  const auto backupAddr = folly::IPAddress("2001:db8::1");
+  attr->setBackupAddr(backupAddr);
+
+  const auto path = createTBgpPath(*attr);
+
+  ASSERT_TRUE(path.backup_addr().has_value());
+  EXPECT_EQ(createTIpPrefix(backupAddr), *path.backup_addr());
+}
+
 // test TIpPrefixToString function
 TEST_F(BgpServiceUtilTest, TIpPrefixToStringTest) {
   auto prefix = createTIpPrefix(folly::IPAddress("10.1.2.126"));

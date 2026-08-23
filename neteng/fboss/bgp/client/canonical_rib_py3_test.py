@@ -45,6 +45,7 @@ def _make_state(
 ) -> bgp_route_types.TCanonicalRibState:
     prefix = TIpPrefix(prefix_bin=b"\x0a\x00\x00\x00", num_bits=24)
     next_hop = TIpPrefix(prefix_bin=b"\x0a\x00\x00\x01", num_bits=32)
+    backup_addr = TIpPrefix(prefix_bin=b"\x20\x01\x0d\xb8" + b"\x00" * 12, num_bits=128)
     peer_id = TIpPrefix(prefix_bin=b"\x0a\x00\x00\x02", num_bits=32)
     community = TBgpCommunity(asn=65000, value=100, community=4259840100)
     return bgp_route_types.TCanonicalRibState(
@@ -54,6 +55,7 @@ def _make_state(
                 next_hop=next_hop,
                 communities_idx=7,
                 local_pref=321,
+                backup_addr=backup_addr,
             )
         },
         peers={
@@ -97,6 +99,10 @@ class CanonicalRibPy3Test(TestCase):
         self.assertEqual("peer", path.peer_description)
         self.assertEqual(99, path.last_modified_time)
         self.assertEqual(entry.best_next_hop, path.next_hop)
+        self.assertEqual(
+            TIpPrefix(prefix_bin=b"\x20\x01\x0d\xb8" + b"\x00" * 12, num_bits=128),
+            path.backup_addr,
+        )
 
     def test_preserves_no_selected_best_state(self) -> None:
         entry = resolve_canonical_rib_state(_make_state(selected=False))[0]

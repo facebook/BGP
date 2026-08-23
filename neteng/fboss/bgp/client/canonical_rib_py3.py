@@ -97,6 +97,7 @@ def _resolve_path(
         originator_id=deduped.originator_id,
         aggregator=deduped.aggregator,
         topologyInfo=deduped.topology_info,
+        backup_addr=deduped.backup_addr,
         weight=deduped.weight,
         peer_id=peer_id,
         router_id=router_id,

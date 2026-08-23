@@ -92,11 +92,13 @@ class CanonicalRibBuilderTest : public ::testing::Test {
       uint32_t commCount,
       const folly::IPAddress& nexthop,
       std::unordered_map<std::string, int64_t> topoInfo,
-      uint16_t weight) {
+      uint16_t weight,
+      std::optional<folly::IPAddress> backupAddr = std::nullopt) {
     auto path = std::make_shared<BgpPath>(
         *buildBgpPathFields(asCount, commCount, 0, 0, 0, nexthop));
     path->setTopologyInfo(topoInfo);
     path->setWeight(weight);
+    path->setBackupAddr(std::move(backupAddr));
     return DeDuplicatedBgpPath(path).getSharedPtr();
   }
 };
@@ -223,13 +225,14 @@ TEST_F(CanonicalRibBuilderTest, BestAndDefaultGroups) {
 /* Per-instance and entry operational fields round-trip correctly. */
 TEST_F(CanonicalRibBuilderTest, OperationalFields) {
   auto peer = folly::IPAddress("10.0.0.2");
+  const auto backupAddr = folly::IPAddress("2001:db8::1");
   std::unordered_map<std::string, int64_t> topoInfo = {
       {"region", 1}, {"pod", 42}};
 
   CanonicalRibBuilder builder;
   CanonicalPathInput in = input(
       makePathWithTopoAndWeight(
-          2, 2, folly::IPAddress("10.0.0.10"), topoInfo, 100),
+          2, 2, folly::IPAddress("10.0.0.10"), topoInfo, 100, backupAddr),
       peer,
       1,
       true);
@@ -252,6 +255,8 @@ TEST_F(CanonicalRibBuilderTest, OperationalFields) {
   EXPECT_EQ(dedupedPath.topology_info()->at("pod"), 42);
   ASSERT_TRUE(dedupedPath.weight().has_value());
   EXPECT_EQ(dedupedPath.weight().value(), 100);
+  ASSERT_TRUE(dedupedPath.backup_addr().has_value());
+  EXPECT_EQ(createTIpPrefix(backupAddr), *dedupedPath.backup_addr());
 
   /* Verify per-instance fields */
   const auto& paths = state.rib_entries()
