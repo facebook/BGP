@@ -16,9 +16,6 @@
 
 #include <boost/filesystem.hpp>
 
-#include <future>
-#include <thread>
-
 #include <gtest/gtest.h>
 #include <thrift/lib/cpp/util/EnumUtils.h>
 
@@ -1476,7 +1473,7 @@ TEST(StatsTest, ClearPeerCountersTest) {
   EXPECT_FALSE(tcData.hasCounter(recvUpdateKey));
 }
 
-TEST(StatsTest, ClearPeerCountersDestroysPerPeerTimeseriesOnAllThreads) {
+TEST(StatsTest, ClearPeerCountersDestroysPerPeerTimeseries) {
   const std::string peerIdOdsStr = "peer_10.99.0.1_192.0.2.1";
   const std::string noGrRestartPeerId =
       "peerAddr 10.99.0.1, remoteBgpId 192.0.2.1";
@@ -1486,50 +1483,23 @@ TEST(StatsTest, ClearPeerCountersDestroysPerPeerTimeseriesOnAllThreads) {
       fmt::format(PeerStats::kNoGrRestartPeer, noGrRestartPeerId);
   auto& tcData = *CHECK_NOTNULL(fb303::ThreadCachedServiceData::get());
 
-  std::promise<void> statsCreated;
-  auto statsCreatedFuture = statsCreated.get_future();
-  std::promise<void> cleanupComplete;
-  auto cleanupCompleteFuture = cleanupComplete.get_future();
-  std::promise<std::pair<bool, bool>> timeseriesExpired;
-  auto timeseriesExpiredFuture = timeseriesExpired.get_future();
+  PeerStats::addPeerSessionStateChanges(peerIdOdsStr);
+  PeerStats::incrPeerNoGrRestart(noGrRestartPeerId);
 
-  std::thread worker([&,
-                      cleanupCompleteFutureForWorker =
-                          std::move(cleanupCompleteFuture)]() mutable {
-    PeerStats::addPeerSessionStateChanges(peerIdOdsStr);
-    PeerStats::incrPeerNoGrRestart(noGrRestartPeerId);
+  auto sessionStateTimeseries =
+      tcData.getThreadStats()->getTimeseriesSafe(sessionStateKey);
+  std::weak_ptr sessionStateWeak = sessionStateTimeseries;
+  sessionStateTimeseries.reset();
 
-    auto& threadLocalStats =
-        fb303::ThreadCachedServiceData::getStatsThreadLocal();
-    auto sessionStateTimeseries =
-        threadLocalStats->getTimeseriesSafe(sessionStateKey);
-    auto noGrRestartTimeseries =
-        threadLocalStats->getTimeseriesSafe(noGrRestartKey);
-    std::weak_ptr sessionStateWeak = sessionStateTimeseries;
-    std::weak_ptr noGrRestartWeak = noGrRestartTimeseries;
-    sessionStateTimeseries.reset();
-    noGrRestartTimeseries.reset();
-
-    statsCreated.set_value();
-    cleanupCompleteFutureForWorker.wait();
-    timeseriesExpired.set_value(
-        {sessionStateWeak.expired(), noGrRestartWeak.expired()});
-  });
-
-  statsCreatedFuture.wait();
   EXPECT_TRUE(tcData.getStatMap()->contains(sessionStateKey));
   EXPECT_TRUE(tcData.getStatMap()->contains(noGrRestartKey));
+  EXPECT_EQ(1, tcData.getCounter(noGrRestartKey + ".count"));
 
   PeerStats::clearPeerCounters(peerIdOdsStr, noGrRestartPeerId);
 
   EXPECT_FALSE(tcData.getStatMap()->contains(sessionStateKey));
   EXPECT_FALSE(tcData.getStatMap()->contains(noGrRestartKey));
-  cleanupComplete.set_value();
-  const auto [sessionStateExpired, noGrRestartExpired] =
-      timeseriesExpiredFuture.get();
-  EXPECT_TRUE(sessionStateExpired);
-  EXPECT_TRUE(noGrRestartExpired);
-  worker.join();
+  EXPECT_TRUE(sessionStateWeak.expired());
 }
 
 TEST(StatsTest, NhtCacheInitCounterTest) {

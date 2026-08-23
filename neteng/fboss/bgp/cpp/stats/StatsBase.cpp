@@ -1154,14 +1154,10 @@ void forEachPeerIngressMessageKey(const std::string& peerIdOdsStr, Fn&& fn) {
       kPeerMessagesRecvRouteRefresh, kEbbPlatform, kBgpcppTag, peerIdOdsStr));
 }
 
-void removeTimeseries(const std::string& key) {
+void removeCurrentThreadTimeseries(const std::string& key) {
   auto& serviceData = *CHECK_NOTNULL(fb303::ThreadCachedServiceData::get());
   serviceData.getStatMap()->unExportStatAll(key);
-  auto& threadLocalStats =
-      fb303::ThreadCachedServiceData::getStatsThreadLocal();
-  for (auto& stats : threadLocalStats.accessAllThreads()) {
-    stats.clearTimeseriesSafe(key);
-  }
+  serviceData.getThreadStats()->clearTimeseriesSafe(key);
 }
 } // namespace
 
@@ -1179,8 +1175,10 @@ void clearPeerCounters(
   });
   fb303::ThreadCachedServiceData::get()->clearCounter(
       fmt::format(kPeerStatus, peerIdOdsStr));
-  removeTimeseries(fmt::format(kPeerSessionStateChanges, peerIdOdsStr));
-  removeTimeseries(fmt::format(kNoGrRestartPeer, noGrRestartPeerId));
+  removeCurrentThreadTimeseries(
+      fmt::format(kPeerSessionStateChanges, peerIdOdsStr));
+  removeCurrentThreadTimeseries(
+      fmt::format(kNoGrRestartPeer, noGrRestartPeerId));
 }
 
 void clearPeerEgressMessageCounters(const std::string& peerIdOdsStr) {
@@ -1236,7 +1234,11 @@ void incrNoGrRestart() {
       kNoGrRestart, 1, fb303::COUNT);
 }
 void incrPeerNoGrRestart(const std::string& peerId) {
-  fb303::ThreadCachedServiceData::get()->addStatValue(
+  /*
+   * This dynamically named stat is deleted by PeerManager. Keep it out of
+   * SessionManager TLS so deletion never mutates another thread's named map.
+   */
+  fb303::fbData->addStatValue(
       fmt::format(kNoGrRestartPeer, peerId), 1, fb303::COUNT);
 }
 void incrTotalHoldTimerExpiry() {
