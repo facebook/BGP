@@ -101,6 +101,48 @@ INSTANTIATE_TEST_SUITE_P(
     RibFsdbAddPathTestSuite,
     testing::Values(true /* addPath */));
 
+TEST_P(
+    RibFixtureAddPathTestSuite,
+    SelectedPathBackupAddrUpdatesWithoutRouteAttributePolicy) {
+  const auto prefix = folly::IPAddress::createNetwork("2001:db8:1::/64");
+  PrefixPathIds prefixes{{prefix, kDefaultPathID}};
+  const auto sendBackupUpdate =
+      [&](std::optional<folly::IPAddress> backupAddr) {
+        auto attrs = std::make_shared<facebook::bgp::BgpPath>(
+            *buildBgpPathFields(4, 4, 4, 4));
+        attrs->setBackupAddr(backupAddr);
+        attrs->publish();
+        auto ribFuture = rib_->getRibPrepareFibProgrammingFuture();
+
+        sendAnnouncement(prefixes, eBgpPeer1_, attrs);
+        ribFuture.wait();
+
+        ASSERT_TRUE(rib_->fibItems.contains(prefix));
+        const auto bestPath = rib_->fibItems.at(prefix).getBestPath();
+        ASSERT_NE(nullptr, bestPath);
+        EXPECT_EQ(backupAddr, bestPath->attrs->getBackupAddr());
+      };
+
+  const auto firstBackupAddr = folly::IPAddress("2001:db8:ffff::1");
+  auto initialRibFuture = rib_->getRibPrepareFibProgrammingFuture();
+  auto initialAttrs =
+      std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
+  initialAttrs->setBackupAddr(firstBackupAddr);
+  initialAttrs->publish();
+  sendAnnouncement(prefixes, eBgpPeer1_, initialAttrs);
+  sendInitialPathComputation();
+  initialRibFuture.wait();
+
+  ASSERT_TRUE(rib_->fibItems.contains(prefix));
+  ASSERT_NE(nullptr, rib_->fibItems.at(prefix).getBestPath());
+  EXPECT_EQ(
+      firstBackupAddr,
+      rib_->fibItems.at(prefix).getBestPath()->attrs->getBackupAddr());
+
+  sendBackupUpdate(folly::IPAddress("2001:db8:ffff::2"));
+  sendBackupUpdate(std::optional<folly::IPAddress>{});
+}
+
 /*
  * Test rib policy LBW set/update/clear effect on program fib logic
  * Scenario covered:

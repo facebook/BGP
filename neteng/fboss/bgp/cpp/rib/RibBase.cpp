@@ -451,7 +451,7 @@ folly::coro::Task<void> RibBase::processFibProgrammingMsgLoop() noexcept {
         const auto& installToFib = entry.getInstallToFib();
         ++iter;
 
-        fib_->updateUnicastRoute(
+        fib_->updateUnicastRouteWithBackup(
             prefix,
             (bestPath) ? bestPath->attrs : nullptr,
             weightedNexthops,
@@ -460,7 +460,9 @@ folly::coro::Task<void> RibBase::processFibProgrammingMsgLoop() noexcept {
             nexthopInfoMap_,
             std::nullopt, /* classId */
             nexthopTopoInfoMap,
-            routeType);
+            routeType,
+            bestPath ? bestPath->attrs->getBackupAddr()
+                     : std::optional<folly::IPAddress>{});
         toFibTotal++;
 
         // log per prefix

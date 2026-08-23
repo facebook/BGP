@@ -20,9 +20,10 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#define MockFibFboss_TEST_FRIENDS              \
-  friend class FibFixture;                     \
-  FRIEND_TEST(FibFixture, updateUnicastRoute); \
+#define MockFibFboss_TEST_FRIENDS                        \
+  friend class FibFixture;                               \
+  FRIEND_TEST(FibFixture, updateUnicastRoute);           \
+  FRIEND_TEST(FibFixture, updateUnicastRouteWithBackup); \
   FRIEND_TEST(FibFixture, TestStopFib);
 
 #define FibFboss_TEST_FRIENDS                    \
@@ -346,6 +347,110 @@ TEST_F(FibFixture, updateUnicastRoute) {
   }
 
   // folly::coro cancellelation
+  folly::coro::blockingWait(asyncScope_.cancelAndJoinAsync());
+}
+
+TEST_F(FibFixture, updateUnicastRouteWithBackup) {
+  const auto makeExpectedNexthop = [](const folly::IPAddress& address,
+                                      int64_t weight,
+                                      fboss::NextHopRole role) {
+    fboss::NextHopThrift nexthop;
+    nexthop.address() = network::toBinaryAddress(address);
+    nexthop.weight() = weight;
+    nexthop.role() = role;
+    return nexthop;
+  };
+  const auto makeExpectedRoute =
+      [](const CIDRNetwork& prefix,
+         std::vector<fboss::NextHopThrift> nexthops) {
+        fboss::UnicastRoute route;
+        route.dest()->ip() = network::toBinaryAddress(prefix.first);
+        route.dest()->prefixLength() = prefix.second;
+        route.adminDistance() = fboss::AdminDistance::EBGP;
+        route.nextHops() = std::move(nexthops);
+        return route;
+      };
+
+  auto weightedNexthops = std::make_shared<WeightedNexthopMap>();
+  weightedNexthops->emplace(kV6Nexthop1, 10);
+  const auto backupAddr = folly::IPAddress("2001:db8::1");
+
+  fib_->updateUnicastRouteWithBackup(
+      kV6Prefix1,
+      nullptr,
+      weightedNexthops,
+      /*isLocalRouteBest=*/false,
+      /*installToFib=*/true,
+      nexthopInfoMap_,
+      std::nullopt,
+      nullptr,
+      BgpRouteType::EBGP,
+      backupAddr);
+
+  const std::vector expectedRouteWithBackup{makeExpectedRoute(
+      kV6Prefix1,
+      {makeExpectedNexthop(kV6Nexthop1, 10, fboss::NextHopRole::PRIMARY),
+       makeExpectedNexthop(backupAddr, 0, fboss::NextHopRole::BACKUP)})};
+  EXPECT_THAT(
+      fib_->batch_->toAdd, UnorderedElementsAreArray(expectedRouteWithBackup));
+
+  fib_->batch_->toAdd.clear();
+  fib_->updateUnicastRouteWithBackup(
+      kV6Prefix1,
+      nullptr,
+      weightedNexthops,
+      /*isLocalRouteBest=*/false,
+      /*installToFib=*/true,
+      nexthopInfoMap_,
+      std::nullopt,
+      nullptr,
+      BgpRouteType::EBGP,
+      kV6Nexthop1);
+  const std::vector expectedRouteWithDuplicateAddr{makeExpectedRoute(
+      kV6Prefix1,
+      {makeExpectedNexthop(kV6Nexthop1, 10, fboss::NextHopRole::PRIMARY),
+       makeExpectedNexthop(kV6Nexthop1, 0, fboss::NextHopRole::BACKUP)})};
+  EXPECT_THAT(
+      fib_->batch_->toAdd,
+      UnorderedElementsAreArray(expectedRouteWithDuplicateAddr));
+
+  fib_->batch_->toAdd.clear();
+  auto v4WeightedNexthops = std::make_shared<WeightedNexthopMap>();
+  v4WeightedNexthops->emplace(kPeerAddr1, 10);
+  fib_->updateUnicastRouteWithBackup(
+      kV4Prefix1,
+      nullptr,
+      v4WeightedNexthops,
+      /*isLocalRouteBest=*/false,
+      /*installToFib=*/true,
+      nexthopInfoMap_,
+      std::nullopt,
+      nullptr,
+      BgpRouteType::EBGP,
+      backupAddr);
+  const std::vector expectedRouteWithMismatchedBackup{makeExpectedRoute(
+      kV4Prefix1,
+      {makeExpectedNexthop(kPeerAddr1, 10, fboss::NextHopRole::PRIMARY)})};
+  EXPECT_THAT(
+      fib_->batch_->toAdd,
+      UnorderedElementsAreArray(expectedRouteWithMismatchedBackup));
+
+  fib_->batch_->toAdd.clear();
+  fib_->updateUnicastRouteWithBackup(
+      kV6Prefix1,
+      nullptr,
+      weightedNexthops,
+      /*isLocalRouteBest=*/true,
+      /*installToFib=*/true,
+      nexthopInfoMap_,
+      std::nullopt,
+      nullptr,
+      BgpRouteType::EBGP,
+      backupAddr);
+  const std::vector expectedLocalRoute{makeExpectedRoute(kV6Prefix1, {})};
+  EXPECT_THAT(
+      fib_->batch_->toAdd, UnorderedElementsAreArray(expectedLocalRoute));
+
   folly::coro::blockingWait(asyncScope_.cancelAndJoinAsync());
 }
 

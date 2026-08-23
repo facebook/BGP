@@ -87,6 +87,30 @@ class Fib : public boost::noncopyable {
       std::shared_ptr<const NexthopTopoInfoMap> nexthopTopoInfoMap = nullptr,
       const BgpRouteType routeType = BgpRouteType::UNKNOWN) = 0;
 
+  virtual void updateUnicastRouteWithBackup(
+      const folly::CIDRNetwork& prefix,
+      std::shared_ptr<const BgpPath> attrsToBeAdvertised,
+      std::shared_ptr<const WeightedNexthopMap> weightedNexthops,
+      const bool isLocalRouteBest,
+      const bool installToFib,
+      const folly::F14NodeMap<folly::IPAddress, facebook::bgp::NexthopInfo>&
+          nextHopInfoMap,
+      const std::optional<uint32_t>& classId,
+      std::shared_ptr<const NexthopTopoInfoMap> nexthopTopoInfoMap,
+      const BgpRouteType routeType,
+      const std::optional<folly::IPAddress>&) {
+    updateUnicastRoute(
+        prefix,
+        std::move(attrsToBeAdvertised),
+        std::move(weightedNexthops),
+        isLocalRouteBest,
+        installToFib,
+        nextHopInfoMap,
+        classId,
+        std::move(nexthopTopoInfoMap),
+        routeType);
+  }
+
   virtual bool isConnected() const = 0;
 
   virtual bool isFullSynced() const = 0;

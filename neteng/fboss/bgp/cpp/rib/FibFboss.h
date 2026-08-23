@@ -46,6 +46,18 @@ class FibFboss : public Fib {
       std::shared_ptr<const NexthopTopoInfoMap> nexthopTopoInfoMap = nullptr,
       const BgpRouteType routeType = BgpRouteType::UNKNOWN) override;
 
+  void updateUnicastRouteWithBackup(
+      const folly::CIDRNetwork& prefix,
+      std::shared_ptr<const BgpPath> attrsToBeAdvertised,
+      std::shared_ptr<const WeightedNexthopMap> weightedNexthops,
+      const bool isLocalRouteBest,
+      const bool installToFib,
+      const folly::F14NodeMap<folly::IPAddress, facebook::bgp::NexthopInfo>&,
+      const std::optional<uint32_t>& classId,
+      std::shared_ptr<const NexthopTopoInfoMap> nexthopTopoInfoMap,
+      const BgpRouteType routeType,
+      const std::optional<folly::IPAddress>& backupAddr) override;
+
   folly::coro::Task<void> program(bool isSync = false) override;
 
   bool isFullSynced() const override {

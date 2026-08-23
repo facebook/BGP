@@ -108,10 +108,35 @@ void FibFboss::updateUnicastRoute(
     std::shared_ptr<const WeightedNexthopMap> weightedNexthops,
     const bool isLocalRouteBest,
     const bool installToFib,
+    const folly::F14NodeMap<folly::IPAddress, facebook::bgp::NexthopInfo>&
+        nextHopInfoMap,
+    const std::optional<uint32_t>& classId,
+    std::shared_ptr<const NexthopTopoInfoMap> nexthopTopoInfoMap,
+    const BgpRouteType routeType) {
+  updateUnicastRouteWithBackup(
+      prefix,
+      std::move(attrsToBeAdvertised),
+      std::move(weightedNexthops),
+      isLocalRouteBest,
+      installToFib,
+      nextHopInfoMap,
+      classId,
+      std::move(nexthopTopoInfoMap),
+      routeType,
+      std::nullopt);
+}
+
+void FibFboss::updateUnicastRouteWithBackup(
+    const folly::CIDRNetwork& prefix,
+    std::shared_ptr<const BgpPath> attrsToBeAdvertised,
+    std::shared_ptr<const WeightedNexthopMap> weightedNexthops,
+    const bool isLocalRouteBest,
+    const bool installToFib,
     const folly::F14NodeMap<folly::IPAddress, facebook::bgp::NexthopInfo>&,
     const std::optional<uint32_t>& classId,
     std::shared_ptr<const NexthopTopoInfoMap> nexthopTopoInfoMap,
-    const BgpRouteType) {
+    const BgpRouteType,
+    const std::optional<folly::IPAddress>& backupAddr) {
   // if not connected, nothing to do
   if (!client_) {
     return;
@@ -137,6 +162,7 @@ void FibFboss::updateUnicastRoute(
     fboss::NextHopThrift nht;
     nht.address() = network::toBinaryAddress(nh);
     nht.weight() = nhwt.second;
+    nht.role() = fboss::NextHopRole::PRIMARY;
     if (nexthopTopoInfoMap) {
       auto topoInfoIt = nexthopTopoInfoMap->find(nh);
       if (topoInfoIt != nexthopTopoInfoMap->end()) {
@@ -146,6 +172,16 @@ void FibFboss::updateUnicastRoute(
     tNextHops.emplace_back(std::move(nht));
   }
 
+  const bool backupAddrFamilyMatches =
+      backupAddr && prefix.first.family() == backupAddr->family();
+  if (backupAddr && !backupAddrFamilyMatches) {
+    XLOGF_EVERY_MS(
+        ERR,
+        60000,
+        "Ignoring backup address {} for prefix {} due to address-family mismatch",
+        backupAddr->str(),
+        folly::IPAddress::networkToString(prefix));
+  }
   // TODO: For now, treat all bgp routes as EBGP. Change it to be either EBGP
   // or IBGP depending on the route type
   // When installToFib is true for local route, we set the nexthop empty.
@@ -156,6 +192,12 @@ void FibFboss::updateUnicastRoute(
         DBG1,
         "Local route programming with empty nexthop for prefix {}",
         folly::IPAddress::networkToString(prefix));
+  } else if (backupAddrFamilyMatches) {
+    fboss::NextHopThrift backupNht;
+    backupNht.address() = network::toBinaryAddress(*backupAddr);
+    backupNht.weight() = 0;
+    backupNht.role() = fboss::NextHopRole::BACKUP;
+    tNextHops.emplace_back(std::move(backupNht));
   }
 
   XLOGF(
