@@ -852,6 +852,45 @@ TEST(RibEntryTest, UpdatePathTest) {
           RibStats::kTotalRibPaths));
 }
 
+TEST(RibEntryTest, UpdatePathTracksBackupAddressChanges) {
+  auto attrs =
+      std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
+  auto peer = TinyPeerInfo(
+      kPeerAddr1, kPeerAsn1, kPeerRouterId1, BgpSessionType::EBGP, false);
+  const auto backupAddr1 = folly::IPAddress("2001:db8::1");
+  const auto backupAddr2 = folly::IPAddress("2001:db8::2");
+  RibEntry ribEntry(kV4Prefix1);
+  attrs->setBackupAddr(backupAddr1);
+  attrs->publish();
+
+  EXPECT_TRUE(ribEntry.updatePath(peer, attrs));
+  RibBase::selectBestPath(
+      ribEntry, multipathSelector, bestpathSelector, false, 0);
+  ASSERT_NE(nullptr, ribEntry.getBestPath());
+  EXPECT_EQ(backupAddr1, ribEntry.getBestPath()->attrs->getBackupAddr());
+  EXPECT_FALSE(ribEntry.needPathSelection());
+
+  EXPECT_FALSE(ribEntry.updatePath(peer, attrs));
+  EXPECT_FALSE(ribEntry.needPathSelection());
+
+  auto updatedAttrs = attrs->clone();
+  updatedAttrs->setBackupAddr(backupAddr2);
+  updatedAttrs->publish();
+  EXPECT_TRUE(ribEntry.updatePath(peer, updatedAttrs));
+  EXPECT_TRUE(ribEntry.needPathSelection());
+  RibBase::selectBestPath(
+      ribEntry, multipathSelector, bestpathSelector, false, 0);
+  EXPECT_EQ(backupAddr2, ribEntry.getBestPath()->attrs->getBackupAddr());
+
+  auto attrsWithoutBackup = updatedAttrs->clone();
+  attrsWithoutBackup->setBackupAddr(std::nullopt);
+  attrsWithoutBackup->publish();
+  EXPECT_TRUE(ribEntry.updatePath(peer, attrsWithoutBackup));
+  RibBase::selectBestPath(
+      ribEntry, multipathSelector, bestpathSelector, false, 0);
+  EXPECT_FALSE(ribEntry.getBestPath()->attrs->getBackupAddr().has_value());
+}
+
 TEST(RibEntryTest, UpdateAddPathTest) {
   auto attrs1 =
       std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));

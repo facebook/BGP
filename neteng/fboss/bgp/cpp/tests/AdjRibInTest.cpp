@@ -84,6 +84,9 @@
       MaybeAnnouncePrefixTest_OldPrefixNoPathChange);                         \
   FRIEND_TEST(                                                                \
       AdjRibProcessPeerAnnouncedFixture,                                      \
+      MaybeAnnouncePrefixTest_BackupAddressChange);                           \
+  FRIEND_TEST(                                                                \
+      AdjRibProcessPeerAnnouncedFixture,                                      \
       MaybeAnnouncePrefixTest_PolicyAcceptedPathChange);                      \
   FRIEND_TEST(                                                                \
       AdjRibProcessPeerAnnouncedFixture,                                      \
@@ -1497,6 +1500,34 @@ TEST_F(
           "Reason: got same post policy in attributes."));
   EXPECT_EQ(0, withdrawnPfxPathIds_.size());
   EXPECT_EQ(0, groupAnnouncedPrefixes_.size());
+}
+
+TEST_F(
+    AdjRibProcessPeerAnnouncedFixture,
+    MaybeAnnouncePrefixTest_BackupAddressChange) {
+  auto adjRibEntry = adjRib_->addRibEntry(true /* ingress */, kV4Prefix1);
+  auto path = std::make_shared<BgpPath>(*buildBgpPathFields(1, 1, 1, 1));
+  const auto oldBackupAddr = folly::IPAddress("2001:db8::1");
+  const auto newBackupAddr = folly::IPAddress("2001:db8::2");
+  path->setBackupAddr(oldBackupAddr);
+  adjRibEntry->setPostAttr(path);
+  auto updatedPath = path->clone();
+  updatedPath->setBackupAddr(newBackupAddr);
+
+  adjRib_->maybeAnnouncePrefix(
+      kV4Prefix1,
+      kDefaultPathID,
+      updatedPath,
+      adjRibEntry,
+      withdrawnPfxPathIds_,
+      groupAnnouncedPrefixes_);
+
+  EXPECT_TRUE(withdrawnPfxPathIds_.empty());
+  ASSERT_EQ(1, groupAnnouncedPrefixes_.size());
+  const auto& [announcementAttrs, prefixes] = *groupAnnouncedPrefixes_.begin();
+  EXPECT_EQ(newBackupAddr, announcementAttrs->getBackupAddr());
+  EXPECT_EQ(newBackupAddr, adjRibEntry->getPostAttr()->getBackupAddr());
+  EXPECT_EQ(PrefixPathIds({{kV4Prefix1, kDefaultPathID}}), prefixes);
 }
 
 TEST_F(
