@@ -57,14 +57,14 @@ TEST(InterfaceEntryTest, UpdateAddrTest) {
   EXPECT_EQ(ifEntry.getIfName(), ifName);
 
   // Initially no IPs
-  auto ipReachability = ifEntry.getIpReachabilityMap();
+  auto ipReachability = ifEntry.getNeighborStateMap();
   EXPECT_EQ(ipReachability.size(), 0);
 
   // add a new Address (/32 expands to 1 IP)
   auto isUpdated = ifEntry.updateAddr(kV4Prefix8_1Slash32, true);
 
   EXPECT_TRUE(isUpdated);
-  ipReachability = ifEntry.getIpReachabilityMap();
+  ipReachability = ifEntry.getNeighborStateMap();
   EXPECT_EQ(ipReachability.size(), 1);
 
   // Check the IP is present
@@ -76,14 +76,14 @@ TEST(InterfaceEntryTest, UpdateAddrTest) {
   isUpdated = ifEntry.updateAddr(kV4Prefix8_1Slash32, true);
 
   EXPECT_FALSE(isUpdated);
-  ipReachability = ifEntry.getIpReachabilityMap();
+  ipReachability = ifEntry.getNeighborStateMap();
   EXPECT_EQ(ipReachability.size(), 1);
 
   // Add a /31 prefix (2 IPs: 9.0.0.2 and 9.0.0.3)
   isUpdated = ifEntry.updateAddr(kV4Prefix8_2Slash31, true);
 
   EXPECT_TRUE(isUpdated);
-  ipReachability = ifEntry.getIpReachabilityMap();
+  ipReachability = ifEntry.getNeighborStateMap();
   EXPECT_EQ(ipReachability.size(), 3); // 1 from /32 + 2 from /31
 
   auto ip2 = folly::IPAddress("9.0.0.2");
@@ -95,14 +95,14 @@ TEST(InterfaceEntryTest, UpdateAddrTest) {
   isUpdated = ifEntry.updateAddr(kV4Prefix8_4Slash32, false);
 
   EXPECT_FALSE(isUpdated);
-  ipReachability = ifEntry.getIpReachabilityMap();
+  ipReachability = ifEntry.getNeighborStateMap();
   EXPECT_EQ(ipReachability.size(), 3);
 
   // remove the /32 address that is present
   isUpdated = ifEntry.updateAddr(kV4Prefix8_1Slash32, false);
 
   EXPECT_TRUE(isUpdated);
-  ipReachability = ifEntry.getIpReachabilityMap();
+  ipReachability = ifEntry.getNeighborStateMap();
   EXPECT_EQ(ipReachability.size(), 2); // Only /31 IPs remain
   EXPECT_FALSE(ipReachability.contains(ip));
   EXPECT_TRUE(ipReachability.contains(ip2));
@@ -116,6 +116,8 @@ TEST(InterfaceEntryTest, UpdateAddrTest) {
 TEST(InterfaceEntryTest, UpdateReachabilityTest) {
   auto ifName = "eth0";
   InterfaceEntry ifEntry{ifName};
+  // Published reachability ANDs the link half, so bring the link up first.
+  ifEntry.setUp(true);
 
   EXPECT_EQ(ifEntry.getIfName(), ifName);
 
@@ -149,37 +151,91 @@ TEST(InterfaceEntryTest, UpdateReachabilityTest) {
 }
 
 /**
- * Legacy path: updateReachabilityForAllIPs flips every seeded IP.
+ * Legacy path: published reachability is the kernel's neighbor state ANDed with
+ * link state, and a link-down must not destroy the neighbor half. This is the
+ * invariant S695537 turned on: the kernel keeps its neighbor entry across a
+ * carrier bounce and emits nothing afterwards, so if bgpd cleared the map on
+ * link-down there would be nothing left to restore on link-up.
  */
-TEST(InterfaceEntryTest, UpdateReachabilityForAllIPsTest) {
-  auto ifName = "eth0";
-  InterfaceEntry ifEntry{ifName};
-
-  // Add a /31 prefix (2 IPs)
+TEST(InterfaceEntryTest, PublishedReachabilityAndsLinkState) {
+  InterfaceEntry ifEntry{"eth0"};
   ifEntry.updateAddr(kV4Prefix2Slash31, true);
 
   auto ip1 = folly::IPAddress("9.0.0.0");
   auto ip2 = folly::IPAddress("9.0.0.1");
 
-  // Initially both should be unreachable
+  // Link up, no neighbor state yet.
+  ifEntry.setUp(true);
+  EXPECT_FALSE(ifEntry.hasReachableNeighbor());
   EXPECT_FALSE(ifEntry.isReachable(ip1));
-  EXPECT_FALSE(ifEntry.isReachable(ip2));
 
-  // Update all IPs to reachable
-  auto isUpdate = ifEntry.updateReachabilityForAllIPs(true);
-  EXPECT_TRUE(isUpdate);
+  // Kernel resolves ip1.
+  EXPECT_TRUE(ifEntry.updateReachability(ip1, true));
+  EXPECT_TRUE(ifEntry.hasReachableNeighbor());
   EXPECT_TRUE(ifEntry.isReachable(ip1));
-  EXPECT_TRUE(ifEntry.isReachable(ip2));
-
-  // Update all again with same value - should return false
-  isUpdate = ifEntry.updateReachabilityForAllIPs(true);
-  EXPECT_FALSE(isUpdate);
-
-  // Update all IPs to unreachable
-  isUpdate = ifEntry.updateReachabilityForAllIPs(false);
-  EXPECT_TRUE(isUpdate);
-  EXPECT_FALSE(ifEntry.isReachable(ip1));
   EXPECT_FALSE(ifEntry.isReachable(ip2));
+
+  // Link goes down: published value drops, stored neighbor state survives.
+  EXPECT_TRUE(ifEntry.setUp(false));
+  EXPECT_FALSE(ifEntry.isReachable(ip1));
+  EXPECT_TRUE(ifEntry.getNeighborStateMap().at(ip1));
+  EXPECT_TRUE(ifEntry.hasReachableNeighbor());
+
+  // Link returns: reachable again, with no neighbor event in between.
+  EXPECT_TRUE(ifEntry.setUp(true));
+  EXPECT_TRUE(ifEntry.isReachable(ip1));
+
+  // forEachPublishedReachability reports the same ANDed values.
+  ifEntry.setUp(false);
+  folly::F14NodeMap<folly::IPAddress, bool> published;
+  ifEntry.forEachPublishedReachability(
+      [&](const folly::IPAddress& ip, bool reachable) {
+        published.insert({ip, reachable});
+      });
+  const folly::F14NodeMap<folly::IPAddress, bool> expected{
+      {ip1, false}, {ip2, false}};
+  EXPECT_EQ(expected, published);
+}
+
+/**
+ * Removing an address must take its reachable host IPs out of the count that
+ * hasReachableNeighbor reads. Otherwise the interface reports a neighbor it no
+ * longer tracks, and every later link flap republishes an empty interface.
+ */
+TEST(InterfaceEntryTest, AddressRemovalClearsReachableNeighbor) {
+  InterfaceEntry ifEntry{"eth0"};
+  ifEntry.updateAddr(kV4Prefix2Slash31, true);
+  ifEntry.setUp(true);
+  EXPECT_TRUE(ifEntry.updateReachability(folly::IPAddress("9.0.0.0"), true));
+  EXPECT_TRUE(ifEntry.hasReachableNeighbor());
+
+  EXPECT_TRUE(ifEntry.updateAddr(kV4Prefix2Slash31, false));
+
+  EXPECT_TRUE(ifEntry.getNeighborStateMap().empty());
+  EXPECT_FALSE(ifEntry.hasReachableNeighbor());
+}
+
+/**
+ * One interface carries a v4 /31 and a v6 /127, so two peers resolve at the
+ * same time. The answer stays true until the last one goes, which is why the
+ * entry counts reachable neighbors instead of holding a single flag.
+ */
+TEST(InterfaceEntryTest, LastReachableNeighborDecidesTheAnswer) {
+  InterfaceEntry ifEntry{"eth0"};
+  ifEntry.updateAddr(kV4Prefix2Slash31, true);
+  ifEntry.updateAddr(kV6Prefix2Slash127, true);
+  ifEntry.setUp(true);
+
+  auto v4Peer = folly::IPAddress("9.0.0.0");
+  auto v6Peer = folly::IPAddress("2002::");
+  EXPECT_TRUE(ifEntry.updateReachability(v4Peer, true));
+  EXPECT_TRUE(ifEntry.updateReachability(v6Peer, true));
+
+  EXPECT_TRUE(ifEntry.updateReachability(v4Peer, false));
+  EXPECT_TRUE(ifEntry.hasReachableNeighbor());
+
+  EXPECT_TRUE(ifEntry.updateReachability(v6Peer, false));
+  EXPECT_FALSE(ifEntry.hasReachableNeighbor());
 }
 
 // --- Interface-state path: link state + per-interface prefix reverse index ---

@@ -60,7 +60,15 @@ bool InterfaceEntry::updateAddr(folly::CIDRNetwork const& addr, bool isValid) {
   } else {
     // Remove all IPs from the CIDR
     for (const auto& ip : ips) {
-      isUpdated |= (ipReachabilityMap_.erase(ip) == 1);
+      auto it = ipReachabilityMap_.find(ip);
+      if (it == ipReachabilityMap_.end()) {
+        continue;
+      }
+      if (it->second) {
+        --reachableNeighborCount_;
+      }
+      ipReachabilityMap_.erase(it);
+      isUpdated = true;
     }
   }
   return isUpdated;
@@ -88,28 +96,24 @@ bool InterfaceEntry::updateReachability(
 
   if (it->second != reachability) {
     it->second = reachability;
+    reachability ? ++reachableNeighborCount_ : --reachableNeighborCount_;
     return true;
   }
 
   return false;
 }
 
-bool InterfaceEntry::updateReachabilityForAllIPs(bool reachability) {
-  bool isUpdated = false;
-
-  for (auto& [ip, currentReachability] : ipReachabilityMap_) {
-    if (currentReachability != reachability) {
-      currentReachability = reachability;
-      isUpdated = true;
-    }
-  }
-
-  return isUpdated;
-}
-
 bool InterfaceEntry::isReachable(const folly::IPAddress& ip) const {
   auto it = ipReachabilityMap_.find(ip);
-  return it != ipReachabilityMap_.end() ? it->second : false;
+  if (it == ipReachabilityMap_.end()) {
+    return false;
+  }
+  const bool neighborReachable = it->second;
+  return neighborReachable && isUp_;
+}
+
+bool InterfaceEntry::hasReachableNeighbor() const {
+  return reachableNeighborCount_ > 0;
 }
 
 std::string InterfaceEntry::getIfName() const {
@@ -208,7 +212,7 @@ const folly::F14FastSet<folly::CIDRNetwork>& InterfaceEntry::getPrefixes()
 }
 
 const folly::F14NodeMap<folly::IPAddress, bool>&
-InterfaceEntry::getIpReachabilityMap() const {
+InterfaceEntry::getNeighborStateMap() const {
   return ipReachabilityMap_;
 }
 

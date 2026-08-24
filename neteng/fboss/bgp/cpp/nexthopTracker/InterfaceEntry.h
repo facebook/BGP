@@ -59,32 +59,52 @@ class InterfaceEntry final {
   bool updateIfIndex(int ifIndex);
 
   /**
-   * Set reachability for an IP already seeded by updateAddr. Legacy
-   * (bgp_resolve_nexthops_from_interface_state off) path only: only IPs seeded
-   * by updateAddr are tracked, so a reachability update for an untracked IP is
-   * dropped (returns false). Returns true if the tracked state changed.
+   * Record the kernel's neighbor (ARP/ND) state for an IP already seeded by
+   * updateAddr. Legacy (bgp_resolve_nexthops_from_interface_state off) path
+   * only: only IPs seeded by updateAddr are tracked, so an update for an
+   * untracked IP is dropped (returns false). Returns true if the tracked state
+   * changed.
    */
   bool updateReachability(const folly::IPAddress& ip, bool reachability);
 
   /**
-   * Update reachability for all IP addresses on the interface. Returns true if
-   * any IP's reachability changed.
-   */
-  bool updateReachabilityForAllIPs(bool reachability);
-
-  /**
-   * Get reachability status for a specific IP address
+   * Published reachability for a single IP: the kernel's neighbor state ANDed
+   * with the interface's link state. False for an untracked IP.
    */
   bool isReachable(const folly::IPAddress& ip) const;
+
+  /**
+   * True if the kernel reports at least one seeded host IP on this interface as
+   * reachable. A link state change can only change a published value when this
+   * holds, so callers use it to suppress no-op republishes.
+   */
+  bool hasReachableNeighbor() const;
+
+  /**
+   * Invoke fn(ip, reachable) for every seeded host IP, where reachable is the
+   * published value: the kernel's neighbor state ANDed with link state.
+   *
+   * The two halves are combined here at read time rather than stored combined.
+   * A link event must not write the neighbor half. After a debounce netlink
+   * sends no neighbor event, so nothing would restore it.
+   */
+  template <typename F>
+  void forEachPublishedReachability(F&& fn) const {
+    for (const auto& [ip, neighborReachable] : ipReachabilityMap_) {
+      fn(ip, neighborReachable && isUp_);
+    }
+  }
 
   std::string getIfName() const;
   int getIfIndex() const;
 
   /**
-   * Interface link (operational) state. Used by the
-   * bgp_resolve_nexthops_from_interface_state path: a directly-connected
-   * nexthop is reachable iff a covering interface is up. setUp returns true if
-   * the state changed.
+   * Interface link (operational) state, maintained on both paths. On the legacy
+   * path it is the link half of published reachability (see
+   * forEachPublishedReachability). On the
+   * bgp_resolve_nexthops_from_interface_state path a directly-connected nexthop
+   * is reachable iff a covering interface is up. setUp returns true if the
+   * state changed.
    */
   bool setUp(bool isUp);
   bool isUp() const;
@@ -160,19 +180,29 @@ class InterfaceEntry final {
   const folly::F14FastSet<folly::CIDRNetwork>& getPrefixes() const;
 
   /**
-   * Get reachability map for all IP addresses
+   * The kernel's neighbor (ARP/ND) state per seeded host IP. This is only the
+   * neighbor half of reachability; the link half lives in isUp_. Read the
+   * published value via forEachPublishedReachability or isReachable.
    */
-  const folly::F14NodeMap<folly::IPAddress, bool>& getIpReachabilityMap() const;
+  const folly::F14NodeMap<folly::IPAddress, bool>& getNeighborStateMap() const;
 
  private:
   // Interface name
   std::string ifName_;
   // Interface Index
   int ifIndex_{-1};
-  // Map of IP address to its reachability status
+  /*
+   * Kernel neighbor (ARP/ND) state per seeded host IP. Written only by neighbor
+   * events and the startup neighbor dump -- never by a link event.
+   */
   folly::F14NodeMap<folly::IPAddress, bool> ipReachabilityMap_{};
-  // Interface operational (link) state. Only used on the
-  // bgp_resolve_nexthops_from_interface_state path.
+  /*
+   * The number of entries in ipReachabilityMap_ whose value is true.
+   * updateAddr and updateReachability are the only writers of the map, so they
+   * are the only two places that move this count.
+   */
+  size_t reachableNeighborCount_{0};
+  // Interface operational (link) state.
   bool isUp_{false};
   /*
    * The time when the link-up hold ends. It is empty when no hold is present.
