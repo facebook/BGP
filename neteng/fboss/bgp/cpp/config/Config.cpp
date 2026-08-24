@@ -945,6 +945,7 @@ void Config::populateConfigDatabase(
   bool enableLegacyV4NlriEncoding{false};
   std::optional<bool> enableStreamSubscriberBackpressure;
   std::vector<std::string> includeInterfaceRegexes{};
+  bool enableNetlinkDampening{false};
 
   if (auto setting = config_.bgp_setting_config()) {
     if (auto nexthopTrackingFlag = setting->enable_next_hop_tracking()) {
@@ -970,6 +971,9 @@ void Config::populateConfigDatabase(
     }
     if (auto regexes = setting->include_interface_regexes()) {
       includeInterfaceRegexes = *regexes;
+    }
+    if (auto netlinkDampeningFlag = setting->enable_netlink_dampening()) {
+      enableNetlinkDampening = *netlinkDampeningFlag;
     }
     if (auto optimizedGRFlag = setting->enable_optimized_GR()) {
       enableOptimizedGR = *optimizedGRFlag;
@@ -1050,7 +1054,8 @@ void Config::populateConfigDatabase(
       false /* enablePolicyDefaultAction */,
       enableAddPathGrReconcile,
       enableLegacyV4NlriEncoding,
-      enableStreamSubscriberBackpressure);
+      enableStreamSubscriberBackpressure,
+      enableNetlinkDampening);
 
   // populate peer groups
   if (config_.peer_groups().has_value()) {

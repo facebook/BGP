@@ -48,6 +48,7 @@ using EnhancedRouteRefreshNegotiated = bool;
 using RouteRefreshConfigured = bool;
 using RouteRefreshNegotiated = bool;
 using EnableNexthopTracking = bool;
+using EnableNetlinkDampening = bool;
 using EnableDynamicPolicyEvaluation = bool;
 
 enum class BgpSessionType { EBGP, IBGP, ConfedEBGP };

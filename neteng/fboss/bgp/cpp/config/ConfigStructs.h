@@ -136,7 +136,14 @@ struct BgpGlobalConfig {
       const bool enableAddPathGrReconcile = false,
       const bool enableLegacyV4NlriEncoding = false,
       const std::optional<bool> enableStreamSubscriberBackpressure =
-          std::nullopt)
+          std::nullopt,
+      /*
+       * Last parameter on purpose. Every caller of this constructor passes
+       * arguments positionally, so a new parameter in the middle breaks all of
+       * them. Keep new parameters here.
+       */
+      const EnableNetlinkDampening enableNetlinkDampening =
+          EnableNetlinkDampening{false})
       : localAsn(localAsn),
         routerId(routerId),
         clusterId(clusterId),
@@ -161,6 +168,7 @@ struct BgpGlobalConfig {
         streamSubscriberLimit(streamSubscriberLimit),
         enableNextHopTracking(enableNextHopTracking),
         includeInterfaceRegexes(includeInterfaceRegexes),
+        enableNetlinkDampening(enableNetlinkDampening),
         enableDynamicPolicyEvaluation(enableDynamicPolicyEvaluation),
         thriftServerConfig(thriftServerConfig),
         enableEgressQueueBackpressure(enableEgressQueueBackpressure),
@@ -235,6 +243,15 @@ struct BgpGlobalConfig {
    * Interface regex patterns for nexthop tracking
    */
   const std::vector<std::string> includeInterfaceRegexes{};
+
+  /*
+   * Enable link-flap dampening in nexthop tracking. A link-down publishes
+   * immediately; a link-up is held until the interface is stable. Works only
+   * when enableNextHopTracking is also true and includeInterfaceRegexes
+   * matches at least one interface.
+   */
+  const EnableNetlinkDampening enableNetlinkDampening =
+      EnableNetlinkDampening{false};
 
   /**
    * Enable dynamic policy evaluation to support runtime policy changes for
