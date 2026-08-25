@@ -306,8 +306,15 @@ inline const std::string kQueueNameAdjRibIn =
     fmt::format("{}_adjrib_in", kIngressQueueSuffix);
 inline const std::string kQueueNameParserOut =
     fmt::format("{}_parser_out", kIngressQueueSuffix);
-inline const std::string kQueueNameSocketIn =
-    fmt::format("{}_socket_in", kIngressQueueSuffix);
+/*
+ * There is deliberately no ingress socket queue name here, unlike the egress
+ * side's kQueueNameSocketOut: nothing sits between the socket and the parser.
+ * FiberSocket::readData hands each buffer straight to FiberBgpParser, which
+ * pushes decoded messages into rcvdQueue_ (kQueueNameParserOut) -- the first
+ * queue on the ingress path. Egress needs its own socket queue because its
+ * producers (AdjRib, timers, notification sites) are decoupled from the socket
+ * writer; the single ingress reader is not.
+ */
 
 // Egress queue names for monitoring
 constexpr auto kEgressQueueSuffix = "egress";
