@@ -23,7 +23,6 @@
 #include "neteng/fboss/bgp/cpp/common/FeatureFlags.h"
 #include "neteng/fboss/bgp/cpp/fsdb/FsdbSyncer.h"
 #include "neteng/fboss/bgp/cpp/peer/NeighborWatcher.h"
-#include "neteng/fboss/bgp/cpp/rib/CanonicalRibBuilder.h"
 #include "neteng/fboss/bgp/cpp/rib/FibDev.h"
 #include "neteng/fboss/bgp/cpp/rib/FibFboss.h"
 #include "neteng/fboss/bgp/cpp/rib/RibDC.h"
@@ -31,6 +30,7 @@
 #include "neteng/fboss/bgp/cpp/rib/RibPolicy.h"
 #include "neteng/fboss/bgp/cpp/rib/RibPolicyLogger.h"
 #include "neteng/fboss/bgp/cpp/rib/Utils.h"
+#include "neteng/fboss/bgp/cpp/rib/canonical/CanonicalRibBuilder.h"
 #include "neteng/fboss/bgp/cpp/stats/StatsDC.h"
 #include "neteng/fboss/bgp/if/gen-cpp2/bgp_thrift_types.h"
 

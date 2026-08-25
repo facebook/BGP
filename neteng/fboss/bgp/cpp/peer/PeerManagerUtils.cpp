@@ -24,7 +24,7 @@
 #include "neteng/fboss/bgp/cpp/adjrib/AdjRibGroup.h"
 #include "neteng/fboss/bgp/cpp/config/ConfigManager.h"
 #include "neteng/fboss/bgp/cpp/peer/PeerManagerBase.h"
-#include "neteng/fboss/bgp/cpp/rib/CanonicalRibBuilder.h"
+#include "neteng/fboss/bgp/cpp/rib/canonical/CanonicalRibBuilder.h"
 #include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "neteng/fboss/bgp/if/gen-cpp2/bgp_thrift_types.h"
 

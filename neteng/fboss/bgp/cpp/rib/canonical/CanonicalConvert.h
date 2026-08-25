@@ -80,11 +80,30 @@ struct CanonicalEntryFields {
       activeCteUcmpAction;
 };
 
-/* AS_PATH / COMMUNITIES / CLUSTER_LIST list projections. */
+/**
+ * Convert a deduplicated AS_PATH attribute to its canonical list value.
+ *
+ * @param asPath Source BGP attribute.
+ * @return AS path segments in canonical Thrift form.
+ */
 std::vector<neteng::fboss::bgp_attr::TAsPathSeg> toTAsPathSegList(
     const nettools::bgplib::BgpAttrAsPathC& asPath);
+
+/**
+ * Convert a deduplicated COMMUNITIES attribute to its canonical list value.
+ *
+ * @param communities Source BGP attribute.
+ * @return Communities in canonical Thrift form.
+ */
 std::vector<neteng::fboss::bgp_attr::TBgpCommunity> toTCommunityList(
     const nettools::bgplib::BgpAttrCommunitiesC& communities);
+
+/**
+ * Convert a deduplicated CLUSTER_LIST attribute to its canonical list value.
+ *
+ * @param clusterList Source BGP attribute.
+ * @return Cluster IDs represented as signed Thrift integers.
+ */
 std::vector<int64_t> toTClusterList(
     const nettools::bgplib::BgpAttrClusterListC& clusterList);
 
@@ -95,6 +114,9 @@ std::vector<int64_t> toTClusterList(
  * TBgpExtCommUnion.raw_values is not yet available (commented out pending the
  * thrift union fix). Distinct from createTBgpPath's createTExtCommunities,
  * which keeps the legacy placeholder behavior.
+ *
+ * @param extCommunities Source BGP attribute.
+ * @return Representable extended communities in canonical Thrift form.
  */
 std::vector<neteng::fboss::bgp::thrift::TBgpExtCommunity>
 toCanonicalExtCommunities(
@@ -105,11 +127,21 @@ toCanonicalExtCommunities(
  * inline scalars (origin, local_pref, med, atomic_aggregate, originator_id,
  * aggregator, topology_info, weight). The list-valued sub-attribute indices are
  * left unset for the caller's interning layer to fill.
+ *
+ * @param path Deduplicated BGP path to project.
+ * @return Partially populated canonical path value.
  */
 neteng::fboss::bgp::thrift::TBgpDedupedPath toTBgpDedupedPathBase(
     const BgpPath& path);
 
-/* Canonical peer entry from its attribution. */
+/**
+ * Build the canonical value for one advertising peer.
+ *
+ * @param addr Peer address.
+ * @param routerId Peer router ID.
+ * @param description Current peer description; omitted when empty.
+ * @return Canonical peer attribution.
+ */
 neteng::fboss::bgp::thrift::TCanonicalPeer toTCanonicalPeer(
     const folly::IPAddress& addr,
     int64_t routerId,
@@ -120,6 +152,10 @@ neteng::fboss::bgp::thrift::TCanonicalPeer toTCanonicalPeer(
  * a TBgpPathCanonical: is_best_path, next_hop_weight, path_id, and the optional
  * operational fields. path_idx and peer_idx are interning-specific and stay
  * with each converter.
+ *
+ * @param p Canonical path reference to update. Existing pool indices are
+ *     preserved.
+ * @param in Source per-route fields.
  */
 void applyPerPathInstanceFields(
     bgp_thrift::TBgpPathCanonical& p,

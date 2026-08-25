@@ -21,7 +21,7 @@
 #include "neteng/fboss/bgp/cpp/BgpServiceUtil.h"
 #include "neteng/fboss/bgp/cpp/common/BgpPath.h"
 #include "neteng/fboss/bgp/cpp/lib/BgpStructs.h"
-#include "neteng/fboss/bgp/cpp/rib/CanonicalRibBuilder.h"
+#include "neteng/fboss/bgp/cpp/rib/canonical/CanonicalRibBuilder.h"
 #include "neteng/fboss/bgp/cpp/tests/Utils.h"
 
 namespace facebook::bgp {
@@ -279,6 +279,14 @@ TEST_F(CanonicalRibBuilderTest, OperationalFields) {
   const auto& entry = state.rib_entries()->at("1.1.1.0/24");
   ASSERT_TRUE(entry.path_selection_pending().has_value());
   EXPECT_TRUE(entry.path_selection_pending().value());
+}
+
+TEST_F(CanonicalRibBuilderTest, BuildIsOneShot) {
+  CanonicalRibBuilder builder;
+
+  builder.build();
+
+  EXPECT_DEATH(builder.build(), "build\\(\\) called more than once");
 }
 
 } // namespace facebook::bgp

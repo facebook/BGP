@@ -33,7 +33,7 @@
 #include <neteng/fboss/bgp/cpp/common/BgpPath.h>
 #include <neteng/fboss/bgp/cpp/common/RibMessage.h>
 #include <neteng/fboss/bgp/cpp/lib/BgpStructs.h>
-#include <neteng/fboss/bgp/cpp/rib/CanonicalRibBuilder.h>
+#include <neteng/fboss/bgp/cpp/rib/canonical/CanonicalRibBuilder.h>
 #include <neteng/fboss/bgp/cpp/tests/RibUtils.h>
 #include <neteng/fboss/bgp/cpp/tests/Utils.h>
 

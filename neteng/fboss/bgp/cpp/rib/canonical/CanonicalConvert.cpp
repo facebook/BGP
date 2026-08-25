@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "neteng/fboss/bgp/cpp/rib/CanonicalConvert.h"
+#include "neteng/fboss/bgp/cpp/rib/canonical/CanonicalConvert.h"
 
 #include "configerator/structs/neteng/fboss/bgp/if/gen-cpp2/bgp_attr_types.h"
 #include "folly/logging/xlog.h"
