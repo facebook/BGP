@@ -170,7 +170,7 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
         /*enableUpdateGroup=*/true,
         sourceGroup->getGroupKey(),
         ShadowRibView{
-            &ctx.peerMgr->shadowRibEntries_, &ctx.peerMgr->maxRibVersion_},
+            ctx.peerMgr->shadowRibEntries_, ctx.peerMgr->maxRibVersion_},
         ctx.peerMgr->getPolicyManager());
   }
 

@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include <folly/IPAddress.h>
 #include <folly/container/F14Map.h>
 
@@ -35,5 +37,39 @@ namespace facebook::bgp {
 using ShadowRibEntriesMap = folly::F14NodeMap<
     folly::CIDRNetwork,
     std::unique_ptr<TrackableObject<ShadowRibEntry>>>;
+
+/*
+ * Non-owning view of PeerManagerBase's shadow RIB handed to an update group:
+ * the entries map plus a live reference to the PeerManager's max seen RIB
+ * version (maxRibVersion_). Both bind to PeerManagerBase members, which
+ * outlive every group it creates.
+ */
+struct ShadowRibView {
+  const ShadowRibEntriesMap& entries;
+  const uint64_t& maxRibVersion;
+
+  /*
+   * Sentinels for groups constructed without a shadow RIB (direct test
+   * construction). Function-local statics rather than namespace-scope globals:
+   * a group binds references to them at construction, so they must be
+   * initialized before first use regardless of translation unit
+   * initialization order. A group bound to empty() walks no entries and never
+   * advances lastSeenRibVersion_ off a dump.
+   */
+  static const ShadowRibEntriesMap& emptyEntries() {
+    static const ShadowRibEntriesMap kEmptyEntries;
+    return kEmptyEntries;
+  }
+
+  static const uint64_t& zeroRibVersion() {
+    static constexpr uint64_t kZeroRibVersion = 0;
+    return kZeroRibVersion;
+  }
+
+  static const ShadowRibView& empty() {
+    static const ShadowRibView kEmptyView{emptyEntries(), zeroRibVersion()};
+    return kEmptyView;
+  }
+};
 
 } // namespace facebook::bgp

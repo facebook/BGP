@@ -498,7 +498,7 @@ void AdjRibOutGroup::createChangeListConsumeTimer() noexcept {
        * update the maxRibVersion_ to the latest snapshot of the RIB, which
        * is undesired.
        */
-      setLastSeenRibVersion(*maxRibVersion_);
+      setLastSeenRibVersion(maxRibVersion_);
     }
     if (changeListConsumer_->isStale(kConsumerStalenessThreshold) &&
         !changeListConsumer_->isStalenessLogged()) {
@@ -649,7 +649,7 @@ void AdjRibOutGroup::walkAndProcessShadowRib(bool sendWithEoR) {
 
   // Walk through all shadow RIB entries
   // NOTE: this ensures maximum packing without chunk limit.
-  for (const auto& [prefix, srEntryPtr] : *shadowRibEntries_) {
+  for (const auto& [prefix, srEntryPtr] : shadowRibEntries_) {
     // TODO: add cancellable token to make sure this iteration is interruptible
     if (!srEntryPtr) {
       continue;
@@ -749,14 +749,14 @@ void AdjRibOutGroup::walkAndProcessShadowRib(bool sendWithEoR) {
    * those entries and advance its version through the changeList instead, so
    * leave lastSeenRibVersion untouched here.
    */
-  if (maxRibVersion_ && !skippedChangeListEntry) {
+  if (!skippedChangeListEntry) {
     XLOGF(
         DBG1,
         "Group {}: Updating cached RIB version from {} to {} after rib walk",
         groupDescriptor_,
         lastSeenRibVersion_,
-        *maxRibVersion_);
-    setLastSeenRibVersion(*maxRibVersion_);
+        maxRibVersion_);
+    setLastSeenRibVersion(maxRibVersion_);
   }
 }
 
@@ -764,10 +764,6 @@ void AdjRibOutGroup::walkAndProcessShadowRib(bool sendWithEoR) {
  * Build initial RIB dump from shadow RIB.
  * Walks shadow RIB, builds RibOutAnnouncement, processes it.
  * Transitions from UNINITIALIZED to WAITING state.
- *
- * Production groups are constructed by PeerManagerBase with its shadow RIB,
- * so shadowRibEntries_ cannot be null. The guard below only protects direct
- * test construction.
  */
 void AdjRibOutGroup::processRibDumpForGroup(bool sendWithEoR) {
   XLOGF(
@@ -776,24 +772,20 @@ void AdjRibOutGroup::processRibDumpForGroup(bool sendWithEoR) {
       groupDescriptor_,
       sendWithEoR);
 
-  if (!shadowRibEntries_) {
-    XLOGF(
-        WARN,
-        "No shadow RIB reference for group {}, completing dump with empty list",
-        groupDescriptor_);
-    state_ = UpdateGroupState::IDLE;
-    return;
-  }
-
   /* walkAndProcessShadowRib advances lastSeenRibVersion_ after the full walk.
    */
   walkAndProcessShadowRib(sendWithEoR);
 
   /*
-   * Transition to WAITING state - ready to send updates
-   * Note: Initial dump sent with EoR marker
+   * Publish whether the walk produced work for a builder, using the same test
+   * as the egress policy re-evaluation walk. A dump over an empty shadow RIB
+   * that leaves no routes packed and no EoRs owed has nothing to send, so it
+   * lands in IDLE rather than advertising itself as WAITING. hasPendingMessages
+   * counts owed EoRs, so a group whose RIB is empty but whose peers still owe
+   * EoRs stays WAITING and the send below delivers them.
    */
-  state_ = UpdateGroupState::WAITING;
+  state_ =
+      hasPendingMessages() ? UpdateGroupState::WAITING : UpdateGroupState::IDLE;
 
   // Schedule the single async build+send for the initial dump.
   asyncScope_.add(
@@ -912,14 +904,6 @@ AdjRibOutGroup::buildAndScheduleSendInitialDumpFromShadowRib() {
  * detached peers' old-policy state before group entries are mutated.
  */
 void AdjRibOutGroup::reEvaluateSyncPeersEgressPolicy() {
-  if (!shadowRibEntries_) {
-    XLOGF(
-        WARN,
-        "Group {}: No shadow RIB reference for egress policy re-evaluation",
-        groupDescriptor_);
-    return;
-  }
-
   /*
    * An UNINITIALIZED group has never dumped, so its peers still owe their
    * egress EoRs and this walk is what books them. Past that point the EoRs are

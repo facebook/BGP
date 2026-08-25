@@ -56,7 +56,7 @@ class UpdateGroupSlowPeerDetectionTest : public ::testing::Test {
         1,
         true /* enableUpdateGroup */,
         UpdateGroupKey{},
-        ShadowRibView{} /* shadowRib */,
+        ShadowRibView::empty() /* shadowRib */,
         nullptr /* policyManager */,
         ugConfig);
 
@@ -603,7 +603,7 @@ TEST_F(
       2,
       true /* enableUpdateGroup */,
       UpdateGroupKey{},
-      ShadowRibView{} /* shadowRib */,
+      ShadowRibView::empty() /* shadowRib */,
       nullptr /* policyManager */,
       customConfig);
 

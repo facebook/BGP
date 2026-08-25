@@ -305,7 +305,7 @@ class UpdateGroupDetachedPeerTest : public ::testing::Test {
         1,
         true /* enableUpdateGroup */,
         UpdateGroupKey{},
-        ShadowRibView{} /* shadowRib */,
+        ShadowRibView::empty() /* shadowRib */,
         nullptr /* policyManager */,
         ugConfig);
   }
@@ -3140,7 +3140,7 @@ class UpdateGroupDetachLifecycleTest : public ::testing::Test {
         1,
         true /* enableUpdateGroup */,
         ugKey,
-        ShadowRibView{} /* shadowRib */,
+        ShadowRibView::empty() /* shadowRib */,
         nullptr /* policyManager */,
         ugConfig);
 
@@ -4938,7 +4938,8 @@ TEST_F(UpdateGroupDetachedPeerTest, RibWalkDetachCopiesEgressEoRsPending) {
       1,
       true /* enableUpdateGroup */,
       groupKey,
-      ShadowRibView{&shadowRibEntries, nullptr} /* shadowRib */,
+      ShadowRibView{
+          shadowRibEntries, ShadowRibView::zeroRibVersion()} /* shadowRib */,
       nullptr /* policyManager */,
       ugConfig);
 

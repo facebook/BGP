@@ -251,8 +251,7 @@ PeerManagerBase::PeerManagerBase(
     updateGroupManager_ = std::make_unique<UpdateGroupManager>(
         evb_,
         updateGroupConfig,
-        &shadowRibEntries_,
-        &maxRibVersion_,
+        ShadowRibView{shadowRibEntries_, maxRibVersion_},
         policyManager_,
         [this]() { return ribInitialAnnouncementDone_; });
   }
@@ -4027,7 +4026,7 @@ std::shared_ptr<AdjRibOutGroup> PeerManagerBase::createAdjRibOutGroup(
       0 /* groupId */,
       false /* enableUpdateGroup */,
       UpdateGroupKey{},
-      ShadowRibView{&shadowRibEntries_, &maxRibVersion_});
+      ShadowRibView{shadowRibEntries_, maxRibVersion_});
   adjRibOutGroups_.emplace(groupName, adjRibOutGroup);
   BgpStats::incrAdjRibOutGroupsCount();
   return adjRibOutGroup;

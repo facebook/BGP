@@ -114,11 +114,11 @@ class AdjRibGroupTest : public ::testing::Test {
         true /* enableUpdateGroup */,
         groupKey,
         /*
-         * Null shadow RIB map (tests that need entries pass their own view),
-         * but a real maxRibVersion_ so the change list consume timer can
-         * dereference it.
+         * Empty shadow RIB map (tests that need entries pass their own view),
+         * but the fixture's own maxRibVersion_ so the change list consume
+         * timer reads a version the test can advance.
          */
-        ShadowRibView{nullptr, &maxRibVersion_});
+        ShadowRibView{ShadowRibView::emptyEntries(), maxRibVersion_});
   }
 
   /**
@@ -227,12 +227,11 @@ class AdjRibGroupTest : public ::testing::Test {
   ConsumerBitmap nonAddPathConsumerBitmap_;
 
   /*
-   * Stands in for PeerManagerBase's maxRibVersion_, which a group points at
-   * through its ShadowRibView. The change list consume timer callback
-   * dereferences that pointer unconditionally, so any group whose timer can
-   * fire must be given a non-null one -- the ShadowRibView default leaves it
-   * null. Declared after adjRibOutGroup_ so it outlives the group pointing at
-   * it.
+   * Stands in for PeerManagerBase's maxRibVersion_, which a group binds to
+   * through its ShadowRibView. Groups built off the ShadowRibView default read
+   * a constant 0 instead, so any group whose version the test advances must be
+   * given this one. Declared after adjRibOutGroup_ so it outlives the group
+   * bound to it.
    */
   uint64_t maxRibVersion_{0};
 };
@@ -422,7 +421,7 @@ TEST_F(AdjRibGroupTest, MultipleGroupsSameTracker) {
       2,
       true /* enableUpdateGroup */,
       UpdateGroupKey{},
-      ShadowRibView{nullptr, &maxRibVersion_});
+      ShadowRibView{ShadowRibView::emptyEntries(), maxRibVersion_});
   group2->setChangeListTracker(
       changeListTracker_, addPathConsumerBitmap_, nonAddPathConsumerBitmap_);
   group2->registerGroupConsumer();
@@ -930,7 +929,7 @@ TEST_F(AdjRibGroupTest, ScheduleInitialDumpSetsRibVersionOnJoinedPeers) {
       0,
       true /* enableUpdateGroup */,
       UpdateGroupKey{},
-      ShadowRibView{&shadowRibEntries, &maxRibVersion});
+      ShadowRibView{shadowRibEntries, maxRibVersion});
 
   auto adjRib1 = createMinimalAdjRib(1);
   adjRibOutGroup_->registerPeer(adjRib1);
@@ -960,7 +959,7 @@ TEST_F(AdjRibGroupTest, InitialDumpOnEmptyShadowRibUsesMaxRibVersion) {
       0,
       true /* enableUpdateGroup */,
       UpdateGroupKey{},
-      ShadowRibView{&emptyShadowRib, &maxRibVersion});
+      ShadowRibView{emptyShadowRib, maxRibVersion});
 
   auto adjRib1 = createMinimalAdjRib(1);
   adjRibOutGroup_->registerPeer(adjRib1);
@@ -972,6 +971,44 @@ TEST_F(AdjRibGroupTest, InitialDumpOnEmptyShadowRibUsesMaxRibVersion) {
   EXPECT_EQ(adjRibOutGroup_->getLastSeenRibVersion(), maxRibVersion);
   EXPECT_EQ(adjRib1->getPeerState(), PeerUpdateState::JOINED_RUNNING);
   EXPECT_EQ(adjRib1->getLastSeenRibVersion(), maxRibVersion);
+}
+
+/*
+ * A dump whose walk produced no work for a builder settles in IDLE, not
+ * WAITING -- the same hasPendingMessages() test the egress policy
+ * re-evaluation walk uses.
+ *
+ * Driven through processRibDumpForGroup directly: scheduleInitialDump is a
+ * no-op for a group with no members, and a group with a member owes EoRs,
+ * which is the WAITING case covered above.
+ */
+TEST_F(AdjRibGroupTest, DumpWithNothingPendingSettlesIdle) {
+  ShadowRibEntriesMap emptyShadowRib;
+  uint64_t maxRibVersion = 7;
+
+  adjRibOutGroup_ = std::make_shared<AdjRibOutGroup>(
+      *evb_,
+      "test_group",
+      0,
+      true /* enableUpdateGroup */,
+      UpdateGroupKey{},
+      ShadowRibView{emptyShadowRib, maxRibVersion});
+  ASSERT_EQ(UpdateGroupState::UNINITIALIZED, adjRibOutGroup_->getState());
+
+  /*
+   * Empty shadow RIB packs nothing, and sendWithEoR=false leaves no peer owing
+   * an EoR, so hasPendingMessages() is false.
+   */
+  adjRibOutGroup_->processRibDumpForGroup(/*sendWithEoR=*/false);
+
+  EXPECT_EQ(UpdateGroupState::IDLE, adjRibOutGroup_->getState());
+
+  /*
+   * The dump queued a build+send on asyncScope_. Run the loop so it completes:
+   * TearDown blockingWaits on drainAsyncScope(), which cannot make progress
+   * while the coroutine is still queued on an idle EventBase.
+   */
+  evb_->loopOnce();
 }
 
 /**
@@ -2598,7 +2635,7 @@ TEST_F(AdjRibGroupPackingFixture, EorCountedSeparatelyFromUpdate) {
       0,
       true /* enableUpdateGroup */,
       key,
-      ShadowRibView{&emptyShadowRib, &maxRibVersion});
+      ShadowRibView{emptyShadowRib, maxRibVersion});
 
   auto adjRib = createMinimalAdjRib();
   auto adjRibInQ = std::make_shared<AdjRib::AdjRibInQueueT>(
@@ -3059,7 +3096,8 @@ class AdjRibGroupAddPathFixture : public AdjRibGroupTest {
 
   void createGroupWithAddPath(
       bool sendAddPath,
-      const ShadowRibEntriesMap* shadowRibEntries = nullptr) {
+      const ShadowRibEntriesMap& shadowRibEntries =
+          ShadowRibView::emptyEntries()) {
     UpdateGroupKey groupKey;
     groupKey.sendAddPath = sendAddPath;
     groupKey.sessionType = BgpSessionType::EBGP;
@@ -3072,7 +3110,7 @@ class AdjRibGroupAddPathFixture : public AdjRibGroupTest {
         42,
         true /* enableUpdateGroup */,
         groupKey,
-        ShadowRibView{shadowRibEntries, &maxRibVersion_});
+        ShadowRibView{shadowRibEntries, maxRibVersion_});
   }
 
   std::shared_ptr<BgpPath> createPath(uint32_t localPref) {
@@ -4840,7 +4878,7 @@ TEST_F(
       prefix,
       std::make_unique<TrackableObject<ShadowRibEntry>>(std::move(srEntry)));
 
-  createGroupWithAddPath(false /* sendAddPath */, &shadowRibEntries);
+  createGroupWithAddPath(false /* sendAddPath */, shadowRibEntries);
 
   adjRibOutGroup_->walkAndProcessShadowRib(false /* sendWithEoR */);
   evb_->loopOnce();
@@ -4892,7 +4930,7 @@ TEST_F(
       prefix,
       std::make_unique<TrackableObject<ShadowRibEntry>>(std::move(srEntry)));
 
-  createGroupWithAddPath(true /* sendAddPath */, &shadowRibEntries);
+  createGroupWithAddPath(true /* sendAddPath */, shadowRibEntries);
 
   adjRibOutGroup_->walkAndProcessShadowRib(false /* sendWithEoR */);
   evb_->loopOnce();
@@ -4943,7 +4981,7 @@ TEST_F(
       prefix,
       std::make_unique<TrackableObject<ShadowRibEntry>>(std::move(srEntry)));
 
-  createGroupWithAddPath(false /* sendAddPath */, &shadowRibEntries);
+  createGroupWithAddPath(false /* sendAddPath */, shadowRibEntries);
 
   adjRibOutGroup_->walkAndProcessShadowRib(false /* sendWithEoR */);
   evb_->loopOnce();

@@ -60,14 +60,6 @@ class PolicyManager;
 struct AdjRibEntry;
 struct PostPolicyInfo;
 
-/*
- * Non-owning view of PeerManagerBase's shadow RIB handed to an update group:
- * the entries map plus a live pointer to the PeerManager's max seen RIB version
- * (maxRibVersion_). Both are null when no shadow RIB is wired in (e.g. the
- * legacy/non-update-group path or tests).
- */
-using ShadowRibView = std::pair<const ShadowRibEntriesMap*, const uint64_t*>;
-
 /**
  * Adjacency RIB Grouping has benefits for enabling memory and CPU improvements
  * However, implementation differences for the use of Group may differ for
@@ -90,7 +82,7 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
       uint64_t groupId = 0,
       bool enableUpdateGroup = false,
       const UpdateGroupKey& groupKey = UpdateGroupKey{},
-      const ShadowRibView& shadowRib = {},
+      const ShadowRibView& shadowRib = ShadowRibView::empty(),
       std::shared_ptr<PolicyManager> policyManager = nullptr,
       const UpdateGroupConfig& updateGroupConfig = {})
       : evb_(evb),
@@ -99,8 +91,8 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
         enableUpdateGroup_(enableUpdateGroup),
         groupKey_(groupKey),
         groupDescriptor_(buildGroupDescriptor(groupId, groupKey)),
-        shadowRibEntries_(shadowRib.first),
-        maxRibVersion_(shadowRib.second),
+        shadowRibEntries_(shadowRib.entries),
+        maxRibVersion_(shadowRib.maxRibVersion),
         policyManager_(std::move(policyManager)),
         policyCache_(AdjRibPolicyCache::get()),
         updateGroupConfig_(updateGroupConfig),
@@ -516,9 +508,6 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
 
   /*
    * Build initial RIB dump from shadow RIB. Advances lastSeenRibVersion_.
-   * Production groups are constructed by PeerManagerBase with its shadow RIB,
-   * so shadowRibEntries_ is always present; the implementation's null guard is
-   * defensive for direct test construction.
    * @param sendWithEoR - true if the peer still has pending EoRs to send,
    *        false if the peer has already sent EoRs (e.g., group move).
    */
@@ -1108,19 +1097,12 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
 
   /*
    * PeerManagerBase's max seen RIB version, read through the group's
-   * ShadowRibView. Returns 0 when no shadow RIB is wired in -- callers feed
-   * this to a setLastSeenRibVersion() that only advances, so 0 is a no-op.
+   * ShadowRibView. Reads 0 for a group built without a shadow RIB -- callers
+   * feed this to a setLastSeenRibVersion() that only advances, so 0 is a
+   * no-op.
    */
   uint64_t getShadowRibMaxVersion() const noexcept {
-    if (!maxRibVersion_) {
-      XLOGF_EVERY_MS(
-          ERR,
-          1000000,
-          "Group {}: Unexpected maxRibVersion_ nullptr, cannot report max RIB version",
-          groupDescriptor_);
-      return 0;
-    }
-    return *maxRibVersion_;
+    return maxRibVersion_;
   }
 
   /*
@@ -1609,20 +1591,19 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   uint32_t mraiInterval_{kDefaultMraiInterval};
 
   /*
-   * Pointer to shadow RIB entries for initial dump.
-   * Owned by PeerManagerBase. nullptr if not set.
-   * TODO: instead of maintaing shadowRibEntry map, maintaining a ptr to the
-   * entity which can retrieve the reference to shadowRibEntries.
+   * Shadow RIB entries walked by the initial dump and by egress policy
+   * re-evaluation. Non-owning; owned by PeerManagerBase, or by
+   * ShadowRibView::emptyEntries() for a group built without a shadow RIB.
    */
-  const ShadowRibEntriesMap* shadowRibEntries_{nullptr};
+  const ShadowRibEntriesMap& shadowRibEntries_;
 
   /*
-   * Live pointer to PeerManagerBase's max seen RIB version
-   * (maxRibVersion_). Non-owning; nullptr if no shadow RIB is wired in.
-   * Read during a full RIB dump to advance the group to the current table
-   * version even when the shadow RIB has been emptied.
+   * Live reference to PeerManagerBase's max seen RIB version
+   * (maxRibVersion_). Non-owning. Read during a full RIB dump to advance the
+   * group to the current table version even when the shadow RIB has been
+   * emptied.
    */
-  const uint64_t* maxRibVersion_{nullptr};
+  const uint64_t& maxRibVersion_;
   /*
    * Peering parameters cached from the first peer that formed this group
    * Used for AS-PATH manipulation, local pref, MED, etc.

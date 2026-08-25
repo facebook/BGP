@@ -419,7 +419,8 @@ TEST_F(UpdateGroupManagerTest, PolicyManagerPassedToConstructor) {
    * Test that UpdateGroupManager can be created with nullptr policyManager
    * This is the common case when policyManager is not needed
    */
-  UpdateGroupManager manager1(evb, UpdateGroupConfig{}, nullptr, nullptr);
+  UpdateGroupManager manager1(
+      evb, UpdateGroupConfig{}, ShadowRibView::empty(), nullptr);
   EXPECT_EQ(0, manager1.getGroupCount());
 
   /*
@@ -429,7 +430,7 @@ TEST_F(UpdateGroupManagerTest, PolicyManagerPassedToConstructor) {
   UpdateGroupManager manager2(
       evb,
       UpdateGroupConfig{},
-      nullptr, // shadowRibEntries
+      ShadowRibView::empty(),
       nullptr, // policyManager
       nullptr); // isRibInitDone
   EXPECT_EQ(0, manager2.getGroupCount());
@@ -453,8 +454,7 @@ TEST_F(
   UpdateGroupManager manager(
       evb,
       UpdateGroupConfig{},
-      nullptr, // shadowRibEntries
-      nullptr, // maxRibVersion
+      ShadowRibView::empty(),
       policyManager,
       nullptr); // isRibInitDone
 

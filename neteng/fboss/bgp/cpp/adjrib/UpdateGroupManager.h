@@ -47,14 +47,12 @@ class UpdateGroupManager {
   explicit UpdateGroupManager(
       folly::EventBase& evb,
       const UpdateGroupConfig& updateGroupConfig,
-      const ShadowRibEntriesMap* shadowRibEntries = nullptr,
-      const uint64_t* maxRibVersion = nullptr,
+      const ShadowRibView& shadowRib = ShadowRibView::empty(),
       std::shared_ptr<PolicyManager> policyManager = nullptr,
       std::function<bool()> isRibInitDone = nullptr)
       : evb_(evb),
         updateGroupConfig_(updateGroupConfig),
-        shadowRibEntries_(shadowRibEntries),
-        maxRibVersion_(maxRibVersion),
+        shadowRib_(shadowRib),
         policyManager_(std::move(policyManager)),
         isRibInitDone_(std::move(isRibInitDone)) {}
   ~UpdateGroupManager() = default;
@@ -172,17 +170,11 @@ class UpdateGroupManager {
   UpdateGroupConfig updateGroupConfig_;
 
   /*
-   * Reference to PeerManagerBase's shadow RIB entries.
-   * Passed to update groups for initial dumps and change tracking.
+   * Non-owning view of PeerManagerBase's shadow RIB entries and max seen RIB
+   * version. Handed to every update group this manager creates, so a full RIB
+   * dump can walk the table and advance the group to the current version.
    */
-  const ShadowRibEntriesMap* shadowRibEntries_{nullptr};
-
-  /*
-   * Live pointer to PeerManagerBase's max seen RIB version. Passed to update
-   * groups so a full RIB dump can advance the group to the current table
-   * version. nullptr if not wired in.
-   */
-  const uint64_t* maxRibVersion_{nullptr};
+  ShadowRibView shadowRib_;
 
   /*
    * Shared_ptr to the policyManager instance shared across all
