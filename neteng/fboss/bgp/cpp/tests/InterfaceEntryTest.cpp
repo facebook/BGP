@@ -314,6 +314,15 @@ const auto kT0 =
     std::chrono::steady_clock::time_point{} + std::chrono::hours(1);
 constexpr auto kInitial = kInitialLinkUpHoldDownTime;
 constexpr auto kMax = kMaxLinkUpHoldDownTime;
+
+// An entry with the link up and one resolved kernel neighbor.
+InterfaceEntry makeResolvedEntry(const folly::IPAddress& peer) {
+  InterfaceEntry ifEntry{"po245"};
+  ifEntry.setUp(true);
+  ifEntry.updateAddr(kV4Prefix2Slash31, true);
+  ifEntry.updateReachability(peer, true);
+  return ifEntry;
+}
 } // namespace
 
 /**
@@ -419,6 +428,98 @@ TEST(InterfaceEntryTest, LadderReturnsToInitialAfterQuietPeriod) {
   ifEntry.recordLinkDown(quietDown, kInitial, kMax);
   ifEntry.startLinkUpHold(quietDown);
   EXPECT_EQ(kInitial, *ifEntry.getHoldEndTime() - quietDown);
+}
+
+/**
+ * RED test. A hold stops the published reachability until the clock passes the
+ * hold end time. Remove "now >= holdEndTime_" from canUseLink and only this
+ * test fails.
+ */
+TEST(InterfaceEntryTest, HoldStopsPublishedReachabilityUntilItEnds) {
+  auto peer = folly::IPAddress("9.0.0.1");
+  auto ifEntry = makeResolvedEntry(peer);
+  ASSERT_TRUE(ifEntry.isReachable(peer, kT0));
+
+  // Two transitions: the link-down moves the ladder, the link-up starts a hold.
+  ifEntry.setUp(false);
+  ifEntry.recordLinkDown(kT0, kInitial, kMax);
+  ifEntry.setUp(true);
+  ASSERT_TRUE(ifEntry.startLinkUpHold(kT0));
+
+  // The kernel neighbor state survives, but the hold stops the publish.
+  EXPECT_TRUE(ifEntry.getNeighborStateMap().at(peer));
+  EXPECT_FALSE(
+      ifEntry.isReachable(peer, kT0 + kInitial - std::chrono::milliseconds(1)));
+
+  // The hold ends by arithmetic. No event is necessary.
+  EXPECT_TRUE(ifEntry.isReachable(peer, kT0 + kInitial));
+}
+
+/**
+ * A hold never stops a link-down. The published value is false at every time,
+ * so the RIB withdraws the routes with no delay.
+ */
+TEST(InterfaceEntryTest, HoldNeverStopsLinkDown) {
+  auto peer = folly::IPAddress("9.0.0.1");
+  auto ifEntry = makeResolvedEntry(peer);
+
+  ifEntry.recordLinkDown(kT0, kInitial, kMax);
+  ifEntry.setUp(true);
+  ASSERT_TRUE(ifEntry.startLinkUpHold(kT0));
+
+  // The link goes down again while the hold runs.
+  ifEntry.setUp(false);
+  EXPECT_FALSE(ifEntry.isReachable(peer, kT0));
+  EXPECT_FALSE(ifEntry.isReachable(peer, kT0 + kInitial));
+  EXPECT_FALSE(ifEntry.isReachable(peer, kT0 + std::chrono::hours(1)));
+}
+
+/**
+ * A hold that ended does not make a flushed neighbor reachable. This is the
+ * companion to NetlinkWrapperTest TestNeighborFlushClearsStateAcrossLinkDownUp:
+ * the hold changes only the link half, never the neighbor half.
+ */
+TEST(InterfaceEntryTest, HoldDoesNotMakeFlushedNeighborReachable) {
+  auto peer = folly::IPAddress("9.0.0.1");
+  auto ifEntry = makeResolvedEntry(peer);
+
+  // The kernel removes the neighbor, then the link flaps.
+  ASSERT_TRUE(ifEntry.updateReachability(peer, false));
+  ifEntry.setUp(false);
+  ifEntry.recordLinkDown(kT0, kInitial, kMax);
+  ifEntry.setUp(true);
+  ASSERT_TRUE(ifEntry.startLinkUpHold(kT0));
+
+  // The hold ends, but the neighbor half is still false.
+  EXPECT_TRUE(ifEntry.canUseLink(kT0 + kInitial));
+  EXPECT_FALSE(ifEntry.isReachable(peer, kT0 + kInitial));
+}
+
+/**
+ * Both public accessors read the same predicate, so they cannot disagree at
+ * the same time.
+ */
+TEST(InterfaceEntryTest, IsReachableAndForEachGiveTheSameValue) {
+  auto peer = folly::IPAddress("9.0.0.1");
+  auto other = folly::IPAddress("9.0.0.0");
+  auto ifEntry = makeResolvedEntry(peer);
+
+  ifEntry.recordLinkDown(kT0, kInitial, kMax);
+  ifEntry.setUp(true);
+  ASSERT_TRUE(ifEntry.startLinkUpHold(kT0));
+
+  for (const auto& now : {kT0, kT0 + kInitial}) {
+    folly::F14NodeMap<folly::IPAddress, bool> published;
+    ifEntry.forEachPublishedReachability(
+        [&](const folly::IPAddress& ip, bool reachable) {
+          published.insert({ip, reachable});
+        },
+        now);
+    const folly::F14NodeMap<folly::IPAddress, bool> expected{
+        {peer, ifEntry.isReachable(peer, now)},
+        {other, ifEntry.isReachable(other, now)}};
+    EXPECT_EQ(expected, published);
+  }
 }
 
 } // namespace facebook::bgp

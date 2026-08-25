@@ -68,10 +68,17 @@ class InterfaceEntry final {
   bool updateReachability(const folly::IPAddress& ip, bool reachability);
 
   /**
-   * Published reachability for a single IP: the kernel's neighbor state ANDed
-   * with the interface's link state. False for an untracked IP.
+   * The published reachability of one IP. This is the kernel neighbor state
+   * AND the link state AND the hold state. It is false for an IP that is not
+   * tracked.
+   *
+   * The now parameter has a default value, so a caller that does not use the
+   * hold does not have to supply it.
    */
-  bool isReachable(const folly::IPAddress& ip) const;
+  bool isReachable(
+      const folly::IPAddress& ip,
+      std::chrono::steady_clock::time_point now =
+          std::chrono::steady_clock::now()) const;
 
   /**
    * True if the kernel reports at least one seeded host IP on this interface as
@@ -81,17 +88,24 @@ class InterfaceEntry final {
   bool hasReachableNeighbor() const;
 
   /**
-   * Invoke fn(ip, reachable) for every seeded host IP, where reachable is the
-   * published value: the kernel's neighbor state ANDed with link state.
+   * Give fn(ip, reachable) for each seeded host IP. The reachable value is the
+   * kernel neighbor state AND the link state AND the hold state.
    *
    * The two halves are combined here at read time rather than stored combined.
    * A link event must not write the neighbor half. After a debounce netlink
    * sends no neighbor event, so nothing would restore it.
+   *
+   * The now parameter has a default value, so a caller that does not use the
+   * hold does not have to supply it.
    */
   template <typename F>
-  void forEachPublishedReachability(F&& fn) const {
+  void forEachPublishedReachability(
+      F&& fn,
+      std::chrono::steady_clock::time_point now =
+          std::chrono::steady_clock::now()) const {
+    const bool linkUsable = canUseLink(now);
     for (const auto& [ip, neighborReachable] : ipReachabilityMap_) {
-      fn(ip, neighborReachable && isUp_);
+      fn(ip, neighborReachable && linkUsable);
     }
   }
 
@@ -140,11 +154,8 @@ class InterfaceEntry final {
 
   /**
    * Return true if the code can use the link at this time. This is the link
-   * state AND the hold state.
-   *
-   * No caller uses this yet. A later diff makes it the link half of the
-   * published reachability, so that one predicate answers the question and the
-   * accessors cannot disagree.
+   * half of the published reachability. The kernel neighbor state is the
+   * other half.
    */
   bool canUseLink(std::chrono::steady_clock::time_point now) const;
 

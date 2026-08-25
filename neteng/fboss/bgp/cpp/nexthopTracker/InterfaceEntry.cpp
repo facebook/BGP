@@ -103,13 +103,15 @@ bool InterfaceEntry::updateReachability(
   return false;
 }
 
-bool InterfaceEntry::isReachable(const folly::IPAddress& ip) const {
+bool InterfaceEntry::isReachable(
+    const folly::IPAddress& ip,
+    std::chrono::steady_clock::time_point now) const {
   auto it = ipReachabilityMap_.find(ip);
   if (it == ipReachabilityMap_.end()) {
     return false;
   }
   const bool neighborReachable = it->second;
-  return neighborReachable && isUp_;
+  return neighborReachable && canUseLink(now);
 }
 
 bool InterfaceEntry::hasReachableNeighbor() const {
