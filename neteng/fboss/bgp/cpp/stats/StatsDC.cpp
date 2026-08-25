@@ -167,6 +167,62 @@ DEFINE_quantile_stat(
     fb303::SlidingWindowPeriodConsts::kOneMinTenMin);
 
 DEFINE_timeseries(
+    canonicalRibExportUpsert,
+    kCanonicalRibExportUpsert,
+    fb303::SUM);
+DEFINE_timeseries(
+    canonicalRibExportDelete,
+    kCanonicalRibExportDelete,
+    fb303::SUM);
+DEFINE_timeseries(
+    canonicalRibExportIncrementalBatchUpdate,
+    kCanonicalRibExportIncrementalBatchUpdate,
+    fb303::SUM);
+DEFINE_timeseries(
+    canonicalRibExportFullSnapshotUpdate,
+    kCanonicalRibExportFullSnapshotUpdate,
+    fb303::SUM);
+DEFINE_timeseries(
+    canonicalRibExportReconnectRebuildRequest,
+    kCanonicalRibExportReconnectRebuildRequest,
+    fb303::SUM);
+DEFINE_timeseries(
+    canonicalRibExportReconnectRebuildStart,
+    kCanonicalRibExportReconnectRebuildStart,
+    fb303::SUM);
+DEFINE_quantile_stat(
+    canonicalRibExportBuildTimeMs,
+    kCanonicalRibExportBuildTimeMs,
+    fb303::ExportTypeConsts::kAvg,
+    fb303::QuantileConsts::kP50_P95_P99,
+    fb303::SlidingWindowPeriodConsts::kOneMinTenMin);
+DEFINE_quantile_stat(
+    canonicalRibExportPublishTimeMs,
+    kCanonicalRibExportPublishTimeMs,
+    fb303::ExportTypeConsts::kAvg,
+    fb303::QuantileConsts::kP50_P95_P99,
+    fb303::SlidingWindowPeriodConsts::kOneMinTenMin);
+DEFINE_quantile_stat(
+    canonicalRibExportRibThreadTimeMs,
+    kCanonicalRibExportRibThreadTimeMs,
+    fb303::ExportTypeConsts::kAvg,
+    fb303::QuantileConsts::kP50_P95_P99,
+    fb303::SlidingWindowPeriodConsts::kOneMinTenMin);
+
+void setCanonicalRibPoolStats(
+    std::string_view pool,
+    size_t live,
+    size_t highWater) {
+  auto* stats = fb303::ThreadCachedServiceData::get();
+  const auto prefix = fmt::format("bgpcpp.rib.canonicalExporter.pool.{}", pool);
+  /* Pool IDs are signed int64, so these cardinalities cannot exceed INT64_MAX.
+   */
+  stats->setCounter(fmt::format("{}.live", prefix), static_cast<int64_t>(live));
+  stats->setCounter(
+      fmt::format("{}.highWater", prefix), static_cast<int64_t>(highWater));
+}
+
+DEFINE_timeseries(
     raPolicyCacheMigrationIdentical,
     kRaPolicyCacheMigrationIdentical,
     fb303::COUNT);
@@ -208,6 +264,13 @@ void setIsPartialDrain(bool isPartiallyDrained) {
 
 namespace FsdbStatsDC {
 
+DEFINE_quantile_stat(
+    fsdbSyncerPublishStateEnqueueTimeMs,
+    kFsdbSyncerPublishStateEnqueueTimeMs,
+    fb303::ExportTypeConsts::kAvg,
+    fb303::QuantileConsts::kP50_P95_P99,
+    fb303::SlidingWindowPeriodConsts::kOneMinTenMin);
+
 DEFINE_timeseries(
     fsdbNhtNexthopReachable,
     kFsdbNhtNexthopReachable,
@@ -248,6 +311,18 @@ void incrFsdbNhtDisconnects() {
 
 void setFsdbNhtConnected(int64_t val) {
   fb303::ThreadCachedServiceData::get()->setCounter(kFsdbNhtConnected, val);
+}
+
+void addFsdbSyncerSubtreeEvent(
+    std::string_view subtree,
+    std::string_view event) {
+  fb303::ThreadCachedServiceData::get()->addStatValue(
+      fmt::format("bgpcpp.fsdbSyncer.{}.{}", subtree, event), 1, fb303::SUM);
+}
+
+void addFsdbSyncerLifecycleEvent(std::string_view event) {
+  fb303::ThreadCachedServiceData::get()->addStatValue(
+      fmt::format("bgpcpp.fsdbSyncer.{}", event), 1, fb303::SUM);
 }
 
 } // namespace FsdbStatsDC

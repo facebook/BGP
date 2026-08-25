@@ -143,4 +143,41 @@ TEST(StatsDCTest, DirectPolicyStatsPreserveOdsKeys) {
       stats->getCounter(std::string(RibStatsDC::kRaPolicyUpdate) + ".count"));
 }
 
+TEST(StatsDCTest, CanonicalRibPoolStats) {
+  auto* stats = fb303::ThreadCachedServiceData::get();
+  RibStatsDC::setCanonicalRibPoolStats("unitTest", /*live=*/3, /*highWater=*/5);
+  EXPECT_EQ(
+      3, stats->getCounter("bgpcpp.rib.canonicalExporter.pool.unitTest.live"));
+  EXPECT_EQ(
+      5,
+      stats->getCounter(
+          "bgpcpp.rib.canonicalExporter.pool.unitTest.highWater"));
+}
+
+TEST(StatsDCTest, FsdbSyncerEventCounters) {
+  auto* stats = fb303::ThreadCachedServiceData::get();
+  FsdbStatsDC::addFsdbSyncerSubtreeEvent("unitTest", "numUpdate");
+  FsdbStatsDC::addFsdbSyncerSubtreeEvent("unitTest", "numUpdate");
+  FsdbStatsDC::addFsdbSyncerLifecycleEvent("numUnitTestConnect");
+  stats->publishStats();
+  EXPECT_EQ(
+      2, stats->getCounter("bgpcpp.fsdbSyncer.unitTest.numUpdate.sum.60"));
+  EXPECT_EQ(
+      1, stats->getCounter("bgpcpp.fsdbSyncer.numUnitTestConnect.sum.60"));
+}
+
+TEST(StatsDCTest, CanonicalExportLatencyCounters) {
+  RibStatsDC::STATS_canonicalRibExportRibThreadTimeMs.addValue(7);
+  FsdbStatsDC::STATS_fsdbSyncerPublishStateEnqueueTimeMs.addValue(3);
+  facebook::fb303::ServiceData::get()->getQuantileStatMap()->flushAll();
+
+  auto* stats = fb303::ThreadCachedServiceData::get();
+  EXPECT_EQ(
+      7,
+      stats->getCounter("bgpcpp.rib.canonicalExporter.ribThreadTimeMs.avg.60"));
+  EXPECT_EQ(
+      3,
+      stats->getCounter("bgpcpp.fsdbSyncer.publishStateEnqueueTimeMs.avg.60"));
+}
+
 } // namespace facebook::bgp

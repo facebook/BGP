@@ -903,6 +903,7 @@ void decrPostPolicyResultCacheCount() {
   fb303::ThreadCachedServiceData::get()->incrementCounter(
       kPostPolicyResultCacheCount, -1);
 }
+
 } // namespace RibStats
 
 //------------------------ FibStats ------------------------//

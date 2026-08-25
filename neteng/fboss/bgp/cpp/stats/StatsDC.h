@@ -16,7 +16,9 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <string_view>
 
 #include <folly/FixedString.h>
 
@@ -115,6 +117,56 @@ inline constexpr auto ribFullSyncRouteAttributeOverwriteTimeMs =
     "bgpd.rib.fullSyncRouteAttributeOverwriteTimeMs";
 DECLARE_quantile_stat(ribFullSyncRouteAttributeOverwriteTimeMs);
 
+// Prefix changes encoded as present canonical entries.
+inline constexpr auto kCanonicalRibExportUpsert =
+    "bgpcpp.rib.canonicalExporter.numPrefixUpsert";
+DECLARE_timeseries(canonicalRibExportUpsert);
+// Prefix changes encoded as canonical entry deletions.
+inline constexpr auto kCanonicalRibExportDelete =
+    "bgpcpp.rib.canonicalExporter.numPrefixDelete";
+DECLARE_timeseries(canonicalRibExportDelete);
+// Incremental FSDB transactions containing one coalesced prefix batch.
+inline constexpr auto kCanonicalRibExportIncrementalBatchUpdate =
+    "bgpcpp.rib.canonicalExporter.numIncrementalBatchUpdate";
+DECLARE_timeseries(canonicalRibExportIncrementalBatchUpdate);
+// Complete canonical snapshots built for initial sync or reconnect.
+inline constexpr auto kCanonicalRibExportFullSnapshotUpdate =
+    "bgpcpp.rib.canonicalExporter.numFullSnapshotUpdate";
+DECLARE_timeseries(canonicalRibExportFullSnapshotUpdate);
+// FSDB reconnect generations received by the canonical exporter.
+inline constexpr auto kCanonicalRibExportReconnectRebuildRequest =
+    "bgpcpp.rib.canonicalExporter.numReconnectRebuildRequest";
+DECLARE_timeseries(canonicalRibExportReconnectRebuildRequest);
+// RIB-sized reconnect walks actually started after all scheduling gates.
+inline constexpr auto kCanonicalRibExportReconnectRebuildStart =
+    "bgpcpp.rib.canonicalExporter.numReconnectRebuildStart";
+DECLARE_timeseries(canonicalRibExportReconnectRebuildStart);
+// Time spent encoding canonical entries before each publication boundary.
+inline constexpr auto kCanonicalRibExportBuildTimeMs =
+    "bgpcpp.rib.canonicalExporter.buildTimeMs";
+DECLARE_quantile_stat(canonicalRibExportBuildTimeMs);
+// End-to-end time spent preparing and handing one update to FsdbSyncer.
+inline constexpr auto kCanonicalRibExportPublishTimeMs =
+    "bgpcpp.rib.canonicalExporter.publishTimeMs";
+DECLARE_quantile_stat(canonicalRibExportPublishTimeMs);
+// Total time canonical export occupies the RIB EventBase for one batch.
+inline constexpr auto kCanonicalRibExportRibThreadTimeMs =
+    "bgpcpp.rib.canonicalExporter.ribThreadTimeMs";
+DECLARE_quantile_stat(canonicalRibExportRibThreadTimeMs);
+
+/**
+ * Set point-in-time fb303 counters describing one canonical interning pool.
+ *
+ * @param pool Stable pool label used in dynamic counter names.
+ * @param live Slots currently tracked by the pool.
+ * @param highWater Number of monotonic IDs allocated in the encoder epoch;
+ *     equivalently, the next ID that would be assigned.
+ */
+void setCanonicalRibPoolStats(
+    std::string_view pool,
+    size_t live,
+    size_t highWater);
+
 // Cache migration outcome types
 inline constexpr auto kRaPolicyCacheMigrationIdentical =
     "bgpd.ribPolicy.routeAttributePolicyCache.migration.identical";
@@ -152,6 +204,11 @@ namespace FsdbStatsDC {
 
 constexpr auto kNbrDownPrefix = "bgpd.fsdb."_fs;
 
+// Time waiting for the publication barrier and enqueueing one FSDB patch.
+inline constexpr auto kFsdbSyncerPublishStateEnqueueTimeMs =
+    "bgpcpp.fsdbSyncer.publishStateEnqueueTimeMs";
+DECLARE_quantile_stat(fsdbSyncerPublishStateEnqueueTimeMs);
+
 // NHT FSDB reachability transition counters
 inline const auto kFsdbNhtNexthopReachable =
     fmt::format("{}.nht.fsdb.nexthop_reachable", kBgpcppTag);
@@ -171,6 +228,27 @@ void incrFsdbNhtDisconnects();
 inline const auto kFsdbNhtConnected =
     fmt::format("{}.nht.fsdb.connected", kBgpcppTag);
 void setFsdbNhtConnected(int64_t val);
+
+/**
+ * Increment a dynamic per-subtree FSDB syncer counter.
+ *
+ * Counters use `bgpcpp.fsdbSyncer.<subtree>.<event>`. `numUpdate` counts every
+ * update received, `numClear` explicit clears, and `numIncrementalPublish`
+ * successful incremental patches containing the subtree.
+ *
+ * @param subtree Stable BgpData subtree label.
+ * @param event Counter suffix such as numUpdate or numIncrementalPublish.
+ */
+void addFsdbSyncerSubtreeEvent(
+    std::string_view subtree,
+    std::string_view event);
+
+/**
+ * Increment a dynamic FSDB syncer lifecycle counter.
+ *
+ * @param event Counter suffix such as numConnect or numSnapshotPublish.
+ */
+void addFsdbSyncerLifecycleEvent(std::string_view event);
 
 void initCounters();
 

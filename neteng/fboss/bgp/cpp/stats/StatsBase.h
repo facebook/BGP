@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include <string_view>
+
 #include <folly/FixedString.h>
 
 #include <fb303/ThreadCachedServiceData.h>
