@@ -44,6 +44,26 @@ struct InternResult {
   int64_t id{0};
   bool poolChanged{false};
 };
+
+/**
+ * Point-in-time resident-slot cardinality of one continuous intern pool.
+ *
+ * `live` includes expired weak slots until the rate-limited sweep removes
+ * them. This keeps collection O(1) on every publication and reports the slots
+ * that still consume pool memory. `retired()` counts IDs removed by a sweep;
+ * retired IDs are never reused.
+ */
+struct PoolStats {
+  size_t live{0};
+  size_t highWater{0};
+
+  /** @return Allocated IDs no longer represented by a tracked pool slot. */
+  size_t retired() const {
+    XCHECK_LE(live, highWater)
+        << "canonical pool live count exceeds its allocation watermark";
+    return highWater - live;
+  }
+};
 /*
  * Intern pool for one-shot encoding.
  *
@@ -106,13 +126,13 @@ class StrongInternPool {
 class PeerPool {
  public:
   /**
-   * Intern peer attribution for one synchronous snapshot build.
+   * Intern peer attribution.
    *
    * @param addr Peer address forming part of peer identity.
    * @param routerId Peer router ID forming part of peer identity.
-   * @param description Peer description, which must remain stable for a given
-   *     address and router ID throughout the build.
-   * @return The peer ID and true only when the peer was inserted.
+   * @param description Current peer description.
+   * @return Stable peer ID and whether the peer pool changed. The latter is
+   *     true for a new peer or an existing peer whose description was replaced.
    */
   InternResult internReporting(
       const folly::IPAddress& addr,
@@ -130,13 +150,8 @@ class PeerPool {
         : hasStoredDescription &&
             peer.peer_description().value() == description;
     if (!descriptionMatches) {
-      XLOGF(
-          DFATAL,
-          "Peer description changed during one-shot canonical encoding: peerAddr={}, routerId={}, storedDescription='{}', incomingDescription='{}'",
-          addr.str(),
-          routerId,
-          peer.peer_description().value_or("<unset>"),
-          description.empty() ? "<unset>" : description);
+      peer = toTCanonicalPeer(addr, routerId, description);
+      return {.id = it->second, .poolChanged = true};
     }
     return {.id = it->second, .poolChanged = false};
   }
@@ -172,6 +187,12 @@ class PeerPool {
 template <template <typename> class PoolT>
 class Encoding {
  public:
+  struct BuildEntryResult {
+    bgp_thrift::TRibEntryCanonical entry;
+    /** True when a referenced shared pool was inserted or refreshed. */
+    bool poolsChanged{false};
+  };
+
   /**
    * Encode one prefix without exposing whether shared pools changed.
    *
@@ -193,9 +214,25 @@ class Encoding {
       const std::vector<CanonicalPathInput>& paths,
       bool includeBestPath,
       bool includePaths) {
+    return buildEntryReportingChanges(
+               prefix, ribVersion, paths, includeBestPath, includePaths)
+        .entry;
+  }
+
+  /**
+   * Encode one prefix and report whether shared pools must be republished.
+   * Parameters and entry semantics match buildEntry().
+   */
+  BuildEntryResult buildEntryReportingChanges(
+      const folly::CIDRNetwork& prefix,
+      int64_t ribVersion,
+      const std::vector<CanonicalPathInput>& paths,
+      bool includeBestPath,
+      bool includePaths) {
     XCHECK(includeBestPath || includePaths)
         << "canonical entry encoding requires at least one path output";
-    bgp_thrift::TRibEntryCanonical entry;
+    BuildEntryResult result;
+    auto& entry = result.entry;
     entry.prefix() = createTIpPrefix(prefix);
     entry.rib_version() = ribVersion;
     std::string_view currentGroup;
@@ -212,13 +249,15 @@ class Encoding {
       const bool isSelectedBestPath =
           includeBestPath && input.isBestPath && !entry.best_path().has_value();
       if (includePaths) {
-        pathIndex = internWholePath(input.path).id;
+        const auto interned = internWholePath(input.path);
+        pathIndex = interned.id;
+        result.poolsChanged |= interned.poolChanged;
       } else if (isSelectedBestPath) {
         /*
          * A best-path-only entry has no whole-path pool reference, but its
          * attribute indices still need to be present in the dictionaries.
          */
-        internSubAttrs(input.path);
+        result.poolsChanged |= internSubAttrs(input.path);
       }
 
       if (isSelectedBestPath) {
@@ -236,11 +275,10 @@ class Encoding {
 
       bgp_thrift::TBgpPathCanonical path;
       path.path_idx() = pathIndex;
-      path.peer_idx() =
-          peerPool_
-              .internReporting(
-                  input.peerAddr, input.peerRouterId, input.peerDescription)
-              .id;
+      const auto peer = peerPool_.internReporting(
+          input.peerAddr, input.peerRouterId, input.peerDescription);
+      path.peer_idx() = peer.id;
+      result.poolsChanged |= peer.poolChanged;
       applyPerPathInstanceFields(path, input);
       if (currentPaths == nullptr || input.group != currentGroup) {
         currentGroup = input.group;
@@ -248,7 +286,7 @@ class Encoding {
       }
       currentPaths->push_back(std::move(path));
     }
-    return entry;
+    return result;
   }
 
   /**
@@ -295,20 +333,57 @@ class Encoding {
     return std::move(peerPool_).snapshot();
   }
 
+  /** @return True when at least one weak object pool reclaimed a slot. */
+  bool sweep() {
+    bool reclaimed = wholePathPool_.sweep();
+    reclaimed |= asPathPool_.sweep();
+    reclaimed |= communitiesPool_.sweep();
+    reclaimed |= extCommunitiesPool_.sweep();
+    reclaimed |= clusterListPool_.sweep();
+    return reclaimed;
+  }
+
+  /** @return Number of whole-path slots currently tracked. */
+  size_t livePathCount() const {
+    return wholePathPool_.trackedCount();
+  }
+  /** @return Total tracked slots across list-valued attribute pools. */
+  size_t liveDictEntryCount() const {
+    return asPathPool_.trackedCount() + communitiesPool_.trackedCount() +
+        extCommunitiesPool_.trackedCount() + clusterListPool_.trackedCount();
+  }
+  PoolStats wholePathStats() const {
+    return wholePathPool_.stats();
+  }
+  PoolStats asPathStats() const {
+    return asPathPool_.stats();
+  }
+  PoolStats communitiesStats() const {
+    return communitiesPool_.stats();
+  }
+  PoolStats extCommunitiesStats() const {
+    return extCommunitiesPool_.stats();
+  }
+  PoolStats clusterListStats() const {
+    return clusterListPool_.stats();
+  }
+
  private:
-  void internSubAttrs(const std::shared_ptr<const BgpPath>& path) {
+  bool internSubAttrs(const std::shared_ptr<const BgpPath>& path) {
+    bool changed = false;
     if (const auto& value = path->getAsPath().getSharedPtr()) {
-      asPathPool_.internReporting(value);
+      changed |= asPathPool_.internReporting(value).poolChanged;
     }
     if (const auto& value = path->getCommunities().getSharedPtr()) {
-      communitiesPool_.internReporting(value);
+      changed |= communitiesPool_.internReporting(value).poolChanged;
     }
     if (const auto& value = path->getExtCommunities().getSharedPtr()) {
-      extCommunitiesPool_.internReporting(value);
+      changed |= extCommunitiesPool_.internReporting(value).poolChanged;
     }
     if (const auto& value = path->getClusterList().getSharedPtr()) {
-      clusterListPool_.internReporting(value);
+      changed |= clusterListPool_.internReporting(value).poolChanged;
     }
+    return changed;
   }
 
   InternResult internWholePath(const std::shared_ptr<const BgpPath>& path) {
