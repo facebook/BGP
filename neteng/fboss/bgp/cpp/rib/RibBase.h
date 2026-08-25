@@ -966,8 +966,7 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
   void enqueueRibPolicyMsg(RibPolicyMessage msg) noexcept;
 
   virtual void overwriteRouteAttributes(
-      const std::unordered_set<folly::CIDRNetwork>& /* prefixes */,
-      bool /* fullRibWalk */ = false) {}
+      const folly::F14FastSet<folly::CIDRNetwork>& /* prefixes */) {}
 
   /**
    * Replace RibPolicy: save to disk, then trigger fib programming when there

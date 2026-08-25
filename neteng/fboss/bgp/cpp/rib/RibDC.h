@@ -205,8 +205,7 @@ class RibDC : public RibBase {
       bool isBootstrap = false) override;
 
   void overwriteRouteAttributes(
-      const std::unordered_set<folly::CIDRNetwork>& prefixes,
-      bool fullRibWalk = false) override;
+      const folly::F14FastSet<folly::CIDRNetwork>& prefixes) override;
 
   folly::coro::Task<void> processRibPolicyMsgLoop() noexcept override;
   /* CPS message handlers — DC-only. No virtuals on RibBase; RibDC's

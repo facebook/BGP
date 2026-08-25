@@ -1766,9 +1766,6 @@ void RibBase::prepareFibProgramming(bool fullSync) noexcept {
   XLOGF(DBG1, "Trigger Fib programming with fullSync = {}", fullSync);
   // track if at least one rib entry got active ucmp
   bool isUcmpActive{false};
-  // track if we are performing path selection / route attribute overwrite on
-  // all rib entries
-  bool fullRibWalk = true;
 
   RibOutWithdrawal withdrawal;
   RibOutWithdrawal withdrawalAddPath;
@@ -1785,7 +1782,7 @@ void RibBase::prepareFibProgramming(bool fullSync) noexcept {
   }
   // record rib entries that "needPathSelection", which need to go through
   // route attribute policy again
-  std::unordered_set<folly::CIDRNetwork> prefixesToOverwriteRouteAttributes;
+  folly::F14FastSet<folly::CIDRNetwork> prefixesToOverwriteRouteAttributes;
   // record start time before we perform path selection
   auto ribPolicyProcessingStartTime = std::chrono::steady_clock::now();
   for (auto& [prefix, ribEntry] : ribEntries_) {
@@ -1793,7 +1790,6 @@ void RibBase::prepareFibProgramming(bool fullSync) noexcept {
     // that the change could be something that does not affect bestpath or
     // multipath nexthops.
     if (!fullSync && !ribEntry.needPathSelection()) {
-      fullRibWalk = false;
       continue;
     }
 
@@ -1901,7 +1897,7 @@ void RibBase::prepareFibProgramming(bool fullSync) noexcept {
       }
     }
   }
-  if (fullRibWalk) {
+  if (prefixesToOverwriteRouteAttributes.size() == ribEntries_.size()) {
     auto pathSelectionTimeMs =
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - ribPolicyProcessingStartTime);
@@ -1926,7 +1922,7 @@ void RibBase::prepareFibProgramming(bool fullSync) noexcept {
 
   /* Virtual hook: subclasses override to apply CTE route attribute overwrites.
      Timing and full-sync stats are handled inside the override. */
-  overwriteRouteAttributes(prefixesToOverwriteRouteAttributes, fullRibWalk);
+  overwriteRouteAttributes(prefixesToOverwriteRouteAttributes);
 
   /*
    * Generic post-path-selection hook, invoked once per pass after path

@@ -1226,8 +1226,7 @@ bool RibDC::replacePathSelectionPolicy(
  * entries.
  */
 void RibDC::overwriteRouteAttributes(
-    const std::unordered_set<folly::CIDRNetwork>& prefixes,
-    bool fullRibWalk) {
+    const folly::F14FastSet<folly::CIDRNetwork>& prefixes) {
   auto overwriteStartTime = std::chrono::steady_clock::now();
 
   // trigger rib policy calculation
@@ -1240,10 +1239,10 @@ void RibDC::overwriteRouteAttributes(
    *    ucmp weight (if available);
    *  - Otherwise, we let rib policy overwrite the route attributes
    */
-  for (auto& [prefix, ribEntry] : ribEntries_) {
-    if (!prefixes.contains(prefix)) {
-      continue;
-    }
+  for (const auto& prefix : prefixes) {
+    auto ribIt = ribEntries_.find(prefix);
+    XCHECK(ribIt != ribEntries_.end());
+    auto& ribEntry = ribIt->second;
     auto startTime = std::chrono::steady_clock::now();
 
     bool matched = false;
@@ -1268,14 +1267,14 @@ void RibDC::overwriteRouteAttributes(
   // update fib batch list
   for (const auto& prefix : ribChange.updatedRoutes) {
     auto ribIt = ribEntries_.find(prefix);
-    CHECK(ribIt != ribEntries_.end());
+    XCHECK(ribIt != ribEntries_.end());
     auto& ribEntry = ribIt->second;
     if (!ribEntry.isOnFibBatchList()) {
       fibBatchList_.push_back(ribEntry);
     }
   }
 
-  if (fullRibWalk) {
+  if (prefixes.size() == ribEntries_.size()) {
     auto routeAttributeOverwriteTimeMs =
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - overwriteStartTime);
