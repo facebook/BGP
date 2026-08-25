@@ -243,16 +243,27 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
       uint32_t pathId) noexcept;
 
   /**
-   * When a peer detaches from the group at rib version N, any group entries
-   * with a rib version less than or equal to N existed when the peer was still
-   * attached, meaning the peer saw them. This implies the entry is shared by
-   * the peer. Entries with a rib version greater than N were created or
-   * re-announced after the peer detached and are not shared.
+   * Whether a peer still shares a group-owned entry.
+   *
+   * Sharing requires both halves, and the caller must supply the first:
+   *
+   * - peerHasOwnEntry: the peer has its own entry at this (prefix, pathId). A
+   *   diverged peer advertises from that entry, so the group's is not shared
+   *   no matter what the versions say. Divergence is per (prefix, pathId), so
+   *   one radix node can hold both peer-owned paths and still-shared group
+   *   paths. Pass what you know: look the peer entry up if you have not
+   *   already, and pass false when you have established its absence.
+   *
+   * - the version gate: when a peer detaches at rib version N, group entries
+   *   at or below N existed while the peer was still attached, so the peer saw
+   *   them. Entries above N were created or re-announced after the detach and
+   *   were never advertised to the peer.
    */
   static bool isEntryShared(
+      bool peerHasOwnEntry,
       uint64_t peerDetachedRibVersion,
       uint64_t groupEntryRibVersion) noexcept {
-    return peerDetachedRibVersion >= groupEntryRibVersion;
+    return !peerHasOwnEntry && peerDetachedRibVersion >= groupEntryRibVersion;
   }
 
   /*
@@ -310,7 +321,10 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
     }
     auto groupItr = ownerMap.find(getGroupOwnerKey());
     if (groupItr != ownerMap.end() &&
-        isEntryShared(sharingVersion, groupItr->second->getRibVersion())) {
+        isEntryShared(
+            /*peerHasOwnEntry=*/false,
+            sharingVersion,
+            groupItr->second->getRibVersion())) {
       return groupItr->second.get();
     }
     return nullptr;
@@ -345,11 +359,10 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
       return;
     }
     for (const auto& [pathId, entry] : groupItr->second) {
-      if (peerItr != ownerMap.end() &&
-          peerItr->second.find(pathId) != peerItr->second.end()) {
-        continue;
-      }
-      if (isEntryShared(sharingVersion, entry->getRibVersion())) {
+      const bool peerHasOwnEntry = peerItr != ownerMap.end() &&
+          peerItr->second.find(pathId) != peerItr->second.end();
+      if (isEntryShared(
+              peerHasOwnEntry, sharingVersion, entry->getRibVersion())) {
         cb(pathId, *entry);
       }
     }

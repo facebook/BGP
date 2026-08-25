@@ -130,12 +130,12 @@ class UpdateGroupAddPathDetachedPeerDownTest : public SlowPeerTestBase {
                    }
                    uint32_t sharedHere = 0;
                    for (const auto& [pathId, entry] : groupIt->second) {
-                     if (peerIt != ownerMap.end() &&
-                         peerIt->second.find(pathId) != peerIt->second.end()) {
-                       continue;
-                     }
+                     const bool peerHasOwnEntry = peerIt != ownerMap.end() &&
+                         peerIt->second.find(pathId) != peerIt->second.end();
                      if (AdjRibOutGroup::isEntryShared(
-                             sharingVersion, entry->getRibVersion())) {
+                             peerHasOwnEntry,
+                             sharingVersion,
+                             entry->getRibVersion())) {
                        ++sharedHere;
                      }
                    }

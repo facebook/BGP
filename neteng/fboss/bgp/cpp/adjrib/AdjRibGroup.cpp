@@ -365,7 +365,11 @@ AdjRibOutGroup::getRibEntrySharedOrPeer(
   if (isPerPeerEntry) {
     return {entry, true /* isPerPeerEntry */};
   }
-  if (entry && !isEntryShared(detachedRibVersion, entry->getRibVersion())) {
+  if (entry &&
+      !isEntryShared(
+          /*peerHasOwnEntry=*/false,
+          detachedRibVersion,
+          entry->getRibVersion())) {
     return {nullptr, false /* isPerPeerEntry */};
   }
   return {entry, false /* isPerPeerEntry */};
@@ -2896,11 +2900,12 @@ void AdjRibOutGroup::cleanUpPeerRibOut(
        */
       if (groupIt != ownerMap.end()) {
         for (const auto& [pathId, entry] : groupIt->second) {
-          if (peerOwnsEntry &&
-              peerIt->second.find(pathId) != peerIt->second.end()) {
-            continue;
-          }
-          if (isEntryShared(detachedRibVersion, entry->getRibVersion())) {
+          const bool peerHasOwnEntry = peerOwnsEntry &&
+              peerIt->second.find(pathId) != peerIt->second.end();
+          if (isEntryShared(
+                  peerHasOwnEntry,
+                  detachedRibVersion,
+                  entry->getRibVersion())) {
             /*
              * The peer advertised this shared (group-owned) entry too -- its
              * counts were seeded from the group at detach
@@ -2970,7 +2975,9 @@ void AdjRibOutGroup::cleanUpPeerRibOut(
         auto groupIt = ownerMap.find(groupOwnerKey);
         if (groupIt != ownerMap.end() &&
             isEntryShared(
-                detachedRibVersion, groupIt->second->getRibVersion())) {
+                /*peerHasOwnEntry=*/false,
+                detachedRibVersion,
+                groupIt->second->getRibVersion())) {
           /* Shared (group-owned) entry the peer advertised too; decrement its
            * counts (see the PathTree branch above). */
           bool isV4 = itr.ipAddress().isV4();
@@ -3085,12 +3092,12 @@ void AdjRibOutGroup::movePeerMaterializedRibOutPathEntries(
       auto groupItr = ownerMap.find(groupOwnerKey);
       if (groupItr != ownerMap.end()) {
         for (auto& [pathId, entry] : groupItr->second) {
-          const bool peerOwnsPath = peerOwnsEntry &&
+          const bool peerHasOwnEntry = peerOwnsEntry &&
               peerEntryItr->second.find(pathId) != peerEntryItr->second.end();
-          if (peerOwnsPath) {
-            continue;
-          }
-          if (isEntryShared(detachedRibVersion, entry->getRibVersion())) {
+          if (isEntryShared(
+                  peerHasOwnEntry,
+                  detachedRibVersion,
+                  entry->getRibVersion())) {
             newGroup->copyEntryForOwner(
                 prefix, pathId, peerOwnerKey, entry.get());
             copiedCount++;
@@ -3158,7 +3165,10 @@ void AdjRibOutGroup::movePeerMaterializedRibOutLiteEntries(
       auto groupItr = ownerMap.find(groupOwnerKey);
       if (groupItr != ownerMap.end()) {
         auto groupEntry = groupItr->second.get();
-        if (isEntryShared(detachedRibVersion, groupEntry->getRibVersion())) {
+        if (isEntryShared(
+                /*peerHasOwnEntry=*/false,
+                detachedRibVersion,
+                groupEntry->getRibVersion())) {
           newGroup->copyEntryForOwner(
               prefix, kDefaultPathID, peerOwnerKey, groupEntry);
           copiedCount++;
@@ -4190,18 +4200,16 @@ bool AdjRibOutGroup::shouldClonePathForPeer(
     const uint64_t groupEntryRibVersion) noexcept {
   auto peerOwnerKey = peer->getPeerOwnerKey();
 
-  // Case 1: peer already has its own entry for this prefix — no clone needed
-  if (getAdjRibEntryFromPathNodeItr(radixNodeItr, peerOwnerKey, pathId)) {
-    return false;
-  }
-
-  // Case 2: entry was announced/re-announced after peer detached — no clone
-  if (!isEntryShared(peer->getDetachedRibVersion(), groupEntryRibVersion)) {
-    return false;
-  }
-
-  // Case 3: peer was sharing this entry when detached — must clone
-  return true;
+  /*
+   * Clone only when the peer has no entry of its own here (Case 1) and the
+   * group entry predates its detach (Case 2); otherwise the peer either
+   * already advertises its own or never saw this one.
+   */
+  const bool peerHasOwnEntry =
+      getAdjRibEntryFromPathNodeItr(radixNodeItr, peerOwnerKey, pathId) !=
+      nullptr;
+  return isEntryShared(
+      peerHasOwnEntry, peer->getDetachedRibVersion(), groupEntryRibVersion);
 }
 
 bool AdjRibOutGroup::shouldCloneLiteForPeer(
@@ -4210,18 +4218,15 @@ bool AdjRibOutGroup::shouldCloneLiteForPeer(
     const uint64_t groupEntryRibVersion) noexcept {
   auto peerOwnerKey = peer->getPeerOwnerKey();
 
-  // Case 1: peer already has its own entry for this prefix — no clone needed
-  if (getAdjRibEntryFromLiteNodeItr(radixNodeItr, peerOwnerKey)) {
-    return false;
-  }
-
-  // Case 2: entry was announced/re-announced after peer detached — no clone
-  if (!isEntryShared(peer->getDetachedRibVersion(), groupEntryRibVersion)) {
-    return false;
-  }
-
-  // Case 3: peer was sharing this entry when detached — must clone
-  return true;
+  /*
+   * Clone only when the peer has no entry of its own here (Case 1) and the
+   * group entry predates its detach (Case 2); otherwise the peer either
+   * already advertises its own or never saw this one.
+   */
+  const bool peerHasOwnEntry =
+      getAdjRibEntryFromLiteNodeItr(radixNodeItr, peerOwnerKey) != nullptr;
+  return isEntryShared(
+      peerHasOwnEntry, peer->getDetachedRibVersion(), groupEntryRibVersion);
 }
 
 AdjRibEntry* AdjRibOutGroup::copyEntryForOwner(

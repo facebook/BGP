@@ -1036,6 +1036,7 @@ class E2ETestFixture : public ::testing::Test {
                      if (groupIt != ownerMap.end() &&
                          (!isDetached ||
                           AdjRibOutGroup::isEntryShared(
+                              /*peerHasOwnEntry=*/false,
                               detachedRibVersion,
                               groupIt->second->getRibVersion()))) {
                        entry = groupIt->second.get();

@@ -1416,6 +1416,7 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
                      if (groupIt != ownerMap.end() &&
                          (!isDetached ||
                           AdjRibOutGroup::isEntryShared(
+                              /*peerHasOwnEntry=*/false,
                               detachedRibVersion,
                               groupIt->second->getRibVersion()))) {
                        entry = groupIt->second.get();
