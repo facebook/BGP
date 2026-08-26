@@ -3369,6 +3369,25 @@ TEST_F(RibWithLocalRouteFixture, InstallToFibTest) {
   setUpRibAndFib(localRoutes);
 
   rib_->setFibBatchTime(milliseconds(8));
+
+  /*
+   * Local routes land in the RIB asynchronously. The path computation below
+   * programs whatever is present at that instant, so a route that has not
+   * landed yet is never scheduled for FIB programming at all — and the
+   * fibFuture then completes on that partial batch, hiding the omission.
+   *
+   * Only kV4Prefix1 and kV6Prefix1 are originated at startup; the remaining
+   * defaults carry minimum_supporting_routes = 1 and cannot appear until the
+   * supporting announcement below.
+   */
+  for (const auto& prefix : {kV4Prefix1, kV6Prefix1}) {
+    WITH_RETRIES({
+      auto prefixStr =
+          std::make_unique<std::string>(IPAddress::networkToString(prefix));
+      ASSERT_EVENTUALLY_FALSE(
+          rib_->getRibEntryForPrefix(std::move(prefixStr)).empty());
+    });
+  }
   {
     // send update msg with prefix 9.0.0.0/28 through eBgpPeer1_. Since we
     // need to write (0/28, {eBgpPeer1_}) to FIB, we do not need to write (1/32,
