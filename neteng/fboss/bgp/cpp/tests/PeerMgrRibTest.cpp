@@ -83,7 +83,8 @@
       PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest);      \
   FRIEND_TEST(                                                                  \
       PeerManagerTestFixture, SelectiveMultipathNotificationAddPathTest);       \
-  FRIEND_TEST(PeerManagerTestFixture, SelectiveMultipathNotificationMixTest);
+  FRIEND_TEST(PeerManagerTestFixture, SelectiveMultipathNotificationMixTest);   \
+  FRIEND_TEST(PeerManagerTestFixture, SetMaxRibVersionMonotonicity);
 
 #define AdjRib_TEST_FRIENDS                                                     \
   FRIEND_TEST(PeerManagerTestFixture, RibDumpReqNegativeTest);                  \
@@ -2938,6 +2939,42 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationMixTest) {
   /* Execute any pending work before test cleanup. */
   evb.loopOnce();
   co_return;
+}
+
+/*
+ * The max RIB version only advances. A caller passing a lower version is
+ * dropped and the attempt is logged, so an out-of-order RIB producer shows up
+ * in the logs instead of being silently swallowed.
+ */
+TEST_F(PeerManagerTestFixture, SetMaxRibVersionMonotonicity) {
+  auto config = getConfig(
+      false /* includeStaticPeer */, false /* includeDynamicShivPeer */);
+  auto peerMgr = std::make_shared<PeerManagerBase>(
+      std::make_shared<ConfigManager>(config),
+      nullptr,
+      ribInQ_,
+      ribOutQ_,
+      nbrRouteChangeQ_);
+
+  auto& messages = subscribeToLogMessages("", folly::LogLevel::ERR);
+  messages.clear();
+
+  peerMgr->setMaxRibVersion(10);
+  EXPECT_EQ(10, peerMgr->getMaxRibVersion());
+
+  /* Re-setting the same version is an ordinary no-op, not a violation. */
+  peerMgr->setMaxRibVersion(10);
+  EXPECT_EQ(10, peerMgr->getMaxRibVersion());
+  EXPECT_TRUE(messages.empty());
+
+  /* A lower version is dropped and reported. */
+  peerMgr->setMaxRibVersion(4);
+  EXPECT_EQ(10, peerMgr->getMaxRibVersion());
+  ASSERT_EQ(1, messages.size());
+  EXPECT_THAT(
+      messages[0].first.getMessage(),
+      testing::HasSubstr(
+          "RIB version monotonicity violation, ignoring attempt to set max RIB version 4 below current 10"));
 }
 
 /*

@@ -1434,9 +1434,12 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
    */
   uint64_t maxRibVersion_{0};
 
-  void setMaxRibVersion(uint64_t ribVersion) noexcept {
-    maxRibVersion_ = std::max(maxRibVersion_, ribVersion);
-  }
+  /*
+   * Only ever advances. A caller passing a version below the current one is a
+   * monotonicity violation: the value is dropped and the attempt is logged at
+   * ERR.
+   */
+  void setMaxRibVersion(uint64_t ribVersion) noexcept;
 
   // AdjRib will post this baton when session is terminated (both message
   // processing loops have completed). Used to do sequential synchronization

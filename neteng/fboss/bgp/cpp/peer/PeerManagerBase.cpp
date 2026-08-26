@@ -2071,6 +2071,27 @@ const ConsumerBitmap& PeerManagerBase::getConsumerBitmapForChange(
   return isBestpathChange ? nonAddPathConsumerBitmap_ : addPathConsumerBitmap_;
 }
 
+/*
+ * The RIB version PeerManager reports must never move backwards -- groups and
+ * peers derive their own cached versions from it. A caller handing back a
+ * lower version means the RIB produced entries out of order; the value is
+ * dropped either way, but the attempt points at a real ordering bug, so
+ * surface it. Equal versions are ordinary idempotent re-sets, not violations.
+ */
+void PeerManagerBase::setMaxRibVersion(uint64_t ribVersion) noexcept {
+  if (FOLLY_UNLIKELY(ribVersion < maxRibVersion_)) {
+    XLOGF_EVERY_MS(
+        ERR,
+        100000,
+        "RIB version monotonicity violation, ignoring attempt to set max RIB "
+        "version {} below current {}",
+        ribVersion,
+        maxRibVersion_);
+    return;
+  }
+  maxRibVersion_ = ribVersion;
+}
+
 void PeerManagerBase::handleShadowRibEntryAnnouncement(
     const RibOutAnnouncement& announcement) {
   /*

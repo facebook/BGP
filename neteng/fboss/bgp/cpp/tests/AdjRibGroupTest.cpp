@@ -874,6 +874,34 @@ TEST_F(AdjRibGroupTest, ScheduleInitialDumpOnce) {
 }
 
 /*
+ * The group's cached RIB version only advances. Equal versions are ordinary
+ * no-ops, while a lower version is rejected and reported as an ordering
+ * violation.
+ */
+TEST_F(AdjRibGroupTest, SetLastSeenRibVersionMonotonicity) {
+  createAdjRibOutGroup("test_group");
+  auto& messages = subscribeToLogMessages("", folly::LogLevel::ERR);
+  messages.clear();
+
+  adjRibOutGroup_->setLastSeenRibVersion(10);
+  EXPECT_EQ(10, adjRibOutGroup_->getLastSeenRibVersion());
+
+  adjRibOutGroup_->setLastSeenRibVersion(10);
+  EXPECT_EQ(10, adjRibOutGroup_->getLastSeenRibVersion());
+  EXPECT_TRUE(messages.empty());
+
+  adjRibOutGroup_->setLastSeenRibVersion(4);
+  EXPECT_EQ(10, adjRibOutGroup_->getLastSeenRibVersion());
+  ASSERT_EQ(1, messages.size());
+  EXPECT_THAT(
+      messages[0].first.getMessage(),
+      testing::HasSubstr(
+          "Group 0(/none,peerOverride=false) RIB version "
+          "monotonicity violation, ignoring attempt to set last seen RIB "
+          "version 4 below current 10"));
+}
+
+/*
  * The dump task bails when the group is drained before it gets its turn. That
  * exit leaves state_ at UNINITIALIZED, so the state guard cannot reject a
  * later request -- the latch has to be released or the group coalesces every

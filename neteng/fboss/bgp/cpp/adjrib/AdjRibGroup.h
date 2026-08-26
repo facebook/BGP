@@ -1129,13 +1129,22 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
    * Set the last seen RIB version for this group. Called after initial dump
    * completes and when consuming change list updates.
    *
-   * Only ever advances. Egress policy re-eval walks the shadow RIB and jumps
-   * the group to maxRibVersion, then the consume timer iterates a change list
-   * still holding older items -- processShadowRibEntryChange() would otherwise
-   * hand back their lower ribVersions and regress the group. Use
-   * clearLastSeenRibVersion() to reset.
+   * Only ever advances. A lower value violates the group's version-ordering
+   * invariant and is logged and ignored. Use clearLastSeenRibVersion() to
+   * reset.
    */
   void setLastSeenRibVersion(uint64_t version) noexcept {
+    if (FOLLY_UNLIKELY(version < lastSeenRibVersion_)) {
+      XLOGF_EVERY_MS(
+          ERR,
+          100000,
+          "Group {} RIB version monotonicity violation, ignoring attempt to "
+          "set last seen RIB version {} below current {}",
+          groupDescriptor_,
+          version,
+          lastSeenRibVersion_);
+      return;
+    }
     if (version > lastSeenRibVersion_) {
       lastSeenRibVersion_ = version;
     }
