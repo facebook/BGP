@@ -98,6 +98,15 @@ class BgpdDevServerProc final {
   // stop flag to avoid data race
   std::atomic<bool> stopFlag_{false};
 
+  /*
+   * bgpd logs asynchronously from several threads, so the thrift port, the BGP
+   * protocol port and the EOR_SENT readiness marker can reach our reader in any
+   * order. Every consumer of these three signals must gate on all of them
+   * together; treating isStarted_ alone as "done" silently drops whichever port
+   * line happens to arrive last.
+   */
+  bool allStartupSignalsCaptured() const noexcept;
+
   void matchPolicyConfig(
       const std::string& policy,
       const std::string& configStr);

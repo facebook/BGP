@@ -44,9 +44,16 @@ DEFINE_int32(
     120,
     "The default waiting upper bound for bgpd turning on");
 
+/*
+ * This budget covers how long bgpd's startup lines take to surface through its
+ * asynchronous logger, not just how long bgpd takes to initialize. On a loaded
+ * host the two diverge sharply: bgpd has been observed ready in 13s with its
+ * startup lines still surfacing 33s in. 60s leaves ~1.8x headroom over that
+ * worst measured lag while keeping a genuine failure quick to report.
+ */
 DEFINE_int32(
     bgpd_initializing_timeout_s,
-    30,
+    60,
     "The default waiting upper bound for bgpd finishing initialization");
 
 DEFINE_int64(
@@ -87,6 +94,10 @@ BgpdDevServerProc::BgpdDevServerProc(
     const std::string& bgpdLoc)
     : config_{config}, policy_{policy}, bgpdLoc_{bgpdLoc} {}
 
+bool BgpdDevServerProc::allStartupSignalsCaptured() const noexcept {
+  return isStarted_ && bgpPortParsed_ && thriftPortParsed_;
+}
+
 bool BgpdDevServerProc::run() {
   XLOGF(
       INFO, "Starting bgpd with config {} and policy {} ...", config_, policy_);
@@ -116,7 +127,7 @@ bool BgpdDevServerProc::run() {
                     int /*fd*/, folly::StringPiece s) {
                   // Printout the subprocess (bgpd) logs
                   XLOGF(INFO, "[bgpd] {}", s);
-                  if (this->isStarted_) {
+                  if (this->allStartupSignalsCaptured()) {
                     return false;
                   }
 
@@ -156,8 +167,7 @@ bool BgpdDevServerProc::run() {
                   }
 
                   // this needs to be at the end in case no more logs
-                  if (this->isStarted_ && this->bgpPortParsed_ &&
-                      this->thriftPortParsed_) {
+                  if (this->allStartupSignalsCaptured()) {
                     XLOG(INFO, "All ports parsed and bgpd ready, returning.");
                     bgpdReadyBaton.post();
                   }
@@ -221,14 +231,14 @@ bool BgpdDevServerProc::run() {
   bool hasPolicy = (policy_ != "");
   bool policySymlinkMatched = (hasPolicy == hasPolicySymlink);
   if (hasPolicy) {
-    // First perform negative test
+    // Negative test: validating a policy-bearing config against an empty
+    // policy must be rejected.
     thriftClient->sync_validateConfigAndPolicy(result, config_, "");
-    if (*result.success() == true) {
-      // validateConfigAndPolicy API should have failed
-      validateAPIPassed_ = false;
-    } else {
-      thriftClient->sync_validateConfigAndPolicy(result, config_, policy_);
+    if (*result.success()) {
+      XLOG(ERR, "validateConfigAndPolicy accepted an empty policy.");
+      return false;
     }
+    thriftClient->sync_validateConfigAndPolicy(result, config_, policy_);
   } else {
     thriftClient->sync_validateConfig(result, config_);
   }
