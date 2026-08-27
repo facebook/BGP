@@ -245,3 +245,27 @@ class CanonicalRibPy3Test(TestCase):
                 TBgpAfi.AFI_IPV4,
             )
         receive_timeout_client.getRibEntries.assert_not_awaited()
+
+    async def test_falls_back_for_servicerouter_unimplemented_method(self) -> None:
+        """A server whose processor knows the canonical RPC but whose handler
+        never overrode it answers UNIMPLEMENTED_METHOD, not UNKNOWN_METHOD.
+        BGP++ does exactly this, so the fallback has to accept both."""
+        legacy_entry = bgp_route_types.TRibEntry()
+        client = Mock()
+        client.getRibEntriesCanonical = AsyncMock(
+            side_effect=ServiceRouterError(
+                type=TransportErrorType.UNKNOWN,
+                message="Function getRibEntriesCanonical is unimplemented",
+                errno=0,
+                options=0,
+                reason=ErrorReason.UNIMPLEMENTED_METHOD,
+            )
+        )
+        client.getRibEntries = AsyncMock(return_value=[legacy_entry])
+        self.assertEqual(
+            [legacy_entry],
+            await get_rib_entries(cast(TBgpService, client), TBgpAfi.AFI_IPV4),
+        )
+        client.getRibEntries.assert_awaited_once_with(
+            TBgpAfi.AFI_IPV4, rpc_options=None
+        )

@@ -30,6 +30,22 @@ from thrift.python.exceptions import ApplicationError, ApplicationErrorType
 BEST_PATH_GROUP = "best"
 T = TypeVar("T")
 
+# ServiceRouter reports "this server cannot serve that RPC" two different ways,
+# and both mean the same thing to us: fall back to the legacy RPC.
+#   UNKNOWN_METHOD (thrift ex code 25) -- the server's processor does not know
+#     the method name at all, i.e. a binary predating the canonical RPC.
+#   UNIMPLEMENTED_METHOD (ex code 31) -- the processor knows the method from its
+#     generated interface but the handler never overrode it, so the generated
+#     default runs. This is what BGP++ returns today ("Function
+#     getRibEntriesCanonical is unimplemented").
+# Checking only the first left BGP++ nodes raising instead of falling back.
+_FALLBACK_ERROR_REASONS: frozenset[int] = frozenset(
+    {
+        ErrorReason.UNKNOWN_METHOD.value,
+        ErrorReason.UNIMPLEMENTED_METHOD.value,
+    }
+)
+
 
 def _lookup_optional(
     pool: Mapping[int, T], index: int | None, default: T, reference_name: str
@@ -164,7 +180,7 @@ async def _get_with_fallback(
     except ServiceRouterError as error:
         if (
             error.error_reason is None
-            or error.error_reason.value != ErrorReason.UNKNOWN_METHOD.value
+            or error.error_reason.value not in _FALLBACK_ERROR_REASONS
         ):
             raise
     return list(await legacy_call())
@@ -182,7 +198,7 @@ def _get_with_fallback_sync(
     except ServiceRouterError as error:
         if (
             error.error_reason is None
-            or error.error_reason.value != ErrorReason.UNKNOWN_METHOD.value
+            or error.error_reason.value not in _FALLBACK_ERROR_REASONS
         ):
             raise
     return list(legacy_call())

@@ -216,6 +216,28 @@ class CanonicalRibTest(TestCase):
         with self.assertRaises(ServiceRouterError):
             await _get_with_fallback(receive_timeout, legacy)
 
+    async def test_falls_back_for_servicerouter_unimplemented_method(self) -> None:
+        """A server whose processor knows the canonical RPC but whose handler
+        never overrode it answers UNIMPLEMENTED_METHOD, not UNKNOWN_METHOD.
+        BGP++ does exactly this, so the fallback has to accept both."""
+        legacy_entry = bgp_route_types.TRibEntry()
+
+        async def unimplemented_method() -> bgp_route_types.TCanonicalRibState:
+            raise ServiceRouterError(
+                type=TransportErrorType.UNKNOWN,
+                message="Function getRibEntriesCanonical is unimplemented",
+                errno=0,
+                options=0,
+                reason=ErrorReason.UNIMPLEMENTED_METHOD,
+            )
+
+        async def legacy() -> list[bgp_route_types.TRibEntry]:
+            return [legacy_entry]
+
+        self.assertEqual(
+            [legacy_entry], await _get_with_fallback(unimplemented_method, legacy)
+        )
+
     def test_sync_falls_back_only_for_unknown_method(self) -> None:
         legacy_entry = bgp_route_types.TRibEntry()
 
@@ -239,3 +261,38 @@ class CanonicalRibTest(TestCase):
 
         with self.assertRaisesRegex(ValueError, "Missing peer reference 99"):
             _get_with_fallback_sync(lambda: _make_state(peer_idx=99), legacy)
+
+    def test_sync_falls_back_for_servicerouter_unavailable_method(self) -> None:
+        """The sync path is what the route collector drives, and it had no
+        ServiceRouter coverage at all. Both reasons that mean "this server
+        cannot serve the canonical RPC" must fall back; anything else must not.
+        """
+        legacy_entry = bgp_route_types.TRibEntry()
+
+        def legacy() -> list[bgp_route_types.TRibEntry]:
+            return [legacy_entry]
+
+        def raising(reason: ErrorReason) -> bgp_route_types.TCanonicalRibState:
+            raise ServiceRouterError(
+                type=TransportErrorType.UNKNOWN,
+                message="canonical RPC unavailable",
+                errno=0,
+                options=0,
+                reason=reason,
+            )
+
+        for reason in (
+            ErrorReason.UNKNOWN_METHOD,
+            ErrorReason.UNIMPLEMENTED_METHOD,
+        ):
+            with self.subTest(reason=reason.name):
+                self.assertEqual(
+                    [legacy_entry],
+                    _get_with_fallback_sync(lambda r=reason: raising(r), legacy),
+                )
+
+        with self.assertRaises(ServiceRouterError):
+            _get_with_fallback_sync(
+                lambda: raising(ErrorReason.RECV_TIMEOUT),
+                legacy,
+            )
