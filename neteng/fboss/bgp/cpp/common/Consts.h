@@ -148,7 +148,7 @@ constexpr auto kDirectlyConnectedNexthopWeight = 1;
  * InterfaceEntry::recordLinkDown.
  */
 constexpr auto kInitialLinkUpHoldDownTime = std::chrono::milliseconds(200);
-constexpr auto kMaxLinkUpHoldDownTime = std::chrono::milliseconds(8000);
+constexpr auto kMaxLinkUpHoldDownTime = std::chrono::milliseconds(1000);
 
 // Default maximum number of IPs to enumerate from a CIDR network
 constexpr uint64_t kDefaultMaxIPsInCIDR = 2;

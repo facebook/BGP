@@ -44,6 +44,12 @@ constexpr auto kAddPeersRejected = "bgpd.addPeers.rejected"_fs;
 constexpr auto kDelPeersSuccess = "bgpd.delPeers.success"_fs;
 constexpr auto kDelPeersRejected = "bgpd.delPeers.rejected"_fs;
 
+// The effective link-up hold setting. 0 when enable_netlink_dampening was not
+// requested, or when it was requested and forced off because
+// bgp_resolve_nexthops_from_interface_state is set.
+constexpr auto kNetlinkDampeningEnabled =
+    "bgpd.config.netlink_dampening_enabled"_fs;
+
 void initCounters();
 
 // Increment dynamic policy API success/failure counters
