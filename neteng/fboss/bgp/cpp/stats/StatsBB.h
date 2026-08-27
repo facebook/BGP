@@ -16,7 +16,10 @@
 
 #pragma once
 
+#include <fmt/format.h>
 #include <folly/FixedString.h>
+
+#include "neteng/fboss/bgp/cpp/common/Consts.h"
 
 #include <fb303/ThreadCachedServiceData.h>
 #include <fb303/detail/QuantileStatWrappers.h>
@@ -73,6 +76,33 @@ namespace RibStatsBB {
 inline constexpr auto kUnsupportedPolicyMsg =
     "bgpd.ribPolicy.numUnsupportedPolicyMsg";
 DECLARE_timeseries(unsupportedPolicyMsg);
+
+/*
+ * Link-up hold (link-flap dampening) counters.
+ *
+ * The active count is a gauge, because an operator must know how many
+ * interfaces have a hold right now. The started and released counts are
+ * timeseries, because they show the flap rate over time.
+ *
+ * These counters give the device total. A timeseries key is a fixed string, so
+ * they cannot name an interface. To find the interface, read the [LinkHold] log
+ * lines.
+ */
+inline const auto kNhtLinkHoldActive =
+    fmt::format("{}.nht.link_hold.active", kBgpcppTag);
+void setNhtLinkHoldActive(int64_t count);
+
+inline const auto kNhtLinkHoldStarted =
+    fmt::format("{}.nht.link_hold.started", kBgpcppTag);
+DECLARE_timeseries(nhtLinkHoldStarted);
+void incrNhtLinkHoldStarted();
+
+inline const auto kNhtLinkHoldReleased =
+    fmt::format("{}.nht.link_hold.released", kBgpcppTag);
+DECLARE_timeseries(nhtLinkHoldReleased);
+void incrNhtLinkHoldReleased();
+
+void initCounters();
 
 } // namespace RibStatsBB
 

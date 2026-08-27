@@ -101,10 +101,40 @@ namespace RibStatsBB {
 
 DEFINE_timeseries(unsupportedPolicyMsg, kUnsupportedPolicyMsg, fb303::COUNT);
 
+DEFINE_timeseries(nhtLinkHoldStarted, kNhtLinkHoldStarted, fb303::COUNT);
+DEFINE_timeseries(nhtLinkHoldReleased, kNhtLinkHoldReleased, fb303::COUNT);
+
+void setNhtLinkHoldActive(int64_t count) {
+  fb303::ThreadCachedServiceData::get()->setCounter(kNhtLinkHoldActive, count);
+}
+
+void incrNhtLinkHoldStarted() {
+  STATS_nhtLinkHoldStarted.add(1);
+}
+
+void incrNhtLinkHoldReleased() {
+  STATS_nhtLinkHoldReleased.add(1);
+}
+
+void initCounters() {
+  // Set them to zero, so that the keys are present on a device where
+  // dampening is off.
+  fb303::ThreadCachedServiceData::get()->setCounter(kNhtLinkHoldActive, 0);
+  fb303::ThreadCachedServiceData::get()->setCounter(
+      kNhtLinkHoldStarted + ".count", 0);
+  fb303::ThreadCachedServiceData::get()->setCounter(
+      kNhtLinkHoldStarted + ".count.60", 0);
+  fb303::ThreadCachedServiceData::get()->setCounter(
+      kNhtLinkHoldReleased + ".count", 0);
+  fb303::ThreadCachedServiceData::get()->setCounter(
+      kNhtLinkHoldReleased + ".count.60", 0);
+}
+
 } // namespace RibStatsBB
 
 void initStatsBB() {
   BgpStatsBB::initCounters();
+  RibStatsBB::initCounters();
 }
 
 } // namespace facebook::bgp
