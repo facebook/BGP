@@ -15,6 +15,8 @@
  */
 
 #include <folly/coro/BlockingWait.h>
+#include <folly/coro/Task.h>
+#include <folly/futures/Future.h>
 
 #include "neteng/fboss/bgp/cpp/adjrib/AdjRib.h"
 #include "neteng/fboss/bgp/cpp/adjrib/AdjRibGroup.h"
@@ -398,6 +400,127 @@ TEST_F(UpdateGroupManagerTest, MaybeDestroyUpdateGroupsFreesPinnedRibOut) {
    */
   group.reset();
   EXPECT_TRUE(weakGroup.expired());
+}
+
+/*
+ * A group going down must not leave a rib dump behind. maybeDestroyUpdateGroups
+ * cancels the queued dump while it erases the group, before it suspends to
+ * drain the group's async scope -- an uncancelled dump walks the ShadowRib and
+ * registers a change list consumer on a group the manager has already erased,
+ * and that consumer has no consume timer, pins withdrawn ShadowRib entries, and
+ * forms a group-consumer ownership cycle that aborts teardown.
+ */
+TEST_F(
+    UpdateGroupManagerTest,
+    MaybeDestroyUpdateGroupsCancelsScheduledRibDump) {
+  folly::EventBase evb;
+  UpdateGroupManager manager(evb, UpdateGroupConfig{});
+
+  auto key = createTestKey();
+  auto group = manager.findOrCreateGroup(key);
+
+  nettools::bgplib::MonitoredBackPressuredQueue<RibInMessage> ribInQ{
+      nettools::bgplib::kMaxIngressQueueSize};
+  MonitoredMPMCQueue<AdjRib::ObservableMessageT> observerQ;
+  auto peerId = nettools::bgplib::BgpPeerId(
+      folly::IPAddress("10.0.0.1"),
+      folly::IPAddressV4("255.0.0.1").toLongHBO());
+  auto adjRib = std::make_shared<AdjRib>(
+      peerId,
+      PeeringParams(),
+      evb,
+      ribInQ,
+      observerQ,
+      std::make_shared<folly::coro::Baton>(),
+      nullptr,
+      std::make_shared<std::atomic<bool>>(false));
+  group->registerPeer(adjRib);
+
+  /*
+   * Reproduce the production ordering: the dump is scheduled, the last peer
+   * leaves, and the group is destroyed all within one event-loop turn, so the
+   * queued dump task has not had its turn when the group is erased.
+   */
+  auto emptyAndDestroy = [&]() -> folly::coro::Task<void> {
+    group->scheduleInitialDump();
+    EXPECT_TRUE(group->isRibDumpScheduled());
+    group->unregisterPeer(adjRib);
+    EXPECT_EQ(0, group->getMemberCount());
+    co_await manager.maybeDestroyUpdateGroups({group});
+  };
+  auto destroyed =
+      folly::coro::co_withExecutor(&evb, emptyAndDestroy()).start();
+  evb.loop();
+  ASSERT_TRUE(destroyed.isReady());
+  std::move(destroyed).get();
+
+  EXPECT_EQ(0, manager.getGroupCount());
+  EXPECT_FALSE(group->isRibDumpScheduled());
+
+  // The cancelled dump never walked: no state advance, no resurrected consumer.
+  EXPECT_EQ(UpdateGroupState::UNINITIALIZED, group->getState());
+  EXPECT_THAT(group->getChangeListConsumer(), IsNull());
+}
+
+/*
+ * Only the erased groups lose their dump. A group passed in that still has
+ * members is skipped, and its scheduled dump must survive: a cancelled dump
+ * leaves state_ at UNINITIALIZED, so cancelling it here would strand the group
+ * with no dump at all.
+ */
+TEST_F(
+    UpdateGroupManagerTest,
+    MaybeDestroyUpdateGroupsKeepsSurvivingGroupRibDump) {
+  folly::EventBase evb;
+  UpdateGroupManager manager(evb, UpdateGroupConfig{});
+
+  auto emptyKey = createTestKey("policy1");
+  auto nonEmptyKey = createTestKey("policy2");
+  auto emptyGroup = manager.findOrCreateGroup(emptyKey);
+  auto nonEmptyGroup = manager.findOrCreateGroup(nonEmptyKey);
+
+  nettools::bgplib::MonitoredBackPressuredQueue<RibInMessage> ribInQ{
+      nettools::bgplib::kMaxIngressQueueSize};
+  MonitoredMPMCQueue<AdjRib::ObservableMessageT> observerQ;
+  auto peerId = nettools::bgplib::BgpPeerId(
+      folly::IPAddress("10.0.0.1"),
+      folly::IPAddressV4("255.0.0.1").toLongHBO());
+  auto adjRib = std::make_shared<AdjRib>(
+      peerId,
+      PeeringParams(),
+      evb,
+      ribInQ,
+      observerQ,
+      std::make_shared<folly::coro::Baton>(),
+      nullptr,
+      std::make_shared<std::atomic<bool>>(false));
+  nonEmptyGroup->registerPeer(adjRib);
+  nonEmptyGroup->scheduleInitialDump();
+  ASSERT_TRUE(nonEmptyGroup->isRibDumpScheduled());
+
+  /*
+   * The empty group has nothing queued on its async scope, so its drain
+   * completes inline and the survivor's dump is still queued -- not run, not
+   * cancelled -- when this returns.
+   */
+  folly::coro::blockingWait(
+      manager.maybeDestroyUpdateGroups({emptyGroup, nonEmptyGroup}));
+
+  EXPECT_EQ(1, manager.getGroupCount());
+  EXPECT_TRUE(manager.hasGroup(nonEmptyKey));
+  EXPECT_TRUE(nonEmptyGroup->isRibDumpScheduled());
+
+  // Run the surviving dump so the group's async scope is idle at destruction.
+  evb.loop();
+  EXPECT_FALSE(nonEmptyGroup->isRibDumpScheduled());
+  EXPECT_NE(UpdateGroupState::UNINITIALIZED, nonEmptyGroup->getState());
+
+  /*
+   * The survivor was never handed to maybeDestroyUpdateGroups' drain, so join
+   * its async scope here -- AsyncScope requires it before destruction once a
+   * task has started on it.
+   */
+  folly::coro::blockingWait(nonEmptyGroup->drainAsyncScope());
 }
 
 TEST_F(UpdateGroupManagerTest, SetUpdateGroupState) {

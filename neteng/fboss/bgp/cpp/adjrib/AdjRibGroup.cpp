@@ -54,33 +54,21 @@ AdjRibOutGroup::~AdjRibOutGroup() {
  * @brief Cooperatively drain asyncScope_ before group destruction.
  *
  * Cleanup sequence:
- * 1. Retire the rib-dump cancellation source
- * 2. Request cancellation of all pending coroutines
- * 3. Wait for all coroutines to complete (joinAsync)
- * 4. Request (but do not await) cancellation of the egress-policy RIB walk,
- *    which runs on PeerManager's asyncScope_ and is joined there
+ * 1. Request cancellation of all pending coroutines
+ * 2. Wait for all coroutines to complete (joinAsync)
  *
  * - asyncScope_ holds coroutines for deferredPushToPeer operations
  * - Without cleanup, coroutines may still be running when group is destroyed
  * - This causes use-after-free when coroutines access group members
  *
  * Must be co_awaited before the group is destroyed. Called by
- * UpdateGroupManager::maybeDestroyUpdateGroup().
+ * UpdateGroupManager::maybeDestroyUpdateGroups().
  */
 folly::coro::Task<void> AdjRibOutGroup::drainAsyncScope() {
   XLOGF(
       DBG1,
       "Group {} drainAsyncScope: canceling pending async operations",
       groupDescriptor_);
-
-  /*
-   * Retire the rib-dump source so the group stops reporting a scheduled
-   * dump the moment teardown starts. The scope cancellation below reaches the
-   * walk itself either way -- the two tokens are merged -- but the source has
-   * to be cleared here so a walk that is already suspended does not retire a
-   * source that no longer belongs to it.
-   */
-  cancelRibDump();
 
   asyncScope_.requestCancellation();
   co_await asyncScope_.joinAsync();
@@ -872,7 +860,8 @@ AdjRibOutGroup::buildAndScheduleSendInitialDumpFromShadowRib() {
   });
 
   /* Covers a task that was already runnable when the group became empty, so
-   * nothing cancelled it.
+   * nothing cancelled it: the cancellation lands when the emptied group is
+   * erased, which can trail the emptying by an event-loop turn.
    */
   if (getMemberCount() == 0) {
     co_return;
@@ -2823,7 +2812,7 @@ void AdjRibOutGroup::unregisterPeer(
   adjRib->setUpdateGroup(nullptr);
 
   /*
-   * Note: We don't call maybeDestroyUpdateGroup() here because
+   * Note: We don't call maybeDestroyUpdateGroups() here because
    * the group might still have other members.
    */
 }

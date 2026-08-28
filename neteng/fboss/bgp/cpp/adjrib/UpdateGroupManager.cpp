@@ -90,6 +90,15 @@ folly::coro::Task<void> UpdateGroupManager::maybeDestroyUpdateGroups(
       continue;
     }
 
+    /*
+     * Technically, drainAsyncScope() will request cancellation
+     * on all tasks scheduled in the group's asyncScope. But since we
+     * are co_awaiting in a loop, suppose we are on group i, group i + 1
+     * still has an opportunity to run the RIB dump before its own
+     * drainAsyncScope call. Hence it's important to cancel it above
+     * the co_await.
+     */
+    group->cancelRibDump();
     group->resetChangeListConsumeTimer();
     group->deactivateChangeListConsumer();
     group->resetChangeListConsumer();
