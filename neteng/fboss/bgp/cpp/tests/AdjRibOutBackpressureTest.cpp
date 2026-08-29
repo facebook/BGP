@@ -24,7 +24,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "fboss/lib/CommonUtils.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 
 #include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 

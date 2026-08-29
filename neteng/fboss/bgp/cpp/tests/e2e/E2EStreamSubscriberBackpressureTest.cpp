@@ -45,9 +45,9 @@
 #include <folly/logging/xlog.h>
 #include <thrift/lib/cpp2/util/ScopedServerInterfaceThread.h>
 
-#include "fboss/lib/CommonUtils.h"
 #include "neteng/fboss/bgp/cpp/BgpServiceStream.h"
 #include "neteng/fboss/bgp/cpp/tests/AdjRibOutUtils.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/e2e/E2ETestFixture.h"
 #include "neteng/fboss/bgp/if/gen-cpp2/TBgpServiceStream.h"
 

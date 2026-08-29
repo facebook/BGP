@@ -24,7 +24,7 @@
 
 #include <folly/logging/xlog.h>
 
-#include "fboss/lib/CommonUtils.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/Utils.h"
 #include "neteng/fboss/bgp/cpp/tests/e2e/E2ETestFixture.h"
 #include "neteng/fboss/bgp/if/gen-cpp2/BgpStructs_types.h"

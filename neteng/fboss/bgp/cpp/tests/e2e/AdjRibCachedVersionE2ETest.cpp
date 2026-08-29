@@ -32,8 +32,8 @@
 #include <chrono>
 
 #include <folly/logging/xlog.h>
-#include "fboss/lib/CommonUtils.h"
 #include "neteng/fboss/bgp/cpp/adjrib/AdjRibGroup.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/e2e/E2ETestFixture.h"
 
 using namespace facebook::bgp;
@@ -106,7 +106,7 @@ class AdjRibCachedVersionE2ETest : public E2ETestFixture {
       uint64_t targetVersion,
       int maxRetries = 50) {
     bool result = false;
-    facebook::fboss::checkWithRetry(
+    facebook::bgp::test::checkWithRetry(
         [&]() {
           result = getPeerCachedRibVersion(peerAddr) >= targetVersion;
           return result;

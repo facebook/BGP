@@ -73,8 +73,8 @@
       RibFsdbAddPathTestSuite, ReplacePathSelectionPolicyForceUpdateTest);
 
 #include "configerator/structs/neteng/bgp_policy/thrift/gen-cpp2/rib_policy_types.h"
-#include "fboss/lib/CommonUtils.h"
 #include "neteng/fboss/bgp/cpp/BgpServiceUtil.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/RibFsdbPolicyTestFixture.h"
 #include "neteng/fboss/bgp/cpp/tests/RibPolicyUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/RibUtils.h"

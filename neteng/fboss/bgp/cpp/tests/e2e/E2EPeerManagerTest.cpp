@@ -29,8 +29,8 @@
 #include <folly/logging/xlog.h>
 
 #include "fb303/ThreadCachedServiceData.h"
-#include "fboss/lib/CommonUtils.h"
 #include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/Utils.h"
 #include "neteng/fboss/bgp/cpp/tests/e2e/E2ETestFixture.h"
 
@@ -450,10 +450,10 @@ TEST_F(E2EPeerManagerTest, IdlePeerDelPeers_FallbackCleansUp) {
   auto delResult = delPeerAtRuntime(kPeerAddr3);
   ASSERT_TRUE(delResult.hasValue());
 
-  facebook::fboss::checkWithRetry(
+  facebook::bgp::test::checkWithRetry(
       [&]() { return getAdjRibByAddr(kPeerAddr3) == nullptr; },
       /*retries=*/30,
-      /*msBetweenRetry=*/std::chrono::milliseconds(100),
+      /*timeBetweenRetries=*/std::chrono::milliseconds(100),
       "AdjRib for peer3 was not erased after delPeers fallback");
 }
 

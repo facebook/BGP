@@ -36,9 +36,9 @@
 #include <folly/io/async/EventBase.h>
 #include <folly/logging/xlog.h>
 
-#include "fboss/lib/CommonUtils.h"
 #include "neteng/fboss/bgp/cpp/lib/fibers/Utils.h"
 #include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/RibUtils.h"
 
 using namespace facebook::nettools::bgplib;

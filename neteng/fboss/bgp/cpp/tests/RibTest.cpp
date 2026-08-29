@@ -130,7 +130,6 @@
 
 #include <fb303/ThreadCachedServiceData.h>
 #include "common/network/AddressUtil.h"
-#include "fboss/lib/CommonUtils.h"
 #include "neteng/fboss/bgp/cpp/BgpServiceBase.h"
 #include "neteng/fboss/bgp/cpp/BgpServiceUtil.h"
 #include "neteng/fboss/bgp/cpp/fsdb/FsdbSyncer.h"
@@ -144,6 +143,7 @@
 #include "neteng/fboss/bgp/cpp/tests/BoundedWaitUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/MockScubaData.h"
 #include "neteng/fboss/bgp/cpp/tests/PolicyUtils.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/RibPolicyUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/RibUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/Utils.h"

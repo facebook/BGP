@@ -172,7 +172,6 @@
 #include <folly/io/async/EventBase.h>
 #include <folly/logging/xlog.h>
 
-#include "fboss/lib/CommonUtils.h"
 #include "neteng/fboss/bgp/cpp/adjrib/AdjRib.h"
 #include "neteng/fboss/bgp/cpp/adjrib/facebook/RouteFilterLogger.h"
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
@@ -183,6 +182,7 @@
 #include "neteng/fboss/bgp/cpp/tests/AdjRibInUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/BoundedWaitUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/MockScubaData.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/RibPolicyUtils.h"
 
 using namespace facebook::bgp;

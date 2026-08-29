@@ -31,7 +31,7 @@
 #include <gtest/gtest.h>
 
 #include <folly/logging/xlog.h>
-#include "fboss/lib/CommonUtils.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/e2e/E2ETestFixture.h"
 
 using namespace facebook::bgp;
@@ -240,7 +240,7 @@ TEST_F(RibVersioningE2ETest, VersionIncrementsOnBetterRoute) {
    * since the update to peer5 might have the same nexthop-self value.
    */
   uint64_t versionAfterBetterRoute = 0;
-  facebook::fboss::checkWithRetry(
+  facebook::bgp::test::checkWithRetry(
       [&]() {
         versionAfterBetterRoute = getRibVersion();
         return versionAfterBetterRoute > versionAfterFirst;
@@ -357,7 +357,7 @@ TEST_F(RibVersioningE2ETest, VersionIncrementsOnMultipathChange) {
    * even if bestpath is still peer3.
    */
   uint64_t versionAfterMultipath = 0;
-  facebook::fboss::checkWithRetry(
+  facebook::bgp::test::checkWithRetry(
       [&]() {
         versionAfterMultipath = getRibVersion();
         return versionAfterMultipath > versionAfterFirst;
@@ -414,7 +414,7 @@ TEST_F(RibVersioningE2ETest, VersionIncrementsOnNexthopChange) {
    * (peer3) is still the same.
    */
   uint64_t versionAfterNexthopChange = 0;
-  facebook::fboss::checkWithRetry(
+  facebook::bgp::test::checkWithRetry(
       [&]() {
         versionAfterNexthopChange = getRibVersion();
         return versionAfterNexthopChange > versionAfterFirst;
@@ -516,7 +516,7 @@ TEST_F(RibVersioningE2ETest, VersionAndPeerCatchUpOnEcmpShrink) {
 
   /* Peer catches up to the RIB version before the shrink. */
   uint64_t versionBeforeShrink = 0;
-  facebook::fboss::checkWithRetry(
+  facebook::bgp::test::checkWithRetry(
       [&]() {
         versionBeforeShrink = getRibVersion();
         return versionBeforeShrink > 0 &&
@@ -536,7 +536,7 @@ TEST_F(RibVersioningE2ETest, VersionAndPeerCatchUpOnEcmpShrink) {
    * are both materialized, and the cached version never moves backward.
    */
   uint64_t versionAfterShrink = 0;
-  facebook::fboss::checkWithRetry(
+  facebook::bgp::test::checkWithRetry(
       [&]() {
         versionAfterShrink = getRibVersion();
         return versionAfterShrink > versionBeforeShrink &&

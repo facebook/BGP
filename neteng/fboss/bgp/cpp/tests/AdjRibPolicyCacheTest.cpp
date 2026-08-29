@@ -79,11 +79,11 @@
   FRIEND_TEST(AdjRibInPolicyCacheFixture, BgpPathTopologyInfoCacheMissTest);
 
 #include <folly/coro/BlockingWait.h>
-#include "fboss/lib/CommonUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/AdjRibInUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/AdjRibOutUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/BoundedWaitUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/PolicyUtils.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 
 using facebook::network::toIPPrefix;
 

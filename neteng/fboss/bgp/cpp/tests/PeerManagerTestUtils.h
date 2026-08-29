@@ -17,7 +17,6 @@
 #pragma once
 
 #include <folly/coro/Baton.h>
-#include "fboss/lib/CommonUtils.h"
 #include "neteng/fboss/bgp/cpp/BgpServiceUtil.h"
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
 #include "neteng/fboss/bgp/cpp/common/FeatureFlags.h"
@@ -32,6 +31,7 @@
 #include "neteng/fboss/bgp/cpp/tests/MockPeerManager.h"
 #include "neteng/fboss/bgp/cpp/tests/MockSessionManager.h"
 #include "neteng/fboss/bgp/cpp/tests/PolicyUtils.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/Utils.h"
 
 DECLARE_int32(fiber_stack_size);

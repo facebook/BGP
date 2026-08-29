@@ -43,8 +43,8 @@
 #include <folly/logging/xlog.h>
 #include <neteng/fboss/bgp/cpp/lib/BgpStructs.h>
 
-#include "fboss/lib/CommonUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/AdjRibOutUtils.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/Utils.h"
 #include "neteng/fboss/bgp/cpp/tests/e2e/E2ETestFixture.h"
 

@@ -71,12 +71,12 @@
 #include <folly/coro/GtestHelpers.h>
 #include <gtest/gtest.h>
 
-#include "fboss/lib/CommonUtils.h"
 #include "neteng/fboss/bgp/cpp/changeTracker/ChangeTracker.h"
 #include "neteng/fboss/bgp/cpp/changeTracker/TrackableObject.h"
 #include "neteng/fboss/bgp/cpp/common/RibMessage.h"
 #include "neteng/fboss/bgp/cpp/peer/SessionManager.h"
 #include "neteng/fboss/bgp/cpp/tests/PeerManagerTestUtils.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 
 namespace facebook::bgp {
 

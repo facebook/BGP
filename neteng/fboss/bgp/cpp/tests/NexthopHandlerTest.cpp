@@ -38,9 +38,9 @@
 #include <thrift/lib/cpp2/async/RocketClientChannel.h>
 #include <thrift/lib/cpp2/util/ScopedServerInterfaceThread.h>
 
-#include "fboss/lib/CommonUtils.h"
 #include "neteng/fboss/bgp/cpp/nexthopTracker/NexthopCache.h"
 #include "neteng/fboss/bgp/cpp/nexthopTracker/NexthopHandler.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 #include "openr/if/gen-cpp2/FibService.h"
 #include "openr/if/gen-cpp2/Platform_types.h"
 

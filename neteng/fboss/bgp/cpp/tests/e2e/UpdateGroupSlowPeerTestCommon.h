@@ -39,10 +39,10 @@
 #include <gtest/gtest.h>
 #include <chrono>
 
-#include "fboss/lib/CommonUtils.h"
 #include "neteng/fboss/bgp/cpp/adjrib/AdjRib.h"
 #include "neteng/fboss/bgp/cpp/adjrib/AdjRibGroup.h"
 #include "neteng/fboss/bgp/cpp/common/Types.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/e2e/UpdateGroupDistributionTestCommon.h"
 
 namespace facebook {

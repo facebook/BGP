@@ -21,7 +21,6 @@
 #include <folly/coro/Baton.h>
 #include <folly/coro/BlockingWait.h>
 
-#include "fboss/lib/CommonUtils.h"
 #include "neteng/fboss/bgp/cpp/changeTracker/ChangeItem.h"
 #include "neteng/fboss/bgp/cpp/common/FeatureFlags.h"
 #include "neteng/fboss/bgp/cpp/config/ConfigManager.h"
@@ -33,6 +32,7 @@
 #include "neteng/fboss/bgp/cpp/tests/AdjRibInUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/AdjRibOutUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/BoundedWaitUtils.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/e2e/E2ETestRibFactory.h"
 
 #include "neteng/fboss/bgp/cpp/tests/PeerManagerTestUtils.h"

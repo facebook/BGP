@@ -30,12 +30,12 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "fboss/lib/CommonUtils.h"
 #include "neteng/fboss/bgp/cpp/config/ConfigManager.h"
 #include "neteng/fboss/bgp/cpp/lib/BgpStructs.h"
 #include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "neteng/fboss/bgp/cpp/tests/BoundedWaitUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/PeerManagerTestUtils.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 
 using ::testing::_;
 using namespace facebook::neteng::fboss::bgp::thrift;

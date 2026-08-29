@@ -31,8 +31,8 @@ DECLARE_bool(disable_rib_policy_scuba_logging);
 #include "neteng/fboss/bgp/cpp/stats/StatsDC.h"
 #include "neteng/fboss/bgp/cpp/tests/Utils.h"
 
-#include "fboss/lib/CommonUtils.h"
 #include "fboss/lib/thrift_service_client/ConnectionOptions.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 
 using namespace facebook::neteng::fboss::bgp_attr;
 using namespace facebook::nettools::bgplib;

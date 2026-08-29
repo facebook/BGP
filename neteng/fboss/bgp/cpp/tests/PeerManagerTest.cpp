@@ -241,7 +241,7 @@
 #include <folly/logging/test/TestLogHandler.h>
 #include <folly/logging/xlog.h>
 #include <folly/synchronization/Baton.h>
-#include "fboss/lib/CommonUtils.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 
 #include <fb303/ThreadCachedServiceData.h>
 

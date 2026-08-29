@@ -21,7 +21,7 @@
 
 #define RibBase_TEST_FRIENDS friend class RibFsdbFixture;
 
-#include "fboss/lib/CommonUtils.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/RibFsdbPolicyTestFixture.h"
 #include "neteng/fboss/bgp/cpp/tests/RibPolicyUtils.h"
 

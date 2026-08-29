@@ -34,7 +34,7 @@
 
 #include <folly/logging/xlog.h>
 
-#include "fboss/lib/CommonUtils.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/e2e/E2ETestFixture.h"
 
 using namespace facebook::bgp;
@@ -89,7 +89,7 @@ TEST_F(RibStatsE2ETest, PrefixCountAndVersionIncreaseOnRouteAdd) {
   EXPECT_TRUE(
       verifyRouteAdd("v4", "10.0.1.0", 24, kPeerAddr5, kNextHopV4_5.str()));
 
-  facebook::fboss::checkWithRetry(
+  facebook::bgp::test::checkWithRetry(
       [&]() { return getNumPrefixes() == 1; },
       20 /* retries */,
       std::chrono::milliseconds(100));
@@ -102,7 +102,7 @@ TEST_F(RibStatsE2ETest, PrefixCountAndVersionIncreaseOnRouteAdd) {
   EXPECT_TRUE(
       verifyRouteAdd("v4", "10.0.2.0", 24, kPeerAddr5, kNextHopV4_5.str()));
 
-  facebook::fboss::checkWithRetry(
+  facebook::bgp::test::checkWithRetry(
       [&]() { return getNumPrefixes() == 2; },
       20 /* retries */,
       std::chrono::milliseconds(100));
@@ -123,7 +123,7 @@ TEST_F(RibStatsE2ETest, PrefixCountDecreasesOnWithdraw) {
   EXPECT_TRUE(
       verifyRouteAdd("v4", "10.0.1.0", 24, kPeerAddr5, kNextHopV4_5.str()));
 
-  facebook::fboss::checkWithRetry(
+  facebook::bgp::test::checkWithRetry(
       [&]() { return getNumPrefixes() == 1; },
       20 /* retries */,
       std::chrono::milliseconds(100));
@@ -133,7 +133,7 @@ TEST_F(RibStatsE2ETest, PrefixCountDecreasesOnWithdraw) {
   deleteRoute("v4", "10.0.1.0", 24, kPeerAddr3);
   EXPECT_TRUE(verifyRouteWithdraw("v4", "10.0.1.0", 24, kPeerAddr5));
 
-  facebook::fboss::checkWithRetry(
+  facebook::bgp::test::checkWithRetry(
       [&]() { return getNumPrefixes() == 0; },
       20 /* retries */,
       std::chrono::milliseconds(100));

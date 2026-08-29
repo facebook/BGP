@@ -19,8 +19,8 @@
 #include "fboss/fsdb/client/FsdbPubSubManager.h"
 #include "fboss/fsdb/tests/utils/FsdbTestServer.h"
 #include "fboss/fsdb/tests/utils/FsdbTestSubscriber.h"
-#include "fboss/lib/CommonUtils.h"
 #include "neteng/fboss/bgp/cpp/fsdb/FsdbSyncer.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 #include "neteng/fboss/bgp/if/gen-cpp2/bgp_thrift_types.h"
 
 #include <folly/ScopeGuard.h>

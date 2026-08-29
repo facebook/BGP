@@ -37,7 +37,6 @@
 #include <folly/hash/Hash.h>
 #include <gtest/gtest.h>
 
-#include "fboss/lib/CommonUtils.h"
 #include "neteng/fboss/bgp/cpp/BgpServiceBase.h"
 #include "neteng/fboss/bgp/cpp/BgpServiceUtil.h"
 #include "neteng/fboss/bgp/cpp/changeTracker/ChangeTracker.h"
@@ -49,6 +48,7 @@
 #include "neteng/fboss/bgp/cpp/policy/PolicyManager.h"
 #include "neteng/fboss/bgp/cpp/tests/PeerManagerTestUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/PolicyUtils.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 
 namespace facebook::bgp {
 

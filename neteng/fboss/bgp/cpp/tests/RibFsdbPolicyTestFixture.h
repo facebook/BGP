@@ -18,8 +18,8 @@
 
 #include "fboss/fsdb/tests/utils/FsdbTestServer.h"
 #include "fboss/fsdb/tests/utils/FsdbTestSubscriber.h"
-#include "fboss/lib/CommonUtils.h"
 #include "neteng/fboss/bgp/cpp/fsdb/FsdbSyncer.h"
+#include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/RibUtils.h"
 
 namespace facebook::bgp {
