@@ -16,7 +16,7 @@
 
 #include <folly/logging/xlog.h>
 
-#include <fboss/agent/AddressUtil.h>
+#include <common/network/AddressUtil.h>
 #include <neteng/fboss/bgp/cpp/rib/FibDev.h>
 
 namespace facebook::bgp {

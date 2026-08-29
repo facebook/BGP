@@ -57,7 +57,7 @@
 #include <cerrno>
 
 #include <fb303/ThreadCachedServiceData.h>
-#include "fboss/agent/AddressUtil.h"
+#include "common/network/AddressUtil.h"
 #include "magic_enum/magic_enum.hpp"
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
 #include "neteng/fboss/bgp/cpp/lib/BgpMessageSerializer.h"

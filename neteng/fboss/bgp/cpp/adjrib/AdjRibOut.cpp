@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "fboss/agent/AddressUtil.h"
+#include "common/network/AddressUtil.h"
 #include "neteng/fboss/bgp/cpp/BgpProfiler.h"
 #include "neteng/fboss/bgp/cpp/adjrib/AdjRib.h"
 #include "neteng/fboss/bgp/cpp/adjrib/AdjRibCommon.h"

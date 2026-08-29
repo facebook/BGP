@@ -15,7 +15,7 @@
  */
 
 #include <boost/functional/hash.hpp>
-#include <fboss/agent/AddressUtil.h>
+#include <common/network/AddressUtil.h>
 #include <folly/logging/xlog.h>
 #include <thrift/lib/cpp/util/EnumUtils.h>
 

@@ -28,7 +28,7 @@
 #include <folly/ScopeGuard.h>
 #include <folly/logging/xlog.h>
 
-#include "fboss/agent/AddressUtil.h"
+#include "common/network/AddressUtil.h"
 #include "fboss/lib/LogThriftCall.h"
 #include "magic_enum/magic_enum.hpp"
 #include "neteng/fboss/bgp/cpp/BgpProfiler.h"

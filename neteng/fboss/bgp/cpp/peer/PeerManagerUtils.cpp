@@ -18,7 +18,7 @@
 
 #include <folly/logging/xlog.h>
 
-#include "fboss/agent/AddressUtil.h"
+#include "common/network/AddressUtil.h"
 #include "magic_enum/magic_enum.hpp"
 #include "neteng/fboss/bgp/cpp/BgpServiceUtil.h"
 #include "neteng/fboss/bgp/cpp/adjrib/AdjRibGroup.h"

@@ -24,7 +24,7 @@
 #include <folly/coro/BlockingWait.h>
 #include <folly/logging/xlog.h>
 
-#include "fboss/agent/AddressUtil.h"
+#include "common/network/AddressUtil.h"
 #include "neteng/fboss/bgp/cpp/lib/fibers/BgpSerializer.h"
 #include "neteng/fboss/bgp/cpp/lib/fibers/FiberBgpPeer.h"
 #include "neteng/fboss/bgp/cpp/tests/AdjRibInUtils.h"

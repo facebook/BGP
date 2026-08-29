@@ -119,7 +119,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "fboss/agent/AddressUtil.h"
+#include "common/network/AddressUtil.h"
 #include "neteng/fboss/bgp/cpp/config/ConfigManager.h"
 #include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "neteng/fboss/bgp/cpp/tests/BoundedWaitUtils.h"

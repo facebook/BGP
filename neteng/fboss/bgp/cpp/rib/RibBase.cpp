@@ -25,7 +25,7 @@
 
 #include "magic_enum/magic_enum.hpp"
 
-#include "fboss/agent/AddressUtil.h"
+#include "common/network/AddressUtil.h"
 #include "neteng/fboss/bgp/cpp/BgpProfiler.h"
 #include "neteng/fboss/bgp/cpp/BgpServiceUtil.h"
 #include "neteng/fboss/bgp/cpp/common/BgpError.h"

@@ -16,7 +16,7 @@
 
 #pragma once
 
-#include "fboss/agent/AddressUtil.h"
+#include "common/network/AddressUtil.h"
 #include "neteng/fboss/bgp/cpp/rib/Fib.h"
 
 #include <fboss/agent/if/gen-cpp2/ctrl_types.h>

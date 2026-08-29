@@ -35,7 +35,7 @@
   FRIEND_TEST(FibFbossUtilFixture, syncFibFail); \
   FRIEND_TEST(FibFbossUtilFixture, keepaliveFail);
 
-#include "fboss/agent/AddressUtil.h"
+#include "common/network/AddressUtil.h"
 #include "folly/coro/GmockHelpers.h"
 #include "neteng/fboss/bgp/cpp/lib/coro/MPMCQueue.h"
 #include "neteng/fboss/bgp/cpp/tests/FibFbossUtils.h"

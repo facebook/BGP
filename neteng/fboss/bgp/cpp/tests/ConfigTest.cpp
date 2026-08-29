@@ -28,8 +28,8 @@
 #include <fb303/ThreadCachedServiceData.h>
 
 #include <cmath>
+#include "common/network/AddressUtil.h"
 #include "configerator/structs/neteng/fboss/bgp/if/gen-cpp2/bgp_attr_types.h"
-#include "fboss/agent/AddressUtil.h"
 #include "neteng/fboss/bgp/cpp/common/BgpError.h"
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
 #include "neteng/fboss/bgp/cpp/common/FeatureFlags.h"

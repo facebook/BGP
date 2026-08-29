@@ -21,7 +21,7 @@
 #include <gtest/gtest.h>
 
 #include <folly/init/Init.h>
-#include "fboss/agent/AddressUtil.h"
+#include "common/network/AddressUtil.h"
 #include "neteng/fboss/bgp/cpp/lib/BgpMessageParser.h"
 #include "neteng/fboss/bgp/cpp/lib/BgpMessageSerializer.h"
 #include "neteng/fboss/bgp/cpp/lib/BgpUtil.h"

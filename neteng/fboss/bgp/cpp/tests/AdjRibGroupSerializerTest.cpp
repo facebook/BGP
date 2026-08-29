@@ -18,7 +18,7 @@
 
 #include <gtest/gtest.h>
 
-#include "fboss/agent/AddressUtil.h"
+#include "common/network/AddressUtil.h"
 #include "neteng/fboss/bgp/cpp/lib/BgpStructs.h"
 
 using namespace facebook::bgp;

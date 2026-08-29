@@ -26,7 +26,7 @@
 #include <folly/logging/xlog.h>
 
 #include <folly/init/Init.h>
-#include "fboss/agent/AddressUtil.h"
+#include "common/network/AddressUtil.h"
 #include "neteng/fboss/bgp/cpp/lib/BgpMessageParser.h"
 #include "neteng/fboss/bgp/if/gen-cpp2/BgpStructs_types.h"
 

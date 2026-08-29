@@ -16,7 +16,7 @@
 
 #include "neteng/fboss/bgp/cpp/rib/Utils.h"
 
-#include "fboss/agent/AddressUtil.h"
+#include "common/network/AddressUtil.h"
 #include "neteng/fboss/bgp/cpp/BgpServiceUtil.h"
 #include "neteng/fboss/bgp/cpp/common/FeatureFlags.h"
 

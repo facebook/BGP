@@ -25,9 +25,9 @@
 #include <folly/logging/xlog.h>
 
 #include <fb303/ThreadCachedServiceData.h>
+#include "common/network/AddressUtil.h"
 #include "configerator/structs/neteng/bgp_policy/thrift/gen-cpp2/rib_policy_types.h"
 #include "configerator/structs/neteng/fboss/bgp/gen-cpp2/bgp_config_types.h"
-#include "fboss/agent/AddressUtil.h"
 #include "neteng/fboss/bgp/cpp/common/BgpPath.h"
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
 #include "neteng/fboss/bgp/cpp/common/RibMessage.h"

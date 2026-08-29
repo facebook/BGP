@@ -61,7 +61,7 @@ class MockFiberBgpPeer;
 #include <folly/fibers/FiberManagerMap.h>
 #include <folly/io/async/test/SocketPair.h>
 
-#include "fboss/agent/AddressUtil.h"
+#include "common/network/AddressUtil.h"
 #include "neteng/fboss/bgp/cpp/lib/BgpException.h"
 #include "neteng/fboss/bgp/cpp/lib/fibers/BgpSerializer.h"
 #include "neteng/fboss/bgp/cpp/lib/fibers/FiberBgpPeer.h"

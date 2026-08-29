@@ -18,7 +18,7 @@
 #include <algorithm>
 #include <cfloat>
 
-#include "fboss/agent/AddressUtil.h"
+#include "common/network/AddressUtil.h"
 #include "neteng/fboss/bgp/cpp/adjrib/AdjRibCommon.h"
 #include "neteng/fboss/bgp/cpp/adjrib/AdjRibStats.h"
 #include "neteng/fboss/bgp/cpp/common/Consts.h"

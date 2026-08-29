@@ -21,7 +21,7 @@
 #include <folly/futures/Future.h>
 #include <folly/logging/xlog.h>
 
-#include "fboss/agent/AddressUtil.h"
+#include "common/network/AddressUtil.h"
 #include "fboss/lib/AlertLogger.h"
 #include "neteng/fboss/bgp/cpp/adjrib/AdjRib.h"
 #include "neteng/fboss/bgp/cpp/config/ConfigStructs.h"

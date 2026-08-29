@@ -18,7 +18,7 @@
 
 #include <gmock/gmock.h>
 
-#include "fboss/agent/AddressUtil.h"
+#include "common/network/AddressUtil.h"
 #include "neteng/fboss/bgp/cpp/common/BgpError.h"
 #include "neteng/fboss/bgp/cpp/config/ConfigUtils.h"
 #include "neteng/fboss/bgp/cpp/policy/PolicyManager.h"

@@ -17,9 +17,9 @@
 #include "BgpServiceUtil.h"
 
 #include <thrift/lib/cpp2/op/Get.h>
+#include "common/network/AddressUtil.h"
 #include "configerator/structs/neteng/bgp_policy/thrift/gen-cpp2/rib_policy_types.h"
 #include "configerator/structs/neteng/bgp_policy/thrift/gen-cpp2/routing_policy_types.h"
-#include "fboss/agent/AddressUtil.h"
 #include "folly/logging/xlog.h"
 #include "magic_enum/magic_enum.hpp"
 #include "neteng/fboss/bgp/cpp/common/Consts.h"

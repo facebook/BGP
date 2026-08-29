@@ -16,7 +16,7 @@
 
 #include <folly/io/Cursor.h>
 
-#include "fboss/agent/AddressUtil.h"
+#include "common/network/AddressUtil.h"
 #include "neteng/fboss/bgp/cpp/lib/BgpException.h"
 #include "neteng/fboss/bgp/cpp/lib/BgpMessageSerializer.h"
 #include "neteng/fboss/bgp/cpp/lib/BgpStructs.h"

@@ -129,7 +129,7 @@
 #include <folly/logging/xlog.h>
 
 #include <fb303/ThreadCachedServiceData.h>
-#include "fboss/agent/AddressUtil.h"
+#include "common/network/AddressUtil.h"
 #include "fboss/lib/CommonUtils.h"
 #include "neteng/fboss/bgp/cpp/BgpServiceBase.h"
 #include "neteng/fboss/bgp/cpp/BgpServiceUtil.h"

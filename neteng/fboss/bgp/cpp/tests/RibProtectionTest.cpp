@@ -58,7 +58,7 @@
 #include <folly/coro/BlockingWait.h>
 #include <folly/io/async/EventBase.h>
 
-#include "fboss/agent/AddressUtil.h"
+#include "common/network/AddressUtil.h"
 #include "neteng/fboss/bgp/cpp/adjrib/AdjRib.h"
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
 #include "neteng/fboss/bgp/cpp/common/RibMessage.h"

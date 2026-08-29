@@ -880,5 +880,7 @@ install(
 install(
   DIRECTORY ${CMAKE_SOURCE_DIR}/common
   DESTINATION include
-  FILES_MATCHING PATTERN "*.thrift"
+  FILES_MATCHING
+    PATTERN "*.h"
+    PATTERN "*.thrift"
 )

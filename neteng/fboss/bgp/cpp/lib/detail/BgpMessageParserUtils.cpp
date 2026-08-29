@@ -20,7 +20,7 @@
 #include <folly/logging/xlog.h>
 #include <thrift/lib/cpp/util/EnumUtils.h>
 
-#include "fboss/agent/AddressUtil.h"
+#include "common/network/AddressUtil.h"
 #include "neteng/fboss/bgp/cpp/lib/BgpException.h"
 #include "neteng/fboss/bgp/cpp/lib/detail/BgpMessageParserUtils.h"
 
