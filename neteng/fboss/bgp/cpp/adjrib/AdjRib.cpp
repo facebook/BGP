@@ -252,6 +252,65 @@ void AdjRib::deleteRibEntry(
   return;
 }
 
+neteng::fboss::bgp::thrift::TAdjRibInPeerStats AdjRib::getRibInStatsSnapshot()
+    const {
+  using neteng::fboss::bgp::thrift::TAdjRibInPeerStats;
+  using neteng::fboss::bgp::thrift::TAdjRibPeerKey;
+
+  const auto& remotePeerId = getRemotePeerId();
+  TAdjRibPeerKey peerKey;
+  peerKey.peer_address() = remotePeerId.peerAddr.str();
+  peerKey.remote_bgp_id() = static_cast<int64_t>(remotePeerId.remoteBgpId);
+
+  TAdjRibInPeerStats snapshot;
+  snapshot.peer_key() = std::move(peerKey);
+  snapshot.peer_name() = peeringParams_.description;
+  snapshot.pre_policy_path_count() =
+      static_cast<int64_t>(stats_.getPreInPrefixCount());
+  snapshot.post_policy_path_count() =
+      static_cast<int64_t>(stats_.getPostInPrefixCount());
+  /**
+   * TODO: Populate `active_prefixes`, `active_paths`, `stale_prefixes`, and
+   * `stale_paths` from the peer's semantic Adj-RIB-IN storage state.
+   */
+  return snapshot;
+}
+
+neteng::fboss::bgp::thrift::TAdjRibOutPeerStats AdjRib::getRibOutStatsSnapshot()
+    const {
+  using neteng::fboss::bgp::thrift::TAdjRibGroupKey;
+  using neteng::fboss::bgp::thrift::TAdjRibOutPeerStats;
+  using neteng::fboss::bgp::thrift::TAdjRibPeerKey;
+
+  const auto& remotePeerId = getRemotePeerId();
+  TAdjRibPeerKey peerKey;
+  peerKey.peer_address() = remotePeerId.peerAddr.str();
+  peerKey.remote_bgp_id() = static_cast<int64_t>(remotePeerId.remoteBgpId);
+
+  const auto& group = getUpdateGroup();
+  const auto& ribOutStats = getGroupPeerRibOutStats();
+  const auto& packingList = getGroupPeerPackingList();
+
+  TAdjRibOutPeerStats snapshot;
+  snapshot.peer_key() = std::move(peerKey);
+  if (group) {
+    TAdjRibGroupKey groupKey;
+    groupKey.egress_policy_name() =
+        group->getGroupKey().egressPolicyName.value_or("");
+    groupKey.group_id() = static_cast<int64_t>(group->getGroupId());
+    snapshot.group_key() = std::move(groupKey);
+  }
+  snapshot.peer_name() = peeringParams_.description;
+  snapshot.peer_state() = fmt::format("{}", getPeerState());
+  snapshot.active_paths() =
+      static_cast<int64_t>(ribOutStats.getPreOutPrefixCount());
+  snapshot.packing_list_size() = static_cast<int64_t>(packingList.size());
+  snapshot.out_delay_pending_keys() =
+      static_cast<int64_t>(deferredUpdates_.size());
+  /** TODO: Populate `active_prefixes` from the effective Adj-RIB-OUT state. */
+  return snapshot;
+}
+
 /**
  * @brief  A utility function to insert AdjRibEntry in the in/out adjrib tree
  *         The function refers to the right tree based on add-path capability

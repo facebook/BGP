@@ -1626,6 +1626,40 @@ BgpServiceBase::co_getDeduplicatorStats(
       PeerManagerBase::getDeduplicatorStats());
 }
 
+folly::coro::Task<std::unique_ptr<TGetAdjRibStatsResponse>>
+BgpServiceBase::co_getAdjRibStats(
+    std::unique_ptr<TGetAdjRibStatsRequest> request) {
+  auto log = LOG_THRIFT_CALL(DBG2);
+  if (exitInitiated_) {
+    co_return std::make_unique<TGetAdjRibStatsResponse>();
+  }
+
+  if (!continueExecution(true)) {
+    co_return std::make_unique<TGetAdjRibStatsResponse>();
+  }
+  SCOPE_EXIT {
+    decrRequestsInExecution();
+  };
+
+  const auto direction = request->direction().value();
+  auto result = co_await co_runOnEvbWithTimeout(
+      peerMgr_.getEventBase(),
+      [this, direction]() { return peerMgr_.getAdjRibStats(direction); },
+      kPeerMgrThriftHandlerTimeout);
+
+  if (result.hasValue()) {
+    co_return std::make_unique<TGetAdjRibStatsResponse>(
+        std::move(result.value()));
+  }
+
+  if (result.exception().is_compatible_with<folly::FutureTimeout>()) {
+    XLOGF(ERR, "getAdjRibStats timed out — PeerManagerBase evb unresponsive");
+  } else {
+    XLOGF(ERR, "getAdjRibStats failed: {}", result.exception().what());
+  }
+  co_return std::make_unique<TGetAdjRibStatsResponse>();
+}
+
 /**
  * Deprecated wire-compatibility placeholder. Deduplicator statistics are
  * served by getDeduplicatorStats() without walking the Adj-RIB; the legacy

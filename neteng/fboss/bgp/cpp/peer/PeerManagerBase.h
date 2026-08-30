@@ -525,6 +525,13 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   static neteng::fboss::bgp::thrift::TGetDeduplicatorStatsResponse
   getDeduplicatorStats() noexcept;
 
+  /**
+   * Build an O(peers) Adj-RIB snapshot from cached per-peer views. Must run on
+   * the PeerManager EventBase.
+   */
+  neteng::fboss::bgp::thrift::TGetAdjRibStatsResponse getAdjRibStats(
+      neteng::fboss::bgp::thrift::TDirectionFilter direction) const;
+
   // get policy stats
   void getPolicyStats(
       neteng::routing::policy::thrift::TPolicyStats& stats) const noexcept {

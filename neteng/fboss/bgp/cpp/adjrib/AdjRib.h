@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <limits>
 #include <memory>
 #include <optional>
 
@@ -56,6 +57,7 @@
 #include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "neteng/fboss/bgp/cpp/watchdog/MonitoredModule.h"
 #include "neteng/fboss/bgp/cpp/watchdog/MonitoredQueue.h"
+#include "neteng/fboss/bgp/if/gen-cpp2/bgp_thrift_types.h"
 
 DECLARE_bool(enable_peer_status_logging);
 DECLARE_bool(enable_rib_path_data_exporting);
@@ -659,6 +661,10 @@ class AdjRib : boost::noncopyable,
     return stats_;
   }
 
+  neteng::fboss::bgp::thrift::TAdjRibInPeerStats getRibInStatsSnapshot() const;
+  neteng::fboss::bgp::thrift::TAdjRibOutPeerStats getRibOutStatsSnapshot()
+      const;
+
   void incrementSentUpdateMsgs(uint64_t bgpMessageCnt = 1) {
     stats_.incrementSentUpdateMsgs(bgpMessageCnt);
   }
@@ -1166,18 +1172,19 @@ class AdjRib : boost::noncopyable,
 
   /*
    * Get the peer's bit position within the update group
-   * Returns -1 if peer is not associated with any group
+   * Returns the invalid bit-position sentinel if the peer is not associated
+   * with any group.
    */
   uint64_t getGroupBitPosition() const {
     return groupBitPosition_;
   }
 
   /*
-   * Clear the peer's bit position (sets to -1)
+   * Clear the peer's bit position.
    * Called when peer is unregistered from group
    */
   void clearGroupBitPosition() {
-    groupBitPosition_ = static_cast<uint64_t>(-1);
+    groupBitPosition_ = kInvalidGroupBitPosition;
   }
 
   /*
@@ -1321,8 +1328,7 @@ class AdjRib : boost::noncopyable,
    * Standalone peers (no group) return their individual cached version.
    */
   uint64_t getLastSeenRibVersion() const {
-    if (adjRibOutGroup_ && groupBitPosition_ != static_cast<uint64_t>(-1) &&
-        adjRibOutGroup_->isPeerInSync(groupBitPosition_)) {
+    if (useGroupStats()) {
       return adjRibOutGroup_->getLastSeenRibVersion();
     }
     return lastSeenRibVersion_;
@@ -1518,6 +1524,29 @@ class AdjRib : boost::noncopyable,
   bool testOnlyDeferDrjAcceptance{false};
 
  private:
+  static constexpr uint64_t kInvalidGroupBitPosition =
+      std::numeric_limits<uint64_t>::max();
+
+  /**
+   * Return whether effective RIB-OUT statistics, packing, and progress state
+   * should come from this peer's update group.
+   */
+  bool useGroupStats() const noexcept {
+    return adjRibOutGroup_ && groupBitPosition_ != kInvalidGroupBitPosition &&
+        adjRibOutGroup_->isPeerInSync(groupBitPosition_);
+  }
+
+  /** Return the effective RIB-OUT statistics for this peer. */
+  const AdjRibStats& getGroupPeerRibOutStats() const noexcept {
+    return useGroupStats() ? adjRibOutGroup_->getStats() : stats_;
+  }
+
+  /** Return the effective RIB-OUT packing list for this peer. */
+  const AttrToPrefixMap& getGroupPeerPackingList() const noexcept {
+    return useGroupStats() ? adjRibOutGroup_->getAttrToPrefixMap()
+                           : attrToPrefixMap_;
+  }
+
   /*
    * Check if a detached peer should transition to DETACHED_READY_TO_JOIN.
    * Sets IS_DETACHED_FAST_PEER flag if DFP (only for DETACHED_RUNNING peers;
@@ -2702,7 +2731,7 @@ class AdjRib : boost::noncopyable,
    * Bit position within the update group
    * Used for bitmap operations in AdjRibOutGroup
    */
-  uint64_t groupBitPosition_{static_cast<uint64_t>(-1)};
+  uint64_t groupBitPosition_{kInvalidGroupBitPosition};
 
   /*
    * Per-peer timer that fires when peer has been blocked too long.

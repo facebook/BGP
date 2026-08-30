@@ -18,14 +18,19 @@
   FRIEND_TEST(PeerManagerUpdateGroupTestFixture, UpdateGroupConstructionTest); \
   FRIEND_TEST(                                                                 \
       PeerManagerUpdateGroupTestFixture,                                       \
-      GetUpdateGroupInfoSurfacesGroupStats);
+      GetUpdateGroupInfoSurfacesGroupStats);                                   \
+  FRIEND_TEST(                                                                 \
+      PeerManagerUpdateGroupTestFixture, GetAdjRibStatsReturnsTypedSnapshots);
 
-#define AdjRibOutGroup_TEST_FRIENDS      \
-  FRIEND_TEST(                           \
-      PeerManagerUpdateGroupTestFixture, \
-      GetUpdateGroupInfoSurfacesGroupStats);
+#define AdjRibOutGroup_TEST_FRIENDS          \
+  FRIEND_TEST(                               \
+      PeerManagerUpdateGroupTestFixture,     \
+      GetUpdateGroupInfoSurfacesGroupStats); \
+  FRIEND_TEST(                               \
+      PeerManagerUpdateGroupTestFixture, GetAdjRibStatsReturnsTypedSnapshots);
 
 #include <algorithm>
+#include <vector>
 
 #include <folly/coro/BlockingWait.h>
 #include <folly/fibers/FiberManagerMap.h>
@@ -35,7 +40,9 @@
 #include "neteng/fboss/bgp/cpp/tests/PeerManagerTestUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/Utils.h"
 
+using facebook::neteng::fboss::bgp::thrift::TDirectionFilter;
 using ::testing::_;
+using ::testing::UnorderedElementsAre;
 using namespace facebook::nettools::bgplib;
 
 namespace facebook::bgp {
@@ -209,6 +216,148 @@ TEST_F(
     EXPECT_EQ(
         group->getStats().getPostOutPrefixCount(),
         summary->post_out_prefix_count().value());
+
+    cleanUp();
+  });
+  evb.loop();
+  SUCCEED();
+}
+
+TEST_F(PeerManagerUpdateGroupTestFixture, GetAdjRibStatsReturnsTypedSnapshots) {
+  constexpr size_t kExpectedPackingListSize = 1;
+  constexpr uint64_t kGroupRibVersionAtDetach = 0x2000;
+  constexpr uint64_t kAdvancedGroupRibVersion = 0x3000;
+  constexpr uint32_t kSecondPathLocalPreference = 200;
+  auto& evb = peerMgr_->getEventBase();
+  auto& fm = folly::fibers::getFiberManager(peerMgr_->getEventBase(), options_);
+
+  FiberBgpPeer::ObservableStateT stateEvent{
+      .peerId = kPeerId3,
+      .versionNumber = version_,
+      .sessionInfo = sessionInfo_};
+  FiberBgpPeer::ObservableStateT secondStateEvent{
+      .peerId = kPeerId4,
+      .versionNumber = version_,
+      .sessionInfo = sessionInfo_};
+
+  peerMgr_->ribInitialAnnouncementStarted_ = true;
+  peerMgr_->ribInitialAnnouncementDone_ = true;
+
+  fm.addTask([&] {
+    folly::coro::blockingWait(peerMgr_->sessionEstablished(stateEvent));
+    secondStateEvent.versionNumber = ++version_;
+    sessionInfo_->currentVersion = std::make_shared<VersionNumber>(version_);
+    folly::coro::blockingWait(peerMgr_->sessionEstablished(secondStateEvent));
+
+    const auto adjRib = peerMgr_->adjRibs_.at(kPeerId3);
+    const auto group = peerMgr_->updateGroupManager_->findOrCreateGroup(
+        adjRib->getUpdateGroupKey());
+    ASSERT_NE(nullptr, group);
+
+    auto attrs = std::make_shared<BgpPath>(BgpPathFields());
+    auto* groupEntry = group->addToLiteTree(
+        group->LiteTree_,
+        kV4Prefix1,
+        group->getGroupOwnerKey(),
+        kDefaultPathID);
+    groupEntry->setPreOut(attrs);
+    groupEntry->setRibVersion(kGroupRibVersionAtDetach);
+    group->stats_.incrementPreOutPrefixCount(/*isIpv4=*/true);
+    group->tryUpdateAttrToPrefixMapForGroup(
+        std::make_pair(kV4Prefix1, kDefaultPathID), nullptr, attrs);
+    ASSERT_EQ(kExpectedPackingListSize, group->getAttrToPrefixMap().size());
+    group->setLastSeenRibVersion(kGroupRibVersionAtDetach);
+    group->transitionInitPeersToJoinedRunning();
+
+    const auto response = peerMgr_->getAdjRibStats(TDirectionFilter::BOTH);
+    constexpr size_t kExpectedPeerCount = 2;
+    ASSERT_EQ(kExpectedPeerCount, response.rib_in()->peers()->size());
+    ASSERT_EQ(kExpectedPeerCount, response.rib_out()->peers()->size());
+    std::vector<std::string> peerAddresses;
+    peerAddresses.reserve(response.rib_in()->peers()->size());
+    for (const auto& peer : response.rib_in()->peers().value()) {
+      peerAddresses.emplace_back(peer.peer_key()->peer_address().value());
+    }
+    EXPECT_THAT(
+        peerAddresses,
+        UnorderedElementsAre(kPeerId3.peerAddr.str(), kPeerId4.peerAddr.str()));
+
+    const auto ribInPeerStats = std::find_if(
+        response.rib_in()->peers()->begin(),
+        response.rib_in()->peers()->end(),
+        [](const auto& peer) {
+          return peer.peer_key()->peer_address().value() ==
+              kPeerId3.peerAddr.str();
+        });
+    ASSERT_NE(response.rib_in()->peers()->end(), ribInPeerStats);
+    EXPECT_EQ(
+        mockInfo1_.peeringParams.description,
+        ribInPeerStats->peer_name().value());
+
+    const auto peerStats = std::find_if(
+        response.rib_out()->peers()->begin(),
+        response.rib_out()->peers()->end(),
+        [](const auto& peer) {
+          return peer.peer_key()->peer_address().value() ==
+              kPeerId3.peerAddr.str();
+        });
+    ASSERT_NE(response.rib_out()->peers()->end(), peerStats);
+    const auto& peer = *peerStats;
+    EXPECT_EQ(kPeerId3.peerAddr.str(), peer.peer_key()->peer_address().value());
+    EXPECT_EQ(
+        kPeerId3.remoteBgpId,
+        static_cast<uint32_t>(peer.peer_key()->remote_bgp_id().value()));
+    const auto& peerGroupKey = peer.group_key().value();
+    EXPECT_EQ(
+        group->getGroupKey().egressPolicyName.value_or(""),
+        peerGroupKey.egress_policy_name().value());
+    EXPECT_EQ(
+        static_cast<int64_t>(group->getGroupId()),
+        peerGroupKey.group_id().value());
+    EXPECT_EQ(mockInfo1_.peeringParams.description, peer.peer_name().value());
+    EXPECT_EQ(0, peer.active_prefixes().value());
+    EXPECT_EQ(1, peer.active_paths().value());
+    EXPECT_EQ(kExpectedPackingListSize, peer.packing_list_size().value());
+    EXPECT_EQ(kGroupRibVersionAtDetach, adjRib->getLastSeenRibVersion());
+
+    const auto bitPosition = adjRib->getGroupBitPosition();
+    ASSERT_TRUE(group->isPeerInSync(bitPosition));
+    ASSERT_EQ(PeerUpdateState::JOINED_RUNNING, adjRib->getPeerState());
+    group->detachPeer(adjRib, AdjRibOutGroup::DetachReason::Policy);
+    EXPECT_FALSE(group->isPeerInSync(bitPosition));
+    EXPECT_TRUE(adjRib->isDetachedPeer());
+
+    auto secondAttrs = std::make_shared<BgpPath>(BgpPathFields());
+    secondAttrs->setLocalPref(kSecondPathLocalPreference);
+    auto* secondGroupEntry = group->addToLiteTree(
+        group->LiteTree_,
+        kV4Prefix2,
+        group->getGroupOwnerKey(),
+        kDefaultPathID);
+    secondGroupEntry->setPreOut(secondAttrs);
+    secondGroupEntry->setRibVersion(kAdvancedGroupRibVersion);
+    group->stats_.incrementPreOutPrefixCount(/*isIpv4=*/true);
+    group->tryUpdateAttrToPrefixMapForGroup(
+        std::make_pair(kV4Prefix2, kDefaultPathID), nullptr, secondAttrs);
+    group->setLastSeenRibVersion(kAdvancedGroupRibVersion);
+    EXPECT_EQ(2, group->getAttrToPrefixMap().size());
+
+    const auto peerBackedSnapshot = adjRib->getRibOutStatsSnapshot();
+    EXPECT_EQ(1, peerBackedSnapshot.active_paths().value());
+    EXPECT_EQ(
+        kExpectedPackingListSize,
+        peerBackedSnapshot.packing_list_size().value());
+    EXPECT_EQ(kGroupRibVersionAtDetach, adjRib->getLastSeenRibVersion());
+
+    const auto ingressResponse =
+        peerMgr_->getAdjRibStats(TDirectionFilter::INGRESS);
+    EXPECT_EQ(kExpectedPeerCount, ingressResponse.rib_in()->peers()->size());
+    EXPECT_TRUE(ingressResponse.rib_out()->peers()->empty());
+
+    const auto egressResponse =
+        peerMgr_->getAdjRibStats(TDirectionFilter::EGRESS);
+    EXPECT_TRUE(egressResponse.rib_in()->peers()->empty());
+    EXPECT_EQ(kExpectedPeerCount, egressResponse.rib_out()->peers()->size());
 
     cleanUp();
   });

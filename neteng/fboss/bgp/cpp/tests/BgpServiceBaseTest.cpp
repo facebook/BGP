@@ -23,6 +23,7 @@
 #include <folly/logging/test/TestLogHandler.h>
 
 #include <fb303/ThreadCachedServiceData.h>
+#include <thrift/lib/cpp2/util/ScopedServerInterfaceThread.h>
 
 /*
  * Grant the exit-sentinel test access to the protected exitInitiated_ flag, so
@@ -30,10 +31,11 @@
  * co_getNumPrefixes without a running RIB evb -- the exit guard short-circuits
  * before the evb hop.
  */
-#define BgpServiceBase_TEST_FRIENDS \
-  FRIEND_TEST(                      \
-      BgpServiceBaseTestFixture,    \
-      GetRibVersionAndNumPrefixesReturnNegativeOnExit);
+#define BgpServiceBase_TEST_FRIENDS                     \
+  FRIEND_TEST(                                          \
+      BgpServiceBaseTestFixture,                        \
+      GetRibVersionAndNumPrefixesReturnNegativeOnExit); \
+  FRIEND_TEST(BgpServiceBaseTestFixture, GetAdjRibStatsReturnsEmptyOnExit);
 
 #include "neteng/fboss/bgp/cpp/BgpServiceBase.h"
 #include "neteng/fboss/bgp/cpp/config/ConfigManager.h"
@@ -60,6 +62,7 @@ constexpr int64_t kExpectedAsPathEntries = 3;
 constexpr int64_t kExpectedCommunitiesEntries = 4;
 constexpr int64_t kExpectedClusterListEntries = 5;
 constexpr int64_t kExpectedExtCommunitiesEntries = 6;
+constexpr uint16_t kEphemeralPort = 0;
 constexpr int64_t kEmptyAttributeCount = 0;
 constexpr double kEmptyAttributeAverage = 0.0;
 
@@ -420,6 +423,26 @@ TEST_F(
   ASSERT_NE(nullptr, response);
   expectEmptyAttributeStats(*response);
 }
+
+TEST_F(BgpServiceBaseTestFixture, GetAdjRibStatsReturnsEmptyOnExit) {
+  service_->exitInitiated_ = true;
+  auto handler = std::shared_ptr<BgpServiceBase>(service_.get(), [](auto*) {});
+  apache::thrift::ScopedServerInterfaceThread server(
+      handler, kLoopBackAddressV4.str(), kEphemeralPort);
+  auto client = server.newClient<apache::thrift::Client<TBgpService>>();
+  auto response = folly::coro::blockingWait(
+      client->co_getAdjRibStats(TGetAdjRibStatsRequest{}));
+
+  EXPECT_TRUE(response.rib_in()->peers()->empty());
+  EXPECT_TRUE(response.rib_out()->peers()->empty());
+}
+
+TEST_F(BgpServiceBaseTestFixture, AdjRibStatsRequestDefaultsToBothDirections) {
+  TGetAdjRibStatsRequest request;
+
+  EXPECT_EQ(TDirectionFilter::BOTH, request.direction().value());
+}
+
 // The getProcessUptimeSeconds handler returns a non-negative value that does
 // not go backwards across samples. (A deterministic positive value with a
 // controlled start time is verified in WatchdogTest.GetUptimeSecondsTest.)

@@ -85,6 +85,7 @@ std::vector<CanonicalPathInput> buildCanonicalPathInputsFromShadowEntry(
   }
   return inputs;
 }
+
 } // namespace
 
 /* Get egress statistics on all peers. */
@@ -1206,6 +1207,36 @@ TGetDeduplicatorStatsResponse PeerManagerBase::getDeduplicatorStats() noexcept {
   stats.ext_communities()->entry_count() = static_cast<int64_t>(
       nettools::bgplib::DeDuplicatedExtCommunities::deduplicatorSize());
   return stats;
+}
+
+TGetAdjRibStatsResponse PeerManagerBase::getAdjRibStats(
+    TDirectionFilter direction) const {
+  DCHECK(evb_.isInEventBaseThread());
+
+  TGetAdjRibStatsResponse response;
+  auto& ribInPeers = response.rib_in()->peers().value();
+  auto& ribOutPeers = response.rib_out()->peers().value();
+  const bool includeRibIn = direction != TDirectionFilter::EGRESS;
+  const bool includeRibOut = direction != TDirectionFilter::INGRESS;
+
+  if (includeRibIn) {
+    ribInPeers.reserve(adjRibs_.size());
+  }
+  if (includeRibOut) {
+    ribOutPeers.reserve(adjRibs_.size());
+  }
+  for (const auto& [_, adjRib] : adjRibs_) {
+    if (!adjRib) {
+      continue;
+    }
+    if (includeRibIn) {
+      ribInPeers.emplace_back(adjRib->getRibInStatsSnapshot());
+    }
+    if (includeRibOut) {
+      ribOutPeers.emplace_back(adjRib->getRibOutStatsSnapshot());
+    }
+  }
+  return response;
 }
 
 } // namespace facebook::bgp
