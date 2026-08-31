@@ -295,9 +295,6 @@ class FiberBgpPeerManagerFixture : public ::testing::Test {
         facebook::bgp::CountConfedsInAsPathLen{
             false}, /* countConfedsInAsPathLen
                      */
-        std::unordered_map<
-            nettools::bgplib::BgpAttrCommunityC,
-            facebook::bgp::ClassId>{}, /* communityToClassId */
         std::nullopt, /* deviceName */
         std::nullopt, /* switchLimitConfig */
         std::nullopt, /* dynamicPeerLimit */
@@ -635,9 +632,6 @@ TEST_F(FiberBgpPeerManagerFixture, StopAcceptFiberLoopTest) {
                                                       */
       facebook::bgp::CountConfedsInAsPathLen{false}, /* countConfedsInAsPathLen
                                                       */
-      std::unordered_map<
-          nettools::bgplib::BgpAttrCommunityC,
-          facebook::bgp::ClassId>{}, /* communityToClassId */
       std::nullopt, /* deviceName */
       std::nullopt, /* switchLimitConfig */
       std::nullopt, /* dynamicPeerLimit */
@@ -694,9 +688,6 @@ TEST_F(FiberBgpPeerManagerFixture, StopConnectFiberLoopTest) {
                                                       */
       facebook::bgp::CountConfedsInAsPathLen{false}, /* countConfedsInAsPathLen
                                                       */
-      std::unordered_map<
-          nettools::bgplib::BgpAttrCommunityC,
-          facebook::bgp::ClassId>{}, /* communityToClassId */
       std::nullopt, /* deviceName */
       std::nullopt, /* switchLimitConfig */
       std::nullopt, /* dynamicPeerLimit */
@@ -921,9 +912,6 @@ TEST_F(FiberBgpPeerManagerFixture, BgpNoServerTest) {
                                                       */
       facebook::bgp::CountConfedsInAsPathLen{false}, /* countConfedsInAsPathLen
                                                       */
-      std::unordered_map<
-          nettools::bgplib::BgpAttrCommunityC,
-          facebook::bgp::ClassId>{}, /* communityToClassId */
       std::nullopt, /* deviceName */
       std::nullopt, /* switchLimitConfig */
       std::nullopt, /* dynamicPeerLimit */
@@ -957,9 +945,6 @@ TEST_F(FiberBgpPeerManagerFixture, BgpNoServerTest) {
                                                       */
       facebook::bgp::CountConfedsInAsPathLen{false}, /* countConfedsInAsPathLen
                                                       */
-      std::unordered_map<
-          nettools::bgplib::BgpAttrCommunityC,
-          facebook::bgp::ClassId>{}, /* communityToClassId */
       std::nullopt, /* deviceName */
       std::nullopt, /* switchLimitConfig */
       std::nullopt, /* dynamicPeerLimit */
@@ -2381,9 +2366,6 @@ TEST_F(FiberBgpPeerManagerFixture, ExceedsDynamicPeerLimitTest) {
       facebook::bgp::EnableServerSocket{true},
       facebook::bgp::AllowLoopbackReflection{false},
       facebook::bgp::CountConfedsInAsPathLen{false},
-      std::unordered_map<
-          nettools::bgplib::BgpAttrCommunityC,
-          facebook::bgp::ClassId>{}, /* communityToClassId */
       std::nullopt, /* deviceName */
       std::nullopt, /* switchLimitConfig */
       1, /* dynamicPeerLimit */
@@ -2417,9 +2399,6 @@ TEST_F(FiberBgpPeerManagerFixture, ExceedsDynamicPeerLimitTest) {
                                                       */
       facebook::bgp::CountConfedsInAsPathLen{false}, /* countConfedsInAsPathLen
                                                       */
-      std::unordered_map<
-          nettools::bgplib::BgpAttrCommunityC,
-          facebook::bgp::ClassId>{}, /* communityToClassId */
       std::nullopt, /* deviceName */
       std::nullopt, /* switchLimitConfig */
       std::nullopt, /* dynamicPeerLimit */
@@ -3053,9 +3032,6 @@ TEST_F(FiberBgpPeerManagerFixture, EgressBackpressureFlagTest) {
                                                       */
       facebook::bgp::CountConfedsInAsPathLen{false}, /* countConfedsInAsPathLen
                                                       */
-      std::unordered_map<
-          nettools::bgplib::BgpAttrCommunityC,
-          facebook::bgp::ClassId>{}, /* communityToClassId */
       std::nullopt, /* deviceName */
       std::nullopt, /* switchLimitConfig */
       std::nullopt, /* dynamicPeerLimit */
@@ -3090,9 +3066,6 @@ TEST_F(FiberBgpPeerManagerFixture, EgressBackpressureFlagTest) {
                                                       */
       facebook::bgp::CountConfedsInAsPathLen{false}, /* countConfedsInAsPathLen
                                                       */
-      std::unordered_map<
-          nettools::bgplib::BgpAttrCommunityC,
-          facebook::bgp::ClassId>{}, /* communityToClassId */
       std::nullopt, /* deviceName */
       std::nullopt, /* switchLimitConfig */
       std::nullopt, /* dynamicPeerLimit */
@@ -4918,9 +4891,6 @@ TEST_F(FiberBgpPeerManagerFixture, BackpressureNotSupportedTest) {
                                                       */
       facebook::bgp::CountConfedsInAsPathLen{false}, /* countConfedsInAsPathLen
                                                       */
-      std::unordered_map<
-          nettools::bgplib::BgpAttrCommunityC,
-          facebook::bgp::ClassId>{}, /* communityToClassId */
       std::nullopt, /* deviceName */
       std::nullopt, /* switchLimitConfig */
       std::nullopt, /* dynamicPeerLimit */
@@ -5311,9 +5281,6 @@ TEST(FiberBgpPeerManagerTest, WriteToNotifyQueueTest) {
                                                       */
       facebook::bgp::CountConfedsInAsPathLen{false}, /* countConfedsInAsPathLen
                                                       */
-      std::unordered_map<
-          nettools::bgplib::BgpAttrCommunityC,
-          facebook::bgp::ClassId>{}, /* communityToClassId */
       std::nullopt, /* deviceName */
       std::nullopt, /* switchLimitConfig */
       std::nullopt, /* dynamicPeerLimit */
@@ -5377,9 +5344,6 @@ TEST(FiberBgpPeerManagerTest, ImmediateShutDownTest) {
                                                       */
       facebook::bgp::CountConfedsInAsPathLen{false}, /* countConfedsInAsPathLen
                                                       */
-      std::unordered_map<
-          nettools::bgplib::BgpAttrCommunityC,
-          facebook::bgp::ClassId>{}, /* communityToClassId */
       std::nullopt, /* deviceName */
       std::nullopt, /* switchLimitConfig */
       std::nullopt, /* dynamicPeerLimit */

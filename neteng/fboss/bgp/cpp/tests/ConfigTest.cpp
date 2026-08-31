@@ -190,8 +190,6 @@ TEST_F(ConfigTestFixture, globalConfigTest) {
     // count_confeds_in_as_path_len is not set
     // verify countConfedsInAsPathLen defaults to FALSE
     EXPECT_FALSE(globalConfig->countConfedsInAsPathLen);
-    // communityToClassId should be empty
-    EXPECT_TRUE(globalConfig->communityToClassId.empty());
   }
 
   // compute_ucmp_from_link_bandwidth_community & count_confeds_in_as_path_len
@@ -218,48 +216,6 @@ TEST_F(ConfigTestFixture, globalConfigTest) {
 
     EXPECT_TRUE(globalConfig->computeUcmpFromLbwComm);
     EXPECT_TRUE(globalConfig->countConfedsInAsPathLen);
-  }
-
-  // community_to_classid
-  thrift::ClassId classId20;
-  classId20.value() = 20;
-  {
-    // valid community_to_classid id map
-    thriftConfig.community_to_classid() = {{"65520:100", classId20}};
-    Config config(thriftConfig);
-    auto globalConfig = config.getBgpGlobalConfig();
-    EXPECT_EQ(1, globalConfig->communityToClassId.size());
-    EXPECT_TRUE(globalConfig->communityToClassId.count(kCommunityClassId100));
-    EXPECT_EQ(
-        facebook::bgp::ClassId(20, 0),
-        globalConfig->communityToClassId.at(kCommunityClassId100));
-  }
-  {
-    // valid community_to_classid id map
-    auto classId20WithMinSupportingRoutes = classId20;
-    classId20WithMinSupportingRoutes.minimum_supporting_routes() = 16;
-
-    thriftConfig.community_to_classid() = {
-        {"65520:100", classId20WithMinSupportingRoutes}};
-    Config config(thriftConfig);
-    auto globalConfig = config.getBgpGlobalConfig();
-    EXPECT_EQ(1, globalConfig->communityToClassId.size());
-    EXPECT_TRUE(globalConfig->communityToClassId.count(kCommunityClassId100));
-    EXPECT_EQ(
-        facebook::bgp::ClassId(20, 16),
-        globalConfig->communityToClassId.at(kCommunityClassId100));
-  }
-  {
-    // invalid community
-    thriftConfig.community_to_classid() = {{"65529:XYZ", classId20}};
-    EXPECT_THROW(Config config(thriftConfig), BgpError);
-  }
-  {
-    // invalid classid
-    thrift::ClassId classId200;
-    classId20.value() = 200;
-    thriftConfig.community_to_classid() = {{"65529:100", classId200}};
-    EXPECT_THROW(Config config(thriftConfig), BgpError);
   }
 }
 

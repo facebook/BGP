@@ -630,7 +630,6 @@ void MockRib::fulfillRibPrepareFibProgrammingPromise(
 void RibFixture::createGlobalConfig(
     ComputeUcmpFromLbwComm computeUcmpFromLbwComm,
     CountConfedsInAsPathLen countConfedsInAsPathLen,
-    const std::unordered_map<BgpAttrCommunityC, ClassId>& communityToClassId,
     EnableNexthopTracking enableNexthopTracking) {
   bgpGlobalConfig1_ = std::make_shared<facebook::bgp::BgpGlobalConfig>(
       kPeerAsn3, // localAsn
@@ -654,7 +653,6 @@ void RibFixture::createGlobalConfig(
       EnableServerSocket{true},
       AllowLoopbackReflection{false},
       countConfedsInAsPathLen,
-      communityToClassId,
       std::nullopt, // deviceName
       std::nullopt, // switchLimitConfig
       std::nullopt, // dynamicPeerLimit
@@ -704,14 +702,10 @@ bool RibFixture::isBestPathAndFibProgrammingPaused() const {
 void RibFixture::ribFixtureDefaultSetup(
     ComputeUcmpFromLbwComm computeUcmpFromLbwComm,
     CountConfedsInAsPathLen countConfedsInAsPathLen,
-    const std::unordered_map<BgpAttrCommunityC, ClassId>& communityToClassId,
     EnableNexthopTracking enableNexthopTracking,
     std::shared_ptr<NexthopCache> nexthopCache) {
   createGlobalConfig(
-      computeUcmpFromLbwComm,
-      countConfedsInAsPathLen,
-      communityToClassId,
-      enableNexthopTracking);
+      computeUcmpFromLbwComm, countConfedsInAsPathLen, enableNexthopTracking);
   createPeerManager();
   // create attributes
   attr_ =
@@ -1258,7 +1252,6 @@ void RibNexthopTrackingFixture::SetUp() {
   ribFixtureDefaultSetup(
       ComputeUcmpFromLbwComm{true} /*default*/,
       ComputeUcmpFromLbwComm{false} /*default*/,
-      {},
       EnableNexthopTracking{true} /*enableNexthopTracking*/,
       std::make_shared<NexthopCache>());
 }

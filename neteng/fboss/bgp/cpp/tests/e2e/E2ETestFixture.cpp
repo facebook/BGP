@@ -1168,7 +1168,6 @@ void E2ETestFixture::createRib(
         globalConfig->enableServerSocket,
         globalConfig->allowLoopbackReflection,
         globalConfig->countConfedsInAsPathLen,
-        globalConfig->communityToClassId,
         globalConfig->deviceName,
         globalConfig->switchLimitConfig,
         globalConfig->dynamicPeerLimit,

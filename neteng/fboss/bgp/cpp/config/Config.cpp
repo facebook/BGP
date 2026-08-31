@@ -23,13 +23,11 @@
 #include <folly/container/F14Set.h>
 #include <folly/json/json.h>
 #include <folly/logging/xlog.h>
-#include <thrift/lib/cpp/util/EnumUtils.h>
 #include <thrift/lib/cpp2/protocol/Serializer.h>
 
 #include <fb303/ThreadCachedServiceData.h>
 #include "configerator/structs/neteng/fboss/bgp/gen-cpp2/bgp_config_types.h"
 #include "configerator/structs/neteng/netwhoami/gen-cpp2/netwhoami_types.h"
-#include "fboss/agent/gen-cpp2/switch_config_types.h"
 #include "neteng/fboss/bgp/cpp/common/BgpError.h"
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
 #include "neteng/fboss/bgp/cpp/common/FeatureFlags.h"
@@ -1031,11 +1029,6 @@ void Config::populateConfigDatabase(
                : AllowLoopbackReflection{false},
       CountConfedsInAsPathLen{config_.count_confeds_in_as_path_len().value_or(
           false)}, /* boolean flag to count confed ASN in as-path */
-      config_.community_to_classid()
-          ? createCommunityToClassIdMap(*config_.community_to_classid())
-          : std::unordered_map<
-                nettools::bgplib::BgpAttrCommunityC,
-                ClassId>(), /* community to classId mapping */
       getDeviceName(), /* local device name */
       switchLimitConfig,
       dynamicPeerLimit,
@@ -1228,37 +1221,6 @@ std::unordered_map<folly::CIDRNetwork, BgpNetwork> Config::getLocalRoutes() {
   localRoutes.insert(
       globalConfig_->networksV6.begin(), globalConfig_->networksV6.end());
   return localRoutes;
-}
-
-std::unordered_map<nettools::bgplib::BgpAttrCommunityC, ClassId>
-Config::createCommunityToClassIdMap(
-    const std::map<std::string, thrift::ClassId>& communityToClassId) const {
-  std::unordered_map<nettools::bgplib::BgpAttrCommunityC, ClassId> ret{};
-  ret.reserve(communityToClassId.size());
-
-  for (const auto& [commStr, classId] : communityToClassId) {
-    auto comm =
-        nettools::bgplib::BgpAttrCommunityC::createBgpAttrCommunity(commStr);
-    if (!comm) {
-      throw BgpError(
-          fmt::format(
-              "Invalid community in community_to_classid: {}", commStr));
-    }
-
-    if (!apache::thrift::util::enumName(
-            static_cast<fboss::cfg::AclLookupClass>(*classId.value()))) {
-      throw BgpError(
-          fmt::format(
-              "Invalid class id in community_to_classid: {}",
-              *classId.value()));
-    }
-
-    ret.emplace(
-        std::move(*comm),
-        ClassId(
-            *classId.value(), classId.minimum_supporting_routes().value_or(0)));
-  }
-  return ret;
 }
 
 bool Config::arePoliciesConfigured() const {

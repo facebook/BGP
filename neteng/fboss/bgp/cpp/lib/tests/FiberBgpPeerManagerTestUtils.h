@@ -267,9 +267,6 @@ inline facebook::bgp::BgpGlobalConfig makeBgpGlobalConfig(
           false}, /* allowLoopbackReflection */
       facebook::bgp::CountConfedsInAsPathLen{
           false}, /* countConfedsInAsPathLen */
-      std::unordered_map<
-          facebook::nettools::bgplib::BgpAttrCommunityC,
-          facebook::bgp::ClassId>{}, /* communityToClassId */
       std::nullopt, /* deviceName */
       std::nullopt, /* switchLimitConfig */
       std::nullopt, /* dynamicPeerLimit */

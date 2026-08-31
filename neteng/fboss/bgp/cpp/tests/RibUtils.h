@@ -338,8 +338,6 @@ class RibFixture : public testing::Test {
           ComputeUcmpFromLbwComm{true},
       CountConfedsInAsPathLen countConfedsInAsPathLen =
           CountConfedsInAsPathLen{false},
-      const std::unordered_map<nettools::bgplib::BgpAttrCommunityC, ClassId>&
-          communityToClassId = {},
       EnableNexthopTracking enableNexthopTracking = EnableNexthopTracking{
           false});
 
@@ -348,8 +346,6 @@ class RibFixture : public testing::Test {
           ComputeUcmpFromLbwComm{true},
       CountConfedsInAsPathLen countConfedsInAsPathLen =
           CountConfedsInAsPathLen{false},
-      const std::unordered_map<nettools::bgplib::BgpAttrCommunityC, ClassId>&
-          communityToClassId = {},
       EnableNexthopTracking enableNexthopTracking =
           EnableNexthopTracking{false},
       std::shared_ptr<NexthopCache> nexthopCache = nullptr);

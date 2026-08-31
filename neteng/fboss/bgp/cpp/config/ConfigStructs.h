@@ -113,8 +113,6 @@ struct BgpGlobalConfig {
           AllowLoopbackReflection{false},
       const CountConfedsInAsPathLen countConfedsInAsPathLen =
           CountConfedsInAsPathLen{false},
-      std::unordered_map<nettools::bgplib::BgpAttrCommunityC, ClassId>
-          communityToClassId = {},
       const std::optional<std::string>& deviceName = std::nullopt,
       const std::optional<thrift::BgpSwitchLimitConfig>& switchLimitConfig =
           std::nullopt,
@@ -161,7 +159,6 @@ struct BgpGlobalConfig {
         enableServerSocket(enableServerSocket),
         allowLoopbackReflection(allowLoopbackReflection),
         countConfedsInAsPathLen(countConfedsInAsPathLen),
-        communityToClassId(std::move(communityToClassId)),
         deviceName(deviceName),
         switchLimitConfig(switchLimitConfig),
         dynamicPeerLimit(dynamicPeerLimit),
@@ -210,8 +207,6 @@ struct BgpGlobalConfig {
       AllowLoopbackReflection{false};
   const CountConfedsInAsPathLen countConfedsInAsPathLen =
       CountConfedsInAsPathLen{false};
-  const std::unordered_map<nettools::bgplib::BgpAttrCommunityC, ClassId>
-      communityToClassId{};
 
   /*
    * Local device name - read from netwhoami

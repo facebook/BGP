@@ -484,41 +484,6 @@ inline const auto kLbw1G = float(1) * facebook::bgp::BpsPerGBps / 8;
 inline const auto kEncodedLbw =
     103031942; // 0xb(110)(00100100)(00100100)(1000)(0110): 6,36,36,8,6
 
-// classid communities
-inline const auto kCommunityClassId100 =
-    *facebook::nettools::bgplib::BgpAttrCommunityC::createBgpAttrCommunity(
-        "65520:100");
-inline const auto kCommunityClassId200 =
-    *facebook::nettools::bgplib::BgpAttrCommunityC::createBgpAttrCommunity(
-        "65520:200");
-inline const auto kCommunityClassId300 =
-    *facebook::nettools::bgplib::BgpAttrCommunityC::createBgpAttrCommunity(
-        "65520:300");
-
-inline std::unordered_map<
-    facebook::nettools::bgplib::BgpAttrCommunityC,
-    facebook::bgp::ClassId>
-createCommunityToClassIdMap() {
-  std::unordered_map<
-      facebook::nettools::bgplib::BgpAttrCommunityC,
-      facebook::bgp::ClassId>
-      ret;
-  ret.emplace(
-      kCommunityClassId100,
-      facebook::bgp::ClassId(100, 0 /* minSupportingRoute */));
-  ret.emplace(
-      kCommunityClassId200,
-      facebook::bgp::ClassId(200, 0 /* minSupportingRoute */));
-  ret.emplace(
-      kCommunityClassId300,
-      facebook::bgp::ClassId(300, 2 /* minSupportingRoute */));
-  return ret;
-}
-inline const std::unordered_map<
-    facebook::nettools::bgplib::BgpAttrCommunityC,
-    facebook::bgp::ClassId>
-    kCommunityToClassIdMap = createCommunityToClassIdMap();
-
 // multipath selectors
 inline const auto multipathSelector =
     std::make_unique<facebook::bgp::RouteInfoSelector>(

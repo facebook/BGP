@@ -675,7 +675,6 @@ BgpGlobalConfig createConfigWithPolicyDefaultAction() {
       EnableServerSocket{true},
       AllowLoopbackReflection{false},
       CountConfedsInAsPathLen{false},
-      {}, // communityToClassId
       std::nullopt, // deviceName
       std::nullopt, // switchLimitConfig
       std::nullopt, // dynamicPeerLimit

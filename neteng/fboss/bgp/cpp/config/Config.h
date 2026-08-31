@@ -92,11 +92,6 @@ class Config {
       const std::vector<thrift::BgpNetwork>& networks);
   std::unordered_map<folly::CIDRNetwork, thrift::BgpNetwork> getLocalRoutes();
 
-  // community to class id
-  std::unordered_map<nettools::bgplib::BgpAttrCommunityC, ClassId>
-  createCommunityToClassIdMap(
-      const std::map<std::string, thrift::ClassId>& communityToClassId) const;
-
   /*
    * Methods of BGP config accessor
    */

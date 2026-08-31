@@ -17,7 +17,6 @@
 #pragma once
 
 #include <folly/IPAddress.h>
-#include <folly/hash/Hash.h>
 
 #include "neteng/fboss/bgp/cpp/common/Types.h"
 #include "neteng/fboss/bgp/cpp/lib/BgpStructs.h"
@@ -88,24 +87,6 @@ using WeightedNexthopMap = folly::F14NodeMap<folly::IPAddress, uint32_t>;
 using NexthopTopoInfoMap = std::
     unordered_map<folly::IPAddress, std::unordered_map<std::string, int64_t>>;
 
-// store class id struct in bgp config
-struct ClassId {
-  const uint32_t value{0};
-  const uint64_t minSupportingRoutes{0};
-
-  ClassId(uint32_t value, uint64_t minSupportingRoutes)
-      : value(value), minSupportingRoutes(minSupportingRoutes) {}
-
-  inline bool operator==(const ClassId& other) const {
-    return (value == other.value) &&
-        (minSupportingRoutes == other.minSupportingRoutes);
-  }
-
-  inline bool operator!=(const ClassId& other) const {
-    return !(*this == other);
-  }
-};
-
 // Store information of all operations that can cause RIB bestpath calculation
 // and FIB programming to be paused or resumed.
 enum RibPauseResumeCause {
@@ -117,18 +98,3 @@ enum RibPauseResumeCause {
 };
 
 } // namespace facebook::bgp
-
-namespace std {
-/**
- * override ClassId hash function
- */
-template <>
-struct hash<facebook::bgp::ClassId> {
-  inline size_t operator()(const facebook::bgp::ClassId& classId) const {
-    size_t seed = 0;
-    seed = folly::hash::hash_combine(seed, classId.value);
-    seed = folly::hash::hash_combine(seed, classId.minSupportingRoutes);
-    return seed;
-  }
-};
-} // namespace std
