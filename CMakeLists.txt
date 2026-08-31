@@ -533,6 +533,7 @@ target_link_libraries(bgp_changetracker
 #
 
 add_library(bgp_config_policy
+  neteng/fboss/bgp/cpp/config/ConfigBB.cpp
   neteng/fboss/bgp/cpp/config/Config.cpp
   neteng/fboss/bgp/cpp/config/ConfigManager.cpp
   neteng/fboss/bgp/cpp/config/ConfigStructs.cpp
