@@ -1042,9 +1042,7 @@ TBgpSession PeerManagerBase::getSessionInfo(
 void PeerManagerBase::getNetworks(
     std::map<TIpPrefix, TBgpPath>& prefixToPath,
     const std::unique_ptr<std::string>& peer,
-    const RouteFilterType& type,
-    const std::optional<std::unique_ptr<std::string>>&
-        dryRunConfigFileName) noexcept {
+    const RouteFilterType& type) noexcept {
   // Invalid input
   if (!peer) {
     return;
@@ -1063,11 +1061,7 @@ void PeerManagerBase::getNetworks(
           continue;
         }
         const auto adjRib = adjRibs_.at(peerId);
-        if (!dryRunConfigFileName) {
-          adjRib->getNetworks(prefixToPath, type);
-        } else {
-          adjRib->getDryRunNetworks(prefixToPath, *dryRunConfigFileName, type);
-        }
+        adjRib->getNetworks(prefixToPath, type);
       }
     }
     // Nothing in AdjRib
@@ -1081,9 +1075,7 @@ void PeerManagerBase::getNetworks(
     std::map<TIpPrefix, TBgpPath>& prefixToPath,
     const std::unique_ptr<std::string>& peer,
     const std::unique_ptr<std::string>& sessionBgpId,
-    const RouteFilterType& type,
-    const std::optional<std::unique_ptr<std::string>>&
-        dryRunConfigFileName) noexcept {
+    const RouteFilterType& type) noexcept {
   // Invalid input
   if (!peer || !sessionBgpId) {
     return;
@@ -1104,20 +1096,14 @@ void PeerManagerBase::getNetworks(
       return;
     }
     const auto adjRib = adjRibs_.at(peerId);
-    if (!dryRunConfigFileName) {
-      adjRib->getNetworks(prefixToPath, type);
-    } else {
-      adjRib->getDryRunNetworks(prefixToPath, *dryRunConfigFileName, type);
-    }
+    adjRib->getNetworks(prefixToPath, type);
   });
 }
 
 void PeerManagerBase::getNetworks2(
     std::map<TIpPrefix, std::vector<TBgpPath>>& prefixToPath,
     const std::unique_ptr<std::string>& peer,
-    const RouteFilterType& type,
-    const std::optional<std::unique_ptr<std::string>>&
-    /* dryRunConfigFileName */) noexcept {
+    const RouteFilterType& type) noexcept {
   // Invalid input
   if (!peer) {
     return;
@@ -1147,9 +1133,7 @@ void PeerManagerBase::getNetworks2(
     std::map<TIpPrefix, std::vector<TBgpPath>>& prefixToPath,
     const std::unique_ptr<std::string>& peer,
     const std::unique_ptr<std::string>& sessionBgpId,
-    const RouteFilterType& type,
-    const std::optional<std::unique_ptr<std::string>>&
-    /* dryRunConfigFileName */) noexcept {
+    const RouteFilterType& type) noexcept {
   // Invalid input
   if (!peer || !sessionBgpId) {
     return;

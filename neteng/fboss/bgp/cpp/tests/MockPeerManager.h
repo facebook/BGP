@@ -45,8 +45,7 @@ class MockPeerManager : public PeerManagerDC {
            facebook::neteng::fboss::bgp_attr::TIpPrefix,
            facebook::neteng::fboss::bgp::thrift::TBgpPath>&),
        const std::unique_ptr<std::string>&,
-       const RouteFilterType&,
-       const std::optional<std::unique_ptr<std::string>>&),
+       const RouteFilterType&),
       (noexcept, override));
   MOCK_METHOD(
       void,
@@ -56,8 +55,7 @@ class MockPeerManager : public PeerManagerDC {
            facebook::neteng::fboss::bgp::thrift::TBgpPath>&),
        const std::unique_ptr<std::string>&,
        const std::unique_ptr<std::string>&,
-       const RouteFilterType&,
-       const std::optional<std::unique_ptr<std::string>>&),
+       const RouteFilterType&),
       (noexcept, override));
 
   MOCK_METHOD(
@@ -67,8 +65,7 @@ class MockPeerManager : public PeerManagerDC {
            facebook::neteng::fboss::bgp_attr::TIpPrefix,
            std::vector<facebook::neteng::fboss::bgp::thrift::TBgpPath>>&),
        const std::unique_ptr<std::string>&,
-       const RouteFilterType&,
-       const std::optional<std::unique_ptr<std::string>>&),
+       const RouteFilterType&),
       (noexcept, override));
 
   MOCK_METHOD(
@@ -79,8 +76,7 @@ class MockPeerManager : public PeerManagerDC {
            std::vector<facebook::neteng::fboss::bgp::thrift::TBgpPath>>&),
        const std::unique_ptr<std::string>&,
        const std::unique_ptr<std::string>&,
-       const RouteFilterType&,
-       const std::optional<std::unique_ptr<std::string>>&),
+       const RouteFilterType&),
       (noexcept, override));
 
   void setRouteFilterPolicy(

@@ -1550,10 +1550,7 @@ TEST_F(PeerManagerTestFixture, GetNetworksEmptyInputTest) {
   // Test invalid peerAddr is an empty argument on getNetworks() function
   std::map<TIpPrefix, TBgpPath> output;
   mockPeerMgr->getNetworks(
-      output,
-      emptyPeer /* null ptr*/,
-      RouteFilterType::PRE_FILTER_RECEIVED,
-      std::nullopt);
+      output, emptyPeer /* null ptr*/, RouteFilterType::PRE_FILTER_RECEIVED);
   EXPECT_EQ(0, output.size());
 }
 
@@ -1568,10 +1565,7 @@ TEST_F(PeerManagerTestFixture, GetNetworks2EmptyInputTest) {
   // Test invalid peerAddr is an empty argument on getNetworks2() function
   std::map<TIpPrefix, std::vector<TBgpPath>> output2;
   mockPeerMgr->getNetworks2(
-      output2,
-      emptyPeer /* null ptr*/,
-      RouteFilterType::PRE_FILTER_RECEIVED,
-      std::nullopt);
+      output2, emptyPeer /* null ptr*/, RouteFilterType::PRE_FILTER_RECEIVED);
   EXPECT_EQ(0, output2.size());
 }
 
@@ -1589,8 +1583,7 @@ TEST_F(PeerManagerTestFixture, GetNetworksInvalidIpAddressTest) {
   mockPeerMgr->getNetworks(
       output,
       invalidPeerAddr /* invalid IP address */,
-      RouteFilterType::PRE_FILTER_RECEIVED,
-      std::nullopt);
+      RouteFilterType::PRE_FILTER_RECEIVED);
   EXPECT_EQ(0, output.size());
 }
 
@@ -1608,8 +1601,7 @@ TEST_F(PeerManagerTestFixture, GetNetworks2InvalidIpAddressTest) {
   mockPeerMgr->getNetworks2(
       output2,
       invalidPeerAddr /* invalid IP address */,
-      RouteFilterType::PRE_FILTER_RECEIVED,
-      std::nullopt);
+      RouteFilterType::PRE_FILTER_RECEIVED);
   EXPECT_EQ(0, output2.size());
 }
 
@@ -1629,8 +1621,7 @@ TEST_F(PeerManagerTestFixture, GetNetworksInvalidSessionBgpIdTest) {
       output,
       std::make_unique<std::string>(kPeerId1.peerAddr.str()),
       invalidSessionBgpId /* invalid session bgp id */,
-      RouteFilterType::PRE_FILTER_RECEIVED,
-      std::nullopt);
+      RouteFilterType::PRE_FILTER_RECEIVED);
   EXPECT_EQ(0, output.size());
 }
 
@@ -1650,8 +1641,7 @@ TEST_F(PeerManagerTestFixture, GetNetworks2InvalidSessionBgpIdTest) {
       output2,
       std::make_unique<std::string>(kPeerId1.peerAddr.str()),
       invalidSessionBgpId /* invalid session bgp id */,
-      RouteFilterType::PRE_FILTER_RECEIVED,
-      std::nullopt);
+      RouteFilterType::PRE_FILTER_RECEIVED);
   EXPECT_EQ(0, output2.size());
 }
 
@@ -1662,11 +1652,10 @@ TEST_F(PeerManagerTestFixture, GetNetworksTest) {
   auto mockPeerMgr = setupMockPeerManager(
       true /* includeStaticPeer */, true /* includeDynamicShivPeer */);
 
-  EXPECT_CALL(*mockPeerMgr, getNetworks(_, _, _, _))
+  EXPECT_CALL(*mockPeerMgr, getNetworks(_, _, _))
       .WillRepeatedly([](std::map<TIpPrefix, TBgpPath>& prefixToPath,
                          const std::unique_ptr<std::string>& peer,
-                         const RouteFilterType&,
-                         const std::optional<std::unique_ptr<std::string>>&) {
+                         const RouteFilterType&) {
         // Invalid input
         if (!peer) {
           return;
@@ -1679,12 +1668,11 @@ TEST_F(PeerManagerTestFixture, GetNetworksTest) {
         prefixToPath[TIpPrefix()] = TBgpPath();
       });
 
-  EXPECT_CALL(*mockPeerMgr, getNetworks(_, _, _, _, _))
+  EXPECT_CALL(*mockPeerMgr, getNetworks(_, _, _, _))
       .WillRepeatedly([](std::map<TIpPrefix, TBgpPath>& prefixToPath,
                          const std::unique_ptr<std::string>& peer,
                          const std::unique_ptr<std::string>& sessionBgpId,
-                         const RouteFilterType&,
-                         const std::optional<std::unique_ptr<std::string>>&) {
+                         const RouteFilterType&) {
         // Invalid input
         if (!peer || !sessionBgpId) {
           return;
@@ -1704,8 +1692,7 @@ TEST_F(PeerManagerTestFixture, GetNetworksTest) {
   mockPeerMgr->getNetworks(
       output,
       std::make_unique<std::string>(kPeerId1.peerAddr.str()),
-      RouteFilterType::PRE_FILTER_RECEIVED,
-      std::nullopt);
+      RouteFilterType::PRE_FILTER_RECEIVED);
   EXPECT_EQ(1, output.size());
 
   // Test valid getNetworks() WITH sessionBgpId argument (overload)
@@ -1714,8 +1701,7 @@ TEST_F(PeerManagerTestFixture, GetNetworksTest) {
       std::make_unique<std::string>(kPeerId1.peerAddr.str()),
       std::make_unique<std::string>(
           folly::IPAddressV4::fromLongHBO(kPeerId1.remoteBgpId).str()),
-      RouteFilterType::PRE_FILTER_RECEIVED,
-      std::nullopt);
+      RouteFilterType::PRE_FILTER_RECEIVED);
   EXPECT_EQ(1, output.size());
 }
 
@@ -1726,12 +1712,11 @@ TEST_F(PeerManagerTestFixture, GetNetworks2Test) {
   auto mockPeerMgr = setupMockPeerManager(
       true /* includeStaticPeer */, true /* includeDynamicShivPeer */);
 
-  EXPECT_CALL(*mockPeerMgr, getNetworks2(_, _, _, _))
+  EXPECT_CALL(*mockPeerMgr, getNetworks2(_, _, _))
       .WillRepeatedly(
           [](std::map<TIpPrefix, std::vector<TBgpPath>>& prefixToPath,
              const std::unique_ptr<std::string>& peer,
-             const RouteFilterType&,
-             const std::optional<std::unique_ptr<std::string>>&) {
+             const RouteFilterType&) {
             // Invalid input
             if (!peer) {
               return;
@@ -1743,13 +1728,12 @@ TEST_F(PeerManagerTestFixture, GetNetworks2Test) {
             // Fill in the prefixToPath map with some test data
             prefixToPath[TIpPrefix()] = std::vector<TBgpPath>({TBgpPath()});
           });
-  EXPECT_CALL(*mockPeerMgr, getNetworks2(_, _, _, _, _))
+  EXPECT_CALL(*mockPeerMgr, getNetworks2(_, _, _, _))
       .WillRepeatedly(
           [](std::map<TIpPrefix, std::vector<TBgpPath>>& prefixToPath,
              const std::unique_ptr<std::string>& peer,
              const std::unique_ptr<std::string>& sessionBgpId,
-             const RouteFilterType&,
-             const std::optional<std::unique_ptr<std::string>>&) {
+             const RouteFilterType&) {
             // Invalid input
             if (!peer || !sessionBgpId) {
               return;
@@ -1769,8 +1753,7 @@ TEST_F(PeerManagerTestFixture, GetNetworks2Test) {
   mockPeerMgr->getNetworks2(
       output2,
       std::make_unique<std::string>(kPeerId1.peerAddr.str()),
-      RouteFilterType::PRE_FILTER_RECEIVED,
-      std::nullopt);
+      RouteFilterType::PRE_FILTER_RECEIVED);
   EXPECT_EQ(1, output2.size());
   // Test valid getNetworks2() WITH sessionBgpId argument (overload)
   mockPeerMgr->getNetworks2(
@@ -1778,8 +1761,7 @@ TEST_F(PeerManagerTestFixture, GetNetworks2Test) {
       std::make_unique<std::string>(kPeerId1.peerAddr.str()),
       std::make_unique<std::string>(
           folly::IPAddressV4::fromLongHBO(kPeerId1.remoteBgpId).str()),
-      RouteFilterType::PRE_FILTER_RECEIVED,
-      std::nullopt);
+      RouteFilterType::PRE_FILTER_RECEIVED);
   EXPECT_EQ(1, output2.size());
 }
 

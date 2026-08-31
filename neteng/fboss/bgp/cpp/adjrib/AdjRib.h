@@ -554,25 +554,6 @@ class AdjRib : boost::noncopyable,
           neteng::fboss::bgp::thrift::TBgpPath>& prefixToPath,
       const RouteFilterType& type) noexcept;
 
-  // Get post, in/out networks for fboss thrift service (DryRun cli)
-  void getDryRunNetworks(
-      std::map<
-          neteng::fboss::bgp_attr::TIpPrefix,
-          neteng::fboss::bgp::thrift::TBgpPath>& prefixToPath,
-      const std::unique_ptr<std::string>& file_name,
-      const RouteFilterType& type) noexcept;
-
-  // Get post, in/out paths
-  std::optional<std::pair<
-      neteng::fboss::bgp_attr::TIpPrefix,
-      neteng::fboss::bgp::thrift::TBgpPath>>
-  getDryRunPaths(
-      const std::shared_ptr<facebook::bgp::PolicyManager>& policyManager,
-      const std::optional<const BgpCommonPeerGroupConfig>& peerConfig,
-      const folly::CIDRNetwork& prefix,
-      const AdjRibEntry& adjRibEntry,
-      const RouteFilterType& type) noexcept;
-
   // Get pre/post, in/out networks for fboss thrift service (show CLI)
   void getNetworks2(
       std::map<

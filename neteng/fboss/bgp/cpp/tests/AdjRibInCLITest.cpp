@@ -35,7 +35,6 @@
 #include "neteng/fboss/bgp/cpp/policy/PolicyManager.h"
 #include "neteng/fboss/bgp/cpp/tests/AdjRibInUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/BoundedWaitUtils.h"
-#include "neteng/fboss/bgp/cpp/tests/PolicyUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/Utils.h"
 
 using namespace facebook::bgp;
@@ -527,10 +526,15 @@ TEST_F(AdjRibInboundFixture, V4GetNetworks2_Advertised) {
         prefix,
         adjRib_->getPeerOwnerKey(),
         pathId);
-    auto adjRibEntry = adjRib_->adjRibOutGroup_->getFromLiteTree(
+    auto* adjRibEntry = adjRib_->adjRibOutGroup_->getFromLiteTree(
         adjRib_->adjRibOutGroup_->LiteTree_,
         prefix,
         adjRib_->getPeerOwnerKey());
+    if (!adjRibEntry) {
+      ADD_FAILURE() << "Expected the advertised route in the RIB-OUT tree";
+      terminateAdjRib();
+      return;
+    }
 
     adjRibEntry->setPreOut(inputAttrs);
     adjRib_->getNetworks2(prefixToPath, RouteFilterType::PRE_FILTER_ADVERTISED);
@@ -785,112 +789,6 @@ TEST_F(AdjRibInboundFixture, V6GetNetworks2) {
           EXPECT_EQ(kAsSeqAsNum, asns[0]);
         }
       }
-    }
-    terminateAdjRib();
-  });
-
-  evb_.loop();
-}
-
-// Ensure that getDryRunNetworks works properly
-// Setup adjRib with startup config/policy kIngressPolicyName which matches
-// all prefixes and sets origin action IGP.
-// Input bgp update with 2 prefixes p1, p2 with origin EGP
-// Input to getDryRunNetworks bgpcpp-dryrun.conf which blocks one prefix(p1)
-// and modifies another prefix(p2) to origin INCOMPLETE Verify that with dry
-// run we see prefix p1 blocked and prefix p2 action modified to INCOMPLETE
-TEST_F(AdjRibInboundFixture, getDryRunNetworks) {
-  // Create a policy with one term
-  // Term1 match all, set action origin IGP
-  const std::string policyName = kIngressPolicyName;
-  auto policyManager = setupMatchAllSetOriginIgpPolicy(policyName);
-  std::vector<folly::CIDRNetwork> prefixSet{kV4Prefix1, kV4Prefix2};
-
-  setupAdjRib(policyManager, policyName);
-
-  fm_->addTask([&] {
-    auto update = createV4BgpUpdateMultipleAnnounce(
-        prefixSet, BgpAttrOrigin::BGP_ORIGIN_EGP);
-    adjRibInQ_->fiberPush(std::move(update));
-  });
-
-  fm_->addTask([&] {
-    facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
-
-    std::map<TIpPrefix, TBgpPath> prefixToPath;
-    adjRib_->getNetworks(prefixToPath, RouteFilterType::POST_FILTER_RECEIVED);
-    // Verify that adjRib has learnt both prefixes and are
-    // returned with proper values after applying init config(policy) by
-    // getNetworks
-    EXPECT_EQ(prefixToPath.size(), 2);
-    for (auto& prefix : prefixSet) {
-      TIpPrefix tPrefix;
-      tPrefix.afi() = TBgpAfi::AFI_IPV4;
-      tPrefix.num_bits() = prefix.second;
-      auto binAddr = toBinaryAddress(prefix.first);
-      tPrefix.prefix_bin() = binAddr.addr()->toStdString();
-
-      ASSERT_NE(prefixToPath.find(tPrefix), prefixToPath.end());
-      auto tPath = prefixToPath[tPrefix];
-      ASSERT_NE(nullptr, apache::thrift::get_pointer(tPath.origin()));
-      // Verify that both prefixes have origin IGP
-      ASSERT_EQ(
-          static_cast<int>(BgpAttrOrigin::BGP_ORIGIN_IGP),
-          *apache::thrift::get_pointer(tPath.origin()));
-
-      ASSERT_NE(nullptr, apache::thrift::get_pointer(tPath.local_pref()));
-      EXPECT_EQ(kLocalPref, *apache::thrift::get_pointer(tPath.local_pref()));
-      ASSERT_NE(nullptr, apache::thrift::get_pointer(tPath.originator_id()));
-      EXPECT_EQ(
-          kOriginatorId, *apache::thrift::get_pointer(tPath.originator_id()));
-    }
-
-    // Verify that getDryRunNetworks modified the result based on dry run
-    // policy kV4Prefix1 is discarded kV4Prefix2 has origin modified to
-    // INCOMPELTE
-    std::string configFile =
-        "neteng/fboss/bgp/cpp/tests/sample_configs/bgpcpp-dryrun.conf";
-    auto configFilePath = getAbsoluteFilePath(configFile);
-    prefixToPath.clear();
-
-    adjRib_->getDryRunNetworks(
-        prefixToPath,
-        std::make_unique<std::string>(configFilePath),
-        RouteFilterType::POST_FILTER_RECEIVED);
-    EXPECT_EQ(prefixToPath.size(), 1);
-
-    // Verify only kV4Prefix2 is returned
-    TIpPrefix tPrefix;
-    tPrefix.afi() = TBgpAfi::AFI_IPV4;
-    tPrefix.num_bits() = kV4Prefix2.second;
-    auto binAddr = toBinaryAddress(kV4Prefix2.first);
-    tPrefix.prefix_bin() = binAddr.addr()->toStdString();
-
-    ASSERT_NE(prefixToPath.find(tPrefix), prefixToPath.end());
-    auto tPath = prefixToPath[tPrefix];
-    ASSERT_NE(nullptr, apache::thrift::get_pointer(tPath.origin()));
-    // Verify that origin action is modified as per dry run policy
-    ASSERT_EQ(
-        static_cast<int>(BgpAttrOrigin::BGP_ORIGIN_INCOMPLETE),
-        *apache::thrift::get_pointer(tPath.origin()));
-
-    // Verify that other fields are not modified
-    ASSERT_NE(nullptr, apache::thrift::get_pointer(tPath.local_pref()));
-    EXPECT_EQ(kLocalPref, *apache::thrift::get_pointer(tPath.local_pref()));
-    ASSERT_NE(nullptr, apache::thrift::get_pointer(tPath.originator_id()));
-    EXPECT_EQ(
-        kOriginatorId, *apache::thrift::get_pointer(tPath.originator_id()));
-
-    // Verify that dry run handles case where all routes are not of filter
-    // type requested. i.e. dry run policy won't be applied on any route
-    {
-      prefixToPath.clear();
-
-      adjRib_->getDryRunNetworks(
-          prefixToPath,
-          std::make_unique<std::string>(configFilePath),
-          RouteFilterType::POST_FILTER_ADVERTISED);
-      EXPECT_EQ(prefixToPath.size(), 0);
     }
     terminateAdjRib();
   });

@@ -13,7 +13,7 @@ commands:
       | summary
       | (summary egress)
       | (neighbors [<ipAddr> [[session-id] <sessionID>]])
-      | (neighbors <ipAddr> (advertised | received) (pre-policy | post-policy | rejected | dryrun-post-policy) [{<ipPrefix>}])
+      | (neighbors <ipAddr> (advertised | received) (pre-policy | post-policy | rejected) [{<ipPrefix>}])
       | originated-routes
       | initialization-events
       | (policy <policyName>)
@@ -48,7 +48,6 @@ commands:
       criteria: { keyword: { help: Show BGP RibPolicy active path selection criteria for prefixes } }
       crf: { keyword: { help: Show BGP RibPolicy active route filters } }
       detail: { keyword: { help: Show BGP RIB route details } }
-      dryrun-post-policy: { keyword: { help: Routes after dry run on new policy configuration at /var/tmp/bgpcpp.conf } }
       entries: { keyword: { help: Show entry statistics } }
       health: { keyword: { help: Show BGP health report } }
       holdtimers: { keyword: { help: Show BGP peer hold timer information } }

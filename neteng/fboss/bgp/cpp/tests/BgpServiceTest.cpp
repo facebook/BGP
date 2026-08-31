@@ -842,28 +842,6 @@ TEST_F(
       Contains(ContainsRegex(kExitNullPtrLogPrefix)));
 }
 
-// test co_getDryRunPostfilterReceivedNetworks
-TEST_F(
-    BgpServiceBaseNullPtrTestFixture,
-    GetDryRunPostfilterReceivedNetworksNullPtrTest) {
-  folly::coro::blockingWait(
-      service_->co_getDryRunPostfilterReceivedNetworks(nullptr, nullptr));
-  EXPECT_THAT(
-      std::move(logHandler_->getMessageValues()),
-      Contains(ContainsRegex(kExitNullPtrLogPrefix)));
-}
-
-// test co_getDryRunPostfilterAdvertisedNetworks
-TEST_F(
-    BgpServiceBaseNullPtrTestFixture,
-    GetDryRunPostfilterAdvertisedNetworksNullPtrTest) {
-  folly::coro::blockingWait(
-      service_->co_getDryRunPostfilterAdvertisedNetworks(nullptr, nullptr));
-  EXPECT_THAT(
-      std::move(logHandler_->getMessageValues()),
-      Contains(ContainsRegex(kExitNullPtrLogPrefix)));
-}
-
 // test co_getSubscriberNetworkInfo
 TEST_F(BgpServiceBaseNullPtrTestFixture, GetSubscriberNetworkInfoNullPtrTest) {
   folly::coro::blockingWait(service_->co_getSubscriberNetworkInfo(1, nullptr));

@@ -371,9 +371,7 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
           facebook::neteng::fboss::bgp_attr::TIpPrefix,
           facebook::neteng::fboss::bgp::thrift::TBgpPath>& prefixToPath,
       const std::unique_ptr<std::string>& peer,
-      const RouteFilterType& type,
-      const std::optional<std::unique_ptr<std::string>>& dryRunConfigFileName =
-          std::nullopt) noexcept;
+      const RouteFilterType& type) noexcept;
 
   virtual void getNetworks(
       std::map<
@@ -381,9 +379,7 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
           facebook::neteng::fboss::bgp::thrift::TBgpPath>& prefixToPath,
       const std::unique_ptr<std::string>& peer,
       const std::unique_ptr<std::string>& sessionBgpId,
-      const RouteFilterType& type,
-      const std::optional<std::unique_ptr<std::string>>& dryRunConfigFileName =
-          std::nullopt) noexcept;
+      const RouteFilterType& type) noexcept;
 
   // Various UI/CLI/Thrift service handlers
   // These will be invoked from a service handler thread, will be
@@ -395,9 +391,7 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
           std::vector<facebook::neteng::fboss::bgp::thrift::TBgpPath>>&
           prefixToPath,
       const std::unique_ptr<std::string>& peer,
-      const RouteFilterType& type,
-      const std::optional<std::unique_ptr<std::string>>& dryRunConfigFileName =
-          std::nullopt) noexcept;
+      const RouteFilterType& type) noexcept;
 
   virtual void getNetworks2(
       std::map<
@@ -406,9 +400,7 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
           prefixToPath,
       const std::unique_ptr<std::string>& peer,
       const std::unique_ptr<std::string>& sessionBgpId,
-      const RouteFilterType& type,
-      const std::optional<std::unique_ptr<std::string>>& dryRunConfigFileName =
-          std::nullopt) noexcept;
+      const RouteFilterType& type) noexcept;
 
   void getSubscriberNetworks(
       std::map<

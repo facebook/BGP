@@ -404,22 +404,6 @@ class BgpServiceBase
   co_getPostfilterAdvertisedNetworks2(
       std::unique_ptr<std::string> peer) override;
 
-  // bgp dryrun-postfilter-received
-  folly::coro::Task<std::unique_ptr<std::map<
-      facebook::neteng::fboss::bgp_attr::TIpPrefix,
-      facebook::neteng::fboss::bgp::thrift::TBgpPath>>>
-  co_getDryRunPostfilterReceivedNetworks(
-      std::unique_ptr<std::string> peer,
-      std::unique_ptr<std::string> file_name) override;
-
-  // bgp dryrun-postfilter-advertised
-  folly::coro::Task<std::unique_ptr<std::map<
-      facebook::neteng::fboss::bgp_attr::TIpPrefix,
-      facebook::neteng::fboss::bgp::thrift::TBgpPath>>>
-  co_getDryRunPostfilterAdvertisedNetworks(
-      std::unique_ptr<std::string> peer,
-      std::unique_ptr<std::string> file_name) override;
-
   folly::coro::Task<std::unique_ptr<std::map<
       facebook::neteng::fboss::bgp_attr::TIpPrefix,
       std::vector<facebook::neteng::fboss::bgp::thrift::TBgpPath>>>>
