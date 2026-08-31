@@ -24,6 +24,11 @@ class ConfigBB : public Config {
  public:
   using Config::Config;
 
+  std::shared_ptr<Config> createConfigFromFile(
+      const std::string& configFileName) const override;
+  std::shared_ptr<const Config> createConfig(
+      thrift::BgpConfig config) const override;
+
   const std::shared_ptr<thrift::BgpNetServiceThriftConfig> getNetServiceConfig()
       const;
 };

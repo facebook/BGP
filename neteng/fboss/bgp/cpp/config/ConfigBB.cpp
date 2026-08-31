@@ -16,7 +16,19 @@
 
 #include "neteng/fboss/bgp/cpp/config/ConfigBB.h"
 
+#include <utility>
+
 namespace facebook::bgp {
+
+std::shared_ptr<Config> ConfigBB::createConfigFromFile(
+    const std::string& configFileName) const {
+  return std::make_shared<ConfigBB>(configFileName);
+}
+
+std::shared_ptr<const Config> ConfigBB::createConfig(
+    thrift::BgpConfig config) const {
+  return std::make_shared<const ConfigBB>(std::move(config));
+}
 
 const std::shared_ptr<thrift::BgpNetServiceThriftConfig>
 ConfigBB::getNetServiceConfig() const {

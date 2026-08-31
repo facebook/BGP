@@ -23,7 +23,9 @@
 #include "configerator/structs/neteng/bgp_policy/thrift/gen-cpp2/bgp_policy_types.h"
 #include "configerator/structs/neteng/fboss/bgp/gen-cpp2/bgp_config_types.h"
 #include "neteng/fboss/bgp/cpp/config/Config.h"
+#include "neteng/fboss/bgp/cpp/config/ConfigBB.h"
 #include "neteng/fboss/bgp/cpp/config/ConfigManager.h"
+#include "neteng/fboss/bgp/cpp/config/facebook/ConfigDC.h"
 #include "neteng/fboss/bgp/cpp/tests/ConfigTestFixture.h"
 #include "neteng/fboss/bgp/cpp/tests/PeerManagerTestUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/Utils.h"
@@ -118,6 +120,28 @@ TEST_F(ConfigTestFixture, ConfigManagerBasicConstructionAndGetConfig) {
   EXPECT_EQ(
       retrievedConfig->getConfig().local_as_4_byte(),
       defaultConfig_.local_as_4_byte());
+}
+
+TEST_F(ConfigTestFixture, ConfigManagerPreservesPlatformConfigType) {
+  {
+    auto initialConfig = std::make_shared<const ConfigBB>(defaultConfig_);
+    ConfigManager configManager(initialConfig);
+
+    auto updatedConfig = configManager.addPeersToConfig({});
+
+    EXPECT_NE(
+        nullptr, std::dynamic_pointer_cast<const ConfigBB>(updatedConfig));
+  }
+
+  {
+    auto initialConfig = std::make_shared<const ConfigDC>(defaultConfig_);
+    ConfigManager configManager(initialConfig);
+
+    auto updatedConfig = configManager.removePeersFromConfig({});
+
+    EXPECT_NE(
+        nullptr, std::dynamic_pointer_cast<const ConfigDC>(updatedConfig));
+  }
 }
 
 TEST_F(ConfigTestFixture, ConfigManagerUpdatePeerPoliciesBasic) {

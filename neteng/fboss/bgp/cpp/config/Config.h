@@ -256,9 +256,12 @@ class Config {
   void verifyIfPoliciesExist(
       const std::shared_ptr<const PolicyManager>& policy) const;
 
-  // Used for config verification and dryrun
-  static std::shared_ptr<Config> createDryRunConfig(
-      const std::unique_ptr<std::string>& file_name);
+  // Preserve the platform-specific config type during validation and updates.
+  virtual std::shared_ptr<Config> createConfigFromFile(
+      const std::string& configFileName) const;
+  virtual std::shared_ptr<const Config> createConfig(
+      thrift::BgpConfig config) const;
+
   static std::shared_ptr<PolicyManager> createPolicyManager(
       const std::shared_ptr<facebook::bgp::Config>& config);
 

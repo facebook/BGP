@@ -208,17 +208,15 @@ folly::F14FastSet<std::string> getReferencedPolicyNames(
 
 } // namespace
 
-// Create config with dry run config file
-std::shared_ptr<Config> Config::createDryRunConfig(
-    const std::unique_ptr<std::string>& file_name) {
-  // load configuration
-  if (!file_name) {
-    XLOG(ERR, "DryRun failed: No config file supplied");
-    return nullptr;
-  }
+std::shared_ptr<Config> Config::createConfigFromFile(
+    const std::string& configFileName) const {
+  XLOGF(DBG1, "Creating config from file: {}", configFileName);
+  return std::make_shared<Config>(configFileName);
+}
 
-  XLOGF(DBG1, "DryRun using config file : {}", *file_name);
-  return std::make_shared<Config>(*file_name);
+std::shared_ptr<const Config> Config::createConfig(
+    thrift::BgpConfig config) const {
+  return std::make_shared<const Config>(std::move(config));
 }
 
 // Create a policy manager from the given config.

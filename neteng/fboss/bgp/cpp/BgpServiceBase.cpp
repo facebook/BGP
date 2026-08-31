@@ -1677,7 +1677,7 @@ void BgpServiceBase::validateConfig(
 
   try {
     // Create policy manager using new config file
-    auto config = Config::createDryRunConfig(file_name);
+    auto config = configManager_->getConfig()->createConfigFromFile(*file_name);
     auto policyManager = Config::createPolicyManager(config);
     ret.success() = true;
   } catch (const std::exception& ex) {
@@ -1729,7 +1729,8 @@ void BgpServiceBase::validateConfigAndPolicy(
   try {
     // Create policy manager using new config file
     ret.success() = false;
-    auto config = Config::createDryRunConfig(config_file_name);
+    auto config =
+        configManager_->getConfig()->createConfigFromFile(*config_file_name);
     if (config) {
       // Validates JSON syntax via folly::parseJson() first
       config->setPolicyConfigFromFile(*policy_file_name);

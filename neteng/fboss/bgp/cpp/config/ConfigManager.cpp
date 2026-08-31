@@ -197,7 +197,7 @@ ConfigManager::createConfigWithUpdatedPeerPolicies(
   }
 
   // Create new immutable Config
-  return std::make_shared<const Config>(std::move(thriftConfig));
+  return currentConfig.createConfig(std::move(thriftConfig));
 }
 
 std::shared_ptr<const Config>
@@ -221,7 +221,7 @@ ConfigManager::createConfigWithUpdatedPeerGroupPolicies(
   }
 
   // Create new immutable Config
-  return std::make_shared<const Config>(std::move(thriftConfig));
+  return currentConfig.createConfig(std::move(thriftConfig));
 }
 
 void ConfigManager::updateConfig(std::shared_ptr<const Config> newConfig) {
@@ -258,7 +258,7 @@ std::shared_ptr<const Config> ConfigManager::createConfigWithUnsetPeerPolicies(
     }
   }
 
-  return std::make_shared<const Config>(std::move(thriftConfig));
+  return currentConfig.createConfig(std::move(thriftConfig));
 }
 
 std::shared_ptr<const Config> ConfigManager::addPeersToConfig(
@@ -277,7 +277,7 @@ std::shared_ptr<const Config> ConfigManager::addPeersToConfig(
     }
   }
 
-  auto newConfig = std::make_shared<const Config>(std::move(thriftConfig));
+  auto newConfig = currentConfig->createConfig(std::move(thriftConfig));
   updateConfig(newConfig);
   return newConfig;
 }
@@ -294,7 +294,7 @@ std::shared_ptr<const Config> ConfigManager::removePeersFromConfig(
         peerAddrs.end();
   });
 
-  auto newConfig = std::make_shared<const Config>(std::move(thriftConfig));
+  auto newConfig = currentConfig->createConfig(std::move(thriftConfig));
   updateConfig(newConfig);
   return newConfig;
 }
