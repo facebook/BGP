@@ -16,7 +16,6 @@
 
 #include <folly/logging/xlog.h>
 
-#include <common/network/AddressUtil.h>
 #include <neteng/fboss/bgp/cpp/rib/FibDev.h>
 
 namespace facebook::bgp {
@@ -57,17 +56,7 @@ void FibDev::updateUnicastRoute(
     return;
   }
 
-  std::vector<fboss::NextHopThrift> tNextHops;
-  for (const auto& nhwt : *weightedNexthops) {
-    const auto& nh = nhwt.first;
-    fboss::NextHopThrift nht;
-    nht.address() = network::toBinaryAddress(nh);
-    nht.weight() = nhwt.second;
-    tNextHops.emplace_back(std::move(nht));
-  }
-
   if (isLocalRouteBest) {
-    tNextHops.clear();
     XLOGF(
         DBG1,
         "Local route programming with empty nexthop for prefix {}",
@@ -77,7 +66,7 @@ void FibDev::updateUnicastRoute(
       DBG3,
       "Adding unicast prefix {} with {} nexthops",
       folly::IPAddress::networkToString(prefix),
-      tNextHops.size());
+      isLocalRouteBest ? 0 : weightedNexthops->size());
   (*waitForAck_)[attrsToBeAdvertised][prefix] = std::move(weightedNexthops);
 }
 
