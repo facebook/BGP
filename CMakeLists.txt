@@ -814,6 +814,28 @@ install(TARGETS
 # BGP++ binary
 #
 
+add_library(bgp_main_util_dc
+  neteng/fboss/bgp/cpp/MainUtilDC.cpp
+)
+
+target_link_libraries(bgp_main_util_dc
+  FBThrift::thriftcpp2
+  bgp_config_cpp2
+  bgp_stats_base
+  ${BGP_BASE_LIBS}
+)
+
+add_library(bgp_main_util_bb
+  neteng/fboss/bgp/cpp/MainUtilBB.cpp
+)
+
+target_link_libraries(bgp_main_util_bb
+  FBThrift::thriftcpp2
+  bgp_config_cpp2
+  bgp_stats_base
+  ${BGP_BASE_LIBS}
+)
+
 add_executable(bgp_bin
   neteng/fboss/bgp/cpp/MainOSS.cpp
 )
@@ -829,6 +851,7 @@ set(_bgp_grouped_libs ${BGP_THRIFT_LIBS} ${FBOSS_LIBS})
 list(JOIN _bgp_grouped_libs "," _bgp_grouped_libs_csv)
 
 target_link_libraries(bgp_bin
+  bgp_main_util_dc
   bgp_service
   bgp_stats_base
   bgp_stats_dc

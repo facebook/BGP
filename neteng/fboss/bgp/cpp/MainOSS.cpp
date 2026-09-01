@@ -28,6 +28,7 @@
 #include "neteng/fboss/bgp/cpp/BgpServiceStream.h"
 #include "neteng/fboss/bgp/cpp/BgpServiceUtil.h"
 #include "neteng/fboss/bgp/cpp/MainUtil.h"
+#include "neteng/fboss/bgp/cpp/MainUtilDC.h"
 #include "neteng/fboss/bgp/cpp/common/BuildInfo.h"
 #include "neteng/fboss/bgp/cpp/common/FeatureFlags.h"
 #include "neteng/fboss/bgp/cpp/config/Config.h"
@@ -201,10 +202,8 @@ int main(int argc, char** argv) {
   if (FLAGS_platform == kFbossPlatform) {
     if (!facebook::bgp::waitForFibService(
             signalHandlerEvb,
-            kFbossPlatform,
             FLAGS_agent_thrift_port,
-            FLAGS_agent_thrift_recv_timeout_ms,
-            0)) {
+            FLAGS_agent_thrift_recv_timeout_ms)) {
       signalHandlerEvbThread.join();
       XLOGF(INFO, "Stopping BGP++ daemon: pid = {}", getpid());
       return 0;

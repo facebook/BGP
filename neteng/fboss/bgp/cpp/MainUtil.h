@@ -17,21 +17,23 @@
 #pragma once
 
 #include <sys/resource.h>
-#include <csignal>
 
-#include <fboss/agent/if/gen-cpp2/ctrl_clients.h>
-#include <fboss/agent/if/gen-cpp2/ctrl_types.h>
+#include <chrono>
+#include <csignal>
+#include <exception>
+#include <memory>
+#include <string>
+#include <thread>
+
 #include <folly/io/async/AsyncSignalHandler.h>
+#include <folly/io/async/EventBase.h>
 #include <folly/logging/xlog.h>
 #include <thrift/lib/cpp/server/TServerEventHandler.h>
 
-#include "neteng/fboss/bgp/cpp/common/Consts.h"
 #include "neteng/fboss/bgp/cpp/common/FeatureFlags.h"
-#include "neteng/fboss/bgp/cpp/common/ThriftClientUtils.h"
 #include "neteng/fboss/bgp/cpp/config/Config.h"
 #include "neteng/fboss/bgp/cpp/config/ThriftServerUtils.h"
 #include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
-#include "openr/if/gen-cpp2/FibService.h"
 
 namespace facebook::bgp {
 
@@ -125,91 +127,38 @@ inline std::shared_ptr<apache::thrift::ThriftServer> makeThriftServer(
   return server;
 }
 
-/*
- * This is a blocking call for Fib Agent. This requires Fib Agent to be
- * ready to take thrift calls before instantiating other threads.
- *
- * ATTN: Terminiation signal will stop the evb and signal this
- *       function to return.
- *
- * @param evb - this is the eventbase with signal handler.
- * @return
- *    true - indicating FibAgent correctly started;
- *    false - indicating termination signal received. Exit and return;
- */
-inline bool waitForFibService(
-    const folly::EventBase& signalHandlerEvb,
-    const std::string& platform,
-    int32_t agentThriftPort,
-    int32_t agentThriftRecvTimeoutMs,
-    int32_t openrFibAgentPort) {
-  std::chrono::steady_clock::time_point startTime =
-      std::chrono::steady_clock::now();
-  folly::EventBase evb;
+namespace detail {
 
-  std::string serviceName =
-      (platform == kFbossPlatform) ? "FibService" : "FibEbbService";
+template <typename ReadyCallback>
+bool waitUntilFibServiceReady(
+    const folly::EventBase& signalHandlerEvb,
+    const std::string& serviceName,
+    ReadyCallback readyCallback) {
+  const auto startTime = std::chrono::steady_clock::now();
   bool ready = false;
 
-  // Main wait loop
   while (signalHandlerEvb.isRunning() && !ready) {
     try {
-      if (platform == kFbossPlatform) {
-        auto bgpFibClient = createThriftClient<
-            apache::thrift::Client<facebook::fboss::FbossCtrl>>(
-            evb,
-            kLoopBackAddressV6,
-            agentThriftPort,
-            kFbossAgentConnTimeout,
-            kFbossAgentSendTimeout,
-            std::chrono::milliseconds(agentThriftRecvTimeoutMs));
-        ::facebook::fboss::SwitchRunState bgpFibClientState =
-            bgpFibClient->sync_getSwitchRunState();
-        ready =
-            (bgpFibClientState == facebook::fboss::SwitchRunState::CONFIGURED);
-      } else if (platform == kEbbPlatform) {
-        auto bgpFibClient = createThriftClient<
-            apache::thrift::Client<openr::thrift::FibService>>(
-            evb,
-            kLoopBackAddressV6,
-            agentThriftPort,
-            kFibEbbConnTimeout,
-            kFibEbbSendTimeout,
-            std::chrono::milliseconds(agentThriftRecvTimeoutMs));
-        ::openr::thrift::SwitchRunState bgpFibClientState =
-            bgpFibClient->sync_getSwitchRunState();
-
-        auto openrFibClient = createThriftClient<
-            apache::thrift::Client<openr::thrift::FibService>>(
-            evb,
-            kLoopBackAddressV6,
-            openrFibAgentPort,
-            kFibOpenrConnTimeout,
-            kFibOpenrSendTimeout,
-            kFibOpenrRecvTimeout);
-        ::openr::thrift::SwitchRunState openrFibClientState =
-            openrFibClient->sync_getSwitchRunState();
-
-        ready =
-            (bgpFibClientState == openr::thrift::SwitchRunState::CONFIGURED) &&
-            (openrFibClientState == openr::thrift::SwitchRunState::CONFIGURED);
-      } else {
-        throw BgpError(
-            "Unsupported platform for FIB service waiting: '", platform, "'");
-      }
-    } catch (const std::exception&) {
+      ready = readyCallback();
+    } catch (const std::exception& ex) {
+      XLOGF_EVERY_MS(
+          DBG2,
+          10000,
+          "Failed to query {} readiness: {}",
+          serviceName,
+          ex.what());
     }
 
     if (!ready) {
+      // NOLINTNEXTLINE(facebook-hte-BadCall-sleep_for)
       std::this_thread::sleep_for(std::chrono::seconds(1));
       XLOGF(INFO, "Waiting for {} to come up...", serviceName);
     }
   }
 
-  std::chrono::milliseconds::rep elapsed =
-      std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now() - startTime)
-          .count();
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           std::chrono::steady_clock::now() - startTime)
+                           .count();
 
   if (!ready) {
     XLOGF(INFO, "Termination signal received. Waited for {}ms", elapsed);
@@ -219,6 +168,8 @@ inline bool waitForFibService(
   XLOGF(INFO, "{} is up. Waited for {}ms", serviceName, elapsed);
   return true;
 }
+
+} // namespace detail
 
 // Override default values of flags based on value in config file
 inline void initFlagsFromConfig(
