@@ -5861,7 +5861,7 @@ TEST_F(RibFixture, ProgramTopoInfoTest) {
   auto fibFuture = fib_->getFibProgramFuture();
   sendInitialPathComputation();
   fibFuture.wait();
-  rib_->setFibBatchTime(std::chrono::milliseconds(2));
+  rib_->setFibBatchTime(std::chrono::seconds(1));
   fibFuture = fib_->getFibProgramFuture();
   sendAnnouncement(prefixBatch, eBgpPeer1_, attrs1);
   sendAnnouncement(prefixBatch, eBgpPeer2_, attrs2);
@@ -5974,7 +5974,7 @@ TEST_F(RibFixture, NoLbwECMP) {
   auto fibFuture = fib_->getFibProgramFuture();
   sendInitialPathComputation();
   fibFuture.wait();
-  rib_->setFibBatchTime(milliseconds(2));
+  rib_->setFibBatchTime(seconds(1));
   fibFuture = fib_->getFibProgramFuture();
   sendAnnouncement(prefixBatch, eBgpPeer1_, attrs1);
   sendAnnouncement(prefixBatch, eBgpPeer2_, attrs2);
@@ -7062,18 +7062,21 @@ TEST_F(RibFixture, ScubaLoggingTest) {
  */
 TEST_F(RibFixture, RibPauseTimeOutTest) {
   auto fibFuture = fib_->getFibProgramFuture();
-  // Step 1: Set ribPauseTime to 25 milliseconds
-  rib_->setRibPauseTime(milliseconds(25));
+  // Step 1: Set ribPauseTime to 1 second
+  rib_->setRibPauseTime(seconds(1));
 
   // Step 2: Send EOR to simulate RIB in steady state
   sendInitialPathComputation();
+  fibFuture.wait();
 
   // Step 3: Send PauseBestPathAndFibProgramming message to rib and verify
   // best path and Fib programming is paused
   sendPauseBestPathAndFibProgramming(RibPauseResumeCause::SAFE_MODE);
-  fibFuture.wait();
-  EXPECT_TRUE(isBestPathAndFibProgrammingPaused());
-  EXPECT_EQ(1, rib_->bestPathAndFibProgrammingPausedBy_.rlock()->size());
+  WITH_RETRIES_N_TIMED(3000, milliseconds(10), {
+    EXPECT_EVENTUALLY_TRUE(isBestPathAndFibProgrammingPaused());
+    EXPECT_EVENTUALLY_EQ(
+        1, rib_->bestPathAndFibProgrammingPausedBy_.rlock()->size());
+  });
 
   // Step 4: Verify RIB is unpaused after timeout
   WITH_RETRIES(
@@ -7100,19 +7103,28 @@ TEST_F(RibFixture, RibPauseTimeOutMultipleTasksTest) {
 
   // Step 2: Send EOR to simulate RIB in steady state
   sendInitialPathComputation();
-
-  // Step 3: Send PauseBestPathAndFibProgramming message to rib from SAFE_MODE
-  sendPauseBestPathAndFibProgramming(RibPauseResumeCause::SAFE_MODE);
-
-  // Step 4: Send PauseBestPathAndFibProgramming message to rib from
-  // BACKPRESSURE
-  sendPauseBestPathAndFibProgramming(RibPauseResumeCause::BACKPRESSURE);
   fibFuture.wait();
+
+  // Step 3: Send PauseBestPathAndFibProgramming message to rib from
+  // BACKPRESSURE and wait for the non-expiring pause to take effect
+  sendPauseBestPathAndFibProgramming(RibPauseResumeCause::BACKPRESSURE);
+  WITH_RETRIES({
+    EXPECT_EVENTUALLY_TRUE(isBestPathAndFibProgrammingPaused());
+    EXPECT_EVENTUALLY_TRUE(
+        rib_->bestPathAndFibProgrammingPausedBy_.rlock()->contains(
+            RibPauseResumeCause::BACKPRESSURE));
+  });
+
+  // Step 4: Send PauseBestPathAndFibProgramming message to rib from SAFE_MODE
+  sendPauseBestPathAndFibProgramming(RibPauseResumeCause::SAFE_MODE);
 
   // Step 5: Verify best path and Fib programming is paused and size of
   // bestPathAndFibProgrammingPausedBy_ set is 2
-  EXPECT_TRUE(isBestPathAndFibProgrammingPaused());
-  EXPECT_EQ(2, rib_->bestPathAndFibProgrammingPausedBy_.rlock()->size());
+  WITH_RETRIES_N_TIMED(200, milliseconds(5), {
+    EXPECT_EVENTUALLY_TRUE(isBestPathAndFibProgrammingPaused());
+    EXPECT_EVENTUALLY_EQ(
+        2, rib_->bestPathAndFibProgrammingPausedBy_.rlock()->size());
+  });
 
   folly::EventBase testEvb;
   testEvb.scheduleAt(

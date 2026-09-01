@@ -18,6 +18,7 @@
 #include <folly/CppAttributes.h>
 #include <folly/FileUtil.h>
 #include <folly/coro/BlockingWait.h>
+#include <folly/coro/CurrentExecutor.h>
 #include <folly/coro/Sleep.h>
 #include <folly/io/async/AsyncTimeout.h>
 #include <folly/json/json.h>
@@ -621,6 +622,8 @@ folly::coro::Task<void> RibBase::processRibInMsgLoop() noexcept {
         [](const RibInAddPathGrUpdate& /* addPathGrUpdate */) {
           // RibInAddPathGrUpdate unimplemented
         });
+
+    co_await folly::coro::co_reschedule_on_current_executor;
   }
 }
 

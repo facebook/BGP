@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <folly/coro/CurrentExecutor.h>
 #include <folly/logging/xlog.h>
 
 #include "common/network/AddressUtil.h"
@@ -789,6 +790,11 @@ folly::coro::Task<void> RibDC::processRibPolicyMsgLoop() noexcept {
         [this](const RouteFilterPolicyClearMsg& /* req */) {
           handleRouteFilterPolicyClearMsg();
         });
+
+    /*
+     * Yield after each message so no input queue can dominate the RIB thread.
+     */
+    co_await folly::coro::co_reschedule_on_current_executor;
   }
 }
 

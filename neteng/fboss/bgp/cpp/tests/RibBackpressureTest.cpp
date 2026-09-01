@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 
 #define RibBase_TEST_FRIENDS                                             \
+  friend class QueueFairnessMockRib;                                     \
   FRIEND_TEST(RibFixture, MultipleRibPauseResumeFromDifferentTasksTest); \
   FRIEND_TEST(                                                           \
       RibFixture,                                                        \
@@ -28,10 +29,12 @@
   FRIEND_TEST(RibBackpressureTest, RibInQueueConsumerScopeExceptionPathTest);
 
 #include <fmt/format.h>
+#include <folly/CancellationToken.h>
 #include <folly/IPAddress.h>
 #include <folly/coro/AsyncScope.h>
 #include <folly/coro/BlockingWait.h>
 #include <folly/coro/Task.h>
+#include <folly/executors/ManualExecutor.h>
 #include <folly/fibers/FiberManager.h>
 #include <folly/io/async/EventBase.h>
 #include <folly/logging/xlog.h>
@@ -46,6 +49,148 @@ using namespace std::chrono;
 
 namespace facebook::bgp {
 
+constexpr size_t kBusyQueueMessages{2};
+
+class QueueFairnessMockRib final : public MockRib {
+ public:
+  enum class BusyQueue {
+    RIB_IN,
+    RIB_POLICY,
+  };
+
+  QueueFairnessMockRib(
+      const BgpGlobalConfig& bgpGlobalConfig,
+      nettools::bgplib::MonitoredBackPressuredQueue<RibInMessage>& ribInQ,
+      MonitoredMPMCQueue<RibOutMessage>& ribOutQ,
+      BusyQueue busyQueue)
+      : MockRib(
+            {},
+            bgpGlobalConfig,
+            std::nullopt,
+            ribInQ,
+            ribOutQ,
+            "dev",
+            nullptr),
+        ribInQForTest_(ribInQ),
+        busyQueue_(busyQueue) {}
+
+  void fillBusyQueue(const TinyPeerInfo& peer) {
+    if (busyQueue_ == BusyQueue::RIB_IN) {
+      for (size_t i = 0; i < kBusyQueueMessages; ++i) {
+        folly::coro::blockingWait(
+            ribInQForTest_.push(RibInAddPathGrUpdate{peer, {}}));
+      }
+    } else {
+      enqueueRibPolicyMsg(RouteAttributePolicyClearMsg{});
+      enqueueRibPolicyMsg(PathSelectionPolicyClearMsg{});
+      enqueueRibPolicyMsg(RouteFilterPolicyClearMsg{});
+      enqueueRibPolicyMsg(RouteAttributePolicyTimerMsg{});
+    }
+  }
+
+  folly::coro::Task<void> processBusyQueue() noexcept {
+    switch (busyQueue_) {
+      case BusyQueue::RIB_IN:
+        co_await processRibInMsgLoop();
+        break;
+      case BusyQueue::RIB_POLICY:
+        co_await RibDC::processRibPolicyMsgLoop();
+        break;
+    }
+    co_return;
+  }
+
+  size_t busyQueueSize() const noexcept {
+    if (busyQueue_ == BusyQueue::RIB_IN) {
+      return ribInQForTest_.size();
+    }
+    return ribPolicyMsgQ_.size();
+  }
+
+ protected:
+  bool replaceRouteAttributePolicy(
+      std::unique_ptr<RouteAttributePolicy> /* newPolicy */) override {
+    return false;
+  }
+
+  bool replacePathSelectionPolicy(
+      std::unique_ptr<PathSelectionPolicy> /* newPolicy */,
+      bool /* isBootstrap */,
+      bool /* forceUpdate */) override {
+    return false;
+  }
+
+  bool replaceRouteFilterPolicy(
+      std::unique_ptr<RouteFilterPolicy> /* newPolicy */,
+      bool /* isBootstrap */,
+      bool /* forceUpdate */) override {
+    return false;
+  }
+
+ private:
+  nettools::bgplib::MonitoredBackPressuredQueue<RibInMessage>& ribInQForTest_;
+  const BusyQueue busyQueue_;
+};
+
+namespace {
+
+template <typename RibT>
+void expectOneExecutorEpochToLeaveMessages(
+    RibT& rib,
+    size_t expectedRemaining) {
+  folly::ManualExecutor executor;
+  folly::CancellationSource cancellationSource;
+  bool consumerCompleted{false};
+  bool consumerCompletedCleanly{false};
+  auto consumer =
+      folly::coro::co_withExecutor(&executor, rib.processBusyQueue());
+  std::move(consumer).start(
+      [&](auto&& result) {
+        consumerCompleted = true;
+        consumerCompletedCleanly = result.hasValue() ||
+            result.template hasException<folly::OperationCancelled>();
+      },
+      cancellationSource.getToken());
+
+  executor.run();
+  EXPECT_EQ(expectedRemaining, rib.busyQueueSize());
+  EXPECT_FALSE(consumerCompleted);
+
+  cancellationSource.requestCancellation();
+  executor.drain();
+  EXPECT_TRUE(consumerCompleted);
+  EXPECT_TRUE(consumerCompletedCleanly);
+}
+
+void expectBusyInputQueueToYield(QueueFairnessMockRib::BusyQueue busyQueue) {
+  nettools::bgplib::MonitoredBackPressuredQueue<RibInMessage> ribInQ{
+      kBusyQueueMessages};
+  MonitoredMPMCQueue<RibOutMessage> ribOutQ;
+  BgpGlobalConfig bgpGlobalConfig(
+      kAsn1,
+      kLocalAddr1,
+      kPeerAddr3,
+      kHoldTime,
+      std::nullopt,
+      kGrRestartTime,
+      {},
+      {});
+  auto rib = std::make_unique<QueueFairnessMockRib>(
+      bgpGlobalConfig, ribInQ, ribOutQ, busyQueue);
+  rib->createFib();
+  const TinyPeerInfo peer{
+      folly::IPAddress("10.0.0.2"),
+      kAsn1,
+      kPeerAddr1.asV4().toLongHBO(),
+      BgpSessionType::IBGP,
+      false};
+  rib->fillBusyQueue(peer);
+  const auto initialQueueSize = rib->busyQueueSize();
+  expectOneExecutorEpochToLeaveMessages(*rib, initialQueueSize - 1);
+}
+
+} // namespace
+
 /**
  * This test ensures RIB is resumed after receiving
  * ResumeBestPathAndFibProgramming from all tasks that sent
@@ -54,7 +199,9 @@ namespace facebook::bgp {
 TEST_F(RibFixture, MultipleRibPauseResumeFromDifferentTasksTest) {
   // Step 1: Send EOR to simulate RIB in steady state
   auto fibFuture = fib_->getFibProgramFuture();
+  rib_->setRibPauseTime(seconds(30));
   sendInitialPathComputation();
+  fibFuture.wait();
   // Step 2: Send PauseBestPathAndFibProgramming message to rib from SAFE_MODE
   // and verify best path and Fib programming is paused
   sendPauseBestPathAndFibProgramming(RibPauseResumeCause::SAFE_MODE);
@@ -78,14 +225,29 @@ TEST_F(RibFixture, MultipleRibPauseResumeFromDifferentTasksTest) {
   // ROUTE_FILTER_POLICY_UPDATE again and ensure RIB is not resumed
   sendResumeBestPathAndFibProgramming(
       RibPauseResumeCause::ROUTE_FILTER_POLICY_UPDATE);
-  fibFuture.wait();
-  EXPECT_TRUE(isBestPathAndFibProgrammingPaused());
+  WITH_RETRIES_N_TIMED(600, milliseconds(50), {
+    EXPECT_EVENTUALLY_TRUE(isBestPathAndFibProgrammingPaused());
+    EXPECT_EVENTUALLY_EQ(
+        2, rib_->bestPathAndFibProgrammingPausedBy_.rlock()->size());
+    EXPECT_EVENTUALLY_TRUE(
+        rib_->bestPathAndFibProgrammingPausedBy_.rlock()->contains(
+            RibPauseResumeCause::SAFE_MODE));
+    EXPECT_EVENTUALLY_TRUE(
+        rib_->bestPathAndFibProgrammingPausedBy_.rlock()->contains(
+            RibPauseResumeCause::BACKPRESSURE));
+  });
 
-  // Step 7: Send ResumeBestPathAndFibProgramming message to rib from
-  // BACKPRESSURE and verify best path and Fib programming is now
-  // resumed.
+  // Step 7: Resume BACKPRESSURE and verify SAFE_MODE still keeps best path
+  // and Fib programming paused.
   sendResumeBestPathAndFibProgramming(RibPauseResumeCause::BACKPRESSURE);
-  EXPECT_TRUE(isBestPathAndFibProgrammingPaused());
+  WITH_RETRIES_N_TIMED(600, milliseconds(50), {
+    EXPECT_EVENTUALLY_TRUE(isBestPathAndFibProgrammingPaused());
+    EXPECT_EVENTUALLY_EQ(
+        1, rib_->bestPathAndFibProgrammingPausedBy_.rlock()->size());
+    EXPECT_EVENTUALLY_TRUE(
+        rib_->bestPathAndFibProgrammingPausedBy_.rlock()->contains(
+            RibPauseResumeCause::SAFE_MODE));
+  });
 
   // Step 8: Send ResumeBestPathAndFibProgramming message to rib from
   // SAFE_MODE and verify best path and Fib programming is now resumed.
@@ -237,6 +399,14 @@ TEST_F(RibFixture, InlineBackpressureTestWithAnnouncementsAndWithdraws) {
 
   WITH_RETRIES(
       { ASSERT_EVENTUALLY_FALSE(isBestPathAndFibProgrammingPaused()); });
+}
+
+TEST(RibInputQueueFairnessTest, RibInQueueYieldsAfterEveryMessage) {
+  expectBusyInputQueueToYield(QueueFairnessMockRib::BusyQueue::RIB_IN);
+}
+
+TEST(RibInputQueueFairnessTest, RibDcPolicyQueueYieldsAfterEveryMessage) {
+  expectBusyInputQueueToYield(QueueFairnessMockRib::BusyQueue::RIB_POLICY);
 }
 
 /**
