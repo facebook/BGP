@@ -116,6 +116,8 @@ def get_cmake_sources(repo_root: Path) -> set[str]:
                     continue
                 if not source.startswith(BGP_CPP_ROOT + "/"):
                     continue
+                if any(excluded in Path(source).parts for excluded in EXCLUDED_DIRS):
+                    continue
                 if Path(source).name in EXCLUDED_FILES:
                     continue
                 sources.add(source)

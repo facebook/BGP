@@ -171,3 +171,47 @@ target_link_libraries(bgp_bb_bin
 
 set_target_properties(bgp_bb_bin PROPERTIES OUTPUT_NAME bgp_bb)
 install(TARGETS bgp_bb_bin DESTINATION sbin)
+
+if (BUILD_TESTING)
+  configure_file(
+    cmake/OssTestMain.cpp.in
+    ${CMAKE_CURRENT_BINARY_DIR}/OssTestMain.cpp
+    COPYONLY
+  )
+
+  add_executable(bgp_platform_constant_bb_test
+    neteng/fboss/bgp/cpp/tests/PlatformConstantBbTest.cpp
+  )
+  add_dependencies(bgp_platform_constant_bb_test bgp_structs_cpp2)
+  target_link_libraries(bgp_platform_constant_bb_test
+    FBThrift::thriftcpp2
+    fmt::fmt
+    Folly::folly
+    GTest::gtest_main
+    ${RE2}
+  )
+  add_test(
+    NAME bgp_platform_constant_bb_test
+    COMMAND bgp_platform_constant_bb_test
+  )
+
+  add_executable(bgp_stats_bb_test
+    ${CMAKE_CURRENT_BINARY_DIR}/OssTestMain.cpp
+    neteng/fboss/bgp/cpp/tests/StatsBBTest.cpp
+  )
+  target_link_libraries(bgp_stats_bb_test
+    bgp_stats_bb
+    GTest::gtest
+    "$<LINK_GROUP:RESCAN,${BGP_BB_LINK_GROUP_LIBS_CSV}>"
+    ${RE2}
+  )
+  add_test(
+    NAME bgp_stats_bb_test
+    COMMAND bgp_stats_bb_test
+  )
+
+  add_test(
+    NAME bgp_bb_version_test
+    COMMAND bgp_bb_bin --version
+  )
+endif()

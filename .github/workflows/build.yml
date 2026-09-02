@@ -23,63 +23,89 @@ permissions:
 
 jobs:
   BGP-Build:
+    name: BGP-${{ matrix.variant }}
     runs-on: 32-core-ubuntu
+    env:
+      FBOSS_BUILD_PROFILE: ${{ matrix.fboss_profile }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: dc
+            fboss_profile: fsdb_client
+          - variant: bb
+            fboss_profile: exported_libraries
     steps:
       - run: echo "Confirming hardware specifications:"; sudo lscpu
       - name: Clean workspace
         run: sudo rm -rf ${{ github.workspace }}/*
       - name: Check out repository code
         uses: actions/checkout@v7
-      # getdeps builds BGP and all of its dependencies (boost, folly, fbthrift,
-      # fizz, wangle, fb303, fboss, ...) via CMake. --allow-system-packages lets
-      # it install the required OS packages. --num-jobs is capped below the core
-      # count because the heavy fboss/folly translation units are memory-hungry
-      # and full parallelism can OOM the runner.
-      # BUILD_SAI_FAKE=1 makes the fboss dependency build against fake SAI
-      # (fboss/github/CMakeLists.txt reads it via $ENV{BUILD_SAI_FAKE}); without
-      # it the fboss build fails since no real vendor SAI is available in OSS.
-      # It is passed via `sudo env` because sudo strips the ambient environment.
+      # Build DC against the FBOSS fsdb_client profile and BB against the
+      # smaller exported_libraries profile. Separate build directories ensure
+      # each variant configures and installs its own dependency closure.
+      # --num-jobs is capped below the core count because large Folly and
+      # Thrift translation units can exhaust the runner's memory.
       # --scratch-path MUST live OUTSIDE the checkout: getdeps applies dependency
       # patches with `git apply` after cd-ing to the enclosing git repo root, so a
       # scratch dir nested in this repo makes it patch from the BGP root and fail
       # (e.g. boost -> "No such file or directory"). runner.temp is a sibling of
       # the checkout and is not a git repo.
-      - name: Build BGP (getdeps / CMake)
+      - name: Build BGP ${{ matrix.variant }} (getdeps / CMake)
         run: >
           sudo
           env
           BUILD_SAI_FAKE=1
+          FBOSS_BUILD_PROFILE=${{ matrix.fboss_profile }}
           python3
           build/fbcode_builder/getdeps.py
           --allow-system-packages
           --scratch-path
-          ${{ runner.temp }}/bgp-build
+          ${{ runner.temp }}/bgp-build-${{ matrix.variant }}
           build
+          --extra-cmake-defines='{"BGP_BUILD_VARIANT":"${{ matrix.variant }}"}'
           --src-dir=.
           --num-jobs
           18
           bgp
-          &&
+      - name: Test BGP ${{ matrix.variant }} (getdeps / CTest)
+        run: >
           sudo
-          chown
-          -R
-          runner:runner
-          ${{ runner.temp }}/bgp-build
+          env
+          BUILD_SAI_FAKE=1
+          FBOSS_BUILD_PROFILE=${{ matrix.fboss_profile }}
+          python3
+          build/fbcode_builder/getdeps.py
+          --allow-system-packages
+          --scratch-path
+          ${{ runner.temp }}/bgp-build-${{ matrix.variant }}
+          test
+          --extra-cmake-defines='{"BGP_BUILD_VARIANT":"${{ matrix.variant }}"}'
+          --src-dir=.
+          --num-jobs
+          18
+          bgp
+      - name: Restore build ownership
+        if: always()
+        run: >
+          sudo chown -R runner:runner
+          ${{ runner.temp }}/bgp-build-${{ matrix.variant }}
           ${{ github.workspace }}
       # Retain the build output only for non-PR runs (daily schedule + manual
-      # dispatch). PRs stay build-only so they finish faster and don't pile up
-      # artifacts.
+      # dispatch). PRs skip artifact upload so they do not pile up artifacts.
       - name: Locate BGP install directory
         if: github.event_name != 'pull_request'
         id: instdir
         run: >
           echo "dir=$(python3 build/fbcode_builder/getdeps.py
-          --scratch-path ${{ runner.temp }}/bgp-build
-          show-inst-dir --src-dir=. bgp)" >> "$GITHUB_OUTPUT"
+          --scratch-path ${{ runner.temp }}/bgp-build-${{ matrix.variant }}
+          show-inst-dir
+          --extra-cmake-defines='{"BGP_BUILD_VARIANT":"${{ matrix.variant }}"}'
+          --src-dir=. bgp)" >> "$GITHUB_OUTPUT"
       - name: Upload BGP build output
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         with:
-          name: bgp
+          name: bgp-${{ matrix.variant }}
           path: ${{ steps.instdir.outputs.dir }}
           retention-days: 14

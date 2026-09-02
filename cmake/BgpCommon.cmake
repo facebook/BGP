@@ -622,6 +622,16 @@ install(TARGETS
   DESTINATION lib
 )
 
+include(CTest)
+if (BUILD_TESTING)
+  add_test(
+    NAME bgp_oss_build_boundary_test
+    COMMAND ${CMAKE_COMMAND}
+      -DBGP_SOURCE_ROOT=${CMAKE_SOURCE_DIR}
+      -P ${CMAKE_SOURCE_DIR}/neteng/fboss/bgp/cpp/tests/VerifyOssBuildBoundary.cmake
+  )
+endif()
+
 #
 # Install files
 #
