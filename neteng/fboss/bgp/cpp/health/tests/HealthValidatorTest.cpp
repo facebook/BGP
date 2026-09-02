@@ -23,7 +23,7 @@
 #include "neteng/fboss/bgp/cpp/config/Config.h"
 #include "neteng/fboss/bgp/cpp/config/ConfigManager.h"
 #include "neteng/fboss/bgp/cpp/health/HealthValidator.h"
-#include "neteng/fboss/bgp/cpp/health/facebook/HealthValidatorBB.h"
+#include "neteng/fboss/bgp/cpp/health/HealthValidatorBB.h"
 #include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "neteng/fboss/bgp/cpp/watchdog/Watchdog.h"
 

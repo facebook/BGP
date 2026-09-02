@@ -495,6 +495,16 @@ target_link_libraries(bgp_stats_dc
   ${BGP_BASE_LIBS}
 )
 
+add_library(bgp_stats_bb
+  neteng/fboss/bgp/cpp/stats/StatsBB.cpp
+)
+
+target_link_libraries(bgp_stats_bb
+  bgp_stats_base
+  fb303::fb303
+  ${BGP_BASE_LIBS}
+)
+
 add_library(bgp_common
   neteng/fboss/bgp/cpp/common/BuildInfo.cpp
   neteng/fboss/bgp/cpp/common/BgpModuleBase.cpp
@@ -610,6 +620,23 @@ target_link_libraries(bgp_nexthop
   ${OPENR_LIBS}
 )
 
+add_library(bgp_netlink_wrapper
+  neteng/fboss/bgp/cpp/nexthopTracker/NetlinkWrapper.cpp
+)
+
+target_link_libraries(bgp_netlink_wrapper
+  bgp_common
+  bgp_lib_core
+  bgp_lib_transport
+  bgp_nexthop
+  bgp_stats_base
+  bgp_watchdog
+  FBThrift::thriftcpp2
+  ${BGP_BASE_LIBS}
+  ${OPENR_LIBS}
+  ${RE2}
+)
+
 add_library(bgp_fsdb_fib_watcher
   neteng/fboss/bgp/cpp/nexthopTracker/FsdbFibWatcher.cpp
 )
@@ -709,6 +736,30 @@ target_link_libraries(bgp_rib_dc
   bgp_stats_dc
 )
 
+add_library(bgp_fib_ebb
+  neteng/fboss/bgp/cpp/rib/FibEbb.cpp
+)
+
+target_link_libraries(bgp_fib_ebb
+  bgp_common
+  bgp_fib_holddown
+  bgp_lib_core
+  bgp_stats_base
+  FBThrift::thriftcpp2
+  ${BGP_BASE_LIBS}
+  ${OPENR_LIBS}
+)
+
+add_library(bgp_rib_bb
+  neteng/fboss/bgp/cpp/rib/RibBB.cpp
+)
+
+target_link_libraries(bgp_rib_bb
+  bgp_fib_ebb
+  bgp_rib_base
+  bgp_stats_bb
+)
+
 add_library(bgp_adjrib
   neteng/fboss/bgp/cpp/adjrib/AdjRib.cpp
   neteng/fboss/bgp/cpp/adjrib/AdjRibCommon.cpp
@@ -771,6 +822,14 @@ target_link_libraries(bgp_neighbor_watcher
   bgp_stats_dc
 )
 
+add_library(bgp_peer_bb
+  neteng/fboss/bgp/cpp/peer/PeerManagerBB.cpp
+)
+
+target_link_libraries(bgp_peer_bb
+  bgp_peer_base
+)
+
 #
 # Tier 5: Application
 #
@@ -812,10 +871,34 @@ target_link_libraries(bgp_service_dc
   bgp_stats_dc
 )
 
+add_library(bgp_health_bb
+  neteng/fboss/bgp/cpp/health/HealthValidatorBB.cpp
+)
+
+target_link_libraries(bgp_health_bb
+  bgp_netlink_wrapper
+  bgp_service_base
+  ${BGP_BASE_LIBS}
+)
+
+add_library(bgp_service_bb
+  neteng/fboss/bgp/cpp/BgpServiceBB.cpp
+)
+
+target_link_libraries(bgp_service_bb
+  bgp_health_bb
+  bgp_netlink_wrapper
+  bgp_peer_bb
+  bgp_rib_bb
+  bgp_service_base
+  bgp_stats_bb
+)
+
 set(BGP_INSTALL_LIBRARIES
   bgp_utils
   bgp_stats_base
   bgp_stats_dc
+  bgp_stats_bb
   bgp_routelib
   bgp_lib_core
   bgp_common
@@ -824,6 +907,7 @@ set(BGP_INSTALL_LIBRARIES
   bgp_watchdog
   bgp_lib_transport
   bgp_nexthop
+  bgp_netlink_wrapper
   bgp_fsdb_fib_watcher
   bgp_fib_holddown
   bgp_fib_dev
@@ -831,11 +915,15 @@ set(BGP_INSTALL_LIBRARIES
   bgp_fsdb_syncer
   bgp_rib_base
   bgp_rib_dc
+  bgp_rib_bb
   bgp_adjrib
   bgp_peer_base
   bgp_neighbor_watcher
+  bgp_peer_bb
   bgp_service_base
   bgp_service_dc
+  bgp_health_bb
+  bgp_service_bb
 )
 
 install(TARGETS
@@ -912,15 +1000,8 @@ install(
   DESTINATION include
   FILES_MATCHING
     PATTERN "*.h"
-    # facebook/ subdirs hold Meta-internal-only code (MainBB, FibEbb,
-    # MemProfiler) and must not ship in OSS.
+    # facebook/ subdirs hold Meta-internal-only code and must not ship in OSS.
     PATTERN "facebook" EXCLUDE
-    # RibBB lives in cpp/rib/ (not facebook/) but is BB-only.
-    PATTERN "RibBB.h" EXCLUDE
-    # StatsBB is linked only into the Meta-internal backbone binary.
-    PATTERN "StatsBB.h" EXCLUDE
-    # NetlinkWrapper.h pulls openr/messaging + openr/nl, neither vendored.
-    PATTERN "NetlinkWrapper.h" EXCLUDE
 )
 
 install(

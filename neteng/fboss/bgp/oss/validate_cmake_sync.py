@@ -42,15 +42,6 @@ EXCLUDED_FILES = {
     "MainOSS.cpp",
     "PeerManagerDC.cpp",
     "VipPeerManager.cpp",
-    # NetlinkWrapper.cpp pulls openr/messaging + openr/nl, neither vendored;
-    # netlink-based nexthop tracking is BB-only (see CMakeLists.txt).
-    "NetlinkWrapper.cpp",
-    # RibBB.cpp lives in cpp/rib/ but is BB-only (its header is excluded from
-    # the OSS install set).
-    "RibBB.cpp",
-    # StatsBB.cpp lives in cpp/stats/ but is BB-only (its header is excluded
-    # from the OSS install set).
-    "StatsBB.cpp",
 }
 EXCLUDED_THRIFT = {"BmpStructs.thrift"}
 

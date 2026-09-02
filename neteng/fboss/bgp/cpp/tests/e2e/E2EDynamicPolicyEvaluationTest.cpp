@@ -42,8 +42,8 @@
 
 #include <thrift/lib/cpp2/util/ScopedServerInterfaceThread.h>
 
+#include "neteng/fboss/bgp/cpp/BgpServiceBB.h"
 #include "neteng/fboss/bgp/cpp/config/ConfigManager.h"
-#include "neteng/fboss/bgp/cpp/facebook/BgpServiceBB.h"
 #include "neteng/fboss/bgp/cpp/tests/PolicyUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/Utils.h"

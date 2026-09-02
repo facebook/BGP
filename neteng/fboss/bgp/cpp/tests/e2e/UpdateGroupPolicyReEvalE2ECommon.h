@@ -40,7 +40,7 @@
 #include <folly/coro/BlockingWait.h>
 #include <folly/logging/xlog.h>
 
-#include "neteng/fboss/bgp/cpp/facebook/BgpServiceBB.h"
+#include "neteng/fboss/bgp/cpp/BgpServiceBB.h"
 #include "neteng/fboss/bgp/cpp/tests/PolicyUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/e2e/UpdateGroupSlowPeerTestCommon.h"
 #include "neteng/fboss/bgp/cpp/watchdog/Watchdog.h"

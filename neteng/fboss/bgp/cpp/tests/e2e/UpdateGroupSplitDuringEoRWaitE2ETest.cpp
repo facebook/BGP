@@ -32,7 +32,7 @@
 
 #include <thrift/lib/cpp2/util/ScopedServerInterfaceThread.h>
 
-#include "neteng/fboss/bgp/cpp/facebook/BgpServiceBB.h"
+#include "neteng/fboss/bgp/cpp/BgpServiceBB.h"
 #include "neteng/fboss/bgp/cpp/tests/BoundedWaitUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/PolicyUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/e2e/E2ESessionTestFixture.h"
