@@ -125,6 +125,9 @@ struct BgpPeerSpec {
    * with INPUT_ERROR unless the group exists in config.
    */
   std::optional<std::string> peerGroupName = std::nullopt;
+
+  /* Additional remote ASN accepted during a migration. */
+  std::optional<uint32_t> additionalRemoteAs = std::nullopt;
 };
 
 /* Inline default peer specs for common test scenarios */

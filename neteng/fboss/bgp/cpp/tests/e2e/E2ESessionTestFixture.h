@@ -63,6 +63,9 @@ class E2ESessionTestFixture : public E2ETestFixture {
       const folly::IPAddress& peerAddr,
       int maxRetries = 50);
 
+  std::optional<PeeringParams> getAdjRibPeeringParams(
+      const folly::IPAddress& peerAddr);
+
   /*
    * Override base accessors to read fresh from
    * testSessionManager_->getPeerStates() on every call. After

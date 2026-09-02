@@ -127,6 +127,7 @@ void E2ESessionTestFixture::bringUpPeer(
   BgpPeerDisplayInfo displayInfo;
   displayInfo.peeringParams.peerAddr = peerId.peerAddr;
   displayInfo.peeringParams.remoteAs = cfg.peerAsn;
+  displayInfo.peeringParams.additionalRemoteAs = cfg.additionalRemoteAs;
   displayInfo.peeringParams.localAs =
       cfg.localAsn.value_or(globalConfig->localAsn);
   displayInfo.peeringParams.globalAs = globalConfig->localAsn;
@@ -217,6 +218,19 @@ void E2ESessionTestFixture::bringDownPeerAndWait(
   bringDownPeer(peerAddr);
   ASSERT_TRUE(waitForSessionTerminated(peerAddr, maxRetries))
       << "Session termination timed out for peer: " << peerAddr;
+}
+
+std::optional<PeeringParams> E2ESessionTestFixture::getAdjRibPeeringParams(
+    const folly::IPAddress& peerAddr) {
+  auto& eventBase = peerManager_->getEventBase();
+  return folly::via(
+             &eventBase,
+             [this, peerAddr]() -> std::optional<PeeringParams> {
+               auto adjRib = getAdjRibByAddr(peerAddr);
+               return adjRib ? std::make_optional(adjRib->getPeeringParams())
+                             : std::nullopt;
+             })
+      .get();
 }
 
 bool E2ESessionTestFixture::waitForSessionEstablished(

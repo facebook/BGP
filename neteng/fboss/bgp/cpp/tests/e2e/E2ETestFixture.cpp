@@ -194,6 +194,10 @@ void E2ETestFixture::addPeer(const BgpPeerSpec& spec) {
     pendingPeerGroupNames_.insert(spec.peerGroupName.value());
   }
 
+  if (spec.additionalRemoteAs.has_value()) {
+    peer.additional_remote_as_4_byte() = *spec.additionalRemoteAs;
+  }
+
   /*
    * Parent confederation AS is a global config field, not per-peer. If
    * multiple specs supply localConfedAsn they must agree (otherwise the

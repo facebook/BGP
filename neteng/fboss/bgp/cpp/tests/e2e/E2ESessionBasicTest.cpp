@@ -41,6 +41,35 @@ class E2ESessionBasicTest : public E2ESessionTestFixture {
   }
 };
 
+class E2ESessionAdditionalRemoteAsTest : public E2ESessionTestFixture {
+ protected:
+  void SetUp() override {
+    auto peerSpec = kDefaultPeerSpec3;
+    peerSpec.additionalRemoteAs = kPeerAsn4;
+    addPeer(peerSpec);
+    createRib();
+    createPeerManager(
+        /*enableUpdateGroup=*/false,
+        /*enableEgressBackpressure=*/false);
+  }
+};
+
+TEST_F(
+    E2ESessionAdditionalRemoteAsTest,
+    AdditionalRemoteAsPropagatesThroughSessionPipeline) {
+  const auto peerConfig = config_->getConfigOfAPeer(kPeerAddr3);
+  ASSERT_TRUE(peerConfig.has_value());
+  EXPECT_EQ(kPeerAsn3, peerConfig->peerAsn);
+  EXPECT_EQ(kPeerAsn4, peerConfig->additionalRemoteAs);
+
+  bringUpPeerAndWait(kPeerAddr3);
+
+  const auto peeringParams = getAdjRibPeeringParams(kPeerAddr3);
+  ASSERT_TRUE(peeringParams.has_value());
+  EXPECT_EQ(kPeerAsn3, peeringParams->remoteAs);
+  EXPECT_EQ(kPeerAsn4, peeringParams->additionalRemoteAs);
+}
+
 /*
  * Verify basic session establishment through the coro queue pipeline.
  * Bring up peers, send a route, verify it is advertised to the other peer.
