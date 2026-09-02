@@ -21,6 +21,13 @@ from pathlib import Path
 
 BGP_CPP_ROOT = "neteng/fboss/bgp/cpp"
 CMAKE_FILE = "neteng/fboss/bgp/public_tld/CMakeLists.txt"
+CMAKE_FILES = (
+    CMAKE_FILE,
+    "neteng/fboss/bgp/public_tld/cmake/BgpLibrary.cmake",
+    "neteng/fboss/bgp/public_tld/cmake/BgpCommon.cmake",
+    "neteng/fboss/bgp/public_tld/cmake/BgpDC.cmake",
+    "neteng/fboss/bgp/public_tld/cmake/BgpBB.cmake",
+)
 # CMakeLists.txt references thrift files by their path in the OSS source tree,
 # which ShipIt assembles from several fbsource locations. This mirrors the
 # [shipit.pathmap] in opensource/fbcode_builder/manifests/bgp: each fbsource
@@ -31,6 +38,9 @@ THRIFT_SRC_DIRS = {
     # fbsource dir (relative to repo root)        : OSS-tree prefix
     "neteng/fboss/bgp/if": "neteng/fboss/bgp/if",
     "neteng/fboss/bgp/public_tld/configerator": "configerator",
+    "configerator/structs/neteng/fboss/thrift": (
+        "configerator/structs/neteng/fboss/thrift"
+    ),
     "neteng/fboss/bgp/public_tld/common": "common",
     # fbcode/fboss/common = common in the manifest: provides common/fb303 and
     # common/network/if/Address.thrift to the OSS build (not vendored).
@@ -44,7 +54,12 @@ EXCLUDED_FILES = {
     "PeerManagerDC.cpp",
     "VipPeerManager.cpp",
 }
-EXCLUDED_THRIFT = {"BmpStructs.thrift"}
+EXCLUDED_THRIFT = {
+    "neteng/fboss/bgp/if/BmpStructs.thrift",
+    "configerator/structs/neteng/fboss/thrift/package_versions.thrift",
+    "configerator/structs/neteng/fboss/thrift/platform_npi_stage.thrift",
+    "configerator/structs/neteng/fboss/thrift/sdk.thrift",
+}
 
 
 def get_repo_root() -> Path:
@@ -76,28 +91,34 @@ def get_oss_eligible_sources(repo_root: Path) -> set[str]:
     return sources
 
 
+def _get_cmake_contents(repo_root: Path) -> list[str]:
+    cmake_paths = [repo_root / cmake_file for cmake_file in CMAKE_FILES]
+    missing_paths = [path for path in cmake_paths if not path.is_file()]
+    if missing_paths:
+        missing_files = "\n".join(f"  {path}" for path in missing_paths)
+        raise FileNotFoundError(f"Missing required BGP CMake file(s):\n{missing_files}")
+    return [path.read_text() for path in cmake_paths]
+
+
 def get_cmake_sources(repo_root: Path) -> set[str]:
-    cmake_path = repo_root / CMAKE_FILE
-    content = cmake_path.read_text()
-    # The BGP++ library is split across many tiered add_library() targets
-    # (bgp_routelib, bgp_lib_core, bgp_common, ... bgp_service) rather than a
-    # single target, so collect .cpp sources from every add_library() block.
+    # The BGP++ library is split across many tiered targets, so collect .cpp
+    # sources from every add_library() block in every CMake fragment.
     sources = set()
-    for match in re.finditer(r"add_library\s*\(\s*\w+\s*\n(.*?)\)", content, re.DOTALL):
-        block = match.group(1)
-        for line in block.split("\n"):
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if not line.endswith(".cpp"):
-                continue
-            # Scope to bgp/cpp/ sources so vendored openr .cpp files (built via
-            # their own add_library targets) are not treated as BGP sources.
-            if not line.startswith(BGP_CPP_ROOT + "/"):
-                continue
-            if Path(line).name in EXCLUDED_FILES:
-                continue
-            sources.add(line)
+    for content in _get_cmake_contents(repo_root):
+        for match in re.finditer(
+            r"add_library\s*\(\s*\w+\s*\n(.*?)\)", content, re.DOTALL
+        ):
+            for line in match.group(1).split("\n"):
+                source = line.strip()
+                if not source or source.startswith("#"):
+                    continue
+                if not source.endswith(".cpp"):
+                    continue
+                if not source.startswith(BGP_CPP_ROOT + "/"):
+                    continue
+                if Path(source).name in EXCLUDED_FILES:
+                    continue
+                sources.add(source)
     return sources
 
 
@@ -108,21 +129,20 @@ def get_thrift_files(repo_root: Path) -> set[str]:
         if not base.exists():
             continue
         for thrift_file in base.rglob("*.thrift"):
-            if thrift_file.name in EXCLUDED_THRIFT:
-                continue
             rel = thrift_file.relative_to(base)
             oss_path = f"{oss_prefix}/{rel}" if oss_prefix else str(rel)
+            if oss_path in EXCLUDED_THRIFT:
+                continue
             thrift_files.add(oss_path)
     return thrift_files
 
 
 def get_cmake_thrift_targets(repo_root: Path) -> set[str]:
-    cmake_path = repo_root / CMAKE_FILE
-    content = cmake_path.read_text()
     pattern = r"add_fbthrift_cpp_library\s*\(\s*\w+\s*\n\s*(\S+\.thrift)"
     thrift_files = set()
-    for match in re.finditer(pattern, content):
-        thrift_files.add(match.group(1))
+    for content in _get_cmake_contents(repo_root):
+        for match in re.finditer(pattern, content):
+            thrift_files.add(match.group(1))
     return thrift_files
 
 
