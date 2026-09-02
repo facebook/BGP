@@ -970,17 +970,31 @@ void FiberBgpPeer::processOpenMsg(const BgpOpenMsg& msg) {
       // only validate remote asn for things other than monitor.
       if (peeringParams_.validateRemoteAs) {
         // rfc6793: if asn4bytes enabled, set asn using capa value of asn4bytes
-        auto const remoteAs = *msg.capabilities()->as4byte()
-            ? *msg.capabilities()->asn()
-            : *msg.asn();
-        if (remoteAs != peeringParams_.remoteAs) {
-          XLOGF(
-              ERR,
-              "Peer {} has wrong ASN configured, ASN in MSG:{} != ASN "
-              "configured:{}. Session will be terminated",
-              peeringParams_.peerAddr.str(),
-              remoteAs,
-              peeringParams_.remoteAs);
+        const auto remoteAs = static_cast<uint32_t>(
+            *msg.capabilities()->as4byte() ? *msg.capabilities()->asn()
+                                           : *msg.asn());
+        const bool isRemoteAsAccepted = remoteAs == peeringParams_.remoteAs ||
+            (peeringParams_.additionalRemoteAs.has_value() &&
+             remoteAs == *peeringParams_.additionalRemoteAs);
+        if (!isRemoteAsAccepted) {
+          if (peeringParams_.additionalRemoteAs.has_value()) {
+            XLOGF(
+                ERR,
+                "Peer {} has wrong ASN configured, ASN in MSG:{} does not "
+                "match configured ASNs:{} or {}. Session will be terminated",
+                peeringParams_.peerAddr.str(),
+                remoteAs,
+                peeringParams_.remoteAs,
+                *peeringParams_.additionalRemoteAs);
+          } else {
+            XLOGF(
+                ERR,
+                "Peer {} has wrong ASN configured, ASN in MSG:{} != ASN "
+                "configured:{}. Session will be terminated",
+                peeringParams_.peerAddr.str(),
+                remoteAs,
+                peeringParams_.remoteAs);
+          }
           sendBgpMessage(buildBgpNotification(
               BgpNotifErrCode::BN_OPEN_MSG_ERR,
               static_cast<uint16_t>(
