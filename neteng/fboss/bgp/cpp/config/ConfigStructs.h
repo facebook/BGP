@@ -394,7 +394,8 @@ struct BgpCommonPeerGroupConfig {
       const std::optional<int32_t>& ttlSecurityHops = std::nullopt,
       bool hasEgressPolicyOverride = false,
       const std::optional<bool>& enhancedRouteRefresh = std::nullopt,
-      const std::optional<bool>& routeRefresh = std::nullopt)
+      const std::optional<bool>& routeRefresh = std::nullopt,
+      const std::optional<uint32_t>& additionalRemoteAs = std::nullopt)
       : peerAsn(peerAsn),
         peerPort(peerPort),
         localAsn(localAsn),
@@ -432,7 +433,8 @@ struct BgpCommonPeerGroupConfig {
         ttlSecurityHops(ttlSecurityHops),
         hasEgressPolicyOverride(hasEgressPolicyOverride),
         enhancedRouteRefresh(enhancedRouteRefresh),
-        routeRefresh(routeRefresh) {}
+        routeRefresh(routeRefresh),
+        additionalRemoteAs(additionalRemoteAs) {}
 
   const uint32_t peerAsn;
   const std::optional<uint16_t> peerPort;
@@ -473,6 +475,7 @@ struct BgpCommonPeerGroupConfig {
   const bool hasEgressPolicyOverride{false};
   const std::optional<bool> enhancedRouteRefresh;
   const std::optional<bool> routeRefresh;
+  const std::optional<uint32_t> additionalRemoteAs;
 };
 
 struct BgpPeerConfig {
@@ -707,6 +710,7 @@ struct PeeringParams {
   uint32_t globalAs{};
   uint32_t localAs{};
   uint32_t remoteAs{};
+  std::optional<uint32_t> additionalRemoteAs{std::nullopt};
   folly::IPAddressV4 localBgpId;
   folly::IPAddressV4 localClusterId;
   std::chrono::seconds holdTime{};
@@ -784,7 +788,9 @@ struct PeeringParams {
   inline bool operator==(const PeeringParams& other) const {
     return (peerAddr == other.peerAddr) && (peerPrefix == other.peerPrefix) &&
         (globalAs == other.globalAs) && (localAs == other.localAs) &&
-        (remoteAs == other.remoteAs) && (localBgpId == other.localBgpId) &&
+        (remoteAs == other.remoteAs) &&
+        (additionalRemoteAs == other.additionalRemoteAs) &&
+        (localBgpId == other.localBgpId) &&
         (localClusterId == other.localClusterId) &&
         (holdTime == other.holdTime) &&
         (grRestartTime == other.grRestartTime) &&

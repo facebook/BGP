@@ -16,6 +16,7 @@
 
 #include "Config.h"
 
+#include <limits>
 #include <string>
 
 #include <folly/FileUtil.h>
@@ -727,6 +728,26 @@ BgpCommonPeerGroupConfig Config::createCommonPeerGroupConfig(
       [](auto&& cfg) { return cfg.remote_as(); },
       "remote_as");
 
+  auto additionalRemoteAsValue = getValue(
+      [](auto&& peerConfig) {
+        return peerConfig.additional_remote_as_4_byte();
+      },
+      peerGroup,
+      peer);
+  if (additionalRemoteAsValue.has_value() &&
+      (*additionalRemoteAsValue <= 0 ||
+       *additionalRemoteAsValue > std::numeric_limits<uint32_t>::max())) {
+    throw BgpError(
+        fmt::format(
+            "Invalid additional_remote_as_4_byte ({}) for peer {}. Valid range is 1-{}.",
+            *additionalRemoteAsValue,
+            *peer.peer_addr(),
+            std::numeric_limits<uint32_t>::max()));
+  }
+  const auto additionalRemoteAs = additionalRemoteAsValue.has_value()
+      ? std::make_optional(static_cast<uint32_t>(*additionalRemoteAsValue))
+      : std::nullopt;
+
   if (peerLocalAs) {
     if (*peerLocalAs == globalConfig_->localAsn) {
       XLOG(ERR, "Peer-Local-AS is configured with same value as global-AS.");
@@ -819,7 +840,8 @@ BgpCommonPeerGroupConfig Config::createCommonPeerGroupConfig(
       ttlSecurityHops, // ttlSecurityHops
       peer.egress_policy_name().has_value(), // hasEgressPolicyOverride
       enhancedRouteRefresh, // enhancedRouteRefresh
-      routeRefresh // routeRefresh
+      routeRefresh, // routeRefresh
+      additionalRemoteAs // additionalRemoteAs
   );
 
   return commonPeerGroupConfig;
@@ -1119,6 +1141,7 @@ PeeringParams Config::getPeeringParamsHelper(
   params.localAs =
       static_cast<uint32_t>(config.localAsn.value_or(globalConfig_->localAsn));
   params.remoteAs = config.peerAsn;
+  params.additionalRemoteAs = config.additionalRemoteAs;
   // Note that this behavior is different from bgpD
   params.localBgpId = globalConfig_->routerId.asV4();
   params.localClusterId = globalConfig_->clusterId.asV4();

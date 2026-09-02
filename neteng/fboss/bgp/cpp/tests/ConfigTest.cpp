@@ -1735,6 +1735,63 @@ TEST_F(ConfigTestFixture, remoteASTest) {
       config.getPeeringParamsForPeer(*peerToConfig.at(kPeerAddr12)).remoteAs);
 }
 
+TEST_F(ConfigTestFixture, additionalRemoteAsTest) {
+  constexpr uint32_t kGroupAdditionalRemoteAs = 4200000000;
+  constexpr uint32_t kPeerAdditionalRemoteAs = 4200000001;
+  constexpr size_t kDynamicPeer1Index = 0;
+  constexpr size_t kStaticPeer4Index = 5;
+
+  auto testConfig = defaultConfig_;
+  auto peerGroups = testConfig.peer_groups().to_optional();
+  peerGroups->at(0).additional_remote_as_4_byte() = kGroupAdditionalRemoteAs;
+  testConfig.peer_groups().from_optional(peerGroups);
+
+  testConfig.peers()->at(kDynamicPeer1Index).additional_remote_as_4_byte() =
+      kPeerAdditionalRemoteAs;
+  testConfig.peers()->at(kStaticPeer4Index).additional_remote_as_4_byte() =
+      kPeerAdditionalRemoteAs;
+
+  Config config(testConfig);
+  const auto& dynamicPeerToConfig = config.getDynamicPeerToConfig();
+  const auto& peerToConfig = config.getPeerToConfig();
+
+  const auto dynamicParams = config.getPeeringParamsForDynamicPeer(
+      *dynamicPeerToConfig.at(kPeerPrefix1));
+  EXPECT_EQ(
+      kPeerAdditionalRemoteAs,
+      dynamicPeerToConfig.at(kPeerPrefix1)
+          ->commonPeerGroupConfig.additionalRemoteAs);
+  EXPECT_EQ(kPeerAdditionalRemoteAs, dynamicParams.additionalRemoteAs);
+
+  const auto inheritedParams =
+      config.getPeeringParamsForPeer(*peerToConfig.at(kPeerAddr5));
+  EXPECT_EQ(
+      kGroupAdditionalRemoteAs,
+      peerToConfig.at(kPeerAddr5)->commonPeerGroupConfig.additionalRemoteAs);
+  EXPECT_EQ(kGroupAdditionalRemoteAs, inheritedParams.additionalRemoteAs);
+
+  const auto overrideParams =
+      config.getPeeringParamsForPeer(*peerToConfig.at(kPeerAddr6));
+  EXPECT_EQ(
+      kPeerAdditionalRemoteAs,
+      peerToConfig.at(kPeerAddr6)->commonPeerGroupConfig.additionalRemoteAs);
+  EXPECT_EQ(kPeerAdditionalRemoteAs, overrideParams.additionalRemoteAs);
+
+  const auto unsetParams =
+      config.getPeeringParamsForPeer(*peerToConfig.at(kPeerAddr3));
+  EXPECT_EQ(std::nullopt, unsetParams.additionalRemoteAs);
+}
+
+TEST_F(ConfigTestFixture, additionalRemoteAsNegativeTest) {
+  constexpr size_t kStaticPeer1Index = 2;
+  for (const int64_t invalidAsn : {0LL, -1LL, 4294967296LL}) {
+    auto testConfig = defaultConfig_;
+    testConfig.peers()->at(kStaticPeer1Index).additional_remote_as_4_byte() =
+        invalidAsn;
+    EXPECT_THROW(Config config(testConfig), BgpError);
+  }
+}
+
 /*
  * Both remote-AS representations (i32 and 4-byte) set at the SAME config level
  * is an ambiguous config and must be rejected at config-construction time.
