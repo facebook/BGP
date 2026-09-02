@@ -39,6 +39,7 @@ THRIFT_SRC_DIRS = {
 # sim/ holds the BGP simulator sources, which are not part of the OSS library.
 EXCLUDED_DIRS = {"facebook", "tests", "eos_wrapper", "test", "sim"}
 EXCLUDED_FILES = {
+    "MainBBOSS.cpp",
     "MainOSS.cpp",
     "PeerManagerDC.cpp",
     "VipPeerManager.cpp",

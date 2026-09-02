@@ -16,11 +16,12 @@
 
 #pragma once
 
-#include "neteng/fboss/bgp/cpp/rib/Fib.h"
-
 #include <folly/coro/AsyncScope.h>
 #include <folly/coro/Mutex.h>
 #include <folly/coro/Task.h>
+#include <gflags/gflags.h>
+
+#include "neteng/fboss/bgp/cpp/rib/Fib.h"
 #include "neteng/fboss/bgp/cpp/rib/FibProgrammingHolddown.h"
 
 // Include the FibService header
@@ -28,6 +29,10 @@
 #include "openr/if/gen-cpp2/FibService.h"
 #include "openr/if/gen-cpp2/FibServiceAsyncClient.h"
 #include "openr/if/gen-cpp2/Network_types.h"
+
+// Defined by FibEbb.cpp and consumed by the BB entry points.
+DECLARE_int32(agent_thrift_port);
+DECLARE_int32(agent_thrift_recv_timeout_ms);
 
 namespace facebook::bgp {
 
