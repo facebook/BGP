@@ -47,6 +47,9 @@ struct PeeringState {
   // Number uniquely represent remote peer
   uint32_t remoteBgpId{0};
 
+  // Effective remote ASN accepted from OPEN for the current session
+  uint32_t remoteAs{0};
+
   // Negotiated hold time
   std::chrono::seconds holdTime{0};
 
@@ -56,7 +59,10 @@ struct PeeringState {
   // Received hold time from peer
   std::chrono::seconds remoteHoldTime{0};
 
-  // Received capabilities from peer
+  /*
+   * Capabilities received from the peer. For an accepted AS4 OPEN, asn
+   * contains the remote ASN advertised in the AS4 capability.
+   */
   BgpCapabilities remoteCapabilities;
 
   // Negotiated capabilities with peer
@@ -160,6 +166,7 @@ class FiberBgpPeer : public std::enable_shared_from_this<FiberBgpPeer>,
     BgpPeerId peerId;
     BgpSessionState state;
     uint64_t versionNumber;
+    uint32_t remoteAs{0};
     std::optional<ResetReason> lastResetReason{std::nullopt};
     std::shared_ptr<ObservableSessionInfo> sessionInfo{nullptr};
     // tells sessionTerminated to schedule cleanupPeerState.
@@ -244,6 +251,10 @@ class FiberBgpPeer : public std::enable_shared_from_this<FiberBgpPeer>,
 
   uint32_t getRemoteBgpIdHBO() const {
     return peeringState_.remoteBgpId;
+  }
+
+  uint32_t getRemoteAs() const {
+    return peeringState_.remoteAs;
   }
 
   uint32_t getLocalBgpIdHBO() const {

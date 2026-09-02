@@ -457,6 +457,7 @@ void FiberBgpPeerManager::processObservableState(
         auto newVersionNumber = sessionInfo->versionNumber->bumpUp();
         sessionInfo->establishedSessionInfo = activeSessionInfo;
         stateEvt.versionNumber = newVersionNumber;
+        stateEvt.remoteAs = activeSessionInfo->peer->getRemoteAs();
         XLOGF(
             DBG1,
             "Session UP from [local [{}]:{}, remote [{} ({})]:{}] version {}",

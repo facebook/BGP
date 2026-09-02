@@ -515,6 +515,7 @@ void FiberBgpPeer::run() noexcept {
       {getRemoteBgpPeerId(),
        peeringState_.state,
        0,
+       peeringState_.remoteAs,
        std::nullopt,
        nullptr,
        peeringState_.peerDelete});
@@ -967,12 +968,12 @@ void FiberBgpPeer::processOpenMsg(const BgpOpenMsg& msg) {
       //
       // Process remote information
       //
+      const auto remoteAs = static_cast<uint32_t>(
+          *msg.capabilities()->as4byte() ? *msg.capabilities()->asn()
+                                         : *msg.asn());
+
       // only validate remote asn for things other than monitor.
       if (peeringParams_.validateRemoteAs) {
-        // rfc6793: if asn4bytes enabled, set asn using capa value of asn4bytes
-        const auto remoteAs = static_cast<uint32_t>(
-            *msg.capabilities()->as4byte() ? *msg.capabilities()->asn()
-                                           : *msg.asn());
         const bool isRemoteAsAccepted = remoteAs == peeringParams_.remoteAs ||
             (peeringParams_.additionalRemoteAs.has_value() &&
              remoteAs == *peeringParams_.additionalRemoteAs);
@@ -1036,6 +1037,7 @@ void FiberBgpPeer::processOpenMsg(const BgpOpenMsg& msg) {
       sendBgpMessage(BgpKeepAlive{});
 
       peeringState_.remoteBgpId = *msg.bgpID();
+      peeringState_.remoteAs = remoteAs;
       //
       // negotiate capability mismatch
       //

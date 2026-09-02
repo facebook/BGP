@@ -3070,6 +3070,8 @@ TEST_F(FiberBgpPeerFixture, ValidateRemoteAsTest) {
     ASSERT_EQ(peer3->getValidateRemoteAs(), false);
     EXPECT_EQ(BgpSessionState::ESTABLISHED, peer2->getBgpSessionState());
     EXPECT_EQ(BgpSessionState::ESTABLISHED, peer3->getBgpSessionState());
+    EXPECT_EQ(params3.localAs, peer2->getRemoteAs());
+    EXPECT_EQ(params2.localAs, peer3->getRemoteAs());
     stopTwoPeers(peer2, peer3);
   });
 
@@ -3096,6 +3098,8 @@ TEST_F(FiberBgpPeerFixture, AdditionalRemoteAsEstablishesSessionTest) {
         0,
         runUntilTargetStateOrTimeout(
             migratingPeer, BgpSessionState::ESTABLISHED, 1s));
+    EXPECT_EQ(params2_.localAs, acceptingPeer->getRemoteAs());
+    EXPECT_EQ(acceptingPeerParams.localAs, migratingPeer->getRemoteAs());
 
     stopTwoPeers(acceptingPeer, migratingPeer);
   });
