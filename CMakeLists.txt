@@ -461,6 +461,15 @@ target_link_libraries(bgp_lib_core
   ${BGP_BASE_LIBS}
 )
 
+add_library(bgp_utils
+  neteng/fboss/bgp/cpp/common/Utils.cpp
+)
+
+target_link_libraries(bgp_utils
+  ${BGP_THRIFT_LIBS}
+  ${BGP_BASE_LIBS}
+)
+
 #
 # Tier 1: Foundation
 #
@@ -470,6 +479,7 @@ add_library(bgp_stats_base
 )
 
 target_link_libraries(bgp_stats_base
+  bgp_utils
   fb303::fb303
   ${BGP_THRIFT_LIBS}
   ${BGP_BASE_LIBS}
@@ -491,7 +501,6 @@ add_library(bgp_common
   neteng/fboss/bgp/cpp/common/BgpPath.cpp
   neteng/fboss/bgp/cpp/common/FeatureFlags.cpp
   neteng/fboss/bgp/cpp/common/RouteInfo.cpp
-  neteng/fboss/bgp/cpp/common/Utils.cpp
   neteng/fboss/bgp/cpp/lib/BgpMessageParser.cpp
   neteng/fboss/bgp/cpp/lib/detail/BgpMessageParserUtils.cpp
 )
@@ -500,6 +509,7 @@ target_link_libraries(bgp_common
   bgp_lib_core
   bgp_routelib
   bgp_stats_base
+  bgp_utils
   build_info
   fb303::fb303
   ${BGP_THRIFT_LIBS}
@@ -662,12 +672,11 @@ target_link_libraries(bgp_fsdb_syncer
   FBThrift::thriftcpp2
 )
 
-add_library(bgp_rib
+add_library(bgp_rib_base
   neteng/fboss/bgp/cpp/rib/canonical/CanonicalConvert.cpp
   neteng/fboss/bgp/cpp/rib/canonical/CanonicalRibBuilder.cpp
   neteng/fboss/bgp/cpp/rib/canonical/CanonicalRibEncoder.cpp
   neteng/fboss/bgp/cpp/rib/RibBase.cpp
-  neteng/fboss/bgp/cpp/rib/RibDC.cpp
   neteng/fboss/bgp/cpp/rib/RibEntry.cpp
   neteng/fboss/bgp/cpp/rib/RibPolicy.cpp
   neteng/fboss/bgp/cpp/rib/RibPolicyLogger.cpp
@@ -676,19 +685,28 @@ add_library(bgp_rib
   neteng/fboss/bgp/cpp/rib/Utils.cpp
 )
 
-target_link_libraries(bgp_rib
+target_link_libraries(bgp_rib_base
   bgp_common
   bgp_config_policy
   bgp_fib_dev
-  bgp_fib_fboss
-  bgp_fsdb_syncer
   bgp_lib_core
   bgp_nexthop
   bgp_routelib
-  bgp_stats_dc
+  bgp_stats_base
   bgp_watchdog
   FBThrift::thriftcpp2
   ${OPENR_LIBS}
+)
+
+add_library(bgp_rib_dc
+  neteng/fboss/bgp/cpp/rib/RibDC.cpp
+)
+
+target_link_libraries(bgp_rib_dc
+  bgp_fib_fboss
+  bgp_fsdb_syncer
+  bgp_rib_base
+  bgp_stats_dc
 )
 
 add_library(bgp_adjrib
@@ -716,42 +734,49 @@ target_link_libraries(bgp_adjrib
   bgp_config_policy
   bgp_lib_core
   bgp_lib_transport
-  bgp_rib
+  bgp_rib_base
   bgp_watchdog
   ${FBOSS_ALERT_LOGGER}
   ${OPENR_LIBS}
 )
 
-add_library(bgp_peer
+add_library(bgp_peer_base
   neteng/fboss/bgp/cpp/peer/PeerManagerBase.cpp
   neteng/fboss/bgp/cpp/peer/PeerManagerUtils.cpp
   neteng/fboss/bgp/cpp/peer/SessionManager.cpp
-  neteng/fboss/bgp/cpp/peer/NeighborWatcher.cpp
 )
 
-target_link_libraries(bgp_peer
+target_link_libraries(bgp_peer_base
   bgp_adjrib
   bgp_changetracker
   bgp_common
   bgp_config_policy
-  bgp_fsdb_fib_watcher
   bgp_lib_core
   bgp_lib_transport
   bgp_nexthop
-  bgp_rib
+  bgp_rib_base
   bgp_stats_base
   bgp_watchdog
   FBThrift::thriftcpp2
   ${OPENR_LIBS}
 )
 
+add_library(bgp_neighbor_watcher
+  neteng/fboss/bgp/cpp/peer/NeighborWatcher.cpp
+)
+
+target_link_libraries(bgp_neighbor_watcher
+  bgp_fsdb_fib_watcher
+  bgp_peer_base
+  bgp_stats_dc
+)
+
 #
 # Tier 5: Application
 #
 
-add_library(bgp_service
+add_library(bgp_service_base
   neteng/fboss/bgp/cpp/BgpServiceBase.cpp
-  neteng/fboss/bgp/cpp/BgpServiceDC.cpp
   neteng/fboss/bgp/cpp/BgpServiceStream.cpp
   neteng/fboss/bgp/cpp/BgpServiceEventHandler.cpp
   neteng/fboss/bgp/cpp/BgpServiceUtil.cpp
@@ -760,15 +785,15 @@ add_library(bgp_service
   neteng/fboss/bgp/cpp/health/HealthValidator.cpp
 )
 
-target_link_libraries(bgp_service
+target_link_libraries(bgp_service_base
   ${FBOSS_ALERT_LOGGER}
   ${FBOSS_LOG_THRIFT_CALL}
   bgp_common
   bgp_config_policy
   bgp_lib_core
-  bgp_peer
-  bgp_rib
-  bgp_stats_dc
+  bgp_peer_base
+  bgp_rib_base
+  bgp_stats_base
   bgp_watchdog
   ${RE2}
   FBThrift::thriftcpp2
@@ -776,7 +801,19 @@ target_link_libraries(bgp_service
   ${OPENR_LIBS}
 )
 
-install(TARGETS
+add_library(bgp_service_dc
+  neteng/fboss/bgp/cpp/BgpServiceDC.cpp
+)
+
+target_link_libraries(bgp_service_dc
+  bgp_neighbor_watcher
+  bgp_rib_dc
+  bgp_service_base
+  bgp_stats_dc
+)
+
+set(BGP_INSTALL_LIBRARIES
+  bgp_utils
   bgp_stats_base
   bgp_stats_dc
   bgp_routelib
@@ -792,10 +829,17 @@ install(TARGETS
   bgp_fib_dev
   bgp_fib_fboss
   bgp_fsdb_syncer
-  bgp_rib
+  bgp_rib_base
+  bgp_rib_dc
   bgp_adjrib
-  bgp_peer
-  bgp_service
+  bgp_peer_base
+  bgp_neighbor_watcher
+  bgp_service_base
+  bgp_service_dc
+)
+
+install(TARGETS
+  ${BGP_INSTALL_LIBRARIES}
   DESTINATION lib
 )
 
@@ -842,7 +886,7 @@ list(JOIN _bgp_grouped_libs "," _bgp_grouped_libs_csv)
 
 target_link_libraries(bgp_bin
   bgp_main_util_dc
-  bgp_service
+  bgp_service_dc
   bgp_stats_base
   bgp_stats_dc
   build_info
