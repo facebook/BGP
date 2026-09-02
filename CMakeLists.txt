@@ -34,6 +34,7 @@ set(
 )
 include(FBThriftCppLibrary)
 include(FBGenCMakeBuildInfo)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/BgpLibrary.cmake)
 
 #
 # Find dependencies
@@ -194,9 +195,43 @@ file(CREATE_LINK
   ${CMAKE_BINARY_DIR}/neteng/fboss/bgp/public_tld/configerator
   SYMBOLIC)
 
-# OpenR is NOT pulled via getdeps. The minimal slice BGP++ needs
-# (Network.thrift, Platform.thrift, common/NetworkUtil) is vendored under
-# public_tld/openr/. See public_tld/openr/PROVENANCE.md for the removal trigger.
+# Open/R installs the generated Thrift headers and component libraries consumed
+# by BGP++. Derive its package root from a unique header.
+find_path(OPENR_INCLUDE_DIR openr/nl/NetlinkProtocolSocket.h REQUIRED)
+include_directories(SYSTEM ${OPENR_INCLUDE_DIR})
+
+get_filename_component(
+  OPENR_INSTALL_PREFIX "${OPENR_INCLUDE_DIR}" DIRECTORY
+)
+set(OPENR_LIBRARY_DIR "${OPENR_INSTALL_PREFIX}/lib")
+
+bgp_find_openr_library(OPENR_CONSTANTS_LIBRARY openr_constants)
+bgp_find_openr_library(OPENR_FBNL_LIBRARY openr_fbnl)
+bgp_find_openr_library(OPENR_NETWORK_UTIL_LIBRARY openr_network_util)
+bgp_find_openr_library(OPENR_SYSTEM_METRICS_LIBRARY openr_system_metrics)
+bgp_find_openr_library(
+  OPENR_ROUTING_POLICY_THRIFT_LIBRARY routing_policy_cpp2
+)
+bgp_find_openr_library(OPENR_CONFIG_THRIFT_LIBRARY openr_config_cpp2)
+bgp_find_openr_library(OPENR_NETWORK_THRIFT_LIBRARY network_cpp2)
+bgp_find_openr_library(OPENR_PLATFORM_THRIFT_LIBRARY platform_cpp2)
+bgp_find_openr_library(OPENR_KV_STORE_THRIFT_LIBRARY kv_store_cpp2)
+bgp_find_openr_library(OPENR_TYPES_THRIFT_LIBRARY types_cpp2)
+bgp_find_openr_library(OPENR_CTRL_THRIFT_LIBRARY openr_ctrl_cpp2)
+
+set(OPENR_LIBS
+  ${OPENR_FBNL_LIBRARY}
+  ${OPENR_NETWORK_UTIL_LIBRARY}
+  ${OPENR_SYSTEM_METRICS_LIBRARY}
+  ${OPENR_CONSTANTS_LIBRARY}
+  ${OPENR_PLATFORM_THRIFT_LIBRARY}
+  ${OPENR_CTRL_THRIFT_LIBRARY}
+  ${OPENR_KV_STORE_THRIFT_LIBRARY}
+  ${OPENR_TYPES_THRIFT_LIBRARY}
+  ${OPENR_CONFIG_THRIFT_LIBRARY}
+  ${OPENR_NETWORK_THRIFT_LIBRARY}
+  ${OPENR_ROUTING_POLICY_THRIFT_LIBRARY}
+)
 
 set(FOLLY_EXCEPTION_TRACER)
 if (TARGET Folly::folly_exception_tracer)
@@ -221,27 +256,6 @@ add_fbthrift_cpp_library(
     json
 )
 set(BGP_THRIFT_LIBS ${BGP_THRIFT_LIBS} fb303_cpp2)
-
-# Vendored openr thrift IDL — see public_tld/openr/PROVENANCE.md
-add_fbthrift_cpp_library(
-  openr_network_cpp2
-  openr/if/Network.thrift
-  OPTIONS
-    json
-)
-set(BGP_THRIFT_LIBS ${BGP_THRIFT_LIBS} openr_network_cpp2)
-
-add_fbthrift_cpp_library(
-  openr_platform_cpp2
-  openr/if/Platform.thrift
-  SERVICES
-    FibService
-  OPTIONS
-    json
-  DEPENDS
-    openr_network_cpp2
-)
-set(BGP_THRIFT_LIBS ${BGP_THRIFT_LIBS} openr_platform_cpp2)
 
 # Layer 0 — no inter-project dependencies
 
@@ -420,31 +434,6 @@ set(BGP_BASE_LIBS
 # they must be linked together inside a single --start-group on the final
 # bgp_bin executable (see below). Intermediate static libs only need the
 # headers, which come from the include path.
-
-#
-# OpenR libraries (vendored — see public_tld/openr/PROVENANCE.md).
-# Satisfies Network_types / Platform_types / NetworkUtil references that
-# leak into core BGP++ code via nexthopTracker headers.
-#
-add_library(openr_networkutil openr/common/NetworkUtil.cpp)
-target_link_libraries(openr_networkutil
-  ${BGP_BASE_LIBS}
-  openr_network_cpp2
-)
-
-# Vendored openr::SystemMetrics — used by cpp/watchdog/Watchdog.h.
-add_library(openr_systemmetrics openr/monitor/SystemMetrics.cpp)
-target_link_libraries(openr_systemmetrics
-  ${BGP_BASE_LIBS}
-  ${RE2}
-)
-
-set(OPENR_LIBS
-  openr_networkutil
-  openr_systemmetrics
-  openr_platform_cpp2
-  openr_network_cpp2
-)
 
 #
 # Tier 0: Leaf libraries (no bgp/cpp cross-module deps)
@@ -834,6 +823,7 @@ target_link_libraries(bgp_main_util_bb
   bgp_config_cpp2
   bgp_stats_base
   ${BGP_BASE_LIBS}
+  ${OPENR_LIBS}
 )
 
 add_executable(bgp_bin

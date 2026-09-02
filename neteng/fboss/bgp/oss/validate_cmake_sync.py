@@ -32,8 +32,6 @@ THRIFT_SRC_DIRS = {
     "neteng/fboss/bgp/if": "neteng/fboss/bgp/if",
     "neteng/fboss/bgp/public_tld/configerator": "configerator",
     "neteng/fboss/bgp/public_tld/common": "common",
-    # Vendored openr thrift IDL (openr/if/Network.thrift, Platform.thrift).
-    "neteng/fboss/bgp/public_tld/openr": "openr",
     # fbcode/fboss/common = common in the manifest: provides common/fb303 and
     # common/network/if/Address.thrift to the OSS build (not vendored).
     "fboss/common": "common",
