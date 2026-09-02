@@ -159,18 +159,20 @@ class FiberBgpPeerFixture : public ::testing::Test {
             folly::fibers::getFiberManager(evb_, getFiberManagerOptions(256))) {
   }
 
-  std::optional<BgpNotification> processOpenAndGetNotification(
+  std::optional<FiberBgpParser::BgpMessageT> processOpenAndGetResponse(
       const std::shared_ptr<MockFiberBgpPeer>& peer,
       uint32_t remoteAs,
       bool as4Byte) {
     BgpOpenMsg openMsg;
     openMsg.version() = kBgpVersion;
-    openMsg.asn() = static_cast<int32_t>(remoteAs);
+    openMsg.asn() = static_cast<int32_t>(
+        as4Byte && remoteAs > k2BytesAsnLimit ? kAsTrans : remoteAs);
     openMsg.holdTime() = static_cast<int32_t>(params2_.holdTime.count());
     openMsg.bgpID() = static_cast<uint32_t>(params2_.localBgpId.toLongHBO());
     openMsg.capabilities() = peer->caps_;
     openMsg.capabilities()->as4byte() = as4Byte;
-    openMsg.capabilities()->asn() = static_cast<int64_t>(remoteAs);
+    openMsg.capabilities()->asn() =
+        as4Byte ? static_cast<int64_t>(remoteAs) : 0;
 
     peer->peeringState_.state = BgpSessionState::OPEN_SENT;
     peer->processOpenMsg(openMsg);
@@ -178,11 +180,11 @@ class FiberBgpPeerFixture : public ::testing::Test {
     if (peer->sendQueue_.size() == 0) {
       return std::nullopt;
     }
-    auto sentMessage = peer->sendQueue_.get();
-    if (!std::holds_alternative<BgpNotification>(*sentMessage)) {
-      return std::nullopt;
-    }
-    return std::get<BgpNotification>(*sentMessage);
+    return peer->sendQueue_.get();
+  }
+
+  void processKeepAlive(const std::shared_ptr<MockFiberBgpPeer>& peer) {
+    peer->processKeepAliveMsg();
   }
 
   folly::EventBase evb_;
@@ -3125,22 +3127,38 @@ TEST_F(FiberBgpPeerFixture, RemoteAsOutsideAcceptedSetSendsBadPeerAsTest) {
       peer1BoundedInput_,
       peer1Output_);
 
-  const auto notification = processOpenAndGetNotification(
+  const auto response = processOpenAndGetResponse(
       acceptingPeer, params2_.localAs, /*as4Byte=*/true);
-  ASSERT_TRUE(notification.has_value());
-  EXPECT_EQ(BgpNotifErrCode::BN_OPEN_MSG_ERR, *notification->errCode());
+  ASSERT_TRUE(response.has_value());
+  ASSERT_TRUE(std::holds_alternative<BgpNotification>(*response));
+  const auto& notification = std::get<BgpNotification>(*response);
+  EXPECT_EQ(BgpNotifErrCode::BN_OPEN_MSG_ERR, *notification.errCode());
   EXPECT_EQ(
       static_cast<uint16_t>(BgpNotifOpenMsgErrSubCode::BN_OM_BAD_PEER_AS),
-      *notification->errSubCode());
+      *notification.errSubCode());
 }
 
-TEST_F(FiberBgpPeerFixture, AdditionalRemoteAsStillRequiresAs4Test) {
+class BgpPeerAsnCapabilityFixture
+    : public FiberBgpPeerFixture,
+      public ::testing::WithParamInterface<std::pair<uint32_t, bool>> {};
+
+INSTANTIATE_TEST_CASE_P(
+    BgpPeerAsnCapabilityInstance,
+    BgpPeerAsnCapabilityFixture,
+    ::testing::Values(
+        std::make_pair<uint32_t, bool>(2345, false),
+        std::make_pair<uint32_t, bool>(4200000002, true)));
+
+TEST_P(BgpPeerAsnCapabilityFixture, AcceptedRemoteAsEstablishesSessionTest) {
   gflags::FlagSaver flags;
   FLAGS_enable_egress_queue_backpressure = false;
 
+  const auto& [remoteAs, as4Byte] = GetParam();
   auto acceptingPeerParams = params1_;
   acceptingPeerParams.remoteAs = 1234;
-  acceptingPeerParams.additionalRemoteAs = 2345;
+  acceptingPeerParams.additionalRemoteAs = remoteAs;
+  /* Avoid scheduling timers while driving the FSM synchronously. */
+  acceptingPeerParams.holdTime = 0s;
 
   auto& fm = fmWrapper_.get();
   auto acceptingPeer = std::make_shared<MockFiberBgpPeer>(
@@ -3152,14 +3170,17 @@ TEST_F(FiberBgpPeerFixture, AdditionalRemoteAsStillRequiresAs4Test) {
       peer1BoundedInput_,
       peer1Output_);
 
-  const auto notification =
-      processOpenAndGetNotification(acceptingPeer, 2345, /*as4Byte=*/false);
-  ASSERT_TRUE(notification.has_value());
-  EXPECT_EQ(BgpNotifErrCode::BN_OPEN_MSG_ERR, *notification->errCode());
-  EXPECT_EQ(
-      static_cast<uint16_t>(
-          BgpNotifOpenMsgErrSubCode::BN_OM_UNSUPPORTED_CAPABILITY),
-      *notification->errSubCode());
+  const auto response =
+      processOpenAndGetResponse(acceptingPeer, remoteAs, as4Byte);
+  ASSERT_TRUE(response.has_value());
+  ASSERT_TRUE(std::holds_alternative<BgpKeepAlive>(*response));
+  EXPECT_EQ(BgpSessionState::OPEN_CONFIRM, acceptingPeer->getBgpSessionState());
+  EXPECT_EQ(remoteAs, acceptingPeer->getRemoteAs());
+  EXPECT_EQ(as4Byte, *acceptingPeer->getRemoteCapabilities().as4byte());
+  EXPECT_EQ(as4Byte, *acceptingPeer->getNegotiatedCapabilities().as4byte());
+
+  processKeepAlive(acceptingPeer);
+  EXPECT_EQ(BgpSessionState::ESTABLISHED, acceptingPeer->getBgpSessionState());
 }
 
 TEST_F(FiberBgpPeerFixture, SendNotificationWhenHoldTimerExpiredTest) {

@@ -1008,26 +1008,6 @@ void FiberBgpPeer::processOpenMsg(const BgpOpenMsg& msg) {
         } // if
       }
 
-      // Reject BGP speaker that does not support 4 bytes ASN
-      // This is deviation from RFC. We choose to not support it
-      // because there is no devices that does not support it
-      if (!*msg.capabilities()->as4byte()) {
-        fb303::ThreadCachedServiceData::get()->addStatValue(
-            "bgpd.peer.peerNotSupporting4bytesAs", 1, fb303::SUM);
-        XLOGF(
-            ERR,
-            "Peer {} does not support 4 bytes ASN, drop peering",
-            peeringParams_.peerAddr.str());
-        sendBgpMessage(buildBgpNotification(
-            BgpNotifErrCode::BN_OPEN_MSG_ERR,
-            static_cast<uint16_t>(
-                BgpNotifOpenMsgErrSubCode::BN_OM_UNSUPPORTED_CAPABILITY),
-            "Peer has does not have expected capability (4 bytes asn)",
-            peeringParams_.peerAddr.str()));
-        errorQueue_.put(BgpSessionError{});
-        return;
-      }
-
       /*
        * The first keep alive sent by us is needed for transitioning
        * the session in peer's state machine. With egress backpressure
