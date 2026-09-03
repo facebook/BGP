@@ -1007,6 +1007,7 @@ void FiberBgpPeer::processOpenMsg(const BgpOpenMsg& msg) {
               "Peer has wrong ASN configured",
               std::string(
                   reinterpret_cast<const char*>(&remoteAs), sizeof(remoteAs))));
+          bgp::BgpStats::incOpenRejectAsnMismatch();
           errorQueue_.put(BgpSessionError{});
           return;
         } // if

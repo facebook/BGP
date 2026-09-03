@@ -65,6 +65,9 @@ void initCounters() {
   // those cases, we need to initialize to zero in order to get an accurate
   // count.
   fb303::ThreadCachedServiceData::get()->setCounter(kRunningSessions, -1);
+  fb303::ThreadCachedServiceData::get()->setCounter(kOpenRejectAsnMismatch, 0);
+  fb303::ThreadCachedServiceData::get()->addStatExportType(
+      kOpenRejectAsnMismatch, fb303::SUM);
   fb303::ThreadCachedServiceData::get()->setCounter(kRunningVipSessions, -1);
   fb303::ThreadCachedServiceData::get()->setCounter(kNoPrefixSent, -1);
   fb303::ThreadCachedServiceData::get()->setCounter(kStatefulGR, -1);
@@ -214,6 +217,13 @@ void decrDynamicPeersCount(uint32_t count) {
 
 void setRunningSessions(uint32_t val) {
   fb303::ThreadCachedServiceData::get()->setCounter(kRunningSessions, val);
+}
+
+void incOpenRejectAsnMismatch() {
+  fb303::ThreadCachedServiceData::get()->incrementCounter(
+      kOpenRejectAsnMismatch, 1);
+  fb303::ThreadCachedServiceData::get()->addStatValue(
+      kOpenRejectAsnMismatch, 1);
 }
 
 void setRunningVipSessions(uint32_t val) {

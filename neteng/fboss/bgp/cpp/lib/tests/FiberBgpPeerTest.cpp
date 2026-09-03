@@ -3127,6 +3127,19 @@ TEST_F(FiberBgpPeerFixture, RemoteAsOutsideAcceptedSetSendsBadPeerAsTest) {
       peer1BoundedInput_,
       peer1Output_);
 
+  bgp::BgpStats::initCounters();
+  auto counters = fb303::ThreadCachedServiceData::getShared();
+  counters->publishStats();
+  const std::string asnMismatchSum60Key =
+      bgp::BgpStats::kOpenRejectAsnMismatch + ".sum.60";
+  const auto initialAsnMismatchCount =
+      counters->hasCounter(bgp::BgpStats::kOpenRejectAsnMismatch)
+      ? counters->getCounter(bgp::BgpStats::kOpenRejectAsnMismatch)
+      : 0;
+  const auto initialAsnMismatchCount60 =
+      counters->hasCounter(asnMismatchSum60Key)
+      ? counters->getCounter(asnMismatchSum60Key)
+      : 0;
   const auto response = processOpenAndGetResponse(
       acceptingPeer, params2_.localAs, /*as4Byte=*/true);
   ASSERT_TRUE(response.has_value());
@@ -3136,6 +3149,12 @@ TEST_F(FiberBgpPeerFixture, RemoteAsOutsideAcceptedSetSendsBadPeerAsTest) {
   EXPECT_EQ(
       static_cast<uint16_t>(BgpNotifOpenMsgErrSubCode::BN_OM_BAD_PEER_AS),
       *notification.errSubCode());
+  counters->publishStats();
+  EXPECT_EQ(
+      initialAsnMismatchCount + 1,
+      counters->getCounter(bgp::BgpStats::kOpenRejectAsnMismatch));
+  EXPECT_EQ(
+      initialAsnMismatchCount60 + 1, counters->getCounter(asnMismatchSum60Key));
 }
 
 class BgpPeerAsnCapabilityFixture

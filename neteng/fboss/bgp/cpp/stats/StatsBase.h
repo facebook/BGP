@@ -43,6 +43,7 @@ constexpr auto kEorTimerExpired = "bgpd.eorTimerExpired"_fs;
 constexpr auto kNonGraceful = "bgpd.nonGraceful.{}";
 // All running BGP sessions
 constexpr auto kRunningSessions = "bgpd.runningSessions"_fs;
+constexpr auto kOpenRejectAsnMismatch = "bgpd.open_reject.asn_mismatch"_fs;
 // number of BGP session flaps
 constexpr auto kSessionStateChanges = "bgpd.sessionStateChanges"_fs;
 // Total VIP sessions which are UP
@@ -272,6 +273,7 @@ DECLARE_dynamic_timeseries(non_graceful_peers_count, 1);
 
 // Set number of established sessions
 void setRunningSessions(uint32_t val);
+void incOpenRejectAsnMismatch();
 // Set number of VIP (bgp session + thrift-based) established sessions
 void setRunningVipSessions(uint32_t val);
 // add session state changes stats
