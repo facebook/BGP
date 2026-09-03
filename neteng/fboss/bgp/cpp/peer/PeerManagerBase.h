@@ -882,7 +882,7 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
       std::shared_ptr<AdjRib> adjRib);
   void processRibDumpReq(
       const std::shared_ptr<AdjRib>& adjRib,
-      bool sendAddPath,
+      const RibDumpReq& ribDumpReq,
       bool sendWithEoR);
 
   /*

@@ -1293,6 +1293,9 @@ BgpPeerDisplayInfo createDisplayInfo(
   /* Enable 4-byte ASN capability (most common at Meta, required for ASNs >
    * 65535) */
   displayInfo.negotiatedCapabilities.as4byte() = true;
+  /* Enable Route Refresh (RFC 2918) so processPeerRouteRefresh accepts
+   * Route Refresh messages sent via sendRouteRefreshToPeer in tests. */
+  displayInfo.negotiatedCapabilities.routeRefresh() = true;
 
   /*
    * Enable GR capability for tests that opt in via setPeerGrRestartTime().
@@ -1533,6 +1536,21 @@ void E2ETestFixture::sendEoRToPeer(const BgpPeerId& peerId) {
   ASSERT_TRUE(queues.has_value())
       << "No queues for peer " << peerId.peerAddr.str();
   queues->adjRibInQ->fiberPush(BgpEndOfRib{});
+}
+
+void E2ETestFixture::sendRouteRefreshToPeer(
+    const BgpPeerId& peerId,
+    nettools::bgplib::BgpUpdateAfi afi,
+    nettools::bgplib::BgpUpdateSafi safi) {
+  XLOGF(INFO, "Sending Route Refresh to peer: {}", peerId.peerAddr.str());
+  auto it = peerQueues_.find(peerId);
+  ASSERT_NE(it, peerQueues_.end());
+  nettools::bgplib::BgpRouteRefresh rr;
+  rr.afi() = afi;
+  rr.msgSubType() =
+      nettools::bgplib::BgpRouteRefreshMessageSubtype::ROUTE_REFRESH_REQUEST;
+  rr.safi() = safi;
+  it->second.adjRibInQ->fiberPush(std::move(rr));
 }
 
 // ==================== HELPER FUNCTIONS FOR QUEUE/MESSAGE HANDLING
@@ -2272,6 +2290,202 @@ void E2ETestFixture::drainAndClassifyMessages(
       updateCount,
       eorCount,
       updateCount + eorCount);
+}
+
+E2ETestFixture::PrefixOccurrenceCounts
+E2ETestFixture::countPrefixOccurrencesAndDrain(
+    const BgpPeerId& peerId,
+    const folly::CIDRNetwork& prefix,
+    bool isV4,
+    int maxRetries,
+    int maxMessages) {
+  PrefixOccurrenceCounts counts;
+  auto queues = getPeerQueues(peerId);
+  if (!queues) {
+    XLOGF(
+        WARN,
+        "countPrefixOccurrencesAndDrain: peer {} not found",
+        peerId.peerAddr.str());
+    return counts;
+  }
+
+  const bool useBoundedQueue =
+      FLAGS_enable_egress_backpressure_in_peer_mgr_tests;
+
+  XLOGF(
+      INFO,
+      "countPrefixOccurrencesAndDrain: draining peer {} for prefix {} "
+      "(useBoundedQueue={}, maxRetries={}, maxMessages={})",
+      peerId.peerAddr.str(),
+      folly::IPAddress::networkToString(prefix),
+      useBoundedQueue,
+      maxRetries,
+      maxMessages);
+
+  int emptyRetries = 0;
+  while (true) {
+    if (maxMessages > 0 &&
+        static_cast<int>(counts.totalMessages) >= maxMessages) {
+      XLOGF(
+          INFO,
+          "countPrefixOccurrencesAndDrain: hit max messages limit ({}), "
+          "stopping",
+          maxMessages);
+      break;
+    }
+
+    bool queueEmpty = useBoundedQueue ? queues->boundedAdjRibOutQ->empty()
+                                      : queues->adjRibOutQ->empty();
+    if (queueEmpty) {
+      if (emptyRetries >= maxRetries) {
+        break;
+      }
+      emptyRetries++;
+      /* Pump event loops so any in-flight async work can land. */
+      if (rib_) {
+        rib_->getEventBase().runInEventBaseThreadAndWait([]() {});
+      }
+      if (peerManager_) {
+        peerManager_->getEventBase().runInEventBaseThreadAndWait([]() {});
+      }
+      continue;
+    }
+    emptyRetries = 0;
+
+    auto msg = popFromQueue(*queues, useBoundedQueue);
+    if (!msg.has_value()) {
+      break;
+    }
+    counts.totalMessages++;
+
+    /* Classify the message. Only UPDATE messages can carry the prefix;
+     * EoR / RouteRefresh / Notification are counted in totalMessages
+     * but cannot match. UpdateDescriptor is deserialized first. */
+    std::shared_ptr<const nettools::bgplib::BgpUpdate2> updatePtr;
+    if (auto* p =
+            std::get_if<std::shared_ptr<const nettools::bgplib::BgpUpdate2>>(
+                &(*msg))) {
+      updatePtr = *p;
+    } else if (
+        auto* descPtr =
+            std::get_if<nettools::bgplib::UpdateDescriptor>(&(*msg))) {
+      auto deserialized = deserializeUpdateDescriptor(*descPtr);
+      if (deserialized.has_value()) {
+        updatePtr = *deserialized;
+      }
+    }
+    if (!updatePtr) {
+      continue;
+    }
+    /*
+     * Messages are classified in queue order, so the last assignment to
+     * lastEvent is the wire-final event for this prefix. A single UPDATE
+     * carrying both an announce and a withdraw of the SAME prefix would be
+     * malformed; if it ever occurred the withdraw would win here.
+     */
+    if (findPrefixInAnnouncements(*updatePtr, isV4, prefix, /*addPathId=*/0)) {
+      counts.announceCount++;
+      counts.lastEvent = PrefixEvent::Announce;
+    }
+    if (findPrefixInWithdrawals(*updatePtr, isV4, prefix, /*addPathId=*/0)) {
+      counts.withdrawCount++;
+      counts.lastEvent = PrefixEvent::Withdraw;
+    }
+  }
+
+  XLOGF(
+      INFO,
+      "countPrefixOccurrencesAndDrain: peer {} prefix {} -> "
+      "announceCount={} withdrawCount={} totalMessages={}",
+      peerId.peerAddr.str(),
+      folly::IPAddress::networkToString(prefix),
+      counts.announceCount,
+      counts.withdrawCount,
+      counts.totalMessages);
+  return counts;
+}
+
+std::vector<std::shared_ptr<const nettools::bgplib::BgpUpdate2>>
+E2ETestFixture::drainPeerQueueAndCollectUpdates(
+    const BgpPeerId& peerId,
+    int maxRetries,
+    int maxMessages) {
+  std::vector<std::shared_ptr<const nettools::bgplib::BgpUpdate2>> updates;
+  auto queues = getPeerQueues(peerId);
+  if (!queues) {
+    XLOGF(
+        WARN,
+        "drainPeerQueueAndCollectUpdates: peer {} not found",
+        peerId.peerAddr.str());
+    return updates;
+  }
+
+  const bool useBoundedQueue =
+      FLAGS_enable_egress_backpressure_in_peer_mgr_tests;
+
+  XLOGF(
+      INFO,
+      "drainPeerQueueAndCollectUpdates: draining peer {} "
+      "(useBoundedQueue={}, maxRetries={}, maxMessages={})",
+      peerId.peerAddr.str(),
+      useBoundedQueue,
+      maxRetries,
+      maxMessages);
+
+  size_t totalDrained = 0;
+  int emptyRetries = 0;
+  while (true) {
+    if (maxMessages > 0 && static_cast<int>(totalDrained) >= maxMessages) {
+      break;
+    }
+    bool queueEmpty = useBoundedQueue ? queues->boundedAdjRibOutQ->empty()
+                                      : queues->adjRibOutQ->empty();
+    if (queueEmpty) {
+      if (emptyRetries >= maxRetries) {
+        break;
+      }
+      emptyRetries++;
+      if (rib_) {
+        rib_->getEventBase().runInEventBaseThreadAndWait([]() {});
+      }
+      if (peerManager_) {
+        peerManager_->getEventBase().runInEventBaseThreadAndWait([]() {});
+      }
+      continue;
+    }
+    emptyRetries = 0;
+
+    auto msg = popFromQueue(*queues, useBoundedQueue);
+    if (!msg.has_value()) {
+      break;
+    }
+    totalDrained++;
+
+    /* Surface only UPDATE messages; EoR / RouteRefresh / Notification are
+     * popped to advance the queue but not returned. UpdateDescriptor is
+     * deserialized to BgpUpdate2 first. */
+    if (auto* p =
+            std::get_if<std::shared_ptr<const nettools::bgplib::BgpUpdate2>>(
+                &(*msg))) {
+      updates.push_back(*p);
+    } else if (
+        auto* descPtr =
+            std::get_if<nettools::bgplib::UpdateDescriptor>(&(*msg))) {
+      auto deserialized = deserializeUpdateDescriptor(*descPtr);
+      if (deserialized.has_value()) {
+        updates.push_back(*deserialized);
+      }
+    }
+  }
+
+  XLOGF(
+      INFO,
+      "drainPeerQueueAndCollectUpdates: peer {} -> collected {} UPDATE "
+      "messages from {} total drained",
+      peerId.peerAddr.str(),
+      updates.size(),
+      totalDrained);
+  return updates;
 }
 
 /*
@@ -3434,7 +3648,8 @@ void E2ETestFixture::triggerRibDumpForPeer(
   peerManager_->getEventBase().runInEventBaseThreadAndWait([&]() {
     auto adjRib = peerManager_->findAdjRib(peerId);
     if (adjRib) {
-      peerManager_->processRibDumpReq(adjRib, sendAddPath, sendWithEoR);
+      peerManager_->processRibDumpReq(
+          adjRib, RibDumpReq(peerId, sendAddPath), sendWithEoR);
     }
   });
 }

@@ -883,6 +883,23 @@ folly::coro::Task<void> PeerManagerBase::processAdjRibEvent(
             peerId.str());
         processTriggerSafeMode();
         co_return;
+      },
+      /* Process Route Refresh request received from a peer (RFC 2918).
+       * Triggers a full RIB dump to re-announce all routes to that peer. */
+      [this, peerId](AdjRib::RouteRefreshReceived /*routeRefreshMsg*/)
+          -> folly::coro::Task<void> {
+        XLOGF(
+            INFO,
+            "Processing Route Refresh for peer {}, triggering RIB dump",
+            peerId.str());
+        auto peerIdAdjRib = adjRibs_.find(peerId);
+        if (peerIdAdjRib != adjRibs_.cend() && peerIdAdjRib->second) {
+          co_await processRibDumpReqCoro(RibDumpReq(
+              peerId,
+              peerIdAdjRib->second->sendAddPath(),
+              true /* routeRefresh */));
+        }
+        co_return;
       });
   co_await std::visit(overload, evt.message);
 }
@@ -1552,8 +1569,7 @@ folly::coro::Task<void> PeerManagerBase::processRibDumpReqCoro(
     co_return;
   }
 
-  processRibDumpReq(
-      adjrib->second, ribDumpReq.sendAddPath, true /* sendWithEoR */);
+  processRibDumpReq(adjrib->second, ribDumpReq, true /* sendWithEoR */);
   co_return;
 }
 
@@ -1614,7 +1630,10 @@ folly::coro::Task<void> PeerManagerBase::processRibDumpReqWithCancellationCoro(
     }
   };
 
-  processRibDumpReq(adjRib, adjRib->sendAddPath(), /*sendWithEoR=*/true);
+  processRibDumpReq(
+      adjRib,
+      RibDumpReq(adjRib->getRemotePeerId(), adjRib->sendAddPath()),
+      /*sendWithEoR=*/true);
 
   /*
    * With update group enabled, register and activate the detached peer's
@@ -1633,7 +1652,7 @@ folly::coro::Task<void> PeerManagerBase::processRibDumpReqWithCancellationCoro(
 
 void PeerManagerBase::processRibDumpReq(
     const std::shared_ptr<AdjRib>& adjRib,
-    bool sendAddPath,
+    const RibDumpReq& ribDumpReq,
     bool sendWithEoR) {
   [[maybe_unused]] ScopedProfile profile("PeerManagerBase::processRibDumpReq");
   auto ribVersionBeforeWalk = adjRib->getLastSeenRibVersion();
@@ -1652,6 +1671,7 @@ void PeerManagerBase::processRibDumpReq(
 
   RibOutAnnouncement announcement;
   announcement.initialDump = true;
+  announcement.routeRefresh = ribDumpReq.routeRefresh;
 
   /*
    * Track whether any entry was skipped because it is already pending on this
@@ -1662,12 +1682,13 @@ void PeerManagerBase::processRibDumpReq(
   bool skippedChangeListEntry = false;
   for (const auto& [prefix, trackedShadowRibEntry] : shadowRibEntries_) {
     /*
-     * If this shadow rib entry is already on a changeList for this
-     * specific consumer, skip this entry from Rib Dump
+     * Skip entries already pending on this consumer's changeList -- the peer
+     * receives them from there and advances its version. Route Refresh
+     * (RFC 2918) bypasses the skip: the peer explicitly asked for every route.
      */
-    auto trackedObject = trackedShadowRibEntry.get();
-    if (changeListTracker_->isConsumerSetOnTrackableObject(
-            trackedObject, adjRib->getChangeListConsumer())) {
+    if (!ribDumpReq.routeRefresh &&
+        changeListTracker_->isConsumerSetOnTrackableObject(
+            trackedShadowRibEntry.get(), adjRib->getChangeListConsumer())) {
       skippedChangeListEntry = true;
       continue;
     }
@@ -1678,7 +1699,7 @@ void PeerManagerBase::processRibDumpReq(
      */
     auto& shadowRibEntry = trackedShadowRibEntry->get();
 
-    if (!sendAddPath) {
+    if (!ribDumpReq.sendAddPath) {
       // send out bestpath only.
       const auto bestpath = shadowRibEntry.bestpath;
       if (bestpath) {
@@ -5427,7 +5448,7 @@ void PeerManagerBase::processDetachedPeerEgressPolicyReEvaluation(
    */
   processRibDumpReq(
       adjRib,
-      adjRib->sendAddPath(),
+      RibDumpReq(adjRib->getRemotePeerId(), adjRib->sendAddPath()),
       !adjRib->egressEoRsSent() /* sendWithEoR */);
 
   if (!adjRib->getChangeListConsumer()) {

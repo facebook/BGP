@@ -821,9 +821,21 @@ folly::coro::Task<void> AdjRib::processPeerEoR(
   }
 }
 
-void AdjRib::processPeerRouteRefresh(
-    const nettools::bgplib::BgpRouteRefresh&) noexcept {
-  XLOG(WARN) << "Route Refresh/Enhanced Route Refresh: unimplemented";
+void AdjRib::processPeerRouteRefresh(const BgpRouteRefresh& rr) noexcept {
+  XLOGF(
+      INFO,
+      "Received Route Refresh from peer {} for AFI={} SAFI={}",
+      remotePeerId_->str(),
+      static_cast<int>(rr.afi().value()),
+      static_cast<int>(rr.safi().value()));
+  if (rr.msgSubType().value() ==
+      BgpRouteRefreshMessageSubtype::ROUTE_REFRESH_REQUEST) {
+    XLOGF(
+        INFO,
+        "Triggering route re-announcement for peer {}",
+        remotePeerId_->str());
+    fromAdjRibQ_.push({*remotePeerId_, RouteRefreshReceived{}});
+  }
 }
 
 // Update local pref for EBGP routes. Will create new BgpPath if needed

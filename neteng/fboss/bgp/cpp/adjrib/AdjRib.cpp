@@ -762,6 +762,14 @@ folly::coro::Task<void> AdjRib::sessionTerminated(
   cleanUpOutDelay();
   resetAdjRibFlags();
 
+  /*
+   * Defensive InProgress -> Idle transition: if a Route Refresh re-dump
+   * aborted before its EoR-bearing announcement could fire (e.g. session
+   * teardown mid-dump), the state would otherwise persist on a recycled
+   * AdjRib instance.
+   */
+  rrDumpState_ = RrDumpState::Idle;
+
   deactivateChangeListConsumer();
 
   /*

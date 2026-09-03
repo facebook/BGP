@@ -868,6 +868,14 @@ void AdjRib::processRibOutAnnouncement(
     return;
   }
 
+  /*
+   * Idle -> InProgress on the first RR announcement; gates per-entry dedup
+   * bypass via isRrDumpInProgress() so RFC 2918 §4 re-advertisement reaches
+   * the wire even when attrs are unchanged. No-op outside the transition,
+   * so safe to call unconditionally.
+   */
+  maybeBeginRrDump(announcement);
+
   const auto& entries =
       sendAddPath_ ? announcement.addPathEntries : announcement.entries;
 
@@ -880,6 +888,63 @@ void AdjRib::processRibOutAnnouncement(
   }
   if (!enableEgressQueueBackpressure_) {
     buildAndSendBgpMessages(announcement.sendWithEoR);
+  }
+
+  /*
+   * InProgress -> Idle once the terminal Route Refresh announcement
+   * (routeRefresh=true, sendWithEoR=true) completes. Per-entry dedup decisions
+   * for this dump are already final; async wire emission needs no further
+   * state check.
+   */
+  maybeEndRrDump(announcement);
+}
+
+void AdjRib::maybeBeginRrDump(const RibOutAnnouncement& announcement) noexcept {
+  if (announcement.routeRefresh && rrDumpState_ == RrDumpState::Idle) {
+    rrDumpState_ = RrDumpState::InProgress;
+    /*
+     * Phase 2 (RFC 7313 ERR) hook: emit BoRR here when
+     * isEnhancedRouteRefreshNegotiated_.
+     */
+  }
+}
+
+void AdjRib::maybeEndRrDump(const RibOutAnnouncement& announcement) noexcept {
+  if (announcement.routeRefresh && announcement.sendWithEoR &&
+      rrDumpState_ == RrDumpState::InProgress) {
+    /*
+     * Phase 2 (RFC 7313 ERR) hook: emit EoRR here when
+     * isEnhancedRouteRefreshNegotiated_.
+     */
+    rrDumpState_ = RrDumpState::Idle;
+
+    /*
+     * Drain any pending changeList items synchronously now that the RR
+     * re-dump has emitted everything from the shadow RIB. The consumer's
+     * marker may still point at items the consumer queued before / during
+     * the dump — items the RR walk already covered. Without this drain
+     * three costs accrue:
+     *   - memory: ChangeItems can only evict from the global ChangeList
+     *     once all consumers' markers move past them; a stuck marker on
+     *     this peer pins items resident until the next periodic tick.
+     *   - CPU (deferred): the next periodic iterateChanges()
+     *     walks the now-stale items and generates would-be UPDATEs that
+     *     AdjRibOut postAttr dedup suppresses anyway — wasted traversal.
+     *   - latency: a real new change arriving immediately after RR sits
+     *     behind the stale items in the consumer's processing order.
+     *
+     * Items the RR walk just emitted hit postAttr-equality dedup here and
+     * are silently skipped; items registered while RR was in flight (real
+     * shadow-RIB changes that completed during the dump) emerge as
+     * post-EoR incremental UPDATEs. Either way, exactly-once on the wire.
+     *
+     * Threading / re-entrance: same evb as the rest of
+     * processRibOutAnnouncement; sync loop with no co_await; mirrors the
+     * existing periodic-timer call site at AdjRib.cpp:1224.
+     */
+    if (changeListConsumer_) {
+      changeListConsumer_->iterateChanges();
+    }
   }
 }
 
@@ -1086,9 +1151,8 @@ void AdjRib::processRibAnnouncedEntry(
   const std::string updatePeerIdStr =
       BgpPeerId(update.peer.addr, update.peer.routerId).str();
 
-  auto adjRibEntry =
-      tryInsertRibOutEntry(update.prefix, update.attrs->getNexthop());
-  CHECK(adjRibEntry);
+  auto* adjRibEntry = CHECK_NOTNULL(
+      tryInsertRibOutEntry(update.prefix, update.attrs->getNexthop()));
   stats_.updateAttributeSizes(update.attrs);
   adjRibEntry->setPreOut(update.attrs);
   adjRibEntry->setRibVersion(update.ribVersion);
@@ -1171,14 +1235,17 @@ void AdjRib::processRibAnnouncedEntry(
   /* Attributes will not change any more. Publish. */
   postOutAttrsNew->publish();
 
-  // Check if we announced the prefix before
-  // post out is set if the prefix was previously announced
+  // Check if we announced the prefix before; postAttr is set if so.
   if (adjRibEntry->getPostAttr()) {
-    // Announce the prefix to peer again only if postOut has changed
-    // We are doing deep compare to avoid notifying peer in cases where
-    // due to policy changes of attributes, we end up with same contents
-    // but different BgpPath shared_ptr
-    if (*adjRibEntry->getPostAttr() == *postOutAttrsNew &&
+    /*
+     * Previously announced. Skip if attrs are byte-identical (deep compare
+     * because policy may produce equal contents from a different BgpPath
+     * shared_ptr). Route Refresh (RFC 2918) bypasses the skip so all
+     * requested-AFI routes are re-advertised to the requesting peer even
+     * when attributes are unchanged.
+     */
+    if (!isRrDumpInProgress() &&
+        *adjRibEntry->getPostAttr() == *postOutAttrsNew &&
         (wasNexthopSetByPolicy == adjRibEntry->isNexthopSetByPolicy())) {
       XLOGF(
           DBG3,
@@ -1190,8 +1257,10 @@ void AdjRib::processRibAnnouncedEntry(
       return;
     }
   } else {
-    // If we haven't announced the prefix before, increment sentPrefixCount
-    // as we are announcing the prefix this time
+    /*
+     * First-time announcement to this peer; bump sentPrefixCount. RR flag
+     * is irrelevant here — a never-announced prefix always goes out.
+     */
     stats_.incrementPostOutPrefixCount(update.prefix.first.isV4());
   }
 

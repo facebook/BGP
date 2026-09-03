@@ -638,6 +638,12 @@ class E2ETestFixture : public ::testing::Test {
   // Send End-of-RIB marker to a peer
   void sendEoRToPeer(const BgpPeerId& peerId);
 
+  // Send Route Refresh request to a peer (RFC 2918)
+  void sendRouteRefreshToPeer(
+      const BgpPeerId& peerId,
+      nettools::bgplib::BgpUpdateAfi afi,
+      nettools::bgplib::BgpUpdateSafi safi);
+
   // Read outbound UPDATE from peer's queue
   std::optional<std::shared_ptr<const BgpUpdate2>> readOutboundUpdateToPeer(
       const BgpPeerId& peerId);
@@ -791,6 +797,66 @@ class E2ETestFixture : public ::testing::Test {
       const BgpPeerId& peerId,
       size_t& updateCount,
       size_t& eorCount,
+      int maxRetries = 5,
+      int maxMessages = 100);
+
+  /*
+   * Per-prefix message counts collected while draining a peer's queue.
+   */
+  /* Which event for the queried prefix was seen last on the wire. */
+  enum class PrefixEvent { None, Announce, Withdraw };
+
+  struct PrefixOccurrenceCounts {
+    /* Number of UPDATE messages announcing the queried prefix. */
+    size_t announceCount{0};
+    /* Number of UPDATE messages withdrawing the queried prefix. */
+    size_t withdrawCount{0};
+    /* Total messages drained from the queue (announcements, withdrawals,
+     * EoR markers, route-refresh messages, notifications). */
+    size_t totalMessages{0};
+    /*
+     * Last event observed for the prefix, in queue order. Counts alone cannot
+     * express the peer's final state -- one announce and one withdraw yield
+     * the same counts whichever arrived last -- so callers asserting
+     * wire-final state must use this.
+     *
+     * None if the prefix did not appear at all in this drain.
+     */
+    PrefixEvent lastEvent{PrefixEvent::None};
+  };
+
+  /*
+   * Drain a peer's queue and classify each message with respect to the
+   * given prefix. Mirrors drainPeerQueueCompletely's empty-check + retry
+   * + evb-pump pattern (so it cannot block on an EoR-trail), and adds
+   * per-message inspection so callers can distinguish "1 UPDATE + 1
+   * WITHDRAW + 2 EoRs" from "2 UPDATEs + 2 EoRs" — drain count alone
+   * conflates these.
+   *
+   * isV4: pass true for v4 prefixes, false for v6 (matches
+   *       findPrefixInAnnouncements / findPrefixInWithdrawals).
+   */
+  PrefixOccurrenceCounts countPrefixOccurrencesAndDrain(
+      const BgpPeerId& peerId,
+      const folly::CIDRNetwork& prefix,
+      bool isV4,
+      int maxRetries = 5,
+      int maxMessages = 100);
+
+  /*
+   * Drain a peer's queue and return every UPDATE message as a vector.
+   * EoR / RouteRefresh / Notification messages are popped and discarded
+   * (counted internally but not surfaced — the caller cares about UPDATEs).
+   * Mirrors drainPeerQueueCompletely's empty-check + retry + evb-pump
+   * pattern so it cannot block on an EoR-trail.
+   *
+   * Use when a test needs to inspect per-emission contents — e.g. to
+   * verify wire-final attrs of the last UPDATE for a prefix. Prefer
+   * countPrefixOccurrencesAndDrain when only counts matter.
+   */
+  std::vector<std::shared_ptr<const nettools::bgplib::BgpUpdate2>>
+  drainPeerQueueAndCollectUpdates(
+      const BgpPeerId& peerId,
       int maxRetries = 5,
       int maxMessages = 100);
 

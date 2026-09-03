@@ -221,6 +221,9 @@ class AdjRib : boost::noncopyable,
   // Used to notify PeerManagerBase to trigger safe mode, See
   // http://fburl.com/bgp_safe_mode for more details
   struct TriggerSafeMode {};
+  /* Notify PeerManager that a Route Refresh request was received from a peer,
+   * triggering re-announcement of all routes from the shadow RIB (RFC 2918) */
+  struct RouteRefreshReceived {};
   // Message to PeerManagerBase
   // 1. can be EoR : indicate peer EoR receipt for all negotiated
   // address families
@@ -229,8 +232,10 @@ class AdjRib : boost::noncopyable,
   // initialization
   // 4. can be TriggerSafeMode : indicates that the condition for entering safe
   // mode is met(either total path scale or unique prefix limit is reached)
-  using MessageToPeerManager =
-      std::variant<Shutdown, EoR, EgressEoR, TriggerSafeMode>;
+  // 5. can be RouteRefreshReceived : indicates a Route Refresh request was
+  // received from this peer (RFC 2918)
+  using MessageToPeerManager = std::
+      variant<Shutdown, EoR, EgressEoR, TriggerSafeMode, RouteRefreshReceived>;
   // Used to pass message from adjRib to PeerManagerBase
   struct ObservableMessageT {
     nettools::bgplib::BgpPeerId peerId;
@@ -867,6 +872,8 @@ class AdjRib : boost::noncopyable,
    * @param prefixPathId - Prefix and path ID pair
    * @param oldPath - Previous attributes (nullptr if new prefix)
    * @param newPath - New attributes (nullptr for withdrawal)
+   * @param isNexthopSetByPolicy - Whether the nexthop was set by an egress
+   *   policy (affects bookkeeping in tryUpdateAttrToPrefixMapImpl)
    */
   inline void tryUpdateAttrToPrefixMap(
       const std::pair<folly::CIDRNetwork, uint32_t>& prefixPathId,
@@ -2186,6 +2193,26 @@ class AdjRib : boost::noncopyable,
   void processRibOutAnnouncement(
       const RibOutAnnouncement& announcement) noexcept;
 
+  /*
+   * Route Refresh re-dump state transitions. Called from
+   * processRibOutAnnouncement at the natural emission boundaries:
+   *   maybeBeginRrDump -> Idle to InProgress on the first announcement of a
+   *     re-dump (announcement.routeRefresh && state == Idle). Phase 2 ERR
+   *     hook: emit BoRR here when isEnhancedRouteRefreshNegotiated_.
+   *   maybeEndRrDump -> InProgress to Idle when the re-dump's terminal
+   *     announcement fires (announcement.routeRefresh &&
+   *     announcement.sendWithEoR && state == InProgress). Phase 2 ERR hook:
+   *     emit EoRR here when
+   * isEnhancedRouteRefreshNegotiated_. Both are no-ops outside their guard
+   * conditions, so callers can invoke them unconditionally on every
+   * announcement.
+   */
+  void maybeBeginRrDump(const RibOutAnnouncement& announcement) noexcept;
+  void maybeEndRrDump(const RibOutAnnouncement& announcement) noexcept;
+  bool isRrDumpInProgress() const noexcept {
+    return rrDumpState_ == RrDumpState::InProgress;
+  }
+
   // Determines if we need to announce this prefix to peer
   // Considers IBGP, EBGP, Route reflector settings
   bool canAnnounce(const RibOutAnnouncementEntry& update) noexcept;
@@ -2368,6 +2395,24 @@ class AdjRib : boost::noncopyable,
    * not plumb it through.
    */
   bool remoteMpExtExist_{true};
+  /*
+   * Session-level state machine for Route Refresh re-dumps (RFC 2918 §4).
+   *
+   * Idle           : no re-dump in progress; per-entry dedup active.
+   * InProgress     : re-dump active; per-entry dedup bypassed so byte-identical
+   *                  attrs still reach the wire. Set on the first announcement
+   *                  with `routeRefresh=true`; cleared when an announcement
+   *                  with `routeRefresh=true` and `sendWithEoR=true` completes,
+   *                  or defensively on session teardown if a re-dump aborts
+   *                  mid-flight.
+   *
+   * Phase 2 (RFC 7313 ERR) hook: maybeBeginRrDump / maybeEndRrDump are the
+   * natural emission points for BoRR / EoRR markers when ERR is negotiated.
+   * Promoting from a bare bool to a typed state machine documents the
+   * transition semantics and centralizes the marker-emission hook.
+   */
+  enum class RrDumpState { Idle, InProgress };
+  RrDumpState rrDumpState_{RrDumpState::Idle};
   bool as4ByteCapable_{true}; /* Negotiated 4-byte ASN capability */
   bool extNhEncodingCapable_{false}; /* Negotiated RFC5549 capability */
 

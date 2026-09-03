@@ -73,10 +73,16 @@ struct RibInInitialPathComputation {
 struct RibDumpReq {
   const nettools::bgplib::BgpPeerId peerId;
   const bool sendAddPath;
-  RibDumpReq(
+  /* When true, bypass the changeListTracker check so all routes are
+   * re-announced even if the consumer already has them. Used for
+   * Route Refresh (RFC 2918) where the peer explicitly requests
+   * re-announcement of all routes. */
+  const bool routeRefresh;
+  explicit RibDumpReq(
       const nettools::bgplib::BgpPeerId& peerId,
-      bool sendAddPath = false)
-      : peerId(peerId), sendAddPath(sendAddPath) {}
+      bool sendAddPath = false,
+      bool routeRefresh = false)
+      : peerId(peerId), sendAddPath(sendAddPath), routeRefresh(routeRefresh) {}
 };
 
 /**
@@ -284,6 +290,11 @@ struct RibOutAnnouncement {
   std::vector<RibOutAnnouncementEntry> entries;
   bool sendWithEoR{false};
   bool initialDump{false}; // Indicates initial dump request's response
+  /* When true, bypass AdjRibOut dedup checks so routes are re-announced even
+   * if the peer already has them with identical attributes. Used for Route
+   * Refresh (RFC 2918) where the peer explicitly requests full re-announcement.
+   */
+  bool routeRefresh{false};
   std::vector<RibOutAnnouncementEntry> addPathEntries;
 };
 
