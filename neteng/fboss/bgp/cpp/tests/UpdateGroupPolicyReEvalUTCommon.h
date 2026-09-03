@@ -909,6 +909,7 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
     displayInfo.peeringParams.isAfiIpv4Configured = AfiIpv4Configured{true};
     displayInfo.peeringParams.isAfiIpv6Configured = AfiIpv6Configured{true};
     displayInfo.remoteBgpId = peerId.remoteBgpId;
+    displayInfo.remoteAs = displayInfo.peeringParams.remoteAs;
     displayInfo.negotiatedCapabilities.mpExtV4Unicast() = true;
     displayInfo.negotiatedCapabilities.as4byte() = true;
     /*

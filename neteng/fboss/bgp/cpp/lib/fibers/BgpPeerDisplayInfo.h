@@ -97,6 +97,8 @@ struct BgpPeerDisplayInfo {
    * peer actually advertised.
    */
   BgpCapabilities remoteCapabilities;
+  // Effective remote ASN accepted from OPEN for the current session.
+  uint32_t remoteAs{0};
 };
 
 } // namespace facebook::nettools::bgplib

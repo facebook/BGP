@@ -1315,6 +1315,7 @@ TEST_F(PeerManagerTestFixture, GetSessionInfoStaticPeerTest) {
       kNumReset,
       kLastWentDownHoursAgo,
       kLastResetReason);
+  mockPeerInfo3->remoteAs = kAsn2;
 
   // Let this static peer be up for at least 5 seconds
   const std::chrono::seconds kUptime{5};
@@ -1349,9 +1350,8 @@ TEST_F(PeerManagerTestFixture, GetSessionInfoStaticPeerTest) {
         EXPECT_EQ(0, tBgpSession3.recv_update_msgs().value());
         auto tBgpPeer3 = *tBgpSession3.peer();
         EXPECT_EQ(tBgpPeer3.local_as_4_byte(), kAsn1);
-        EXPECT_EQ(
-            tBgpPeer3.remote_as_4_byte(),
-            mockPeerInfo3->peeringParams.remoteAs);
+        EXPECT_EQ(tBgpPeer3.remote_as(), mockPeerInfo3->peeringParams.remoteAs);
+        EXPECT_EQ(tBgpPeer3.remote_as_4_byte(), kAsn2);
         EXPECT_EQ(
             tBgpPeer3.hold_time(),
             config_->getBgpGlobalConfig()->holdTime.count());

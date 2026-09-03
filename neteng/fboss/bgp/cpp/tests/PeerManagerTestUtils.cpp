@@ -1122,6 +1122,7 @@ PeerManagerTestFixture::getMockPeerInfo(
   peerInfo->startTime = std::chrono::steady_clock::now();
   peerInfo->establishedTime = std::chrono::steady_clock::now();
   peerInfo->negotiatedCapabilities = nettools::bgplib::BgpCapabilities();
+  peerInfo->remoteAs = peeringParams.remoteAs;
   peerInfo->negotiatedHoldTime = std::nullopt;
   peerInfo->numOfConnectionAttempts = 0;
   peerInfo->lastResetHoldTimer = 0;
@@ -1161,6 +1162,7 @@ PeerManagerTestFixture::getMockPeerInfo(
   peerInfo->startTime = std::chrono::steady_clock::now();
   peerInfo->establishedTime = std::chrono::steady_clock::now();
   peerInfo->negotiatedCapabilities = nettools::bgplib::BgpCapabilities();
+  peerInfo->remoteAs = param1.remoteAs;
   peerInfo->negotiatedHoldTime = std::nullopt;
   peerInfo->numOfConnectionAttempts = 0;
   peerInfo->lastResetHoldTimer = 0;

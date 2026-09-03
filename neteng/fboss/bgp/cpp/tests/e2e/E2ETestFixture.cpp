@@ -1284,6 +1284,7 @@ BgpPeerDisplayInfo createDisplayInfo(
   displayInfo.peeringParams.receiveLinkBandwidth = cfg.receiveLinkBandwidth;
   displayInfo.peeringParams.linkBandwidthBps = cfg.linkBandwidthBps;
   displayInfo.remoteBgpId = peerId.remoteBgpId;
+  displayInfo.remoteAs = cfg.peerAsn;
   /*
    * Model the peer's remote (pre-negotiation) MP-EXT-exists bit. A
    * capability-less peer advertised no MP-EXT (mpExtCapable = false), while

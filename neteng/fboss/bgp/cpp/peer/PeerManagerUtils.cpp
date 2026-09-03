@@ -871,7 +871,9 @@ TBgpSession PeerManagerBase::getSessionInfo(
 
   // TODO: deprecate i32 asns T113736668
   tBgpPeer.local_as_4_byte() = peerInfo->peeringParams.localAs;
-  tBgpPeer.remote_as_4_byte() = peerInfo->peeringParams.remoteAs;
+  tBgpPeer.remote_as_4_byte() = peerInfo->state >= BgpSessionState::OPEN_CONFIRM
+      ? peerInfo->remoteAs
+      : peerInfo->peeringParams.remoteAs;
 
   tBgpSession.peer_bgp_id() =
       folly::IPAddressV4::fromLongHBO(peerInfo->remoteBgpId).str();

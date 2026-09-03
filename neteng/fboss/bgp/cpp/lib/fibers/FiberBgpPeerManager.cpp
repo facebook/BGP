@@ -2165,6 +2165,7 @@ BgpPeerDisplayInfo FiberBgpPeerManager::getEstablishedPeerDisplayInfoHelper(
       establishedSession->peer->getTxMessageCounters(),
       establishedSession->peer->getRxMessageCounters(),
       establishedSession->peer->getRemoteCapabilities(),
+      establishedSession->peer->getRemoteAs(),
   };
   info.peeringParams.peerPrefix = std::nullopt;
   return info;
@@ -2213,6 +2214,7 @@ BgpPeerDisplayInfo FiberBgpPeerManager::getActivePeerDisplayInfoHelper(
   peerInfo.remoteBgpId = 0;
   peerInfo.negotiatedHoldTime = std::nullopt;
   peerInfo.state = connectionInfo->activeSessionInfo->state;
+  peerInfo.remoteAs = connectionInfo->activeSessionInfo->peer->getRemoteAs();
   peerInfo.localAddr =
       connectionInfo->activeSessionInfo->peer->getLocalSocketAddress();
   // for ACTIVE session, we use the startTime from activeSessionInfo because the

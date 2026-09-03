@@ -117,12 +117,13 @@ uint64_t E2ETestSessionManager::simulateSessionEstablished(
   state.adjRibOutQ = adjRibOutQ;
   state.boundedAdjRibOutQ = boundedAdjRibOutQ;
   state.displayInfo = displayInfo;
+  state.displayInfo.remoteAs = remoteAs;
   state.established = true;
 
   uint64_t version = state.versionNumber->getWithoutLock();
 
   auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
-      displayInfo,
+      state.displayInfo,
       adjRibOutQ,
       boundedAdjRibOutQ,
       adjRibInQ,
