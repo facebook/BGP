@@ -822,19 +822,67 @@ folly::coro::Task<void> AdjRib::processPeerEoR(
 }
 
 void AdjRib::processPeerRouteRefresh(const BgpRouteRefresh& rr) noexcept {
-  XLOGF(
+  /*
+   * Route Refresh is peer-driven and unbounded, so every log on this path is
+   * rate-limited. XLOGF_EVERY_MS throttles per call site, not per peer.
+   */
+  XLOGF_EVERY_MS(
       INFO,
+      5000,
       "Received Route Refresh from peer {} for AFI={} SAFI={}",
       remotePeerId_->str(),
       static_cast<int>(rr.afi().value()),
       static_cast<int>(rr.safi().value()));
+
+  /*
+   * Require RR (RFC 2918, cap 2). ERR (RFC 7313, cap 70) is not sufficient:
+   * we do not implement ERR, so an ERR-only peer expecting a BoRR/EoRR-
+   * delimited re-dump would get a bare one.
+   */
+  if (!isRouteRefreshNegotiated_) {
+    XLOGF_EVERY_MS(
+        WARN,
+        5000,
+        "Route Refresh from peer {} ignored: RR (RFC 2918, cap 2) not negotiated (ERR-only sessions are not served until Phase 2)",
+        remotePeerId_->str());
+    return;
+  }
+
+  /*
+   * RFC 2918 §3: <AFI, SAFI> must name a negotiated family. v1 is unicast only.
+   */
+  const auto afi = rr.afi().value();
+  const auto safi = rr.safi().value();
+  if (safi != nettools::bgplib::BgpUpdateSafi::SAFI_UNICAST) {
+    XLOGF_EVERY_MS(
+        WARN,
+        5000,
+        "Route Refresh from peer {} ignored: SAFI={} not supported (only UNICAST in v1)",
+        remotePeerId_->str(),
+        static_cast<int>(safi));
+    return;
+  }
+  const bool afiNegotiated = (afi == nettools::bgplib::BgpUpdateAfi::AFI_IPv4 &&
+                              isAfiIpv4Negotiated_) ||
+      (afi == nettools::bgplib::BgpUpdateAfi::AFI_IPv6 && isAfiIpv6Negotiated_);
+  if (!afiNegotiated) {
+    XLOGF_EVERY_MS(
+        WARN,
+        5000,
+        "Route Refresh from peer {} ignored: AFI={} not negotiated for this session",
+        remotePeerId_->str(),
+        static_cast<int>(afi));
+    return;
+  }
+
   if (rr.msgSubType().value() ==
       BgpRouteRefreshMessageSubtype::ROUTE_REFRESH_REQUEST) {
-    XLOGF(
+    XLOGF_EVERY_MS(
         INFO,
+        5000,
         "Triggering route re-announcement for peer {}",
         remotePeerId_->str());
-    fromAdjRibQ_.push({*remotePeerId_, RouteRefreshReceived{}});
+    fromAdjRibQ_.push({*remotePeerId_, RouteRefreshReceived{afi}});
   }
 }
 

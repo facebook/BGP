@@ -22,6 +22,8 @@
  * - Basic route refresh triggers re-announcement of routes
  * - Multiple routes are all re-announced after route refresh
  * - Route refresh from one peer only triggers re-announcement to that peer
+ * - Route refresh honors the requested AFI (RFC 2918 §3): a v4 RR re-dumps
+ *   only v4 prefixes; v6 prefixes stay quiet
  */
 
 #include <gtest/gtest.h>
@@ -566,6 +568,114 @@ TEST_F(E2ERouteRefreshTest, RouteRefreshAfterDeleteLeavesNoPhantom) {
       << "peer5 installed 10.0.0.0/8 before the block, so the pre-RR delete "
          "must end in a withdrawal. Anything else leaves a phantom route with "
          "nothing scheduled to retract it.";
+}
+
+/*
+ * RFC 2918 §3: a Route Refresh names an <AFI, SAFI>, and the re-dump must
+ * honor it -- a v4 RR must not re-advertise v6 routes, or vice-versa.
+ */
+TEST_F(E2ERouteRefreshTest, RouteRefreshHonorsRequestedAfi) {
+  bringUpAllPeersWithEor();
+
+  BgpPeerId peerId4{kPeerAddr4, kPeerAddr4.asV4().toLongHBO()};
+  BgpPeerId peerId5{kPeerAddr5, kPeerAddr5.asV4().toLongHBO()};
+
+  /* One v4 + one v6 route, both learnt from peer3, both should reach peer5
+   * during the initial dump. */
+  addRoute("v4", "10.0.0.0", 8, kPeerAddr3, "11.0.0.1", "65001", "", 0, 100, 0);
+  addRoute("v6", "2001:db8::", 32, kPeerAddr3, "2001:db8::1", "65001");
+
+  ASSERT_TRUE(
+      waitForRouteInShadowRib(folly::IPAddress::createNetwork("10.0.0.0/8")));
+  ASSERT_TRUE(waitForRouteInShadowRib(
+      folly::IPAddress::createNetwork("2001:db8::/32")));
+
+  /* Drain the initial announcements so the queue holds only post-RR output. */
+  drainPeerQueueCompletely(peerId4);
+  drainPeerQueueCompletely(peerId5);
+
+  /* peer5 sends Route Refresh for v4 ONLY. Per RFC 2918 §3 we should
+   * re-announce the v4 route and stay silent on v6. */
+  sendRouteRefreshToPeer(
+      peerId5,
+      nettools::bgplib::BgpUpdateAfi::AFI_IPv4,
+      nettools::bgplib::BgpUpdateSafi::SAFI_UNICAST);
+
+  /* v4 route MUST come back. */
+  EXPECT_TRUE(verifyRouteAdd(
+      "v4", "10.0.0.0", 8, kPeerAddr5, "127.5.0.4", "", "", 0, 50));
+
+  /* Only the 2 EoR markers should remain, one per negotiated AFI; >= 3 means
+   * the v6 prefix leaked through the filter.
+   *
+   * TODO: scope the EoR to the requested AFI, making this 1. The dump honors
+   * filterAfi but setEgressEoRsPending() keys off the negotiated families, so
+   * a single-AFI RR still emits both. Own diff: it changes the wire and that
+   * setter is shared with the GR and update-group paths. */
+  auto drained = drainPeerQueueCompletely(peerId5, 3, 10);
+  EXPECT_EQ(drained, 2);
+
+  /* peer4 did not request RR; its queue must remain empty. Anything here
+   * means peer5's RR re-dump leaked to peer4. */
+  auto peer4Drained = drainPeerQueueCompletely(peerId4, 3, 10);
+  EXPECT_EQ(peer4Drained, 0)
+      << "peer4 received messages but did not request RR";
+}
+
+/*
+ * Mirror of RouteRefreshHonorsRequestedAfi in the v6 direction. Catches
+ * asymmetry in the filter: an inverted wantV4, a bad AFI enum mapping, or a
+ * broken prefix-family check.
+ */
+TEST_F(E2ERouteRefreshTest, RouteRefreshHonorsRequestedAfiV6) {
+  bringUpAllPeersWithEor();
+
+  BgpPeerId peerId4{kPeerAddr4, kPeerAddr4.asV4().toLongHBO()};
+  BgpPeerId peerId5{kPeerAddr5, kPeerAddr5.asV4().toLongHBO()};
+
+  addRoute("v4", "10.0.0.0", 8, kPeerAddr3, "11.0.0.1", "65001", "", 0, 100, 0);
+  addRoute("v6", "2001:db8::", 32, kPeerAddr3, "2001:db8::1", "65001");
+
+  ASSERT_TRUE(
+      waitForRouteInShadowRib(folly::IPAddress::createNetwork("10.0.0.0/8")));
+  ASSERT_TRUE(waitForRouteInShadowRib(
+      folly::IPAddress::createNetwork("2001:db8::/32")));
+
+  drainPeerQueueCompletely(peerId4);
+  drainPeerQueueCompletely(peerId5);
+
+  /* peer5 sends Route Refresh for v6 ONLY. We should re-announce the v6
+   * route and stay silent on v4. */
+  sendRouteRefreshToPeer(
+      peerId5,
+      nettools::bgplib::BgpUpdateAfi::AFI_IPv6,
+      nettools::bgplib::BgpUpdateSafi::SAFI_UNICAST);
+
+  /* v6 route MUST come back. */
+  EXPECT_TRUE(verifyRouteAdd(
+      "v6",
+      "2001:db8::",
+      32,
+      kPeerAddr5,
+      "2401:db00:e011:411:1000::2d",
+      "",
+      "",
+      0,
+      50));
+
+  /* Just the 2 EoR markers, no v4 update; > 2 means v4 leaked through.
+   *
+   * TODO: see RouteRefreshHonorsRequestedAfi. This direction matters most --
+   * the spurious marker is the classical v4 EoR, a bare empty UPDATE a peer
+   * cannot distinguish from genuine IPv4 initial convergence (RFC 4724 §2). */
+  auto drained = drainPeerQueueCompletely(peerId5, 3, 10);
+  EXPECT_EQ(drained, 2);
+
+  /* peer4 did not request RR; its queue must remain empty. Anything here
+   * means peer5's RR re-dump leaked to peer4. */
+  auto peer4Drained = drainPeerQueueCompletely(peerId4, 3, 10);
+  EXPECT_EQ(peer4Drained, 0)
+      << "peer4 received messages but did not request RR";
 }
 
 } // namespace facebook::bgp

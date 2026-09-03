@@ -221,7 +221,11 @@ class AdjRibInboundFixture : public ::testing::Test {
           std::nullopt,
       const AfiIpv4Negotiated& isAfiIpv4Negotiated = AfiIpv4Negotiated(true),
       const AfiIpv6Negotiated& isAfiIpv6Negotiated = AfiIpv6Negotiated(true),
-      const std::optional<uint32_t>& remoteAs = std::nullopt);
+      const std::optional<uint32_t>& remoteAs = std::nullopt,
+      const EnhancedRouteRefreshNegotiated& isEnhancedRouteRefreshNegotiated =
+          EnhancedRouteRefreshNegotiated(false),
+      const RouteRefreshNegotiated& isRouteRefreshNegotiated =
+          RouteRefreshNegotiated(false));
 
   // Re-establish session from fiber context, mimicking
   // PeerManagerBase::sessionEstablished flow by properly awaiting

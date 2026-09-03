@@ -745,12 +745,16 @@ void AdjRibInboundFixture::establishSession(
     const std::optional<std::chrono::seconds>& remoteGrRestartTime,
     const AfiIpv4Negotiated& isAfiIpv4Negotiated,
     const AfiIpv6Negotiated& isAfiIpv6Negotiated,
-    const std::optional<uint32_t>& remoteAs) {
+    const std::optional<uint32_t>& remoteAs,
+    const EnhancedRouteRefreshNegotiated& isEnhancedRouteRefreshNegotiated,
+    const RouteRefreshNegotiated& isRouteRefreshNegotiated) {
   fm_->addTask([&,
                 remoteGrRestartTime,
                 isAfiIpv4Negotiated,
                 isAfiIpv6Negotiated,
-                remoteAs] {
+                remoteAs,
+                isEnhancedRouteRefreshNegotiated,
+                isRouteRefreshNegotiated] {
     adjRib_->sessionEstablished(
         remoteAs.value_or(adjRib_->getPeeringParams().remoteAs),
         (remoteGrRestartTime
@@ -762,8 +766,8 @@ void AdjRibInboundFixture::establishSession(
         isAfiIpv4Negotiated,
         isAfiIpv6Negotiated,
         V4OverV6Nexthop{false},
-        EnhancedRouteRefreshNegotiated{false},
-        RouteRefreshNegotiated{false},
+        isEnhancedRouteRefreshNegotiated,
+        isRouteRefreshNegotiated,
         std::nullopt,
         /*as4ByteCapable=*/true,
         /*extNhEncodingCapable=*/false,

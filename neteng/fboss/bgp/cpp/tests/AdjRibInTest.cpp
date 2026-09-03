@@ -8592,4 +8592,201 @@ TEST_F(AdjRibInboundFixture, PushStaleWithdrawalPushesToRibInQ) {
   evb_.loop();
 }
 
+/******************************************************************************
+ *      START   -   Route Refresh (RFC 2918 / RFC 7313) tests.                *
+ *                                                                            *
+ * processPeerRouteRefresh() gates the incoming Route Refresh on:             *
+ *   1. RR (RFC 2918, cap 2) negotiated; ERR (RFC 7313) alone is not enough.  *
+ *   2. SAFI must be SAFI_UNICAST (only unicast supported in v1).             *
+ *   3. AFI must match a negotiated AFI (v4 or v6).                           *
+ *                                                                            *
+ * When the gate passes, a RouteRefreshReceived ObservableMessage is pushed   *
+ * to fromAdjRibQ_ for PeerManager to act on. When the gate fails, the        *
+ * Route Refresh is silently dropped.                                         *
+ *                                                                            *
+ * Each negative test pushes a BgpRouteRefresh that should be dropped, then   *
+ * an EoR that should be observed. If the popped message is the EoR (and not  *
+ * RouteRefreshReceived), the gate dropped the RR as expected.                *
+ ******************************************************************************/
+
+namespace {
+nettools::bgplib::BgpRouteRefresh makeRouteRefresh(
+    nettools::bgplib::BgpUpdateAfi afi =
+        nettools::bgplib::BgpUpdateAfi::AFI_IPv4,
+    nettools::bgplib::BgpUpdateSafi safi =
+        nettools::bgplib::BgpUpdateSafi::SAFI_UNICAST) {
+  nettools::bgplib::BgpRouteRefresh rr;
+  rr.afi() = afi;
+  rr.safi() = safi;
+  rr.msgSubType() =
+      nettools::bgplib::BgpRouteRefreshMessageSubtype::ROUTE_REFRESH_REQUEST;
+  return rr;
+}
+} // namespace
+
+// Gate drops Route Refresh when neither RR nor ERR was negotiated.
+TEST_F(AdjRibInboundFixture, ProcessPeerRouteRefresh_NoCapability_Ignored) {
+  setupAdjRib(
+      kLongGrRestartTime,
+      kLongGrRestartTime,
+      false /* callSessionEstablished — we'll call ours below */);
+  // Both RR and ERR negotiated = false (defaulted)
+  establishSession(
+      std::nullopt,
+      AfiIpv4Negotiated(true),
+      AfiIpv6Negotiated(true),
+      /*remoteAs=*/std::nullopt,
+      EnhancedRouteRefreshNegotiated(false),
+      RouteRefreshNegotiated(false));
+
+  fm_->addTask([&] {
+    adjRibInQ_->fiberPush(makeRouteRefresh());
+    /*
+     * Push v4+v6 EoRs that together trigger an EoR ObservableMessage on
+     * fromAdjRibQ_ (proves the loop processed the RR before the EoR).
+     */
+    adjRibInQ_->fiberPush(buildEndOfRib(BgpUpdateAfi::AFI_IPv4));
+    adjRibInQ_->fiberPush(buildEndOfRib(BgpUpdateAfi::AFI_IPv6));
+  });
+
+  fm_->addTask([&] {
+    auto msg = folly::coro::blockingWait(fromAdjRibQ_.pop());
+    EXPECT_FALSE(
+        std::holds_alternative<AdjRib::RouteRefreshReceived>(msg.message))
+        << "Route Refresh should have been dropped: gate not negotiated";
+    EXPECT_TRUE(std::holds_alternative<AdjRib::EoR>(msg.message));
+    terminateAdjRib();
+  });
+
+  evb_.loop();
+}
+
+// Happy path: RR (cap 2) negotiated, RouteRefreshReceived flows through.
+TEST_F(
+    AdjRibInboundFixture,
+    ProcessPeerRouteRefresh_RrNegotiated_PushesToQueue) {
+  setupAdjRib(kLongGrRestartTime, kLongGrRestartTime, false);
+  establishSession(
+      std::nullopt,
+      AfiIpv4Negotiated(true),
+      AfiIpv6Negotiated(true),
+      /*remoteAs=*/std::nullopt,
+      EnhancedRouteRefreshNegotiated(false),
+      RouteRefreshNegotiated(true));
+
+  fm_->addTask([&] { adjRibInQ_->fiberPush(makeRouteRefresh()); });
+
+  fm_->addTask([&] {
+    auto msg = folly::coro::blockingWait(fromAdjRibQ_.pop());
+    EXPECT_TRUE(
+        std::holds_alternative<AdjRib::RouteRefreshReceived>(msg.message));
+    terminateAdjRib();
+  });
+
+  evb_.loop();
+}
+
+/*
+ * ERR (cap 70) alone is NOT sufficient: we do not implement RFC 7313, so an
+ * ERR-only peer would expect a BoRR/EoRR-delimited re-dump and get a bare
+ * RFC 2918 one instead. Drop until Phase 2 adds the markers.
+ */
+TEST_F(
+    AdjRibInboundFixture,
+    ProcessPeerRouteRefresh_ErrOnlyNegotiated_Ignored) {
+  setupAdjRib(kLongGrRestartTime, kLongGrRestartTime, false);
+  establishSession(
+      std::nullopt,
+      AfiIpv4Negotiated(true),
+      AfiIpv6Negotiated(true),
+      /*remoteAs=*/std::nullopt,
+      EnhancedRouteRefreshNegotiated(true),
+      RouteRefreshNegotiated(false));
+
+  fm_->addTask([&] {
+    adjRibInQ_->fiberPush(makeRouteRefresh());
+    /*
+     * EoRs behind the RR give the pop below something to observe, proving the
+     * loop ran past the RR rather than merely being slow to produce it.
+     */
+    adjRibInQ_->fiberPush(buildEndOfRib(BgpUpdateAfi::AFI_IPv4));
+    adjRibInQ_->fiberPush(buildEndOfRib(BgpUpdateAfi::AFI_IPv6));
+  });
+
+  fm_->addTask([&] {
+    auto msg = folly::coro::blockingWait(fromAdjRibQ_.pop());
+    EXPECT_FALSE(
+        std::holds_alternative<AdjRib::RouteRefreshReceived>(msg.message))
+        << "ERR-only session must not trigger a re-dump: RR cap 2 absent";
+    EXPECT_TRUE(std::holds_alternative<AdjRib::EoR>(msg.message));
+    terminateAdjRib();
+  });
+
+  evb_.loop();
+}
+
+// AFI validation: RR negotiated but the requested AFI was not negotiated.
+TEST_F(AdjRibInboundFixture, ProcessPeerRouteRefresh_UnnegotiatedAfi_Ignored) {
+  setupAdjRib(kLongGrRestartTime, kLongGrRestartTime, false);
+  // v4 AFI NOT negotiated; RR cap is.
+  establishSession(
+      std::nullopt,
+      AfiIpv4Negotiated(false),
+      AfiIpv6Negotiated(true),
+      /*remoteAs=*/std::nullopt,
+      EnhancedRouteRefreshNegotiated(false),
+      RouteRefreshNegotiated(true));
+
+  fm_->addTask([&] {
+    // Request RR for v4, but v4 wasn't negotiated → drop.
+    adjRibInQ_->fiberPush(
+        makeRouteRefresh(nettools::bgplib::BgpUpdateAfi::AFI_IPv4));
+    adjRibInQ_->fiberPush(buildEndOfRib(BgpUpdateAfi::AFI_IPv4));
+    adjRibInQ_->fiberPush(buildEndOfRib(BgpUpdateAfi::AFI_IPv6));
+  });
+
+  fm_->addTask([&] {
+    auto msg = folly::coro::blockingWait(fromAdjRibQ_.pop());
+    EXPECT_FALSE(
+        std::holds_alternative<AdjRib::RouteRefreshReceived>(msg.message))
+        << "Route Refresh for unnegotiated AFI should have been dropped";
+    EXPECT_TRUE(std::holds_alternative<AdjRib::EoR>(msg.message));
+    terminateAdjRib();
+  });
+
+  evb_.loop();
+}
+
+// SAFI validation: only SAFI_UNICAST supported in v1.
+TEST_F(AdjRibInboundFixture, ProcessPeerRouteRefresh_NonUnicastSafi_Ignored) {
+  setupAdjRib(kLongGrRestartTime, kLongGrRestartTime, false);
+  establishSession(
+      std::nullopt,
+      AfiIpv4Negotiated(true),
+      AfiIpv6Negotiated(true),
+      /*remoteAs=*/std::nullopt,
+      EnhancedRouteRefreshNegotiated(false),
+      RouteRefreshNegotiated(true));
+
+  fm_->addTask([&] {
+    // SAFI_LABELED_UNICAST is not supported in v1 → drop.
+    adjRibInQ_->fiberPush(makeRouteRefresh(
+        nettools::bgplib::BgpUpdateAfi::AFI_IPv4,
+        nettools::bgplib::BgpUpdateSafi::SAFI_LABELED_UNICAST));
+    adjRibInQ_->fiberPush(buildEndOfRib(BgpUpdateAfi::AFI_IPv4));
+    adjRibInQ_->fiberPush(buildEndOfRib(BgpUpdateAfi::AFI_IPv6));
+  });
+
+  fm_->addTask([&] {
+    auto msg = folly::coro::blockingWait(fromAdjRibQ_.pop());
+    EXPECT_FALSE(
+        std::holds_alternative<AdjRib::RouteRefreshReceived>(msg.message))
+        << "Route Refresh with non-UNICAST SAFI should have been dropped";
+    EXPECT_TRUE(std::holds_alternative<AdjRib::EoR>(msg.message));
+    terminateAdjRib();
+  });
+
+  evb_.loop();
+}
+
 } // namespace facebook::bgp

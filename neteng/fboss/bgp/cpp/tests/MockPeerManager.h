@@ -96,6 +96,19 @@ class MockPeerManager : public PeerManagerDC {
     runVipPeerManager_ = true;
   }
 
+  /*
+   * Capture every processRibDumpReqCoro invocation so unit tests can assert
+   * what the dispatcher in processAdjRibEvent forwarded (peer, routeRefresh
+   * flag, filterAfi, etc.). Forwards to the base implementation so behavior is
+   * unchanged for tests that exercise the real dump path.
+   */
+  std::vector<RibDumpReq> capturedRibDumpReqs;
+  folly::coro::Task<void> processRibDumpReqCoro(
+      RibDumpReq ribDumpReq) override {
+    capturedRibDumpReqs.push_back(ribDumpReq);
+    co_await PeerManagerBase::processRibDumpReqCoro(std::move(ribDumpReq));
+  }
+
  private:
   // if true, run VipPeerManager in the run() call
   // enableVipPeerManager() and run() are most likely going to be called

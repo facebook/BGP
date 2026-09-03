@@ -78,11 +78,18 @@ struct RibDumpReq {
    * Route Refresh (RFC 2918) where the peer explicitly requests
    * re-announcement of all routes. */
   const bool routeRefresh;
+  /* Restrict the dump to this AFI (Route Refresh, RFC 2918 §3). nullopt
+   * dumps every prefix: initial dump, policy re-evaluation, GR re-init. */
+  const std::optional<nettools::bgplib::BgpUpdateAfi> filterAfi;
   explicit RibDumpReq(
       const nettools::bgplib::BgpPeerId& peerId,
       bool sendAddPath = false,
-      bool routeRefresh = false)
-      : peerId(peerId), sendAddPath(sendAddPath), routeRefresh(routeRefresh) {}
+      bool routeRefresh = false,
+      std::optional<nettools::bgplib::BgpUpdateAfi> filterAfi = std::nullopt)
+      : peerId(peerId),
+        sendAddPath(sendAddPath),
+        routeRefresh(routeRefresh),
+        filterAfi(filterAfi) {}
 };
 
 /**

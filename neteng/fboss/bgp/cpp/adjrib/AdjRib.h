@@ -221,9 +221,16 @@ class AdjRib : boost::noncopyable,
   // Used to notify PeerManagerBase to trigger safe mode, See
   // http://fburl.com/bgp_safe_mode for more details
   struct TriggerSafeMode {};
-  /* Notify PeerManager that a Route Refresh request was received from a peer,
-   * triggering re-announcement of all routes from the shadow RIB (RFC 2918) */
-  struct RouteRefreshReceived {};
+  /* Route Refresh from a peer: triggers a shadow-RIB re-dump (RFC 2918).
+   * requestedAfi scopes it to the family the request named (§3). The AFI is a
+   * required ctor argument: BgpUpdateAfi has no zero enumerator, so a
+   * default-constructed one would reach processRibDumpReq as an AFI matching
+   * neither family and silently re-dump v6 only. */
+  struct RouteRefreshReceived {
+    explicit RouteRefreshReceived(nettools::bgplib::BgpUpdateAfi afi)
+        : requestedAfi(afi) {}
+    nettools::bgplib::BgpUpdateAfi requestedAfi;
+  };
   // Message to PeerManagerBase
   // 1. can be EoR : indicate peer EoR receipt for all negotiated
   // address families

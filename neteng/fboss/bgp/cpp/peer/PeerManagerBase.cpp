@@ -884,20 +884,23 @@ folly::coro::Task<void> PeerManagerBase::processAdjRibEvent(
         processTriggerSafeMode();
         co_return;
       },
-      /* Process Route Refresh request received from a peer (RFC 2918).
-       * Triggers a full RIB dump to re-announce all routes to that peer. */
-      [this, peerId](AdjRib::RouteRefreshReceived /*routeRefreshMsg*/)
+      /* Route Refresh from a peer (RFC 2918): re-dump only the AFI the
+       * request named (§3), not every family on the session. */
+      [this, peerId](AdjRib::RouteRefreshReceived routeRefreshMsg)
           -> folly::coro::Task<void> {
-        XLOGF(
+        XLOGF_EVERY_MS(
             INFO,
-            "Processing Route Refresh for peer {}, triggering RIB dump",
-            peerId.str());
+            5000,
+            "Processing Route Refresh for peer {} AFI={}, triggering RIB dump",
+            peerId.str(),
+            static_cast<int>(routeRefreshMsg.requestedAfi));
         auto peerIdAdjRib = adjRibs_.find(peerId);
         if (peerIdAdjRib != adjRibs_.cend() && peerIdAdjRib->second) {
           co_await processRibDumpReqCoro(RibDumpReq(
               peerId,
               peerIdAdjRib->second->sendAddPath(),
-              true /* routeRefresh */));
+              true /* routeRefresh */,
+              routeRefreshMsg.requestedAfi /* filterAfi */));
         }
         co_return;
       });
@@ -1674,13 +1677,31 @@ void PeerManagerBase::processRibDumpReq(
   announcement.routeRefresh = ribDumpReq.routeRefresh;
 
   /*
-   * Track whether any entry was skipped because it is already pending on this
-   * consumer's changeList. If so, the peer will still receive those entries
-   * (and advance its version) via the changeList, so we must NOT advance its
-   * lastSeenRibVersion off this dump.
+   * Anything skipped below means the peer was not shown the whole table, so
+   * lastSeenRibVersion must not advance; the changeList carries those entries,
+   * and the version, instead.
    */
-  bool skippedChangeListEntry = false;
+  bool skippedEntry = false;
   for (const auto& [prefix, trackedShadowRibEntry] : shadowRibEntries_) {
+    /*
+     * RFC 2918 §3: re-advertise only the requested family. nullopt means all
+     * AFIs (initial dump, GR re-init, policy re-evaluation).
+     */
+    if (ribDumpReq.filterAfi.has_value()) {
+      /*
+       * processPeerRouteRefresh rejects any AFI but v4/v6, so collapsing to
+       * v4-vs-not-v4 is safe. A caller bypassing that gate would silently be
+       * treated as v6 -- guard at the producer, not here.
+       */
+      const bool prefixIsV4 = prefix.first.isV4();
+      const bool wantV4 =
+          (*ribDumpReq.filterAfi == nettools::bgplib::BgpUpdateAfi::AFI_IPv4);
+      if (prefixIsV4 != wantV4) {
+        skippedEntry = true;
+        continue;
+      }
+    }
+
     /*
      * Skip entries already pending on this consumer's changeList -- the peer
      * receives them from there and advances its version. Route Refresh
@@ -1689,7 +1710,7 @@ void PeerManagerBase::processRibDumpReq(
     if (!ribDumpReq.routeRefresh &&
         changeListTracker_->isConsumerSetOnTrackableObject(
             trackedShadowRibEntry.get(), adjRib->getChangeListConsumer())) {
-      skippedChangeListEntry = true;
+      skippedEntry = true;
       continue;
     }
 
@@ -1760,15 +1781,11 @@ void PeerManagerBase::processRibDumpReq(
    */
   adjRib->processRibMessage(announcement);
   /*
-   * If the dump covered every entry (nothing was skipped because it was already
-   * pending on this consumer's changeList), the peer has now seen the whole
-   * table, so advance it to the max table version tracked by the PeerManager.
-   * If any entry was skipped, the peer will receive those entries and advance
-   * its version through the changeList instead, so leave lastSeenRibVersion
-   * untouched here. setLastSeenRibVersion only advances if greater than the
-   * peer's current version.
+   * A dump that covered every entry means the peer has seen the whole table;
+   * advance it to the PeerManager's max version. If anything was skipped, leave
+   * the version to the changeList. setLastSeenRibVersion only ever advances.
    */
-  if (!skippedChangeListEntry) {
+  if (!skippedEntry) {
     adjRib->setLastSeenRibVersion(maxRibVersion_);
   }
   /*

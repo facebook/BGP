@@ -768,6 +768,13 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
     });
   }
 
+  /*
+   * Coroutine to handle RibDumpReq. Pass-by-value is deliberate, to prevent a
+   * use-after-free. protected + virtual so MockPeerManager can capture
+   * invocations; see RouteRefreshReceived_TriggersRibDumpWithFlag.
+   */
+  virtual folly::coro::Task<void> processRibDumpReqCoro(RibDumpReq ribDumpReq);
+
  private:
   /*
    * The destructor of this class calls cancelSubscriberStream().
@@ -870,9 +877,6 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   // Coroutine to periodically update peer counter
   folly::coro::Task<void> startPeriodicUpdatePeerCountersRoutine();
 
-  // Coroutine to handle RibDumpReq
-  // NOTE: we intended to do the pass-by-value to prevent memory use-after-free
-  folly::coro::Task<void> processRibDumpReqCoro(RibDumpReq ribDumpReq);
   /*
    * Cancellable variant used by scheduleRibDumpForAdjRib for update-group
    * peers: the dump is tracked by the AdjRib's cancellation source so it can be

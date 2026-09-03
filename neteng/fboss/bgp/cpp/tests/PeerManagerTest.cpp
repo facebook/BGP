@@ -78,6 +78,8 @@
   FRIEND_TEST(PeerManagerTestFixture, TriggerRouteRefreshRequestTest);         \
   FRIEND_TEST(PeerManagerTestFixture, TriggerRouteRefreshRequestRrOnlyTest);   \
   FRIEND_TEST(                                                                 \
+      PeerManagerTestFixture, RouteRefreshReceived_TriggersRibDumpWithFlag);   \
+  FRIEND_TEST(                                                                 \
       PeerManagerDynamicPolicyEvaluationFixture,                               \
       UpdateIngressEgressPolicyNamesForIPAddressTest);                         \
   FRIEND_TEST(                                                                 \
@@ -197,6 +199,8 @@
   FRIEND_TEST(PeerManagerTestFixture, TriggerRouteRefreshRequestNegativeTest); \
   FRIEND_TEST(PeerManagerTestFixture, TriggerRouteRefreshRequestTest);         \
   FRIEND_TEST(PeerManagerTestFixture, TriggerRouteRefreshRequestRrOnlyTest);   \
+  FRIEND_TEST(                                                                 \
+      PeerManagerTestFixture, RouteRefreshReceived_TriggersRibDumpWithFlag);   \
   FRIEND_TEST(PeerManagerTestFixture, SessionFlapRaceConditionTest);           \
   FRIEND_TEST(                                                                 \
       PeerManagerTestFixture, MarkDaemonShutdownClearsAdjRibTreesTest);        \
@@ -7316,6 +7320,76 @@ TEST_F(PeerManagerTestFixture, GetEffectivePostOutPrefixCountTest) {
   peerMgrThread.join();
   sessionMgrThread.join();
   SUCCEED();
+}
+
+/**
+ * Verify the AdjRib::RouteRefreshReceived dispatcher in processAdjRibEvent
+ * forwards the message to processRibDumpReq with routeRefresh=true and
+ * filterAfi propagated from the requested AFI (RFC 2918 §3 dispatch contract).
+ *
+ * Full re-dump semantics are exercised end-to-end by E2ERouteRefreshTest;
+ * this is a unit-level regression guard for the dispatcher lambda in
+ * PeerManager::processAdjRibEvent.
+ */
+TEST_F(PeerManagerTestFixture, RouteRefreshReceived_TriggersRibDumpWithFlag) {
+  auto mockPeerMgr = setupMockPeerManager(
+      true /* includeStaticPeer */,
+      true /* includeDynamicShivPeer */,
+      false /* includeDynamicMonitorPeer */);
+  auto sessionMgr = setupMockSessionManager(mockPeerMgr);
+  uint64_t version = 0x100;
+  auto versionNumber = std::make_shared<VersionNumber>(version);
+
+  auto sessionMgrThread = sessionMgr->runInThread();
+
+  auto& fm =
+      folly::fibers::getFiberManager(mockPeerMgr->getEventBase(), options_);
+
+  mockInfo1_.negotiatedCapabilities.routeRefresh() = true;
+
+  fm.addTask([&] {
+    auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
+        mockInfo1_,
+        sessionMgr->iQueue_,
+        sessionMgr->boundedIqueue_,
+        sessionMgr->oQueue_,
+        versionNumber);
+
+    FiberBgpPeer::ObservableStateT stateEvent{
+        .peerId = kPeerId3,
+        .versionNumber = version,
+        .sessionInfo = sessionInfo};
+
+    /*
+     * sessionEstablished populates adjRibs_, which the RouteRefresh dispatcher
+     * in processAdjRibEvent looks up before forwarding to processRibDumpReq.
+     */
+    folly::coro::blockingWait(mockPeerMgr->sessionEstablished(stateEvent));
+
+    AdjRib::ObservableMessageT rrFromPeer{
+        kPeerId3,
+        AdjRib::RouteRefreshReceived{nettools::bgplib::BgpUpdateAfi::AFI_IPv4}};
+    folly::coro::blockingWait(
+        mockPeerMgr->processAdjRibEvent(std::move(rrFromPeer)));
+
+    sessionMgr->oQueue_->fiberPush(
+        FiberBgpPeer::BgpSessionStop{GracefulRestartFlag{false}});
+    stateEvent.versionNumber = ++version;
+    folly::coro::blockingWait(mockPeerMgr->sessionTerminated(stateEvent));
+
+    mockPeerMgr->stop();
+    sessionMgr->stop();
+  });
+
+  mockPeerMgr->getEventBase().loop();
+  sessionMgrThread.join();
+
+  ASSERT_EQ(mockPeerMgr->capturedRibDumpReqs.size(), 1u);
+  const auto& req = mockPeerMgr->capturedRibDumpReqs.front();
+  EXPECT_EQ(req.peerId, kPeerId3);
+  EXPECT_TRUE(req.routeRefresh);
+  ASSERT_TRUE(req.filterAfi.has_value());
+  EXPECT_EQ(*req.filterAfi, nettools::bgplib::BgpUpdateAfi::AFI_IPv4);
 }
 
 } // namespace bgp
