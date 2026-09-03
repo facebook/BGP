@@ -98,7 +98,7 @@ folly::coro::Task<void> AdjRib::sendRibInAnnouncement(
     RibInAnnouncement announcement(
         TinyPeerInfo(
             peeringParams_.peerAddr,
-            peeringParams_.remoteAs,
+            getRemoteAs(),
             remotePeerId_->remoteBgpId,
             getBgpSessionType(),
             peeringParams_.isRrClient,
@@ -117,7 +117,7 @@ folly::coro::Task<void> AdjRib::sendRibInWithdrawal(
     RibInWithdrawal withdrawal(
         TinyPeerInfo(
             peeringParams_.peerAddr,
-            peeringParams_.remoteAs,
+            getRemoteAs(),
             remotePeerId_->remoteBgpId,
             getBgpSessionType(),
             peeringParams_.isRrClient,
@@ -1022,7 +1022,7 @@ std::optional<RibInWithdrawal> AdjRib::collectStaleRoutes(
   return RibInWithdrawal(
       TinyPeerInfo(
           peeringParams_.peerAddr,
-          peeringParams_.remoteAs,
+          getRemoteAs(),
           remotePeerId_->remoteBgpId,
           getBgpSessionType(),
           peeringParams_.isRrClient,
@@ -1149,7 +1149,7 @@ folly::coro::Task<void> AdjRib::cleanupStaleRoutesInPlace(
   RibInWithdrawal withdrawal(
       TinyPeerInfo(
           peeringParams_.peerAddr,
-          peeringParams_.remoteAs,
+          getRemoteAs(),
           remotePeerId_->remoteBgpId,
           getBgpSessionType(),
           peeringParams_.isRrClient,

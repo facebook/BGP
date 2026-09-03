@@ -4442,6 +4442,7 @@ TEST_F(AdjRibInboundFixture, CleanupStaleRoutesInPlaceTest_NoStaleEntries) {
 // Verifies cleanup of stale entries in ADD-PATH case
 TEST_F(AdjRibInboundFixture, CleanupStaleRoutesInPlaceTest_AddPath) {
   setupAdjRib(kShortGrRestartTime, kShortGrRestartTime, false);
+  adjRib_->remoteAs_ = kAsSeqAsNum;
   adjRib_->enableOptimizedGR_ = true;
   adjRib_->recAddPath_ = true;
   EXPECT_EQ(adjRib_->adjRibInPathTree_.size(), 0);
@@ -4476,6 +4477,10 @@ TEST_F(AdjRibInboundFixture, CleanupStaleRoutesInPlaceTest_AddPath) {
 
   // cleanup stale entries
   folly::coro::blockingWait(adjRib_->cleanupStaleRoutesInPlace(false));
+
+  auto msg = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
+  ASSERT_TRUE(std::holds_alternative<RibInWithdrawal>(msg));
+  EXPECT_EQ(kAsSeqAsNum, std::get<RibInWithdrawal>(msg).peer.asn);
 
   // verify staleEntryCount_ is reset to 0
   EXPECT_EQ(adjRib_->staleEntryCount_, 0);
@@ -4911,10 +4916,15 @@ TEST_F(AdjRibInboundFixture, VerifyTinyPeerInfoInRibInMessages) {
     setupAdjRib(
         kShortGrRestartTime, // default
         std::nullopt, // remoteGrRestartTime
-        true, // default
+        false, // callSessionEstablished
         kLocalAs1, // default
         kLocalAs1, // default
         kRemoteAs2);
+    establishSession(
+        std::nullopt,
+        AfiIpv4Negotiated(true),
+        AfiIpv6Negotiated(true),
+        kAsSeqAsNum);
 
     fm_->addTask([&] {
       auto update = createV4BgpUpdateSingleAnnounce(kV4Prefix1, kV4Nexthop1);
@@ -4933,7 +4943,7 @@ TEST_F(AdjRibInboundFixture, VerifyTinyPeerInfoInRibInMessages) {
         ASSERT_TRUE(std::holds_alternative<RibInAnnouncement>(msg));
         auto announcement = std::get<RibInAnnouncement>(msg);
         EXPECT_EQ(kPeerAddr1, announcement.peer.addr);
-        EXPECT_EQ(kRemoteAs2, announcement.peer.asn);
+        EXPECT_EQ(kAsSeqAsNum, announcement.peer.asn);
         EXPECT_EQ(BgpSessionType::EBGP, announcement.peer.sessionType);
         EXPECT_EQ(
             kPeerRouterId1, announcement.peer.routerId); // default, not used
@@ -4947,7 +4957,7 @@ TEST_F(AdjRibInboundFixture, VerifyTinyPeerInfoInRibInMessages) {
         ASSERT_TRUE(std::holds_alternative<RibInWithdrawal>(msg));
         auto withdrawal = std::get<RibInWithdrawal>(msg);
         EXPECT_EQ(kPeerAddr1, withdrawal.peer.addr);
-        EXPECT_EQ(kRemoteAs2, withdrawal.peer.asn);
+        EXPECT_EQ(kAsSeqAsNum, withdrawal.peer.asn);
         EXPECT_EQ(BgpSessionType::EBGP, withdrawal.peer.sessionType);
         EXPECT_EQ(
             kPeerRouterId1, withdrawal.peer.routerId); // default, not used
@@ -8417,6 +8427,7 @@ TEST_F(
     CollectStaleRoutes_ReturnsWithdrawalAndClearsState) {
   setupAdjRib();
   fm_->addTask([&] {
+    adjRib_->remoteAs_ = kAsSeqAsNum;
     // Manually populate adjRibInStale_ with one entry.
     auto dummyPathId = 5;
     folly::F14ValueMap<uint32_t, std::unique_ptr<AdjRibEntry>> staleEntry;
@@ -8430,6 +8441,7 @@ TEST_F(
 
     auto withdrawal = adjRib_->collectStaleRoutes(/*isGrHelperMode=*/true);
     ASSERT_TRUE(withdrawal.has_value());
+    EXPECT_EQ(kAsSeqAsNum, withdrawal->peer.asn);
     ASSERT_EQ(1, withdrawal->pfxPathIds.size());
     EXPECT_EQ(kV4Prefix1, std::get<0>(withdrawal->pfxPathIds.front()));
     EXPECT_EQ(dummyPathId, std::get<1>(withdrawal->pfxPathIds.front()));
