@@ -19,6 +19,7 @@
 #include <folly/CancellationToken.h>
 #include <folly/coro/BlockingWait.h>
 #include <folly/coro/WithCancellation.h>
+#include <folly/executors/ManualExecutor.h>
 #include <folly/portability/GTest.h>
 
 #include <array>
@@ -31,11 +32,12 @@
 #include <vector>
 
 namespace facebook::bgp::coro {
+
 namespace {
 
 // Pop one item synchronously (the queue already holds a wakeup for it).
-template <typename T>
-T popNow(MergeQueue<T>& q) {
+template <typename T, typename Key>
+T popNow(MergeQueue<T, Key>& q) {
   return folly::coro::blockingWait(q.pop());
 }
 
@@ -43,9 +45,9 @@ T popNow(MergeQueue<T>& q) {
 
 TEST(MergeQueueTest, FifoDistinctSlots) {
   MergeQueue<int> q;
-  q.pushMerge(10, /*slot=*/0);
-  q.pushMerge(20, /*slot=*/1);
-  q.pushMerge(30, /*slot=*/2);
+  q.pushMerge(10, /*key=*/0);
+  q.pushMerge(20, /*key=*/1);
+  q.pushMerge(30, /*key=*/2);
   EXPECT_EQ(q.size(), 3);
   EXPECT_EQ(popNow(q), 10);
   EXPECT_EQ(popNow(q), 20);
@@ -55,9 +57,9 @@ TEST(MergeQueueTest, FifoDistinctSlots) {
 
 TEST(MergeQueueTest, MergeSameSlotKeepsLatest) {
   MergeQueue<int> q;
-  q.pushMerge(10, /*slot=*/0);
-  q.pushMerge(20, /*slot=*/0);
-  q.pushMerge(30, /*slot=*/0);
+  q.pushMerge(10, /*key=*/0);
+  q.pushMerge(20, /*key=*/0);
+  q.pushMerge(30, /*key=*/0);
   EXPECT_EQ(q.size(), 1);
   EXPECT_EQ(popNow(q), 30);
   EXPECT_TRUE(q.empty());
@@ -65,9 +67,9 @@ TEST(MergeQueueTest, MergeSameSlotKeepsLatest) {
 
 TEST(MergeQueueTest, MergePreservesOrder) {
   MergeQueue<int> q;
-  q.pushMerge(10, /*slot=*/0); // slot 0 at position 0
-  q.pushMerge(20, /*slot=*/1); // slot 1 at position 1
-  q.pushMerge(30, /*slot=*/0); // merges into slot 0, keeps position 0
+  q.pushMerge(10, /*key=*/0); // slot 0 at position 0
+  q.pushMerge(20, /*key=*/1); // slot 1 at position 1
+  q.pushMerge(30, /*key=*/0); // merges into slot 0, keeps position 0
   EXPECT_EQ(q.size(), 2);
   EXPECT_EQ(popNow(q), 30); // slot 0 retained its earlier position
   EXPECT_EQ(popNow(q), 20);
@@ -76,23 +78,23 @@ TEST(MergeQueueTest, MergePreservesOrder) {
 
 TEST(MergeQueueTest, MergeAfterPopAppendsFresh) {
   MergeQueue<int> q;
-  q.pushMerge(10, /*slot=*/0);
+  q.pushMerge(10, /*key=*/0);
   EXPECT_EQ(popNow(q), 10);
   // slot 0's node was consumed, so this is a fresh append, not a merge.
-  q.pushMerge(20, /*slot=*/0);
+  q.pushMerge(20, /*key=*/0);
   EXPECT_EQ(q.size(), 1);
   EXPECT_EQ(popNow(q), 20);
 }
 
 TEST(MergeQueueTest, PushMergeReturnsWhetherCoalesced) {
   MergeQueue<int> q;
-  EXPECT_FALSE(q.pushMerge(1, /*slot=*/0)); // new slot -> appended
-  EXPECT_TRUE(q.pushMerge(2, /*slot=*/0)); // same slot -> coalesced
-  EXPECT_FALSE(q.pushMerge(3, /*slot=*/1)); // different slot -> appended
+  EXPECT_FALSE(q.pushMerge(1, /*key=*/0)); // new slot -> appended
+  EXPECT_TRUE(q.pushMerge(2, /*key=*/0)); // same slot -> coalesced
+  EXPECT_FALSE(q.pushMerge(3, /*key=*/1)); // different slot -> appended
   EXPECT_EQ(q.size(), 2);
   // Once slot 0's node is consumed, the next push to slot 0 appends afresh.
   EXPECT_EQ(popNow(q), 2);
-  EXPECT_FALSE(q.pushMerge(4, /*slot=*/0));
+  EXPECT_FALSE(q.pushMerge(4, /*key=*/0));
 }
 
 TEST(MergeQueueTest, SecondPushSupersedesFirst) {
@@ -108,9 +110,9 @@ TEST(MergeQueueTest, SecondPushSupersedesFirst) {
 
 TEST(MergeQueueTest, PurgeAllDropsPending) {
   MergeQueue<int> q;
-  q.pushMerge(10, /*slot=*/0);
-  q.pushMerge(20, /*slot=*/1);
-  q.pushMerge(30, /*slot=*/2);
+  q.pushMerge(10, /*key=*/0);
+  q.pushMerge(20, /*key=*/1);
+  q.pushMerge(30, /*key=*/2);
   q.pushPurgeAll(99);
   EXPECT_EQ(q.size(), 1);
   EXPECT_EQ(popNow(q), 99);
@@ -119,10 +121,10 @@ TEST(MergeQueueTest, PurgeAllDropsPending) {
 
 TEST(MergeQueueTest, PurgeAllThenMergeIsSeparate) {
   MergeQueue<int> q;
-  q.pushMerge(10, /*slot=*/0);
+  q.pushMerge(10, /*key=*/0);
   q.pushPurgeAll(99);
   // A slot push after the purge starts a fresh node after the purge entry.
-  q.pushMerge(20, /*slot=*/0);
+  q.pushMerge(20, /*key=*/0);
   EXPECT_EQ(q.size(), 2);
   EXPECT_EQ(popNow(q), 99);
   EXPECT_EQ(popNow(q), 20);
@@ -130,31 +132,100 @@ TEST(MergeQueueTest, PurgeAllThenMergeIsSeparate) {
 
 TEST(MergeQueueTest, PurgeAllClearsEverySlotThenReMerges) {
   MergeQueue<int> q;
-  q.pushMerge(1, /*slot=*/0);
-  q.pushMerge(2, /*slot=*/1);
-  q.pushMerge(3, /*slot=*/2);
-  q.pushMerge(4, /*slot=*/3); // a fourth distinct slot
+  q.pushMerge(1, /*key=*/0);
+  q.pushMerge(2, /*key=*/1);
+  q.pushMerge(3, /*key=*/2);
+  q.pushMerge(4, /*key=*/3); // a fourth distinct slot
   q.pushPurgeAll(0);
-  q.pushMerge(5, /*slot=*/0);
-  q.pushMerge(6, /*slot=*/0); // merges into the post-purge slot-0 node
+  q.pushMerge(5, /*key=*/0);
+  q.pushMerge(6, /*key=*/0); // merges into the post-purge slot-0 node
   EXPECT_EQ(q.size(), 2); // [purge(0), slot0(6)]
   EXPECT_EQ(popNow(q), 0);
   EXPECT_EQ(popNow(q), 6);
   EXPECT_TRUE(q.empty());
 }
 
-TEST(MergeQueueTest, StaleWakeupToleratedAfterPurge) {
+TEST(MergeQueueTest, PurgeAllThenFreshPushIsDelivered) {
   MergeQueue<int> q;
-  q.pushMerge(10, /*slot=*/0);
-  q.pushMerge(20, /*slot=*/1); // 2 nodes -> 2 wakeups
-  q.pushPurgeAll(99); // drops 2 nodes, appends 1 -> wakeups now over-count
+  q.pushMerge(10, /*key=*/0);
+  q.pushMerge(20, /*key=*/1);
+  q.pushPurgeAll(99);
   EXPECT_EQ(q.size(), 1);
   EXPECT_EQ(popNow(q), 99);
   EXPECT_TRUE(q.empty());
-  // Despite leftover stale wakeups, a later push must still be delivered.
-  q.pushMerge(42, /*slot=*/0);
+  q.pushMerge(42, /*key=*/0);
   EXPECT_EQ(popNow(q), 42);
   EXPECT_TRUE(q.empty());
+}
+
+TEST(MergeQueueTest, PopBlocksUntilPush) {
+  MergeQueue<int> q;
+  folly::ManualExecutor executor;
+  auto result = folly::coro::co_withExecutor(&executor, q.pop()).start();
+
+  executor.drain();
+  ASSERT_FALSE(result.isReady());
+
+  q.pushMerge(42, /*key=*/0);
+  executor.drain();
+
+  ASSERT_TRUE(result.isReady());
+  EXPECT_EQ(std::move(result).get(), 42);
+}
+
+TEST(MergeQueueTest, BlockedPopWakesOnPurgeAll) {
+  MergeQueue<int> q;
+  folly::ManualExecutor executor;
+  auto result = folly::coro::co_withExecutor(&executor, q.pop()).start();
+
+  executor.drain();
+  ASSERT_FALSE(result.isReady());
+
+  q.pushPurgeAll(99);
+  executor.drain();
+
+  ASSERT_TRUE(result.isReady());
+  EXPECT_EQ(std::move(result).get(), 99);
+}
+
+TEST(MergeQueueTest, PopReblocksAfterNonblockingDrain) {
+  MergeQueue<int> q;
+  q.pushMerge(10, /*key=*/0);
+  q.pushMerge(20, /*key=*/1);
+  EXPECT_EQ(q.tryPop(), std::optional<int>{10});
+  EXPECT_EQ(q.tryPop(), std::optional<int>{20});
+
+  folly::ManualExecutor executor;
+  auto result = folly::coro::co_withExecutor(&executor, q.pop()).start();
+  executor.drain();
+  ASSERT_FALSE(result.isReady());
+
+  q.pushMerge(30, /*key=*/2);
+  executor.drain();
+
+  ASSERT_TRUE(result.isReady());
+  EXPECT_EQ(std::move(result).get(), 30);
+}
+
+TEST(MergeQueueTest, PopReblocksAfterCoalescedUpdatesAreDrained) {
+  MergeQueue<int> q;
+  q.pushMerge(10, /*key=*/0);
+  q.pushMerge(20, /*key=*/0);
+  q.pushMerge(30, /*key=*/0);
+  q.pushPurgeAll(40);
+  q.pushPurgeAll(50);
+  EXPECT_EQ(q.tryPop(), std::optional<int>{50});
+
+  folly::ManualExecutor executor;
+  auto result = folly::coro::co_withExecutor(&executor, q.pop()).start();
+  executor.drain();
+  ASSERT_FALSE(result.isReady());
+
+  q.pushMerge(60, /*key=*/1);
+  executor.drain();
+
+  ASSERT_TRUE(result.isReady());
+  EXPECT_EQ(std::move(result).get(), 60);
 }
 
 TEST(MergeQueueTest, CancellationThrows) {
@@ -167,7 +238,29 @@ TEST(MergeQueueTest, CancellationThrows) {
       folly::OperationCancelled);
 }
 
-// Random push/purge sequence checked against an independent reference model.
+TEST(MergeQueueTest, BlockedPopCancellationThrows) {
+  MergeQueue<int> q;
+  folly::ManualExecutor executor;
+  folly::CancellationSource cs;
+  auto result =
+      folly::coro::co_withExecutor(
+          &executor, folly::coro::co_withCancellation(cs.getToken(), q.pop()))
+          .start();
+
+  executor.drain();
+  ASSERT_FALSE(result.isReady());
+
+  cs.requestCancellation();
+  executor.drain();
+
+  ASSERT_TRUE(result.isReady());
+  EXPECT_THROW(std::move(result).get(), folly::OperationCancelled);
+
+  q.pushMerge(42, /*key=*/0);
+  EXPECT_EQ(popNow(q), 42);
+}
+
+/* Random push/purge sequence checked against an independent reference model. */
 TEST(MergeQueueTest, RandomSequenceMatchesReference) {
   constexpr int kNumSlots = 4;
   MergeQueue<int> q;
@@ -180,7 +273,8 @@ TEST(MergeQueueTest, RandomSequenceMatchesReference) {
   std::mt19937 rng(0xC0FFEE);
   int value = 0;
   for (int i = 0; i < 5000; ++i) {
-    if (rng() % 20 == 0) {
+    const auto operation = rng() % 20;
+    if (operation == 0) {
       q.pushPurgeAll(value);
       refOrder.clear();
       refIters = {};
@@ -232,7 +326,7 @@ TEST(MergeQueueTest, MultiProducerSingleConsumerNoRace) {
     producers.emplace_back([&, p]() {
       for (int i = 0; i < kPerProducer; ++i) {
         const int v = p * kPerProducer + i;
-        q.pushMerge(v, /*slot=*/v);
+        q.pushMerge(v, /*key=*/v);
       }
     });
   }

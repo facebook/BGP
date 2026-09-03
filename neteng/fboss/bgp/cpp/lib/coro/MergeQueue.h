@@ -16,26 +16,28 @@
 
 #pragma once
 
+#include <list>
+#include <mutex>
+#include <optional>
+#include <type_traits>
+#include <utility>
+
 #include <folly/container/F14Map.h>
 #include <folly/coro/Task.h>
 #include <folly/fibers/Semaphore.h>
-#include <folly/logging/xlog.h>
 #include <folly/synchronization/MicroSpinLock.h>
-
-#include <list>
-#include <optional>
 
 namespace facebook::bgp::coro {
 
 /**
  * An unbounded, coalescing (merge) queue for a single consumer.
  *
- * Every item is enqueued under a caller-supplied slot id. Pushing an item whose
- * slot already has a pending (not-yet-popped) item overwrites that item in
- * place, so the queue holds at most one pending item per slot -- always the
- * latest -- while preserving FIFO order relative to items in other slots.
- * Overwriting in place is correct only because a slotted item affects solely
- * its own slot, so its position relative to other slots is immaterial.
+ * Every mergeable item is enqueued under a caller-supplied key. Pushing an item
+ * whose key already has a pending (not-yet-popped) item overwrites that item
+ * in place. The queue therefore holds at most one pending item per key --
+ * always the latest -- while preserving FIFO order relative to items with
+ * other keys. Overwriting in place is correct only because a keyed item affects
+ * solely its own key, so its position relative to other keys is immaterial.
  *
  * `pushPurgeAll` is the whole-queue merge: it coalesces every pending item into
  * `val` (e.g. a "clear everything" message that supersedes all queued items).
@@ -45,62 +47,93 @@ namespace facebook::bgp::coro {
  * collapse too: the second drops the first.
  *
  * Concurrency: designed for a single consumer (one `pop()` loop). Multiple
- * producers are safe -- all mutation is under a short-held spin lock. The
- * wakeup semaphore is an over-approximation of the queue depth: an in-place
- * merge adds no wakeup, and a purge can leave stale wakeups behind, so `pop()`
- * re-checks under the lock and waits again if it wakes to an empty queue.
+ * producers are safe -- all mutation is under a short-held spin lock. Every
+ * newly appended node signals the semaphore once; an in-place merge adds no
+ * signal. A purge can remove nodes whose signals are still pending, so
+ * consumers skip those stale credits if the queue is already empty.
  *
- * `pushMerge`/`pushPurgeAll` are noexcept: an allocation failure terminates the
- * process rather than propagating, matching bgpd's crash-on-OOM policy (and the
- * MPMCQueue this replaced).
+ * `pushMerge`/`pushMergeWith`/`pushPurgeAll` are noexcept: an allocation
+ * failure terminates the process rather than propagating, matching bgpd's
+ * crash-on-OOM policy (and the MPMCQueue this replaced).
  */
-template <typename T>
+template <typename T, typename Key = int>
 class MergeQueue {
  public:
   MergeQueue() = default;
   ~MergeQueue() = default;
 
-  // Non-copyable and non-movable: owns a folly::fibers::Semaphore and a
-  // MicroSpinLock, neither of which is movable.
+  /*
+   * Non-copyable and non-movable: owns a Semaphore and a MicroSpinLock,
+   * neither of which is movable.
+   */
   MergeQueue(const MergeQueue&) = delete;
   MergeQueue& operator=(const MergeQueue&) = delete;
   MergeQueue(MergeQueue&&) = delete;
   MergeQueue& operator=(MergeQueue&&) = delete;
 
   /*
-   * Enqueue `val` under `slot` (must be >= 0). If an item for `slot` is already
-   * pending, overwrite it in place (no new wakeup); otherwise append and wake
-   * the consumer. Returns true if it coalesced into an existing pending item,
-   * false if it appended a new one -- lets callers count coalescing.
+   * Enqueue `val` under `key`. If an item for `key` is already pending in the
+   * queue, overwrite it in place; otherwise append it and signal the consumer.
+   * Returns true if it coalesced into an existing pending item, false if it
+   * appended a new one -- lets callers count coalescing.
    */
   template <typename U = T>
-  bool pushMerge(U&& val, int slot) noexcept {
-    // slot must be non-negative; kNoSlot (-1) is reserved for pushPurgeAll and
-    // a collision there would corrupt slotIters_ bookkeeping.
-    XDCHECK_GE(slot, 0);
-    bool added = false;
-    {
-      std::lock_guard<folly::MicroSpinLock> guard(lock_);
-      auto it = slotIters_.find(slot);
-      if (it != slotIters_.end()) {
-        // Replace the pending node in place, preserving its FIFO position.
-        // insert+erase (rather than assignment) so T need only be
-        // move-constructible, not move-assignable (e.g. a variant with a const
-        // member).
-        auto newIt =
-            queue_.insert(it->second, Node{slot, std::forward<U>(val)});
-        queue_.erase(it->second);
-        it->second = newIt;
-      } else {
-        queue_.push_back(Node{slot, std::forward<U>(val)});
-        slotIters_.emplace(slot, std::prev(queue_.end()));
-        added = true;
-      }
+  bool pushMerge(U&& val, const Key& key) noexcept {
+    return pushMergeWith(
+        std::forward<U>(val),
+        key,
+        [](T& /*incoming*/, const T& /*pending*/) noexcept {});
+  }
+
+  /*
+   * As pushMerge, but invoke `merge(incoming, pending)` before replacing an
+   * existing node. The callback runs under the queue lock and must be short and
+   * noexcept; use it only to preserve lightweight sticky metadata.
+   */
+  template <typename U = T, typename Merge>
+  bool pushMergeWith(U&& val, const Key& key, Merge&& merge) noexcept {
+    static_assert(
+        std::is_nothrow_invocable_v<Merge&, T&, const T&>,
+        "merge callback must be noexcept");
+    if constexpr (
+        std::is_move_assignable_v<T> && std::is_trivially_destructible_v<T>) {
+      return updatePendingOrAppend(
+          key,
+          [&](QueueIterator& pendingIt) {
+            T incoming(std::forward<U>(val));
+            merge(incoming, pendingIt->val);
+            pendingIt->val = std::move(incoming);
+          },
+          [&]() {
+            queue_.push_back(makeKeyedNode(key, std::forward<U>(val)));
+            return std::prev(queue_.end());
+          });
+    } else {
+      std::list<Node> incoming;
+      incoming.push_back(makeKeyedNode(key, std::forward<U>(val)));
+      const auto& ownedKey = nodeKey(incoming.front());
+
+      std::list<Node> retired;
+      return updatePendingOrAppend(
+          ownedKey,
+          [&](QueueIterator& pendingIt) {
+            /*
+             * Replace the pending node in place, preserving its FIFO position.
+             * Splicing lets T be move-constructible but not move-assignable and
+             * defers destruction of the superseded value until after unlocking.
+             */
+            const auto newIt = incoming.begin();
+            merge(newIt->val, pendingIt->val);
+            queue_.splice(pendingIt, incoming, newIt);
+            retired.splice(retired.end(), queue_, pendingIt);
+            pendingIt = newIt;
+          },
+          [&]() {
+            const auto newIt = incoming.begin();
+            queue_.splice(queue_.end(), incoming, newIt);
+            return newIt;
+          });
     }
-    if (added) {
-      sem_.signal();
-    }
-    return !added;
   }
 
   /*
@@ -111,11 +144,15 @@ class MergeQueue {
    */
   template <typename U = T>
   void pushPurgeAll(U&& val) noexcept {
+    std::list<Node> incoming;
+    incoming.push_back(makeUnkeyedNode(std::forward<U>(val)));
+    std::list<Node> retiredQueue;
+    KeyMap retiredKeyStates;
     {
       std::lock_guard<folly::MicroSpinLock> guard(lock_);
-      queue_.clear();
-      slotIters_.clear();
-      queue_.push_back(Node{kNoSlot, std::forward<U>(val)});
+      retiredQueue.swap(queue_);
+      retiredKeyStates.swap(keyIters_);
+      queue_.splice(queue_.end(), incoming, incoming.begin());
     }
     sem_.signal();
   }
@@ -126,30 +163,22 @@ class MergeQueue {
       folly::Try<void> result =
           co_await folly::coro::co_awaitTry(sem_.co_wait());
       if (result.hasException()) {
-        // Cancelled.
         co_yield folly::coro::co_error(std::move(result).exception());
       }
-
-      std::optional<T> val;
-      {
-        std::lock_guard<folly::MicroSpinLock> guard(lock_);
-        if (!queue_.empty()) {
-          Node& front = queue_.front();
-          if (front.slot != kNoSlot) {
-            auto it = slotIters_.find(front.slot);
-            if (it != slotIters_.end() && it->second == queue_.begin()) {
-              slotIters_.erase(it);
-            }
-          }
-          val.emplace(std::move(front.val));
-          queue_.pop_front();
-        }
-      }
-      if (val.has_value()) {
+      if (auto val = dequeue()) {
         co_return std::move(*val);
       }
-      // Woke on a stale signal left by a merge/purge; wait again.
     }
+  }
+
+  /* Nonblocking pop; returns nullopt if no item is immediately available. */
+  std::optional<T> tryPop() {
+    while (sem_.try_wait()) {
+      if (auto val = dequeue()) {
+        return val;
+      }
+    }
+    return std::nullopt;
   }
 
   size_t size() const noexcept {
@@ -163,19 +192,79 @@ class MergeQueue {
   }
 
  private:
-  // Reserved slot for a pushPurgeAll item; never produced by a pushMerge caller
-  // (real slots are >= 0), so a later merge can never address or overwrite a
-  // queued supersede-all item.
-  static constexpr int kNoSlot = -1;
-
   struct Node {
-    int slot;
+    std::optional<Key> key;
     T val;
   };
 
+  template <typename U>
+  static Node makeKeyedNode(const Key& key, U&& val) {
+    return Node{key, std::forward<U>(val)};
+  }
+
+  template <typename U>
+  static Node makeUnkeyedNode(U&& val) {
+    return Node{std::nullopt, std::forward<U>(val)};
+  }
+
+  static bool nodeHasKey(const Node& node) {
+    return node.key.has_value();
+  }
+
+  static const Key& nodeKey(const Node& node) {
+    return *node.key;
+  }
+
+  using Queue = std::list<Node>;
+  using QueueIterator = typename Queue::iterator;
+
+  using KeyMap = folly::F14FastMap<Key, QueueIterator>;
+
+  template <typename ReplacePending, typename AppendNew>
+  bool updatePendingOrAppend(
+      const Key& key,
+      ReplacePending&& replacePending,
+      AppendNew&& appendNew) noexcept {
+    bool coalesced = false;
+    {
+      std::lock_guard<folly::MicroSpinLock> guard(lock_);
+      auto it = keyIters_.find(key);
+      if (it != keyIters_.end()) {
+        replacePending(it->second);
+        coalesced = true;
+      } else {
+        const auto newIt = appendNew();
+        keyIters_.emplace(nodeKey(*newIt), newIt);
+      }
+    }
+    if (!coalesced) {
+      sem_.signal();
+    }
+    return coalesced;
+  }
+
+  std::optional<T> dequeue() {
+    std::list<Node> popped;
+    {
+      std::lock_guard<folly::MicroSpinLock> guard(lock_);
+      if (queue_.empty()) {
+        return std::nullopt;
+      }
+      const auto frontIt = queue_.begin();
+      if (nodeHasKey(*frontIt)) {
+        auto it = keyIters_.find(nodeKey(*frontIt));
+        if (it != keyIters_.end() && it->second == frontIt) {
+          keyIters_.erase(it);
+        }
+      }
+      popped.splice(popped.end(), queue_, frontIt);
+    }
+    return std::move(popped.front().val);
+  }
+
   mutable folly::MicroSpinLock lock_{};
-  std::list<Node> queue_;
-  folly::F14FastMap<int, typename std::list<Node>::iterator> slotIters_;
+  Queue queue_;
+  KeyMap keyIters_;
   folly::fibers::Semaphore sem_{0};
 };
 
