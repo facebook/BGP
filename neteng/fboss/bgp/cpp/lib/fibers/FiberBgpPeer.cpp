@@ -968,6 +968,10 @@ void FiberBgpPeer::processOpenMsg(const BgpOpenMsg& msg) {
       //
       // Process remote information
       //
+      /*
+       * RFC 6793 carries the ASN in the AS4 capability when present;
+       * otherwise the two-byte ASN comes from the OPEN header.
+       */
       const auto remoteAs = static_cast<uint32_t>(
           *msg.capabilities()->as4byte() ? *msg.capabilities()->asn()
                                          : *msg.asn());

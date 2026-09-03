@@ -2777,6 +2777,7 @@ folly::coro::Task<void> PeerManagerBase::sessionEstablished(
     }
 
     adjRib->sessionEstablished(
+        evt.remoteAs,
         std::optional<uint16_t>(peerInfo->remoteGrRestartTime),
         oqueue, /* aka adjRibInQueue */
         iqueue, /* aka adjRibOutQueue */

@@ -232,18 +232,18 @@ void prependAsPath(
 /**
  * @brief Validate enforce-first-as for eBGP peers
  *
- * @details Verifies that the first AS in the AS-PATH matches the peer's
- * remote AS number. This validation is only applied for eBGP and confed
- * eBGP peers, not for iBGP peers.
+ * @details Verifies that the first AS in the AS-PATH matches the remote ASN
+ * accepted during OPEN validation. This validation is only applied for eBGP
+ * and confed eBGP peers, not for iBGP peers.
  *
  * @param attrs - shared_ptr of BgpPath including as_path
- * @param params - BGP peering parameters with remote AS
+ * @param remoteAs - remote ASN to validate against
  * @param isIBgpPeer - boolean flag for iBGP
  * @return True if validation passes
  */
 bool validateEnforceFirstAs(
     const std::shared_ptr<const BgpPath>& attrs,
-    const PeeringParams& params,
+    uint32_t remoteAs,
     bool isIBgpPeer);
 
 /**

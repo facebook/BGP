@@ -1839,6 +1839,7 @@ TEST_F(
   FiberBgpPeer::ObservableStateT stateEvent{
       .peerId = kPeerId3,
       .versionNumber = version_,
+      .remoteAs = mockInfo1_.peeringParams.remoteAs,
       .sessionInfo = sessionInfo_};
 
   // Indicate that RIB initial announcement is in progress.
@@ -1888,6 +1889,7 @@ TEST_F(
   FiberBgpPeer::ObservableStateT stateEvent{
       .peerId = kPeerId3,
       .versionNumber = version_,
+      .remoteAs = mockInfo1_.peeringParams.remoteAs,
       .sessionInfo = sessionInfo_};
 
   peerMgr_->ribInitialAnnouncementStarted_ = true;
@@ -1941,6 +1943,7 @@ CO_TEST_F(
   FiberBgpPeer::ObservableStateT stateEvent{
       .peerId = kPeerId3,
       .versionNumber = version_,
+      .remoteAs = mockInfo1_.peeringParams.remoteAs,
       .sessionInfo = sessionInfo_};
 
   co_await peerMgr_->sessionEstablished(stateEvent);
@@ -2008,6 +2011,7 @@ CO_TEST_F(
   FiberBgpPeer::ObservableStateT stateEvent{
       .peerId = kPeerId3,
       .versionNumber = version_,
+      .remoteAs = mockInfo1_.peeringParams.remoteAs,
       .sessionInfo = sessionInfo_};
 
   // Simulate RIB starting initial dump with two RibOutAnnouncements.
@@ -2087,6 +2091,7 @@ CO_TEST_F(
   FiberBgpPeer::ObservableStateT stateEvent{
       .peerId = kPeerId3,
       .versionNumber = version_,
+      .remoteAs = mockInfo1_.peeringParams.remoteAs,
       .sessionInfo = sessionInfo_};
 
   // Simulate RIB starting initial dump.
@@ -2202,6 +2207,7 @@ CO_TEST_F(
   FiberBgpPeer::ObservableStateT stateEvent{
       .peerId = kPeerId3,
       .versionNumber = version_,
+      .remoteAs = mockInfo1_.peeringParams.remoteAs,
       .sessionInfo = sessionInfo_};
 
   // Simulate RIB starting initial dump with two RibOutAnnouncements.

@@ -128,6 +128,7 @@ void E2ESessionTestFixture::bringUpPeer(
   displayInfo.peeringParams.peerAddr = peerId.peerAddr;
   displayInfo.peeringParams.remoteAs = cfg.peerAsn;
   displayInfo.peeringParams.additionalRemoteAs = cfg.additionalRemoteAs;
+  displayInfo.peeringParams.enforceFirstAs = cfg.enforceFirstAs.value_or(false);
   displayInfo.peeringParams.localAs =
       cfg.localAsn.value_or(globalConfig->localAsn);
   displayInfo.peeringParams.globalAs = globalConfig->localAsn;
@@ -178,6 +179,7 @@ void E2ESessionTestFixture::bringUpPeer(
   auto version = testSessionManager_->simulateSessionEstablished(
       peerId,
       displayInfo,
+      cfg.additionalRemoteAs.value_or(cfg.peerAsn),
       defaultQueueCapacity_,
       defaultQueueHighWm_,
       defaultQueueLowWm_);

@@ -339,7 +339,7 @@ void prependAsPath(
 
 bool validateEnforceFirstAs(
     const std::shared_ptr<const BgpPath>& attrs,
-    const PeeringParams& params,
+    uint32_t remoteAs,
     bool isIBgpPeer) {
   // Only apply enforce-first-as for eBGP and confed eBGP peers
   if (isIBgpPeer) {
@@ -355,25 +355,25 @@ bool validateEnforceFirstAs(
   // Get the first AS path segment
   const auto& firstSegment = (*asPathDedup)[0];
 
-  // Check if the first AS in the path matches the peer's remote AS
+  // Check if the first AS in the path matches the accepted remote AS
   if (!firstSegment.asSequence.empty()) {
     auto firstAs = firstSegment.asSequence[0];
-    if (firstAs != params.remoteAs) {
+    if (firstAs != remoteAs) {
       XLOGF(
           ERR,
           "Enforce-first-as validation failed: first AS {} does not match peer AS {}",
           firstAs,
-          params.remoteAs);
+          remoteAs);
       return false;
     }
   } else if (!firstSegment.asConfedSequence.empty()) {
     auto firstAs = firstSegment.asConfedSequence[0];
-    if (firstAs != params.remoteAs) {
+    if (firstAs != remoteAs) {
       XLOGF(
           ERR,
           "Enforce-first-as validation failed: first AS {} does not match peer AS {}",
           firstAs,
-          params.remoteAs);
+          remoteAs);
       return false;
     }
   }

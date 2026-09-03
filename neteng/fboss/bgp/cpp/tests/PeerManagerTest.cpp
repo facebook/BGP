@@ -2056,6 +2056,7 @@ TEST_F(PeerManagerTestFixture, NullLinkBandwidthBpsTest) {
       .peerId = kPeerId3,
       .state = BgpSessionState::ESTABLISHED,
       .versionNumber = version,
+      .remoteAs = mockInfo1_.peeringParams.remoteAs,
       .sessionInfo = sessionInfo};
 
   EXPECT_DEATH(
@@ -2090,6 +2091,7 @@ TEST_F(PeerManagerTestFixture, NullLinkBandwidthBpsReceiveTest) {
       .peerId = kPeerId3,
       .state = BgpSessionState::ESTABLISHED,
       .versionNumber = version,
+      .remoteAs = mockInfo1_.peeringParams.remoteAs,
       .sessionInfo = sessionInfo};
 
   EXPECT_DEATH(
@@ -2140,6 +2142,7 @@ TEST_F(PeerManagerTestFixture, MultipleFlapTest) {
     FiberBgpPeer::ObservableStateT stateEvent{
         .peerId = kPeerId3,
         .versionNumber = version,
+        .remoteAs = mockInfo1_.peeringParams.remoteAs,
         .sessionInfo = sessionInfo};
 
     folly::coro::blockingWait(mockPeerMgr->sessionEstablished(stateEvent));
@@ -2300,11 +2303,13 @@ TEST_F(PeerManagerTestFixture, MultipleFlapMultiplePeersTest) {
     FiberBgpPeer::ObservableStateT stateEventPeer3{
         .peerId = kPeerId3,
         .versionNumber = version,
+        .remoteAs = mockInfo1_.peeringParams.remoteAs,
         .sessionInfo = sessionInfo};
 
     FiberBgpPeer::ObservableStateT stateEventPeer4{
         .peerId = kPeerId4,
         .versionNumber = version,
+        .remoteAs = mockInfo1_.peeringParams.remoteAs,
         .sessionInfo = sessionInfo};
 
     folly::coro::blockingWait(mockPeerMgr->sessionEstablished(stateEventPeer3));
@@ -2496,6 +2501,7 @@ TEST_F(PeerManagerTestFixture, BusyWaitTest) {
     FiberBgpPeer::ObservableStateT stateEvent{
         .peerId = kPeerId3,
         .versionNumber = version,
+        .remoteAs = mockInfo1_.peeringParams.remoteAs,
         .sessionInfo = sessionInfo};
 
     folly::coro::blockingWait(mockPeerMgr->sessionEstablished(stateEvent));
@@ -4514,6 +4520,7 @@ TEST_P(SafeModeTestFixture, InitializeAdjRibWithGoldenPrefixPolicy) {
     FiberBgpPeer::ObservableStateT stateEvent{
         .peerId = kPeerId3,
         .versionNumber = version,
+        .remoteAs = mockInfo1_.peeringParams.remoteAs,
         .sessionInfo = sessionInfo};
 
     // Establish session, which is expected to create a new AdjRib with
@@ -4970,6 +4977,7 @@ TEST_F(PeerManagerTestFixture, SafeModeOnAllSessionsTest) {
     FiberBgpPeer::ObservableStateT stateEventPeer3{
         .peerId = kPeerId3,
         .versionNumber = version,
+        .remoteAs = mockInfo1_.peeringParams.remoteAs,
         .sessionInfo = sessionInfo};
 
     folly::coro::blockingWait(mockPeerMgr->sessionEstablished(stateEventPeer3));
@@ -4982,6 +4990,7 @@ TEST_F(PeerManagerTestFixture, SafeModeOnAllSessionsTest) {
     FiberBgpPeer::ObservableStateT stateEventPeer4{
         .peerId = kPeerId4,
         .versionNumber = ++version,
+        .remoteAs = mockInfo1_.peeringParams.remoteAs,
         .sessionInfo = sessionInfo};
 
     sessionInfo->currentVersion = std::make_shared<VersionNumber>(version);
@@ -5271,6 +5280,7 @@ TEST_F(PeerManagerTestFixture, TriggerRouteRefreshRequestNegativeTest) {
     FiberBgpPeer::ObservableStateT stateEvent{
         .peerId = kPeerId3,
         .versionNumber = version,
+        .remoteAs = mockInfo1_.peeringParams.remoteAs,
         .sessionInfo = sessionInfo};
 
     folly::coro::blockingWait(mockPeerMgr->sessionEstablished(stateEvent));
@@ -5323,6 +5333,7 @@ TEST_F(PeerManagerTestFixture, TriggerRouteRefreshRequestTest) {
     FiberBgpPeer::ObservableStateT stateEvent{
         .peerId = kPeerId3,
         .versionNumber = version,
+        .remoteAs = mockInfo1_.peeringParams.remoteAs,
         .sessionInfo = sessionInfo};
 
     folly::coro::blockingWait(mockPeerMgr->sessionEstablished(stateEvent));
@@ -5394,6 +5405,7 @@ TEST_F(PeerManagerTestFixture, TriggerRouteRefreshRequestRrOnlyTest) {
     FiberBgpPeer::ObservableStateT stateEvent{
         .peerId = kPeerId3,
         .versionNumber = version,
+        .remoteAs = mockInfo1_.peeringParams.remoteAs,
         .sessionInfo = sessionInfo};
 
     folly::coro::blockingWait(mockPeerMgr->sessionEstablished(stateEvent));
@@ -6934,6 +6946,7 @@ TEST_F(PeerManagerTestFixture, SessionFlapRaceConditionTest) {
     FiberBgpPeer::ObservableStateT stateEvent{
         .peerId = kPeerId3,
         .versionNumber = version,
+        .remoteAs = mockInfo1_.peeringParams.remoteAs,
         .sessionInfo = sessionInfo};
 
     // Establish the "old" session

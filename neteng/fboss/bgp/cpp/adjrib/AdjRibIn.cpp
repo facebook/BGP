@@ -1427,7 +1427,7 @@ bool AdjRib::validateAttributesIn(
   }
 
   if (params.enforceFirstAs &&
-      !validateEnforceFirstAs(attrs, params, isIBgpPeer())) {
+      !validateEnforceFirstAs(attrs, getRemoteAs(), isIBgpPeer())) {
     stats_.incrementEnforceFirstAsRejects();
     XLOGF(
         ERR,

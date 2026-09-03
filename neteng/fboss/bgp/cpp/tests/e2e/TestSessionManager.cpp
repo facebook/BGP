@@ -93,6 +93,7 @@ E2ETestSessionManager::getBoundedPeerInputQueue(
 uint64_t E2ETestSessionManager::simulateSessionEstablished(
     const BgpPeerId& peerId,
     const BgpPeerDisplayInfo& displayInfo,
+    uint32_t remoteAs,
     int queueCapacity,
     int queueHighWm,
     int queueLowWm) {
@@ -131,6 +132,7 @@ uint64_t E2ETestSessionManager::simulateSessionEstablished(
       .peerId = peerId,
       .state = BgpSessionState::ESTABLISHED,
       .versionNumber = version,
+      .remoteAs = remoteAs,
       .sessionInfo = std::move(sessionInfo)};
 
   ObservableEventT obsEvent = std::move(stateEvt);

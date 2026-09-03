@@ -198,6 +198,10 @@ void E2ETestFixture::addPeer(const BgpPeerSpec& spec) {
     peer.additional_remote_as_4_byte() = *spec.additionalRemoteAs;
   }
 
+  if (spec.enforceFirstAs.has_value()) {
+    peer.enforce_first_as() = *spec.enforceFirstAs;
+  }
+
   /*
    * Parent confederation AS is a global config field, not per-peer. If
    * multiple specs supply localConfedAsn they must agree (otherwise the
@@ -1444,6 +1448,7 @@ void E2ETestFixture::establishSession(
       .peerId = peerId,
       .state = BgpSessionState::ESTABLISHED,
       .versionNumber = versionNumber,
+      .remoteAs = cfg.peerAsn,
       .sessionInfo = std::move(sessionInfo)};
 
   auto& evb = peerManager_->getEventBase();
@@ -1491,6 +1496,7 @@ void E2ETestFixture::dispatchStaleSessionEstablished(
       .peerId = peerId,
       .state = BgpSessionState::ESTABLISHED,
       .versionNumber = staleVersionNumber, // captured before bump
+      .remoteAs = cfg.peerAsn,
       .sessionInfo = std::move(sessionInfo)};
 
   // Simulate FiberBgpPeer bumping the version for a new session incarnation.

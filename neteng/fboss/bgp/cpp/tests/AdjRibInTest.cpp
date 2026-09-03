@@ -2433,7 +2433,7 @@ TEST_F(AdjRibInboundFixture, CheckConfedAsPathFromConfedPeerWithIBGP) {
 // Create 2 updates, 1 with the correct AS number at the left most position and
 // one without. The invalid one should be discarded, and ribInQ_ should have
 // only the prefix from the valid update
-TEST_F(AdjRibInboundFixture, EnforceFirstAsTest) {
+TEST_F(AdjRibInboundFixture, EnforceFirstAsUsesRemoteAsTest) {
   // make current adjRib not in same confed
   setupAdjRib(
       kShortGrRestartTime,
@@ -2462,14 +2462,15 @@ TEST_F(AdjRibInboundFixture, EnforceFirstAsTest) {
       kPeerId1, // peerId
       IsRedistributePeer{false}, // isRedistributePeer
       std::make_shared<std::atomic<bool>>(false), // isSafeModeOn
-      true); // enforce_first_as
+      true, // enforce_first_as
+      kAsSeqAsNum); // remoteAs
 
   fm_->addTask([&] {
     {
       // enforce-first-as validation should fail as left most AS of this update
       // does not match peer AS
       auto update = createV4BgpUpdateSingleAnnounce();
-      update->attrs()->asPath()[0].asSequence()[0] = 2;
+      update->attrs()->asPath()[0].asSequence()[0] = kRemoteAs1;
 
       BgpAttrAsPathSegment segment2;
       segment2.asSequence()->push_back(kAsSeqAsNum);
@@ -2479,7 +2480,7 @@ TEST_F(AdjRibInboundFixture, EnforceFirstAsTest) {
     }
     {
       auto update = createV4BgpUpdateSingleAnnounce(kV4Prefix2);
-      update->attrs()->asPath()[0].asSequence()[0] = kRemoteAs1;
+      update->attrs()->asPath()[0].asSequence()[0] = kAsSeqAsNum;
 
       BgpAttrAsPathSegment segment2;
       segment2.asSequence()->push_back(kAsSeqAsNum);

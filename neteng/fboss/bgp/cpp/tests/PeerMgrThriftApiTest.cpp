@@ -390,6 +390,7 @@ TEST_P(
         .peerId = kPeerId3,
         .state = BgpSessionState::ESTABLISHED,
         .versionNumber = version,
+        .remoteAs = mockInfo1_.peeringParams.remoteAs,
         .sessionInfo = sessionInfo};
 
     {

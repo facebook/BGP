@@ -567,6 +567,38 @@ void AdjRib::sessionEstablished(
     bool as4ByteCapable,
     bool extNhEncodingCapable,
     bool remoteMpExtExist) noexcept {
+  sessionEstablished(
+      peeringParams_.remoteAs,
+      remoteGrRestartTime,
+      std::move(adjRibInQueue),
+      std::move(adjRibOutQueue),
+      std::move(boundedAdjRibOutQueue),
+      isAfiIpv4Negotiated,
+      isAfiIpv6Negotiated,
+      isV4OverV6NexthopNegotiated,
+      isEnhancedRouteRefreshNegotiated,
+      isRouteRefreshNegotiated,
+      addPathCapa,
+      as4ByteCapable,
+      extNhEncodingCapable,
+      remoteMpExtExist);
+}
+
+void AdjRib::sessionEstablished(
+    uint32_t remoteAs,
+    const std::optional<uint16_t>& remoteGrRestartTime,
+    std::shared_ptr<AdjRibInQueueT> adjRibInQueue,
+    std::shared_ptr<AdjRibOutQueueT> adjRibOutQueue,
+    std::shared_ptr<BoundedAdjRibOutQueueT> boundedAdjRibOutQueue,
+    const AfiIpv4Negotiated& isAfiIpv4Negotiated,
+    const AfiIpv6Negotiated& isAfiIpv6Negotiated,
+    const V4OverV6Nexthop& isV4OverV6NexthopNegotiated,
+    const EnhancedRouteRefreshNegotiated& isEnhancedRouteRefreshNegotiated,
+    const RouteRefreshNegotiated& isRouteRefreshNegotiated,
+    const std::optional<BgpAddPathSendRec>& addPathCapa,
+    bool as4ByteCapable,
+    bool extNhEncodingCapable,
+    bool remoteMpExtExist) noexcept {
   XLOGF(DBG1, "Starting AdjRib for {}", getPeerName());
 
   // Stop the restart-gr timer if running and fire the stale-path timer.
@@ -614,6 +646,7 @@ void AdjRib::sessionEstablished(
   as4ByteCapable_ = as4ByteCapable;
   extNhEncodingCapable_ = extNhEncodingCapable;
   remoteMpExtExist_ = remoteMpExtExist;
+  remoteAs_ = remoteAs;
   std::tie(sendAddPath_, recAddPath_) = getAddPathCapa(addPathCapa);
   pathIdGenerator_ = std::make_unique<PathIdGenerator>(sendAddPath_);
 

@@ -378,6 +378,27 @@ class AdjRib : boost::noncopyable,
       bool extNhEncodingCapable = false,
       bool remoteMpExtExist = true) noexcept;
 
+  /* Establish a session using the remote ASN received from the BGP FSM. */
+  void sessionEstablished(
+      uint32_t remoteAs,
+      const std::optional<uint16_t>& remoteGrRestartTime,
+      std::shared_ptr<AdjRibInQueueT> adjRibInQueue,
+      std::shared_ptr<AdjRibOutQueueT> adjRibOutQueue,
+      std::shared_ptr<BoundedAdjRibOutQueueT> boundedAdjRibOutQueue,
+      const AfiIpv4Negotiated& isAfiIpv4Negotiated = AfiIpv4Negotiated(true),
+      const AfiIpv6Negotiated& isAfiIpv6Negotiated = AfiIpv6Negotiated(true),
+      const V4OverV6Nexthop& isV4OverV6NexthopNegotiated =
+          V4OverV6Nexthop(false),
+      const EnhancedRouteRefreshNegotiated& isEnhancedRouteRefreshNegotiated =
+          EnhancedRouteRefreshNegotiated(false),
+      const RouteRefreshNegotiated& isRouteRefreshNegotiated =
+          RouteRefreshNegotiated(false),
+      const std::optional<nettools::bgplib::BgpAddPathSendRec>& addPathCapas =
+          std::nullopt,
+      bool as4ByteCapable = true,
+      bool extNhEncodingCapable = false,
+      bool remoteMpExtExist = true) noexcept;
+
   // Called when session established with a peer (in PeerManagerBase)
   // to start fibers processing peer messages and Rib messages
   void startMessageProcessingLoop() noexcept;
@@ -814,6 +835,10 @@ class AdjRib : boost::noncopyable,
   // Get peeringParams of this AdjRib
   const PeeringParams getPeeringParams() const noexcept {
     return peeringParams_;
+  }
+
+  uint32_t getRemoteAs() const noexcept {
+    return remoteAs_;
   }
 
   // Get PeerConfig for this AdjRib (used for attribute updates)
@@ -2382,6 +2407,8 @@ class AdjRib : boost::noncopyable,
   // Peering parameters to which this AdjRib belongs to
   std::shared_ptr<nettools::bgplib::BgpPeerId> remotePeerId_;
   PeeringParams peeringParams_;
+  /* Remote ASN received from the BGP FSM for the current session. */
+  uint32_t remoteAs_{0};
   std::string formattedPeerName_;
   AfiIpv4Negotiated isAfiIpv4Negotiated_{false};
   AfiIpv6Negotiated isAfiIpv6Negotiated_{false};

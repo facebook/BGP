@@ -926,6 +926,7 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
         .peerId = peerId,
         .state = nettools::bgplib::BgpSessionState::ESTABLISHED,
         .versionNumber = versionNumber->getWithoutLock(),
+        .remoteAs = displayInfo.peeringParams.remoteAs,
         .sessionInfo = std::move(sessionInfo)};
 
     nettools::bgplib::ObservableEventT obsEvent = std::move(stateEvt);

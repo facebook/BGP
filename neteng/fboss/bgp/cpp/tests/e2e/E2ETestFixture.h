@@ -128,6 +128,9 @@ struct BgpPeerSpec {
 
   /* Additional remote ASN accepted during a migration. */
   std::optional<uint32_t> additionalRemoteAs = std::nullopt;
+
+  /* Enforce that received AS paths begin with the session's remote ASN. */
+  std::optional<bool> enforceFirstAs = std::nullopt;
 };
 
 /* Inline default peer specs for common test scenarios */

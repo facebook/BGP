@@ -22,6 +22,8 @@
 
 #include <gtest/gtest.h>
 
+#include <string>
+
 #include <folly/logging/xlog.h>
 
 #include "neteng/fboss/bgp/cpp/tests/e2e/E2ESessionTestFixture.h"
@@ -46,6 +48,7 @@ class E2ESessionAdditionalRemoteAsTest : public E2ESessionTestFixture {
   void SetUp() override {
     auto peerSpec = kDefaultPeerSpec3;
     peerSpec.additionalRemoteAs = kPeerAsn4;
+    peerSpec.enforceFirstAs = true;
     addPeer(peerSpec);
     createRib();
     createPeerManager(
@@ -56,7 +59,7 @@ class E2ESessionAdditionalRemoteAsTest : public E2ESessionTestFixture {
 
 TEST_F(
     E2ESessionAdditionalRemoteAsTest,
-    AdditionalRemoteAsPropagatesThroughSessionPipeline) {
+    AdditionalRemoteAsDrivesEnforceFirstAs) {
   const auto peerConfig = config_->getConfigOfAPeer(kPeerAddr3);
   ASSERT_TRUE(peerConfig.has_value());
   EXPECT_EQ(kPeerAsn3, peerConfig->peerAsn);
@@ -68,6 +71,12 @@ TEST_F(
   ASSERT_TRUE(peeringParams.has_value());
   EXPECT_EQ(kPeerAsn3, peeringParams->remoteAs);
   EXPECT_EQ(kPeerAsn4, peeringParams->additionalRemoteAs);
+  EXPECT_TRUE(peeringParams->enforceFirstAs);
+
+  addRoute(
+      "v4", "10.0.0.0", 8, kPeerAddr3, "11.0.0.1", std::to_string(kPeerAsn4));
+  EXPECT_TRUE(
+      waitForRouteInShadowRib(folly::IPAddress::createNetwork("10.0.0.0/8")));
 }
 
 /*

@@ -114,6 +114,7 @@ TEST_F(PeerManagerUpdateGroupTestFixture, UpdateGroupConstructionTest) {
   FiberBgpPeer::ObservableStateT stateEvent{
       .peerId = kPeerId3,
       .versionNumber = version_,
+      .remoteAs = mockInfo1_.peeringParams.remoteAs,
       .sessionInfo = sessionInfo_};
 
   peerMgr_->ribInitialAnnouncementStarted_ = true;
@@ -157,6 +158,7 @@ TEST_F(
   FiberBgpPeer::ObservableStateT stateEvent{
       .peerId = kPeerId3,
       .versionNumber = version_,
+      .remoteAs = mockInfo1_.peeringParams.remoteAs,
       .sessionInfo = sessionInfo_};
 
   peerMgr_->ribInitialAnnouncementStarted_ = true;
@@ -234,10 +236,12 @@ TEST_F(PeerManagerUpdateGroupTestFixture, GetAdjRibStatsReturnsTypedSnapshots) {
   FiberBgpPeer::ObservableStateT stateEvent{
       .peerId = kPeerId3,
       .versionNumber = version_,
+      .remoteAs = mockInfo1_.peeringParams.remoteAs,
       .sessionInfo = sessionInfo_};
   FiberBgpPeer::ObservableStateT secondStateEvent{
       .peerId = kPeerId4,
       .versionNumber = version_,
+      .remoteAs = mockInfo1_.peeringParams.remoteAs,
       .sessionInfo = sessionInfo_};
 
   peerMgr_->ribInitialAnnouncementStarted_ = true;

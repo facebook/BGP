@@ -522,7 +522,7 @@ void AdjRibInboundFixture::setupAdjRib(
     const bool callSessionEstablished,
     const uint32_t globalAs,
     const uint32_t localAs,
-    const uint32_t remoteAs,
+    const uint32_t configuredRemoteAs,
     const AfiIpv4Negotiated& isAfiIpv4Negotiated,
     const AfiIpv6Negotiated& isAfiIpv6Negotiated,
     const std::shared_ptr<PolicyManager>& policy,
@@ -543,7 +543,8 @@ void AdjRibInboundFixture::setupAdjRib(
     const std::optional<nettools::bgplib::BgpPeerId>& peerId,
     const IsRedistributePeer isRedistributePeer,
     std::shared_ptr<std::atomic<bool>> isSafeModeOn,
-    const bool enforce_first_as) {
+    const bool enforce_first_as,
+    const std::optional<uint32_t>& remoteAs) {
   thrift::RouteLimit preFilterLimit;
   preFilterLimit.max_routes() = maxRoutes;
   preFilterLimit.warning_only() = warningOnly;
@@ -564,7 +565,7 @@ void AdjRibInboundFixture::setupAdjRib(
           std::nullopt, // peerPrefix
           globalAs,
           localAs,
-          remoteAs,
+          configuredRemoteAs,
           kLocalAddr1.asV4(), // localBgpId
           kLocalAddr1.asV4(), // localClusterId
           std::chrono::seconds(facebook::bgp::kDefaultHoldTime), // holdTime
@@ -611,7 +612,10 @@ void AdjRibInboundFixture::setupAdjRib(
 
   if (callSessionEstablished) {
     establishSession(
-        remoteGrRestartTime, isAfiIpv4Negotiated, isAfiIpv6Negotiated);
+        remoteGrRestartTime,
+        isAfiIpv4Negotiated,
+        isAfiIpv6Negotiated,
+        remoteAs);
   }
 }
 
@@ -740,26 +744,39 @@ void AdjRibInboundFixture::setupAdjRibForRedistributePeer() {
 void AdjRibInboundFixture::establishSession(
     const std::optional<std::chrono::seconds>& remoteGrRestartTime,
     const AfiIpv4Negotiated& isAfiIpv4Negotiated,
-    const AfiIpv6Negotiated& isAfiIpv6Negotiated) {
-  fm_->addTask(
-      [&, remoteGrRestartTime, isAfiIpv4Negotiated, isAfiIpv6Negotiated] {
-        adjRib_->sessionEstablished(
-            (remoteGrRestartTime
-                 ? std::optional<uint16_t>(remoteGrRestartTime->count())
-                 : std::nullopt),
-            adjRibInQ_,
-            adjRibOutQ_,
-            boundedAdjRibOutQ_,
-            isAfiIpv4Negotiated,
-            isAfiIpv6Negotiated);
-        adjRib_->startMessageProcessingLoop();
-      });
+    const AfiIpv6Negotiated& isAfiIpv6Negotiated,
+    const std::optional<uint32_t>& remoteAs) {
+  fm_->addTask([&,
+                remoteGrRestartTime,
+                isAfiIpv4Negotiated,
+                isAfiIpv6Negotiated,
+                remoteAs] {
+    adjRib_->sessionEstablished(
+        remoteAs.value_or(adjRib_->getPeeringParams().remoteAs),
+        (remoteGrRestartTime
+             ? std::optional<uint16_t>(remoteGrRestartTime->count())
+             : std::nullopt),
+        adjRibInQ_,
+        adjRibOutQ_,
+        boundedAdjRibOutQ_,
+        isAfiIpv4Negotiated,
+        isAfiIpv6Negotiated,
+        V4OverV6Nexthop{false},
+        EnhancedRouteRefreshNegotiated{false},
+        RouteRefreshNegotiated{false},
+        std::nullopt,
+        /*as4ByteCapable=*/true,
+        /*extNhEncodingCapable=*/false,
+        /*remoteMpExtExist=*/true);
+    adjRib_->startMessageProcessingLoop();
+  });
 }
 
 void AdjRibInboundFixture::reEstablishSession(
     const std::optional<std::chrono::seconds>& remoteGrRestartTime,
     const AfiIpv4Negotiated& isAfiIpv4Negotiated,
-    const AfiIpv6Negotiated& isAfiIpv6Negotiated) {
+    const AfiIpv6Negotiated& isAfiIpv6Negotiated,
+    const std::optional<uint32_t>& remoteAs) {
   // Mimic PeerManagerBase::sessionEstablished by ensuring the async scope is
   // re-initialized before re-establishing the session. This joins the
   // cancelled scope from the previous session and creates a fresh one.
@@ -767,6 +784,7 @@ void AdjRibInboundFixture::reEstablishSession(
   folly::coro::blockingWait(adjRib_->ensureAsyncScopeInitialized());
 
   adjRib_->sessionEstablished(
+      remoteAs.value_or(adjRib_->getPeeringParams().remoteAs),
       (remoteGrRestartTime
            ? std::optional<uint16_t>(remoteGrRestartTime->count())
            : std::nullopt),
@@ -774,7 +792,14 @@ void AdjRibInboundFixture::reEstablishSession(
       adjRibOutQ_,
       boundedAdjRibOutQ_,
       isAfiIpv4Negotiated,
-      isAfiIpv6Negotiated);
+      isAfiIpv6Negotiated,
+      V4OverV6Nexthop{false},
+      EnhancedRouteRefreshNegotiated{false},
+      RouteRefreshNegotiated{false},
+      std::nullopt,
+      /*as4ByteCapable=*/true,
+      /*extNhEncodingCapable=*/false,
+      /*remoteMpExtExist=*/true);
   adjRib_->startMessageProcessingLoop();
 }
 } // namespace facebook::bgp

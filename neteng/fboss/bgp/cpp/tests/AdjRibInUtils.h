@@ -166,7 +166,7 @@ class AdjRibInboundFixture : public ::testing::Test {
       const bool callSessionEstablished = true,
       const uint32_t globalAs = kLocalAs1,
       const uint32_t localAs = kLocalAs1,
-      const uint32_t remoteAs = kRemoteAs1,
+      const uint32_t configuredRemoteAs = kRemoteAs1,
       const AfiIpv4Negotiated& isAfiIpv4Negotiated = AfiIpv4Negotiated(true),
       const AfiIpv6Negotiated& isAfiIpv6Negotiated = AfiIpv6Negotiated(true),
       const std::shared_ptr<PolicyManager>& policy = nullptr,
@@ -190,7 +190,8 @@ class AdjRibInboundFixture : public ::testing::Test {
       const IsRedistributePeer isRedistributePeer = IsRedistributePeer{false},
       std::shared_ptr<std::atomic<bool>> isSafeModeOn =
           std::make_shared<std::atomic<bool>>(false),
-      const bool enforce_first_as = false);
+      const bool enforce_first_as = false,
+      const std::optional<uint32_t>& remoteAs = std::nullopt);
 
   // IBGP setup for policy testing
   void setupAdjRib(
@@ -219,7 +220,8 @@ class AdjRibInboundFixture : public ::testing::Test {
       const std::optional<std::chrono::seconds>& remoteGrRestartTime =
           std::nullopt,
       const AfiIpv4Negotiated& isAfiIpv4Negotiated = AfiIpv4Negotiated(true),
-      const AfiIpv6Negotiated& isAfiIpv6Negotiated = AfiIpv6Negotiated(true));
+      const AfiIpv6Negotiated& isAfiIpv6Negotiated = AfiIpv6Negotiated(true),
+      const std::optional<uint32_t>& remoteAs = std::nullopt);
 
   // Re-establish session from fiber context, mimicking
   // PeerManagerBase::sessionEstablished flow by properly awaiting
@@ -229,7 +231,8 @@ class AdjRibInboundFixture : public ::testing::Test {
       const std::optional<std::chrono::seconds>& remoteGrRestartTime =
           std::nullopt,
       const AfiIpv4Negotiated& isAfiIpv4Negotiated = AfiIpv4Negotiated(true),
-      const AfiIpv6Negotiated& isAfiIpv6Negotiated = AfiIpv6Negotiated(true));
+      const AfiIpv6Negotiated& isAfiIpv6Negotiated = AfiIpv6Negotiated(true),
+      const std::optional<uint32_t>& remoteAs = std::nullopt);
 
   std::unique_ptr<FiberManager> fm_;
   folly::EventBase evb_;

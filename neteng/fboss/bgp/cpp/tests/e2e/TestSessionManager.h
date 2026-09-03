@@ -70,6 +70,7 @@ class E2ETestSessionManager : public SessionManager {
   uint64_t simulateSessionEstablished(
       const nettools::bgplib::BgpPeerId& peerId,
       const nettools::bgplib::BgpPeerDisplayInfo& displayInfo,
+      uint32_t remoteAs,
       int queueCapacity = 8,
       int queueHighWm = 6,
       int queueLowWm = 2);
