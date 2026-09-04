@@ -318,8 +318,10 @@ PolicyTerm::PolicyTerm(
       actions_.emplace_back(actionPtr);
     }
   }
-  // There should be only 1 FlowControlAction
-  // 0 is fine as we default to permit.
+  /*
+   * There should be only 1 FlowControlAction
+   * 0 is fine as we default to permit.
+   */
   if (flowControlActionCnt > 1) {
     throw BgpError(
         "More than one FlowControlAction(PERMIT/DENY/GOTO) filled in term ",
@@ -328,8 +330,10 @@ PolicyTerm::PolicyTerm(
 }
 
 void PolicyTerm::copyAttr(std::shared_ptr<BgpPath>& attr) {
-  // clone attribute and modify attr ptr if attribute is published
-  // else return old attributes
+  /*
+   * clone attribute and modify attr ptr if attribute is published
+   * else return old attributes
+   */
   if (attr->isPublished()) {
     attr = attr->clone();
   }

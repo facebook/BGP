@@ -212,8 +212,10 @@ void CommunityAction::validateAndSetCommunities(
 
   // Convert string communities to CommunityC for fast comparision,add/del/set
   auto communities = createBgpAttrCommunitiesC(communityStrings);
-  // All invalid communities will be treated as regEx and evaluated for validity
-  // above. So, there can never be a invalid community in communityStrings
+  /*
+   * All invalid communities will be treated as regEx and evaluated for validity
+   * above. So, there can never be a invalid community in communityStrings
+   */
   CHECK_EQ(communities.size(), communityStrings.size());
 
   communities_.insert(
@@ -249,8 +251,10 @@ void CommunityAction::applyAction(
     std::optional<std::shared_ptr<BgpPolicyActionData>>) const noexcept {
   switch (*communityAction_.action_type()) {
     case bgp_policy::CommunityActionType::ADD: {
-      // Append all communities
-      // Add community only if it doesn't already exist
+      /*
+       * Append all communities
+       * Add community only if it doesn't already exist
+       */
       auto attrCommunities = attr->getCommunities().get();
       attr->setCommunities(addCommunities(attrCommunities, communities_));
     } break;
@@ -260,8 +264,10 @@ void CommunityAction::applyAction(
       break;
 
     case bgp_policy::CommunityActionType::REMOVE: {
-      // Remove community if it exits
-      // Apply both regExs and community strings
+      /*
+       * Remove community if it exits
+       * Apply both regExs and community strings
+       */
       auto attrCommunities = attr->getCommunities().get();
       if (!communityRegexs_.empty()) {
         attrCommunities =
@@ -278,8 +284,10 @@ void CommunityAction::applyAction(
   }
 }
 
-// Routes with zero or missing GAR weights are rejected
-// https://docs.google.com/document/d/15o2ixlk6ox7Qa33cJZBhJjOlz6Dx1SZ13rWc-zP8uBU/edit?tab=t.0#heading=h.2n9ls543r2ye
+/*
+ * Routes with zero or missing GAR weights are rejected
+ * https://docs.google.com/document/d/15o2ixlk6ox7Qa33cJZBhJjOlz6Dx1SZ13rWc-zP8uBU/edit?tab=t.0#heading=h.2n9ls543r2ye
+ */
 void LbwExtCommunityAction::applyAction(
     std::shared_ptr<BgpPath>& attr,
     std::optional<std::shared_ptr<BgpPolicyActionData>> data) const noexcept {
@@ -342,8 +350,10 @@ void LbwExtCommunityAction::applyAction(
           lbwActionData.asn, lbwActionData.linkBandwidthBps.value());
       break;
     case bgp_policy::LbwExtCommunityActionType::BEST_PATH:
-      // If any ECMP path is missing LBW then prune LBW community of the best
-      // path, else keep its original state.
+      /*
+       * If any ECMP path is missing LBW then prune LBW community of the best
+       * path, else keep its original state.
+       */
       if (!lbwActionData.aggregateReceivedUcmpWeight.has_value()) {
         attr->pruneNonTransitiveLbwExtCommunity();
       } else {
@@ -357,9 +367,11 @@ void LbwExtCommunityAction::applyAction(
       }
       break;
     case bgp_policy::LbwExtCommunityActionType::AGGREGATE_RECEIVED:
-      // If any ECMP path is missing LBW then prune LBW community of the best
-      // path, else advertise the aggregated value of LBW community of ECMP
-      // paths.
+      /*
+       * If any ECMP path is missing LBW then prune LBW community of the best
+       * path, else advertise the aggregated value of LBW community of ECMP
+       * paths.
+       */
       if (!lbwActionData.aggregateReceivedUcmpWeight.has_value()) {
         attr->pruneNonTransitiveLbwExtCommunity();
       } else {
@@ -369,8 +381,10 @@ void LbwExtCommunityAction::applyAction(
       }
       break;
     case bgp_policy::LbwExtCommunityActionType::AGGREGATE_LOCAL:
-      // If any ECMP path is missing peer LBW then prune LBW community of the
-      // best path, else advertise the aggregated value of LBW ECMP path-peers.
+      /*
+       * If any ECMP path is missing peer LBW then prune LBW community of the
+       * best path, else advertise the aggregated value of LBW ECMP path-peers.
+       */
       if (!lbwActionData.aggregateLocalUcmpWeight.has_value()) {
         attr->pruneNonTransitiveLbwExtCommunity();
       } else {
@@ -407,8 +421,10 @@ void LbwExtCommunityAction::applyAction(
       auto encodingId = *lbwExtCommunityAction_.encoding_id();
       auto curLbwValue = attr->getNonTransitiveRawLbwValue();
       if (!curLbwValue && lbwActionData.originalAsnLbw) {
-        // if lbw ext community is reset, we need to restore it from policy
-        // action data
+        /*
+         * if lbw ext community is reset, we need to restore it from policy
+         * action data
+         */
         attr->setNonTransitiveLbwExtCommunity(
             lbwActionData.originalAsnLbw->first,
             lbwActionData.originalAsnLbw->second);
@@ -435,8 +451,10 @@ void LbwExtCommunityAction::applyAction(
       auto encodingId = *lbwExtCommunityAction_.encoding_id();
       auto curLbwValue = attr->getNonTransitiveRawLbwValue();
       if (!curLbwValue && lbwActionData.originalAsnLbw) {
-        // if lbw ext community is null, we need to restore it from policy
-        // action data
+        /*
+         * if lbw ext community is null, we need to restore it from policy
+         * action data
+         */
         attr->setNonTransitiveLbwExtCommunity(
             lbwActionData.originalAsnLbw->first,
             lbwActionData.originalAsnLbw->second);
@@ -460,8 +478,10 @@ void LbwExtCommunityAction::applyAction(
       assert(lbwExtCommunityAction_.encoding_scheme());
       auto curLbwValue = attr->getNonTransitiveRawLbwValue();
       if (!curLbwValue && lbwActionData.originalAsnLbw) {
-        // if lbw ext community is null, we need to restore it from policy
-        // action data
+        /*
+         * if lbw ext community is null, we need to restore it from policy
+         * action data
+         */
         attr->setNonTransitiveLbwExtCommunity(
             lbwActionData.originalAsnLbw->first,
             lbwActionData.originalAsnLbw->second);
@@ -506,8 +526,10 @@ nettools::bgplib::BgpAttrExtCommunitiesC ExtCommunityAction::getExtCommunities(
     return result;
   }
   for (const auto& extc : ext_communities) {
-    // Derive 8-octet form of ExtCommunity which is encoded
-    // in BgpAttrExtCommunityC.
+    /*
+     * Derive 8-octet form of ExtCommunity which is encoded
+     * in BgpAttrExtCommunityC.
+     */
     result.emplace_back(getBgpAttrExtCommunityC(extc, config));
   }
   return result;
@@ -649,8 +671,10 @@ void AsPathToAsSet::applyAction(
   nettools::bgplib::BgpAttrAsPathC outputAsPath;
   std::set<uint32_t> outputAsSet;
   for (const auto& seg : attr->getAsPath().get()) {
-    // Only one of {asSet, asSequence, asConfedSequence, asConfedSet} will
-    // have elements, the rest will be empty.
+    /*
+     * Only one of {asSet, asSequence, asConfedSequence, asConfedSet} will
+     * have elements, the rest will be empty.
+     */
     if (!seg.asConfedSequence.empty() || !seg.asConfedSet.empty()) {
       if (!outputAsSet.empty()) {
         XLOGF(

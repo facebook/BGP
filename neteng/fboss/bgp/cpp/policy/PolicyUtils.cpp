@@ -72,8 +72,10 @@ bool hasExtCommunity(
              extCommunityToFind) != extCommunities.end();
 }
 
-// Append all communities
-// Add community only if it doesn't already exist. Add to END of community list
+/*
+ * Append all communities
+ * Add community only if it doesn't already exist. Add to END of community list
+ */
 BgpAttrCommunitiesC addCommunities(
     const BgpAttrCommunitiesC& currentCommunities,
     const BgpAttrCommunitiesC& communitiesToAdd) {
@@ -86,8 +88,10 @@ BgpAttrCommunitiesC addCommunities(
   return outputCommunities;
 }
 
-// Append all extended communities
-// Add extended community only if it doesn't already exist. Add to END of list
+/*
+ * Append all extended communities
+ * Add extended community only if it doesn't already exist. Add to END of list
+ */
 nettools::bgplib::BgpAttrExtCommunitiesC addExtCommunities(
     const nettools::bgplib::BgpAttrExtCommunitiesC& currentExtCommunities,
     const nettools::bgplib::BgpAttrExtCommunitiesC& extCommunitiesToAdd) {
@@ -101,8 +105,10 @@ nettools::bgplib::BgpAttrExtCommunitiesC addExtCommunities(
   return outputExtCommunities;
 }
 
-// Remove communities. Removes communitiesToRemove from inputCommunities
-// if they exist
+/*
+ * Remove communities. Removes communitiesToRemove from inputCommunities
+ * if they exist
+ */
 BgpAttrCommunitiesC removeCommunities(
     const BgpAttrCommunitiesC& inputCommunities,
     const BgpAttrCommunitiesC& communitiesToRemove) {
@@ -115,8 +121,10 @@ BgpAttrCommunitiesC removeCommunities(
   return outputCommunities;
 }
 
-// Remove extended communities. Removes extCommunitiesToRemove from
-// inputExtCommunities if they exist
+/*
+ * Remove extended communities. Removes extCommunitiesToRemove from
+ * inputExtCommunities if they exist
+ */
 nettools::bgplib::BgpAttrExtCommunitiesC removeExtCommunities(
     const nettools::bgplib::BgpAttrExtCommunitiesC& inputExtCommunities,
     const nettools::bgplib::BgpAttrExtCommunitiesC& extCommunitiesToRemove) {
@@ -141,10 +149,12 @@ BgpAttrCommunitiesC removeCommunitiesMatchingRegexs(
   auto inputItr = inputCommunities.begin();
   for (const auto& community : communitiesStringsFromAttr) {
     bool match = false;
-    // Remove community if it matches any of the regExs, i.e. OR operator
-    // For now requirement is to only support one regEx which can implicitly
-    // support operators.
-    // TODO: AND operator across list of action regExs if needed
+    /*
+     * Remove community if it matches any of the regExs, i.e. OR operator
+     * For now requirement is to only support one regEx which can implicitly
+     * support operators.
+     * TODO: AND operator across list of action regExs if needed
+     */
     for (const auto& commRegex : communityRegexs) {
       if (regex_match(community, commRegex)) {
         match = true;

@@ -65,8 +65,10 @@ routing::PolicyComparisonOperator toPolicyComparisonOperator(
  * Encoded LBW related
  */
 
-// given a value, convert it to an encoded lbw by storing the value in
-// the bits referenced by id based on EncodingScheme
+/*
+ * given a value, convert it to an encoded lbw by storing the value in
+ * the bits referenced by id based on EncodingScheme
+ */
 std::vector<size_t> encodingSchemeToVector(
     const nsf_policy::NsfTeWeightEncoding& encodingScheme);
 

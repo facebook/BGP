@@ -215,8 +215,10 @@ bool CommunityMatch::MatchAll(
       ? communityList_.exact_match().value()
       : false;
   bool isMatch = true;
-  // check if the sorted community strings are all included in
-  // the vector of communities from the announcement
+  /*
+   * check if the sorted community strings are all included in
+   * the vector of communities from the announcement
+   */
   if (!std::includes(
           communitiesStringsFromAttr.begin(),
           communitiesStringsFromAttr.end(),
@@ -224,8 +226,10 @@ bool CommunityMatch::MatchAll(
           communityStrings_.end())) {
     isMatch = false;
   }
-  // check if the sorted community strings contain any string in
-  // communityStringsDoNotMatch_ (also sorted)
+  /*
+   * check if the sorted community strings contain any string in
+   * communityStringsDoNotMatch_ (also sorted)
+   */
   isMatch &=
       (!areOverlapped(communitiesStringsFromAttr, communityStringsDoNotMatch_));
   if (isMatch) {
@@ -507,15 +511,19 @@ bool AsPathMatch::Match(
   if (asPathRegexs_.empty()) {
     return false;
   }
-  // empty asPath will go be examined as empty string against asPathRegexes
-  // call MatchAny or MatchAll depending on the boolean_operator
+  /*
+   * empty asPath will go be examined as empty string against asPathRegexes
+   * call MatchAny or MatchAll depending on the boolean_operator
+   */
   return (
       *asPathList_.boolean_operator() == BooleanOperator::OR ? MatchAny(attrs)
                                                              : MatchAll(attrs));
 }
 
-// return true if asPath matches any regex
-// if asPath is empty, it will compare empty string against asPathRegexs_
+/*
+ * return true if asPath matches any regex
+ * if asPath is empty, it will compare empty string against asPathRegexs_
+ */
 bool AsPathMatch::MatchAny(const std::shared_ptr<const BgpPath>& attrs) const {
   const auto& asPathsVec = attrs->getFullBgpAsPathAsString();
   for (const auto& asPathRegex : asPathRegexs_) {
@@ -539,8 +547,10 @@ bool AsPathMatch::MatchAny(const std::shared_ptr<const BgpPath>& attrs) const {
   return false;
 }
 
-// return true if asPath matches all the regexes
-// if asPath is empty, it will compare empty string against asPathRegexs_
+/*
+ * return true if asPath matches all the regexes
+ * if asPath is empty, it will compare empty string against asPathRegexs_
+ */
 bool AsPathMatch::MatchAll(const std::shared_ptr<const BgpPath>& attrs) const {
   const auto& asPathsVec = attrs->getFullBgpAsPathAsString();
   for (const auto& asPathRegex : asPathRegexs_) {

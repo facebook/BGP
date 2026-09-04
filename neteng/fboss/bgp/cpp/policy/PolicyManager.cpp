@@ -112,8 +112,10 @@ void PolicyManager::populatePolicyDatabase(const BgpGlobalConfig* config) {
 }
 
 void PolicyManager::populateAttrsReferences() {
-  // find the reference name in Match attributes, replace the reference
-  // name with the actual inline definitions in the global struct
+  /*
+   * find the reference name in Match attributes, replace the reference
+   * name with the actual inline definitions in the global struct
+   */
   for (const auto& iterPolicy : policyMap_) {
     auto& policy = iterPolicy.second;
     const auto& terms = policy.getPolicyTerms();
@@ -148,9 +150,11 @@ void PolicyManager::populateAttrsReferences() {
 } // namespace bgp
 
 void PolicyManager::populateReferences() {
-  // replace names with reference structs, flattening the rule mnemonics
-  // find the reference pointer, replace the reference pointer with the
-  // actual inline pointer for as path list, community list, prefix list etc
+  /*
+   * replace names with reference structs, flattening the rule mnemonics
+   * find the reference pointer, replace the reference pointer with the
+   * actual inline pointer for as path list, community list, prefix list etc
+   */
   populateAttrsReferences();
 }
 

@@ -26,9 +26,9 @@
 namespace facebook {
 namespace routing {
 
-//
-// PolicyActionBase
-//
+/*
+ * PolicyActionBase
+ */
 
 class PolicyActionBase {
  public:
@@ -42,10 +42,12 @@ class PolicyActionBase {
     return actionName_;
   }
 
-  // return run time class type
-  // e.g. class DenyAction : public PolicyActionBase {}
-  //      DenyAction d;
-  //      d.getClassType() returns std::type_index(typeid(DenyAction)
+  /*
+   * return run time class type
+   * e.g. class DenyAction : public PolicyActionBase {}
+   *      DenyAction d;
+   *      d.getClassType() returns std::type_index(typeid(DenyAction)
+   */
   std::type_index getClassType() const {
     return std::type_index(typeid(*this));
   }
@@ -64,13 +66,14 @@ class PolicyActionBase {
   const bool logEnabled_;
 };
 
-//
-// PolicyAttributesActionBase - child class needs to implement applyAction()
-// call
-//
-// PolicyActionData - capture any data that's needed to apply a action
-// but can NOT be pre-configured in Policy Configuration
-// (e.g some data needs to be dynamically derived on the fly).
+/*
+ * PolicyAttributesActionBase - child class needs to implement applyAction()
+ * call
+ *
+ * PolicyActionData - capture any data that's needed to apply a action
+ * but can NOT be pre-configured in Policy Configuration
+ * (e.g some data needs to be dynamically derived on the fly).
+ */
 template <typename Attributes, typename PolicyActionData>
 class PolicyAttributesActionBase : public PolicyActionBase {
  public:
@@ -78,21 +81,23 @@ class PolicyAttributesActionBase : public PolicyActionBase {
       : PolicyActionBase(actionName) {}
   virtual ~PolicyAttributesActionBase() = default;
 
-  // Implementation Note:
-  // Create a new object by coping *attr content, modify the new object
-  // content and change the share_ptr to point to it.
-  // Directly modification on the attrs will not reflect in policy out
-  // as Policy Engine take <const Attributes&> in policy input to avoid
-  // accedential modification of pass in attributes.
+  /*
+   * Implementation Note:
+   * Create a new object by coping *attr content, modify the new object
+   * content and change the share_ptr to point to it.
+   * Directly modification on the attrs will not reflect in policy out
+   * as Policy Engine take <const Attributes&> in policy input to avoid
+   * accedential modification of pass in attributes.
+   */
   virtual void applyAction(
       std::shared_ptr<Attributes>&, /* attr */
       std::optional<PolicyActionData> policyActionData =
           std::nullopt) const noexcept = 0;
 };
 
-//
-// PolicyFlowControlAction - does not support applyAction() call
-//
+/*
+ * PolicyFlowControlAction - does not support applyAction() call
+ */
 
 class DenyAction : public PolicyActionBase {
  public:

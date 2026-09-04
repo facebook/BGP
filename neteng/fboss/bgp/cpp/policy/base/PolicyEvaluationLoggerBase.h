@@ -40,8 +40,10 @@ class PolicyEvaluationLoggerBase {
       [[maybe_unused]] const PolicyActionBase& missAction,
       [[maybe_unused]] const std::string& termName,
       [[maybe_unused]] const std::string& policyName) noexcept {
-    // This function will never be called. Compiler requires templated
-    // base class to have an implementation
+    /*
+     * This function will never be called. Compiler requires templated
+     * base class to have an implementation
+     */
     return false;
   }
 

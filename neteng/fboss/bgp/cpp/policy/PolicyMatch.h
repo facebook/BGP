@@ -55,9 +55,11 @@ class PrefixTreeMatch
   validateAndCreatePrefixTree(const routing_policy::PrefixList& tPrefixList);
 
  private:
-  // match only refers to predefined prefix list by their names,
-  // User needs to call PopulateReferences() to populate actual PrefixListEntry
-  // in prefixList_
+  /*
+   * match only refers to predefined prefix list by their names,
+   * User needs to call PopulateReferences() to populate actual PrefixListEntry
+   * in prefixList_
+   */
   std::vector<std::string> prefixListNames_{};
 };
 
@@ -91,16 +93,20 @@ class CommunityMatch : public AttributesMatch {
           communityListMap);
 
  private:
-  // Returns an empty communityList which sets
-  //  - boolean_operator = booleanOperator (default AND)
-  //  - exact_match = false
+  /*
+   * Returns an empty communityList which sets
+   *  - boolean_operator = booleanOperator (default AND)
+   *  - exact_match = false
+   */
   static bgp_policy::CommunityList getEmptyCommunityList(
       routing_policy::BooleanOperator booleanOperator =
           routing_policy::BooleanOperator::AND);
 
-  // Check if the two SORTED sets are overlapped
-  // unlike std::set_difference that returns all non-overlapped entries,
-  // areOverlapped returns as soon as it discovers one overlapped entry
+  /*
+   * Check if the two SORTED sets are overlapped
+   * unlike std::set_difference that returns all non-overlapped entries,
+   * areOverlapped returns as soon as it discovers one overlapped entry
+   */
   static bool areOverlapped(
       const std::set<std::string>& vec1,
       const std::set<std::string>& vec2);
@@ -109,27 +115,37 @@ class CommunityMatch : public AttributesMatch {
   void PopulateCommunities(
       const std::vector<rib_policy::TBgpCommunityMatch>& communityMatches);
 
-  // Match one of the communityStrings_ or communityRegexs_
-  // communityStringsDoNotMatch_ has no effect here.
+  /*
+   * Match one of the communityStrings_ or communityRegexs_
+   * communityStringsDoNotMatch_ has no effect here.
+   */
   bool MatchAny(const std::shared_ptr<const BgpPath>& attrs) const noexcept;
-  // Match all of the communityStrings_ and communityRegexs_
-  // and match none of communityStringsDoNotMatch_
+  /*
+   * Match all of the communityStrings_ and communityRegexs_
+   * and match none of communityStringsDoNotMatch_
+   */
   bool MatchAll(const std::shared_ptr<const BgpPath>& attrs) const noexcept;
-  // Ensure every entry matches either communityStrings_ or
-  // communityRegexs_. communityStringsDoNotMatch_ is not checked
+  /*
+   * Ensure every entry matches either communityStrings_ or
+   * communityRegexs_. communityStringsDoNotMatch_ is not checked
+   */
   bool ExactMatch(
       const std::set<std::string>& communitiesStringsFromAttr) const noexcept;
   const bgp_policy::CommunityList communityList_;
-  // std::set maintains sorted and unique community strings for fast comparison
-  // positive match: must have
+  /*
+   * std::set maintains sorted and unique community strings for fast comparison
+   * positive match: must have
+   */
   std::set<std::string> communityStrings_{};
   // negative match: must not have
   std::set<std::string> communityStringsDoNotMatch_{};
   // storing community regex
   std::vector<boost::regex> communityRegexs_;
 
-// per class placeholder for code injection
-// only need to setup once
+/*
+ * per class placeholder for code injection
+ * only need to setup once
+ */
 #ifdef CommunityMatch_TEST_FRIENDS
   CommunityMatch_TEST_FRIENDS
 #endif
@@ -247,9 +263,11 @@ class AsPathMatch : public AttributesMatch {
           asPathListMap);
 
  private:
-  // Returns the empty asPathList for TBgpPathMatcher which sets
-  //  - boolean_operator = AND
-  //  - exact_match = false
+  /*
+   * Returns the empty asPathList for TBgpPathMatcher which sets
+   *  - boolean_operator = AND
+   *  - exact_match = false
+   */
   static bgp_policy::AsPathList getEmptyAsPathList();
 
   bool MatchAny(const std::shared_ptr<const BgpPath>& attrs) const;

@@ -59,8 +59,10 @@ class Policy : public routing::PolicyBase<
   // BgpPolicyStatement thrift
   const bgp_policy::BgpPolicyStatement policy_;
 
-  // Defines the attributes in BgpPath that are relevant given the
-  // input policy config from @policy_.
+  /*
+   * Defines the attributes in BgpPath that are relevant given the
+   * input policy config from @policy_.
+   */
   PolicyAttributesMask mask_;
 
 #ifdef Policy_TEST_FRIENDS

@@ -27,11 +27,13 @@
 namespace facebook {
 namespace routing {
 
-// Policy Entry
-// This object is created during applyPolicy, passed through each term
-// and necessary actions are accumulated for each prefix.
-// This has capability to handle splitting of pair<attributes, prefixes>
-// while walking a prefix filter based term
+/*
+ * Policy Entry
+ * This object is created during applyPolicy, passed through each term
+ * and necessary actions are accumulated for each prefix.
+ * This has capability to handle splitting of pair<attributes, prefixes>
+ * while walking a prefix filter based term
+ */
 
 template <
     typename Attributes,
@@ -73,9 +75,11 @@ class PolicyEntryBase {
     return policyMatchData_;
   }
 
-  // To be called when all TERMS are processed. Any remaining entries
-  // in processing state are accepted or denied based on the defaultAllow flag.
-  // Defaults to DENY for backwards compatibility.
+  /*
+   * To be called when all TERMS are processed. Any remaining entries
+   * in processing state are accepted or denied based on the defaultAllow flag.
+   * Defaults to DENY for backwards compatibility.
+   */
   void completeProcessing(
       const std::string& policyName,
       bool defaultAllow) noexcept {
@@ -125,10 +129,12 @@ class PolicyEntryBase {
     return tmp;
   }
 
-  // Add prefixes to processing:
-  //  1. For prefixes that need to go through remaining TERMS,
-  //     set gotoTerm = std::nullopt
-  //  2. For prefixes that need to jump to a specific term, set gotoTerm
+  /*
+   * Add prefixes to processing:
+   *  1. For prefixes that need to go through remaining TERMS,
+   *     set gotoTerm = std::nullopt
+   *  2. For prefixes that need to jump to a specific term, set gotoTerm
+   */
   void addPrefixesToProcessingEntries(
       std::shared_ptr<Attributes> attr,
       std::unordered_set<folly::CIDRNetwork>& prefixesSet,
@@ -153,15 +159,17 @@ class PolicyEntryBase {
   }
 
  private:
-  // Still processing entries:
-  //   1. entries have not yet matched any ACCEPT/DENY term
-  //   2. entried previous matched a term with MatchAction = GOTO | CONTINUE
-  //
-  // Grouped as tuple: <commomn attributes, set<prefixes>, optional<gotoTerm>>
-  //
-  // gotoTermName will be populated only if the prefix has previous
-  // matched a term with action GOTO. PolicyTerm.applyTerm() will skip
-  // processing if its term name does not match the populated gotoTermName here
+  /*
+   * Still processing entries:
+   *   1. entries have not yet matched any ACCEPT/DENY term
+   *   2. entried previous matched a term with MatchAction = GOTO | CONTINUE
+   *
+   * Grouped as tuple: <commomn attributes, set<prefixes>, optional<gotoTerm>>
+   *
+   * gotoTermName will be populated only if the prefix has previous
+   * matched a term with action GOTO. PolicyTerm.applyTerm() will skip
+   * processing if its term name does not match the populated gotoTermName here
+   */
   std::vector<std::tuple<
       std::shared_ptr<Attributes>,
       std::unordered_set<folly::CIDRNetwork>,
@@ -174,8 +182,10 @@ class PolicyEntryBase {
       std::shared_ptr<AttributesAndPolicy<Attributes>>>
       processedEntries_;
 
-  // any policy action data that needs to be passed in outside of
-  // policy-configurations
+  /*
+   * any policy action data that needs to be passed in outside of
+   * policy-configurations
+   */
   const std::optional<PolicyActionData> policyActionData_{std::nullopt};
 
   // any additional information that is used only for matching

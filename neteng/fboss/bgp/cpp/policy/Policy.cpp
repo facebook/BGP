@@ -58,8 +58,10 @@ void Policy::validatePolicyTerms() {
   // First call the base class validation for GOTO term checks
   PolicyBase::validatePolicyTerms();
 
-  // BGP-specific validation: ExtCommunityAction and LbwExtCommunityAction
-  // cannot coexist in the same PolicyStatement
+  /*
+   * BGP-specific validation: ExtCommunityAction and LbwExtCommunityAction
+   * cannot coexist in the same PolicyStatement
+   */
   std::optional<std::string> extCommunityActionTermName;
   std::optional<std::string> lbwExtCommunityActionTermName;
 

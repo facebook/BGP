@@ -21,10 +21,12 @@
 namespace facebook {
 namespace routing {
 
-// compare value against value_to_compare with operator
-// return true if value satisfies the condition
-// e.g. op = GE, value_to_compare = 1, value = 2
-//      returns true (value >= value_to_compare)
+/*
+ * compare value against value_to_compare with operator
+ * return true if value satisfies the condition
+ * e.g. op = GE, value_to_compare = 1, value = 2
+ *      returns true (value >= value_to_compare)
+ */
 bool CompareNumValue(
     const PolicyComparisonOperator& op,
     int value_to_compare,

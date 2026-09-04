@@ -27,9 +27,11 @@
 namespace facebook {
 namespace routing {
 
-// Input message to policy
-// Take const reference of attributes to avoid accidental modification on pre
-// policy attributes.
+/*
+ * Input message to policy
+ * Take const reference of attributes to avoid accidental modification on pre
+ * policy attributes.
+ */
 template <
     typename Attributes,
     typename PolicyActionData,
@@ -63,9 +65,11 @@ struct AttributesAndPolicy {
       : attrs(attrs), policyName(policyName) {}
 };
 
-// Output message from policy
-// Only accepted prefixes are returned with modified attributes.
-// Many prefixes can share same attributes.
+/*
+ * Output message from policy
+ * Only accepted prefixes are returned with modified attributes.
+ * Many prefixes can share same attributes.
+ */
 template <typename Attributes>
 struct PolicyOutMessageBase {
   std::unordered_map<

@@ -77,8 +77,10 @@ class PolicyManager : public routing::PolicyManagerBase<
   folly::F14NodeMap<std::string, bgp_policy::CommunityList> communityListMap_;
   folly::F14NodeMap<std::string, bgp_policy::AsPathList> asPathListMap_;
   folly::F14NodeMap<std::string, routing_policy::PrefixList> prefixListMap_;
-  // This is stored separately on bgp++ policy manager because underlying
-  // @policyMap_'s value type does not expose the mask.
+  /*
+   * This is stored separately on bgp++ policy manager because underlying
+   * @policyMap_'s value type does not expose the mask.
+   */
   folly::F14NodeMap<std::string, const PolicyAttributesMask>
       policyNameToAttrsMask_;
 };

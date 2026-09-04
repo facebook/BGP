@@ -53,8 +53,10 @@ class PolicyTermBase {
       PolicyEntryBase<Attributes, PolicyActionData, PolicyMatchData>;
 
  public:
-  // constructor with default values for
-  // termMissFlowControlAction_ and termMatchFlowControlAction_
+  /*
+   * constructor with default values for
+   * termMissFlowControlAction_ and termMatchFlowControlAction_
+   */
   PolicyTermBase(
       const std::string& termName,
       const std::string& termDescription)
@@ -95,9 +97,11 @@ class PolicyTermBase {
     return termDescription_;
   }
 
-  // Used in upper level policy processing to determine next policy to run.
-  // return: 1. empty string means continue to next policy.
-  //         2. if specific name is returned, jump to that term.
+  /*
+   * Used in upper level policy processing to determine next policy to run.
+   * return: 1. empty string means continue to next policy.
+   *         2. if specific name is returned, jump to that term.
+   */
   std::string getMatchGotoTerm() const {
     const auto actionType = termMatchFlowControlAction_->getClassType();
     if (actionType != classType<GotoAction>()) {
@@ -120,9 +124,11 @@ class PolicyTermBase {
     return termMissFlowControlAction_->getLogSetting();
   }
 
-  // Increase the hit count by the number of count
-  // User typically increases by number of prefixes for which policy is
-  // being applied.
+  /*
+   * Increase the hit count by the number of count
+   * User typically increases by number of prefixes for which policy is
+   * being applied.
+   */
   void incrementHitCount(uint32_t hitCount) {
     hitCount_ += hitCount;
   }
@@ -132,14 +138,18 @@ class PolicyTermBase {
     return hitCount_;
   }
 
-  // applyTerm walks through each match-condition and depending on criteria
-  // if it matches all/(TODO any) match-condition, necessary actions are taken.
+  /*
+   * applyTerm walks through each match-condition and depending on criteria
+   * if it matches all/(TODO any) match-condition, necessary actions are taken.
+   */
 
-  // NOTE: PolicyEntry as it is passed through each term, it will accumulate the
-  //       changes of each TERM like which prefixes are permitted, which
-  //       prefixes are denied, any modification to attributes etc. i.e.
-  //       PolicyEntry uses IN & OUT behavior. It is passed in and get's
-  //       modified as it walks through TERMs.
+  /*
+   * NOTE: PolicyEntry as it is passed through each term, it will accumulate the
+   *       changes of each TERM like which prefixes are permitted, which
+   *       prefixes are denied, any modification to attributes etc. i.e.
+   *       PolicyEntry uses IN & OUT behavior. It is passed in and get's
+   *       modified as it walks through TERMs.
+   */
   void applyTerm(
       PolicyEntry& entry,
       const std::string& policyStatementName) noexcept {
@@ -150,8 +160,10 @@ class PolicyTermBase {
       auto prefixSet = std::get<1>(processingEntry);
       auto gotoTerm = std::get<2>(processingEntry);
 
-      // this set of prefixes have matches on a term with specific goto
-      // skip any term in between.
+      /*
+       * this set of prefixes have matches on a term with specific goto
+       * skip any term in between.
+       */
       if (gotoTerm.has_value() && gotoTerm.value() != termName_) {
         entry.addPrefixesToProcessingEntries(attrs, prefixSet, gotoTerm);
         continue;
@@ -182,9 +194,11 @@ class PolicyTermBase {
         }
       }
 
-      // Attributes have not matched, no need to check prefixes etc
-      // Move all the prefixes to processing for next term without modifying
-      // any attributes (no need to apply any actions)
+      /*
+       * Attributes have not matched, no need to check prefixes etc
+       * Move all the prefixes to processing for next term without modifying
+       * any attributes (no need to apply any actions)
+       */
       if (!matchResult) {
         applyActionsOnMiss(entry, attrs, prefixSet, policyStatementName);
         continue;
@@ -213,10 +227,12 @@ class PolicyTermBase {
   }
 
  private:
-  // This applies prefix list match condition. It will walk through all the
-  // prefixes, apply a prefix list, split the prefixes along with attributes
-  // into matched and unmatched, apply actions related to the term only to
-  // matched prefixes
+  /*
+   * This applies prefix list match condition. It will walk through all the
+   * prefixes, apply a prefix list, split the prefixes along with attributes
+   * into matched and unmatched, apply actions related to the term only to
+   * matched prefixes
+   */
   void applyPerPrefixMatches(
       PolicyEntry& entry,
       const std::vector<std::shared_ptr<PolicyPrefixMatch>>& matches,
@@ -228,10 +244,12 @@ class PolicyTermBase {
 
     bool logOnMiss = shouldLogOnMiss();
     for (const auto& prefix : prefixesSet) {
-      // Check if prefix matched all the per prefix matches (all prefix lists)
-      // NOTE: As of now we only support match_logic_type AND, so here
-      // we implicitly assume AND logic. Need to modify this if other
-      // match_logic_types are supported.
+      /*
+       * Check if prefix matched all the per prefix matches (all prefix lists)
+       * NOTE: As of now we only support match_logic_type AND, so here
+       * we implicitly assume AND logic. Need to modify this if other
+       * match_logic_types are supported.
+       */
       bool allMatch = true;
       for (const auto& match : matches) {
         if (!match->Match(prefix)) {
@@ -279,10 +297,12 @@ class PolicyTermBase {
     applyActions(entry, attr, matchedPrefixes, policyName);
   }
 
-  // Possible actions on miss are a subset of the ones on hit.
-  // TODO: This behavior actually very implicit, will either
-  // align behaviors (i.e, we will call applyActions instead) OR and
-  // add checks and validators
+  /*
+   * Possible actions on miss are a subset of the ones on hit.
+   * TODO: This behavior actually very implicit, will either
+   * align behaviors (i.e, we will call applyActions instead) OR and
+   * add checks and validators
+   */
   void applyActionsOnMiss(
       PolicyEntry& entry,
       std::shared_ptr<Attributes> attr,
@@ -298,11 +318,13 @@ class PolicyTermBase {
     }
   }
 
-  // NOTE: PolicyEntry as it is passed through each term, it will accumulate the
-  //       changes of each TERM like which prefixes are permitted, which
-  //       prefixes are denied, any modification to attributes etc. i.e.
-  //       PolicyEntry uses IN & OUT behavior. It is passed in and get's
-  //       modified as it walks through TERMs.
+  /*
+   * NOTE: PolicyEntry as it is passed through each term, it will accumulate the
+   *       changes of each TERM like which prefixes are permitted, which
+   *       prefixes are denied, any modification to attributes etc. i.e.
+   *       PolicyEntry uses IN & OUT behavior. It is passed in and get's
+   *       modified as it walks through TERMs.
+   */
   void applyActions(
       PolicyEntry& entry,
       std::shared_ptr<Attributes> attr,
@@ -316,13 +338,15 @@ class PolicyTermBase {
       return;
     }
 
-    // Apply all actions
-    // NOTE: All actions will be applied in the order in which they are
-    // configured. Distinct actions like med/local preference etc do not have
-    // any impact due to order of executing actions of a TERM, but actions of
-    // same type like AS path prepend or community order effects how the
-    // the attributes are modified. We will apply actions in the order in
-    // which they are configured.
+    /*
+     * Apply all actions
+     * NOTE: All actions will be applied in the order in which they are
+     * configured. Distinct actions like med/local preference etc do not have
+     * any impact due to order of executing actions of a TERM, but actions of
+     * same type like AS path prepend or community order effects how the
+     * the attributes are modified. We will apply actions in the order in
+     * which they are configured.
+     */
     if (getPolicyActions().size()) {
       // make a modifiable copy of *attr and point attr to the new object.
       copyAttr(attr);
@@ -339,8 +363,10 @@ class PolicyTermBase {
       return;
     }
 
-    // ContinueAction: add prefixes back to processing entries for
-    // further processing
+    /*
+     * ContinueAction: add prefixes back to processing entries for
+     * further processing
+     */
     if (actionType == classType<ContinueAction>()) {
       XLOGF(
           DBG4,
@@ -352,8 +378,10 @@ class PolicyTermBase {
       return;
     }
 
-    // LogContinueAction: add prefixes back to processing entries for
-    // further processing
+    /*
+     * LogContinueAction: add prefixes back to processing entries for
+     * further processing
+     */
     if (actionType == classType<LogContinueAction>()) {
       XLOGF(
           INFO,
@@ -365,8 +393,10 @@ class PolicyTermBase {
       return;
     }
 
-    // GotoAction: add prefixes back to processing entries and jump to
-    // specified term for fuether processing
+    /*
+     * GotoAction: add prefixes back to processing entries and jump to
+     * specified term for fuether processing
+     */
     if (actionType == classType<GotoAction>()) {
       XLOGF(
           DBG4,
@@ -384,8 +414,10 @@ class PolicyTermBase {
       applyAllowAction(entry, attr, prefixesSet, policyName);
       return;
     }
-    // Not throwing here since the entire call stack is declared noexcept
-    // Should never reach here as we have the checks at ctor
+    /*
+     * Not throwing here since the entire call stack is declared noexcept
+     * Should never reach here as we have the checks at ctor
+     */
     XLOGF(
         ERR,
         "Unrecognized term action on policy {} term {}",
@@ -429,8 +461,10 @@ class PolicyTermBase {
         policyName,
         getTermName());
 
-    // Move these prefixes to processed (No further processing is needed for
-    // these prefixes)
+    /*
+     * Move these prefixes to processed (No further processing is needed for
+     * these prefixes)
+     */
     auto policyTermName = getTermName().empty() ? "N/A" : getTermName();
     entry.addPrefixesToProcessedEntries(
         attr,
@@ -440,22 +474,28 @@ class PolicyTermBase {
     return;
   }
 
-  // copyAttr() is used in applyActions() before policy engine modify
-  // attributes. Policy Engine take <const Attributes&> in policy input to avoid
-  // accedential modification of pass in attributes. Therefore we always
-  // make a copy if attributes content will be changed.
+  /*
+   * copyAttr() is used in applyActions() before policy engine modify
+   * attributes. Policy Engine take <const Attributes&> in policy input to avoid
+   * accedential modification of pass in attributes. Therefore we always
+   * make a copy if attributes content will be changed.
+   */
   virtual void copyAttr(std::shared_ptr<Attributes>& attr) = 0;
-  // ** Implementation Note **
-  // Create a new object by coping *attr content, modify the new object
-  // content and change the share_ptr attr to point to it.
-  // e.g.
-  // void copyAttr(std::shared_ptr<Attributes>& attr) {
-  //    auto newAttr = std::make_shared<Attributes>(*attr);
-  //    attr.swap(newAttr);
-  // }
+  /*
+   * ** Implementation Note **
+   * Create a new object by coping *attr content, modify the new object
+   * content and change the share_ptr attr to point to it.
+   * e.g.
+   * void copyAttr(std::shared_ptr<Attributes>& attr) {
+   *    auto newAttr = std::make_shared<Attributes>(*attr);
+   *    attr.swap(newAttr);
+   * }
+   */
 
-  // Returns std::nullopt if attributes are valid, or a reason suffix string
-  // (e.g., "invalid GAR weights") to append to the deny reason.
+  /*
+   * Returns std::nullopt if attributes are valid, or a reason suffix string
+   * (e.g., "invalid GAR weights") to append to the deny reason.
+   */
   virtual std::optional<std::string> hasInvalidAttrsPostAction(
       const std::shared_ptr<Attributes>& /* attr */,
       const PolicyEntry& /* entry */,
@@ -480,13 +520,17 @@ class PolicyTermBase {
 
   // actions
   std::vector<std::shared_ptr<PolicyAttributesAction>> actions_;
-  // Flow control action on prefixes that did not match this term:
-  // NEXT_TERM | DENY | LOG_AND_NEXT_TERM
+  /*
+   * Flow control action on prefixes that did not match this term:
+   * NEXT_TERM | DENY | LOG_AND_NEXT_TERM
+   */
   std::shared_ptr<PolicyActionBase> termMissFlowControlAction_;
-  // Flow control action on prefixes that match this term:
-  // PERMIT | DENY | CONTINUE | GOTO
-  // If there are matches, and no explicit decision action is given
-  // we will treat it as permit, similar to vendor implementations
+  /*
+   * Flow control action on prefixes that match this term:
+   * PERMIT | DENY | CONTINUE | GOTO
+   * If there are matches, and no explicit decision action is given
+   * we will treat it as permit, similar to vendor implementations
+   */
   std::shared_ptr<PolicyActionBase> termMatchFlowControlAction_;
 };
 

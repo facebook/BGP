@@ -37,9 +37,11 @@ class PolicyMatchBase {
   virtual bool Match(
       const MatchInput&,
       const std::optional<AddtionalMatchInput>& = std::nullopt) const {
-    // this function is needed because we create REFERENCE type
-    // but it won't be called since REFERENCE type will be replaced by
-    // the actual inline struct during initialization
+    /*
+     * this function is needed because we create REFERENCE type
+     * but it won't be called since REFERENCE type will be replaced by
+     * the actual inline struct during initialization
+     */
     throw std::bad_function_call{};
   }
 
@@ -47,10 +49,12 @@ class PolicyMatchBase {
     return matchName_;
   }
 
-  // return run time class type
-  // e.g. class PrefixMatch : public PolicyMatchBase<T> {}
-  //      PrefixMatch p;
-  //      p.getClassType() returns std::type_index(typeid(PrefixMatch)
+  /*
+   * return run time class type
+   * e.g. class PrefixMatch : public PolicyMatchBase<T> {}
+   *      PrefixMatch p;
+   *      p.getClassType() returns std::type_index(typeid(PrefixMatch)
+   */
   std::type_index getClassType() {
     return std::type_index(typeid(*this));
   }

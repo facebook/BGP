@@ -25,8 +25,10 @@ namespace facebook::bgp {
 
 // LinkBandwidth Action Data, details: https://fb.quip.com/xqf4Ai6ySsDm
 struct LbwActionData {
-  // original asn and lbw (prior to peer-config and policy)
-  // none if not set
+  /*
+   * original asn and lbw (prior to peer-config and policy)
+   * none if not set
+   */
   const std::optional<std::pair<uint16_t, float>> originalAsnLbw{std::nullopt};
 
   // asn from peer config
@@ -79,9 +81,11 @@ struct LbwActionData {
   }
 };
 
-// BgpPolicyActionData - capture any data that's needed to apply a action
-// but can NOT be pre-configured in Policy Configuration
-// (e.g some data needs to be dynamically derived on the fly).
+/*
+ * BgpPolicyActionData - capture any data that's needed to apply a action
+ * but can NOT be pre-configured in Policy Configuration
+ * (e.g some data needs to be dynamically derived on the fly).
+ */
 struct BgpPolicyActionData {
   // Constructor.
   explicit BgpPolicyActionData(
@@ -141,37 +145,47 @@ struct BgpPolicyActionData {
    */
   // Flag to indicate that MED value was set by PolicyAction on BgpPath.
   bool isMedSetByPolicy = false;
-  // Flag to indicate that LBW ext community was zero/missing after
-  // DECODE/ENCODE action — route should be rejected.
+  /*
+   * Flag to indicate that LBW ext community was zero/missing after
+   * DECODE/ENCODE action — route should be rejected.
+   */
   bool isLbwRejected = false;
   // Flag to indicate that nexthop was set by PolicyAction on BgpPath.
   bool isNexthopSetByPolicy = false;
 };
 
-// Deny reason suffix appended when a route is rejected due to invalid
-// (zero/missing) GAR weights.
+/*
+ * Deny reason suffix appended when a route is rejected due to invalid
+ * (zero/missing) GAR weights.
+ */
 inline constexpr std::string_view kInvalidGarWeightsDenyReason =
     "invalid GAR weights";
 
-// To match base class template, BgpPolicy does not need any additional
-// matchData currently
+/*
+ * To match base class template, BgpPolicy does not need any additional
+ * matchData currently
+ */
 struct BgpPolicyMatchData {};
 
-// Input message to policy
-// Input attributes (BgpPath) is non-const as we have to update Attributes
-// based on actions. User can input published/unpublished BgpPath.
-// Depending on if actions need to modify or not, policy can reuse input
-// BgpPath or clone BgpPath and modify accordingly.
+/*
+ * Input message to policy
+ * Input attributes (BgpPath) is non-const as we have to update Attributes
+ * based on actions. User can input published/unpublished BgpPath.
+ * Depending on if actions need to modify or not, policy can reuse input
+ * BgpPath or clone BgpPath and modify accordingly.
+ */
 using PolicyInMessage = routing::PolicyInMessageBase<
     BgpPath,
     std::shared_ptr<BgpPolicyActionData>,
     BgpPolicyMatchData>;
 
-// Output message from policy
-// Only accepted prefixes are returned with modified attributes.
-// Many prefixes can share same attributes.
-// Attributes could be mix of published and unpublished
-// receiver can publish, clone etc depending on local pref and
-// other requirements.
+/*
+ * Output message from policy
+ * Only accepted prefixes are returned with modified attributes.
+ * Many prefixes can share same attributes.
+ * Attributes could be mix of published and unpublished
+ * receiver can publish, clone etc depending on local pref and
+ * other requirements.
+ */
 using PolicyOutMessage = routing::PolicyOutMessageBase<BgpPath>;
 } // namespace facebook::bgp

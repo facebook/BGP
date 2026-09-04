@@ -64,10 +64,12 @@ class PolicyManagerBase {
         policyStatementName,
         policyIn.prefixes.size());
 
-    // TODO: In a single policyIn message we shouldn't have
-    //       same prefix given multiple times with same or different attributes
-    //       AdjRib has to ensure that only latest attributes are associated
-    //       with a prefix. (Will be done in AdjRib during integration).
+    /*
+     * TODO: In a single policyIn message we shouldn't have
+     *       same prefix given multiple times with same or different attributes
+     *       AdjRib has to ensure that only latest attributes are associated
+     *       with a prefix. (Will be done in AdjRib during integration).
+     */
     auto entry = PolicyEntryBase<Attributes, PolicyActionData, PolicyMatchData>(
         policyIn);
 
@@ -81,8 +83,10 @@ class PolicyManagerBase {
       }
     }
 
-    // Completed processing all terms of the policy. Accept or deny
-    // unmatched prefixes based on the policy's default action.
+    /*
+     * Completed processing all terms of the policy. Accept or deny
+     * unmatched prefixes based on the policy's default action.
+     */
     entry.completeProcessing(policyStatementName, policy->getDefaultAllow());
     // Update execution statistics
     policy->updatePolicyExecutionStats(

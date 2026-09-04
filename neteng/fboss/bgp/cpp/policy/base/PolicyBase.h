@@ -44,15 +44,19 @@ class PolicyBase {
     return policyName_;
   }
 
-  // Whether the default action for unmatched prefixes is ALLOW (true)
-  // or DENY (false). Defaults to DENY for backwards compatibility.
+  /*
+   * Whether the default action for unmatched prefixes is ALLOW (true)
+   * or DENY (false). Defaults to DENY for backwards compatibility.
+   */
   bool getDefaultAllow() const {
     return defaultAllow_;
   }
 
-  // Increase the hit count by the number of count
-  // User typically increases by number of prefixes for which policy is
-  // being applied.
+  /*
+   * Increase the hit count by the number of count
+   * User typically increases by number of prefixes for which policy is
+   * being applied.
+   */
   void incrementHitCount(uint32_t hitCount) {
     hitCount_ += hitCount;
   }
@@ -108,17 +112,23 @@ class PolicyBase {
   }
 
  protected:
-  // validatePolicyTerms can be used in child class to do some basic term
-  // validations
+  /*
+   * validatePolicyTerms can be used in child class to do some basic term
+   * validations
+   */
   void validatePolicyTerms() {
-    // A set of visired term names | A set of goto term names seen so far
-    // used for GOTO action validation
+    /*
+     * A set of visired term names | A set of goto term names seen so far
+     * used for GOTO action validation
+     */
     std::unordered_set<std::string> visitedTermNames{}, gotoTermNames{};
 
     for (const auto& term : policyTerms_) {
       const auto& termName = term->getTermName();
-      // Current term is the goto term of a previous policy, remove it from
-      // `gotoTermNames`
+      /*
+       * Current term is the goto term of a previous policy, remove it from
+       * `gotoTermNames`
+       */
       gotoTermNames.erase(termName);
 
       // add current policy to visitedTermNames if term name is not empty
@@ -132,8 +142,10 @@ class PolicyBase {
       // Validate current policy's GOTO term
       auto gotoTermName = term->getMatchGotoTerm();
       if (gotoTermName.size()) {
-        // [ERROR] goto term causes policy circulation: e.g. term2 point to
-        // term1
+        /*
+         * [ERROR] goto term causes policy circulation: e.g. term2 point to
+         * term1
+         */
         if (visitedTermNames.count(gotoTermName)) {
           throw std::logic_error(
               fmt::format(
@@ -146,8 +158,10 @@ class PolicyBase {
       }
     }
 
-    // [ERROR] gotoTermNames should be empty by now, if not, some policies are
-    // pointing to undefined terms in their gotoTerm
+    /*
+     * [ERROR] gotoTermNames should be empty by now, if not, some policies are
+     * pointing to undefined terms in their gotoTerm
+     */
     if (gotoTermNames.size()) {
       throw std::out_of_range(
           fmt::format(
