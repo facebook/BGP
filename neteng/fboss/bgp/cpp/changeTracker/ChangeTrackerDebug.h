@@ -31,8 +31,10 @@ namespace facebook::neteng::fboss::bgp::changetracker {
  */
 class ChangeTrackerDebug {
  public:
-  // Callback type for consumer display - consumer provides this to display
-  // itself
+  /*
+   * Callback type for consumer display - consumer provides this to display
+   * itself
+   */
   using ConsumerDisplayCallback = folly::Function<std::string()>;
 
   /**

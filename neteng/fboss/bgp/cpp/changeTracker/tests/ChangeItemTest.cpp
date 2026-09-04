@@ -168,8 +168,10 @@ TEST(ChangeItemTest, SetConsumerBitMap) {
   EXPECT_TRUE(BitmapUtils::isBitSet(changeItem->consumerBitmap, 2));
 }
 
-// Test for removePendingConsumer() will be added in a later diff
-// when consumer-specific functionality is implemented
+/*
+ * Test for removePendingConsumer() will be added in a later diff
+ * when consumer-specific functionality is implemented
+ */
 
 // Test the get_next() function
 TEST(ChangeItemTest, GetNext) {

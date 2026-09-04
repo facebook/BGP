@@ -44,8 +44,10 @@ class ChangeTracker {
   // Callback type for change notifications - type-erased callback
   using ChangeNotifyCallback = folly::Function<void()>;
 
-  // Callback type for when a change item is fully processed - type-erased
-  // callback
+  /*
+   * Callback type for when a change item is fully processed - type-erased
+   * callback
+   */
   using OnChangeProcessedCallback = std::function<void(TrackableObject<T>*)>;
 
   // Callback type for object display - type-safe, specific to T
@@ -150,12 +152,16 @@ class ChangeTracker {
           DBG3, "No next item - consumers will be moved to ready list");
     }
 
-    // Update markers for any consumers pending on this item
-    // We need to iterate carefully since we're modifying the list
+    /*
+     * Update markers for any consumers pending on this item
+     * We need to iterate carefully since we're modifying the list
+     */
     while (!itemPtr->pendingConsumers.empty()) {
-      // Get reference to front consumer and unlink it from current list
-      // SAFETY: Consumer object is owned by shared_ptr in consumers_ vector,
-      // so it remains valid after unlinking from this intrusive list
+      /*
+       * Get reference to front consumer and unlink it from current list
+       * SAFETY: Consumer object is owned by shared_ptr in consumers_ vector,
+       * so it remains valid after unlinking from this intrusive list
+       */
       auto& consumer = itemPtr->pendingConsumers.front();
       itemPtr->pendingConsumers.pop_front();
 
@@ -220,9 +226,11 @@ class ChangeTracker {
     ChangeItem<T>* itemPtr = nullptr;
 
     if (shouldSkipChangePublication(trackableObject, consumerBitmap)) {
-      // No consumers registered, or no consumers need to process this change
-      // (object not already on list and empty bitmap), so no need to track
-      // Call the global callback if set
+      /*
+       * No consumers registered, or no consumers need to process this change
+       * (object not already on list and empty bitmap), so no need to track
+       * Call the global callback if set
+       */
       if (onChangeProcessedCallback_) {
         onChangeProcessedCallback_(trackableObject);
       }
@@ -251,8 +259,10 @@ class ChangeTracker {
         if (!isOnlyItem) {
           updateItemPendingConsumers(itemPtr);
         }
-        // If it's the only item, we don't need to update markers
-        // as they will still be pointing to the same item after it's moved
+        /*
+         * If it's the only item, we don't need to update markers
+         * as they will still be pointing to the same item after it's moved
+         */
 
         // Now remove the item from the list
         changeList_.erase(changeList_.iterator_to(*itemPtr));
@@ -276,9 +286,11 @@ class ChangeTracker {
       trackableObject->setChangeItem(std::move(changeItem));
     }
 
-    // Common operations: add to the end of the list and notify ready
-    // consumers, blocked consumers will be notified when the event they want
-    // occurs (e.g BGP peer unblocked)
+    /*
+     * Common operations: add to the end of the list and notify ready
+     * consumers, blocked consumers will be notified when the event they want
+     * occurs (e.g BGP peer unblocked)
+     */
 
     changeList_.push_back(*itemPtr);
     CT_DEBUG_LOG(
@@ -712,8 +724,10 @@ void ChangeTracker<T>::consumerResetChangeList(
   // Remove from pending consumers
   item->removePendingConsumer(consumer);
 
-  // For all subsequent items, mark the consumer as processed and make sure
-  // producer gets notified if all consumers have processed the item
+  /*
+   * For all subsequent items, mark the consumer as processed and make sure
+   * producer gets notified if all consumers have processed the item
+   */
   while (item != nullptr) {
     ChangeItem<T>* next_item = get_next(item, changeList_);
 
@@ -758,9 +772,11 @@ void ChangeTracker<T>::notifyProducer(ChangeItem<T>* item) {
   // Save the trackable object pointer before clearing the change item
   TrackableObject<T>* trackableObject = item->trackableObject;
 
-  // Clear the reference in the trackable object
-  // This will delete the ChangeItem since TrackableObject owns it via
-  // unique_ptr
+  /*
+   * Clear the reference in the trackable object
+   * This will delete the ChangeItem since TrackableObject owns it via
+   * unique_ptr
+   */
   if (trackableObject) {
     CT_DEBUG_LOG(
         DBG3,
@@ -842,9 +858,11 @@ void ChangeTracker<T>::joinConsumer(
       getItemDisplayString(existingMarker));
 
   if (existingMarker == nullptr) {
-    // Case 1: C1 is ready (nullptr)
-    // C2's marker is already nullptr from registration, so no need to set.
-    // C2 is already in the ready list from registration.
+    /*
+     * Case 1: C1 is ready (nullptr)
+     * C2's marker is already nullptr from registration, so no need to set.
+     * C2 is already in the ready list from registration.
+     */
     CT_DEBUG_LOG(
         DBG3,
         "Case 1: Existing consumer {} marker is null - new consumer {} already matches",
@@ -859,8 +877,10 @@ void ChangeTracker<T>::joinConsumer(
       existingConsumer->getDisplayString(),
       getItemDisplayString(existingMarker));
 
-  // Remove the new consumer from ready consumers since we'll position it at
-  // the pended location
+  /*
+   * Remove the new consumer from ready consumers since we'll position it at
+   * the pended location
+   */
   removeFromReadyConsumers(newConsumer);
 
   // C2 joins with its marker at same item as C1
@@ -873,8 +893,10 @@ void ChangeTracker<T>::joinConsumer(
       newConsumer->getDisplayString(),
       getItemDisplayString(pendedItem));
 
-  // Add C2 to the pending consumers list of the same item
-  // Only add if not already linked
+  /*
+   * Add C2 to the pending consumers list of the same item
+   * Only add if not already linked
+   */
   if (!newConsumer->pendingConsumerHook.is_linked()) {
     pendedItem->pendingConsumers.push_back(*newConsumer);
   }
@@ -884,8 +906,10 @@ void ChangeTracker<T>::joinConsumer(
       newConsumer->getDisplayString(),
       getItemDisplayString(pendedItem));
 
-  // C2 must also traverse ALL items from the pended item to the end of change
-  // list and set its bit so that the consumption logic continues to work
+  /*
+   * C2 must also traverse ALL items from the pended item to the end of change
+   * list and set its bit so that the consumption logic continues to work
+   */
   ChangeItem<T>* currentItem = pendedItem;
   size_t itemsUpdated = 0;
   CT_DEBUG_LOG(
@@ -1121,9 +1145,11 @@ void ChangeTracker<T>::notifyReadyConsumers(ChangeItem<T>* item) {
         consumer ? consumer->getDisplayString() : "null",
         getItemDisplayString(item));
     consumer->setMarker(item);
-    // Start the staleness clock when the consumer first gets work assigned
-    // (null -> non-null marker). Without this, a newly notified consumer
-    // would have an epoch timestamp and appear immediately stale.
+    /*
+     * Start the staleness clock when the consumer first gets work assigned
+     * (null -> non-null marker). Without this, a newly notified consumer
+     * would have an epoch timestamp and appear immediately stale.
+     */
     consumer->recordMarkerAdvance();
     // Only add to pending list if not already linked
     if (!consumer->pendingConsumerHook.is_linked()) {

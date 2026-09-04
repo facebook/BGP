@@ -42,8 +42,10 @@ class TrackableObject {
   TrackableObject(const TrackableObject&) = delete;
   TrackableObject& operator=(const TrackableObject&) = delete;
 
-  // Move ops deleted: TrackableObject is always heap-allocated behind
-  // unique_ptr, and moving would leave ChangeItem backpointers dangling.
+  /*
+   * Move ops deleted: TrackableObject is always heap-allocated behind
+   * unique_ptr, and moving would leave ChangeItem backpointers dangling.
+   */
   TrackableObject(TrackableObject&&) = delete;
   TrackableObject& operator=(TrackableObject&&) = delete;
 

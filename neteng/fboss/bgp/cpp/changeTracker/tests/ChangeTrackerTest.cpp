@@ -84,8 +84,10 @@ class TestConsumer : public Consumer<TestObject> {
       TestObject& testObject = item->getTypedObject();
       int value = testObject.getValue();
 
-      // Pend on specific values if requested
-      // NOTE: when we pend the contract is before processing the item
+      /*
+       * Pend on specific values if requested
+       * NOTE: when we pend the contract is before processing the item
+       */
       if (pendOnValues_.find(value) != pendOnValues_.end()) {
         pendedOnItem_ = item;
         return ProcessResult::YIELD;
@@ -455,8 +457,10 @@ void testGlobalCallbacksMultiObjects(ConsumerMode mode) {
 
 } // namespace
 
-// Test that a consumer processes objects published by a producer - Triggered
-// Mode
+/*
+ * Test that a consumer processes objects published by a producer - Triggered
+ * Mode
+ */
 TEST(ChangeTrackerTest, BasicConsumerProcessing_Triggered) {
   testBasicConsumerProcessing(ConsumerMode::TRIGGERED);
 }
@@ -466,14 +470,18 @@ TEST(ChangeTrackerTest, BasicConsumerProcessing_Polled) {
   testBasicConsumerProcessing(ConsumerMode::POLLED);
 }
 
-// Test that publishChange with no consumers doesn't add to the change list -
-// Triggered Mode
+/*
+ * Test that publishChange with no consumers doesn't add to the change list -
+ * Triggered Mode
+ */
 TEST(ChangeTrackerTest, PublishChangeWithNoConsumers_Triggered) {
   testPublishChangeWithNoConsumers(ConsumerMode::TRIGGERED);
 }
 
-// Test that publishChange with no consumers doesn't add to the change list -
-// Polled Mode
+/*
+ * Test that publishChange with no consumers doesn't add to the change list -
+ * Polled Mode
+ */
 TEST(ChangeTrackerTest, PublishChangeWithNoConsumers_Polled) {
   testPublishChangeWithNoConsumers(ConsumerMode::POLLED);
 }
@@ -621,8 +629,10 @@ TEST(ChangeTrackerTest, UpdatedObjectAfterPend) {
   // Resume the consumer
   consumer->resume();
 
-  // Run the event loop until the consumer processes the updated object2 and
-  // object3
+  /*
+   * Run the event loop until the consumer processes the updated object2 and
+   * object3
+   */
   success = runUntil(
       evb,
       [&]() { return consumer->getProcessedItems().size() >= 3; },
@@ -630,8 +640,10 @@ TEST(ChangeTrackerTest, UpdatedObjectAfterPend) {
       "Timeout waiting for consumer to process updated object2 and object3");
   ASSERT_TRUE(success);
 
-  // Verify the consumer processed the updated object2 (value 22) and object3
-  // Notice how the object updated went to the end.
+  /*
+   * Verify the consumer processed the updated object2 (value 22) and object3
+   * Notice how the object updated went to the end.
+   */
   ASSERT_GE(consumer->getProcessedItems().size(), 3);
   EXPECT_EQ(consumer->getProcessedItems()[1], 3);
   EXPECT_EQ(consumer->getProcessedItems()[2], 22);
@@ -649,8 +661,10 @@ TEST(ChangeTrackerTest, UpdatedObjectAfterPend) {
   evb.loop();
 }
 
-// Test that multiple consumers with different processing speeds can process the
-// same objects
+/*
+ * Test that multiple consumers with different processing speeds can process the
+ * same objects
+ */
 TEST(ChangeTrackerTest, ConsumersWithDifferentSpeeds) {
   // Create a change tracker
   ChangeTracker<TestObject> tracker("TestTracker");
@@ -759,14 +773,18 @@ TEST(ChangeTrackerTest, ConsumersWithDifferentSpeeds) {
   evb.loop();
 }
 
-// Test that callbacks are invoked when changes are fully processed - Triggered
-// Mode
+/*
+ * Test that callbacks are invoked when changes are fully processed - Triggered
+ * Mode
+ */
 TEST(ChangeTrackerTest, ChangeProcessedCallbacks_Triggered) {
   testChangeProcessedCallbacks(ConsumerMode::TRIGGERED);
 }
 
-// Test that callbacks are invoked when changes are fully processed - Polled
-// Mode
+/*
+ * Test that callbacks are invoked when changes are fully processed - Polled
+ * Mode
+ */
 TEST(ChangeTrackerTest, ChangeProcessedCallbacks_Polled) {
   testChangeProcessedCallbacks(ConsumerMode::POLLED);
 }
@@ -886,8 +904,10 @@ TEST(ChangeTrackerTest, UpdateObjectsWhilePended) {
       "Timeout waiting for consumer4 to process all items");
   ASSERT_TRUE(success);
 
-  // Verify the initial state
-  // Consumer1 should have pended on object1 without processing it
+  /*
+   * Verify the initial state
+   * Consumer1 should have pended on object1 without processing it
+   */
   ASSERT_EQ(consumer1->getProcessedItems().size(), 0);
   EXPECT_EQ(consumer1->getPendedOnItem()->getTypedObject().getValue(), 1);
 
@@ -908,8 +928,10 @@ TEST(ChangeTrackerTest, UpdateObjectsWhilePended) {
   EXPECT_EQ(consumer4->getProcessedItems()[1], 2);
   EXPECT_EQ(consumer4->getProcessedItems()[2], 3);
 
-  // Now update each object - this will move them to the end of the list
-  // The order is important: we update object1, then object2, then object3
+  /*
+   * Now update each object - this will move them to the end of the list
+   * The order is important: we update object1, then object2, then object3
+   */
   producer.updateAndPublish(object1, 11);
   producer.updateAndPublish(object2, 22);
   producer.updateAndPublish(object3, 33);
@@ -919,8 +941,10 @@ TEST(ChangeTrackerTest, UpdateObjectsWhilePended) {
   consumer2->setPendOnValues({});
   consumer3->setPendOnValues({});
 
-  // Resume all consumers - this is needed because they're already pended
-  // and publishing new objects won't automatically resume them
+  /*
+   * Resume all consumers - this is needed because they're already pended
+   * and publishing new objects won't automatically resume them
+   */
   consumer1->resume();
   consumer2->resume();
   consumer3->resume();
@@ -1089,8 +1113,10 @@ TEST(ChangeTrackerTest, MultipleUpdatesWhilePended) {
       "Timeout waiting for consumer4 to process all items");
   ASSERT_TRUE(success);
 
-  // Verify the initial state
-  // Consumer1 should have pended on object1 without processing it
+  /*
+   * Verify the initial state
+   * Consumer1 should have pended on object1 without processing it
+   */
   ASSERT_EQ(consumer1->getProcessedItems().size(), 0);
   EXPECT_EQ(consumer1->getPendedOnItem()->getTypedObject().getValue(), 1);
 
@@ -1111,8 +1137,10 @@ TEST(ChangeTrackerTest, MultipleUpdatesWhilePended) {
   EXPECT_EQ(consumer4->getProcessedItems()[1], 2);
   EXPECT_EQ(consumer4->getProcessedItems()[2], 3);
 
-  // Now make multiple updates to each object while consumers are pended
-  // object1 goes through 2 changes
+  /*
+   * Now make multiple updates to each object while consumers are pended
+   * object1 goes through 2 changes
+   */
   producer.updateAndPublishPush(evb, object1, 10);
   producer.updateAndPublishPush(evb, object1, 11);
 
@@ -1132,8 +1160,10 @@ TEST(ChangeTrackerTest, MultipleUpdatesWhilePended) {
   consumer2->setPendOnValues({});
   consumer3->setPendOnValues({});
 
-  // Resume all consumers - this is needed because they're already pended
-  // and publishing new objects won't automatically resume them
+  /*
+   * Resume all consumers - this is needed because they're already pended
+   * and publishing new objects won't automatically resume them
+   */
   consumer1->resume();
   consumer2->resume();
   consumer3->resume();
@@ -1295,8 +1325,10 @@ TEST(ChangeTrackerTest, NewConsumerWithPendedOthers) {
       "Timeout waiting for consumer3 to process all items");
   ASSERT_TRUE(success);
 
-  // Verify the initial state
-  // Consumer1 should have pended on object1 without processing it
+  /*
+   * Verify the initial state
+   * Consumer1 should have pended on object1 without processing it
+   */
   ASSERT_EQ(consumer1->getProcessedItems().size(), 0);
   EXPECT_EQ(consumer1->getPendedOnItem()->getTypedObject().getValue(), 1);
 
@@ -1324,8 +1356,10 @@ TEST(ChangeTrackerTest, NewConsumerWithPendedOthers) {
           }))
           .start();
 
-  // The new consumer should not have processed any items yet
-  // since it was registered after the initial objects were published
+  /*
+   * The new consumer should not have processed any items yet
+   * since it was registered after the initial objects were published
+   */
   ASSERT_EQ(newConsumer->getProcessedItems().size(), 0);
 
   // Create a new object and update existing ones
@@ -1336,8 +1370,10 @@ TEST(ChangeTrackerTest, NewConsumerWithPendedOthers) {
   // Publish the new object
   producer.publishChange(object4);
 
-  // Run the event loop until the new consumer processes the new object and
-  // updates
+  /*
+   * Run the event loop until the new consumer processes the new object and
+   * updates
+   */
   success = runUntil(
       evb,
       [&]() { return newConsumer->getProcessedItems().size() >= 3; },
@@ -1345,8 +1381,10 @@ TEST(ChangeTrackerTest, NewConsumerWithPendedOthers) {
       "Timeout waiting for new consumer to process new object and updates");
   ASSERT_TRUE(success);
 
-  // Verify the new consumer processed ONLY the new object and updates
-  // that happened after it was registered
+  /*
+   * Verify the new consumer processed ONLY the new object and updates
+   * that happened after it was registered
+   */
   ASSERT_EQ(newConsumer->getProcessedItems().size(), 3);
   EXPECT_EQ(newConsumer->getProcessedItems()[0], 11); // Updated object1
   EXPECT_EQ(newConsumer->getProcessedItems()[1], 22); // Updated object2
@@ -1372,8 +1410,10 @@ TEST(ChangeTrackerTest, NewConsumerWithPendedOthers) {
       "Timeout waiting for all consumers to process all objects");
   ASSERT_TRUE(success);
 
-  // Verify that all consumers processed all objects
-  // Consumer1 (was pended on object1)
+  /*
+   * Verify that all consumers processed all objects
+   * Consumer1 (was pended on object1)
+   */
   ASSERT_GE(consumer1->getProcessedItems().size(), 4);
   EXPECT_EQ(consumer1->getProcessedItems()[1], 11); // Updated object1
   EXPECT_EQ(consumer1->getProcessedItems()[2], 22); // Original object2
@@ -1561,18 +1601,22 @@ TEST(ChangeTrackerTest, MultipleConsumersPendOnSameObjects) {
   // Create an event base for scheduling coroutines
   folly::EventBase evb;
 
-  // Create and register all consumers
-  // Consumers 0,1 pend on object 0
-  // Consumers 2,3 pend on object 1
-  // Consumers 4,5 pend on object 2
-  // Consumers 6,7 pend on object 3
-  // Consumers 8,9 pend on object 4
+  /*
+   * Create and register all consumers
+   * Consumers 0,1 pend on object 0
+   * Consumers 2,3 pend on object 1
+   * Consumers 4,5 pend on object 2
+   * Consumers 6,7 pend on object 3
+   * Consumers 8,9 pend on object 4
+   */
   for (int i = 0; i < numConsumers; i++) {
     auto consumer =
         std::make_shared<TestConsumer>(tracker, "Consumer" + std::to_string(i));
 
-    // Set the value to pend on - each pair of consumers pends on the same
-    // object
+    /*
+     * Set the value to pend on - each pair of consumers pends on the same
+     * object
+     */
     int objectToPendOn = i / 2;
     std::unordered_set<int> pendValues = {objectToPendOn};
     consumer->setPendOnValues(pendValues);
@@ -1624,8 +1668,10 @@ TEST(ChangeTrackerTest, MultipleConsumersPendOnSameObjects) {
         consumers[i]->getPendedOnItem()->getTypedObject().getValue(),
         expectedObjectValue);
 
-    // Each consumer should have processed objects with values less than their
-    // pend value
+    /*
+     * Each consumer should have processed objects with values less than their
+     * pend value
+     */
     const auto& processedItems = consumers[i]->getProcessedItems();
     for (size_t j = 0; j < processedItems.size(); j++) {
       EXPECT_LT(processedItems[j], expectedObjectValue);
@@ -1684,9 +1730,11 @@ TEST(ChangeTrackerTest, MultipleConsumersPendOnSameObjects) {
   evb.loop();
 }
 
-// Test with maximum consumers (4096) and about 100,000 objects
-// Each consumer pends on one object, then resumes and receives all objects
-// Disabled due to stack-use-after-scope issues in the debugger
+/*
+ * Test with maximum consumers (4096) and about 100,000 objects
+ * Each consumer pends on one object, then resumes and receives all objects
+ * Disabled due to stack-use-after-scope issues in the debugger
+ */
 TEST(ChangeTrackerTest, DISABLED_MaxConsumersAndObjects) {
   // Create a change tracker
 
@@ -1717,9 +1765,11 @@ TEST(ChangeTrackerTest, DISABLED_MaxConsumersAndObjects) {
   // Create an event base for scheduling coroutines
   folly::EventBase evb;
 
-  // Create and register all consumers
-  // Each consumer will pend on a specific object (consumer i pends on object i
-  // % numObjects)
+  /*
+   * Create and register all consumers
+   * Each consumer will pend on a specific object (consumer i pends on object i
+   * % numObjects)
+   */
   for (int i = 0; i < maxConsumers; i++) {
     auto consumer =
         std::make_shared<TestConsumer>(tracker, "Consumer" + std::to_string(i));
@@ -1753,8 +1803,10 @@ TEST(ChangeTrackerTest, DISABLED_MaxConsumersAndObjects) {
     producer.publishChange(object);
   }
 
-  // Sample a few consumers to check progress (checking all would be too
-  // expensive)
+  /*
+   * Sample a few consumers to check progress (checking all would be too
+   * expensive)
+   */
   const int sampleIndices[] = {
       1, 2, maxConsumers / 2, maxConsumers - 2, maxConsumers - 1};
   const int numSamples = sizeof(sampleIndices) / sizeof(sampleIndices[0]);
@@ -1784,8 +1836,10 @@ TEST(ChangeTrackerTest, DISABLED_MaxConsumersAndObjects) {
         (*consumers)[idx]->getPendedOnItem()->getTypedObject().getValue(),
         idx % numObjects);
 
-    // Each consumer should have processed some objects before pending
-    // The exact number depends on when they encountered their pend object
+    /*
+     * Each consumer should have processed some objects before pending
+     * The exact number depends on when they encountered their pend object
+     */
     EXPECT_GT((*consumers)[idx]->getProcessedItems().size(), 0);
   }
 
@@ -1818,9 +1872,11 @@ TEST(ChangeTrackerTest, DISABLED_MaxConsumersAndObjects) {
     int idx = sampleIndices[i];
     ASSERT_EQ((*consumers)[idx]->getProcessedItems().size(), numObjects);
 
-    // Check a few sample values to ensure they were processed correctly
-    // Note: The order might be different due to pending, but all objects should
-    // be there
+    /*
+     * Check a few sample values to ensure they were processed correctly
+     * Note: The order might be different due to pending, but all objects should
+     * be there
+     */
     std::unordered_set<int> processedValues;
     for (int val : (*consumers)[idx]->getProcessedItems()) {
       processedValues.insert(val);
@@ -1849,8 +1905,10 @@ TEST(ChangeTrackerTest, DISABLED_MaxConsumersAndObjects) {
   evb.loop();
 }
 
-// Test timer-driven polled mode with yield behavior (similar to out-delay timer
-// pattern)
+/*
+ * Test timer-driven polled mode with yield behavior (similar to out-delay timer
+ * pattern)
+ */
 TEST(ChangeTrackerTest, TimerDrivenPolledMode) {
   // Create a change tracker
   ChangeTracker<TestObject> tracker("TimerDrivenTracker");
@@ -1886,8 +1944,10 @@ TEST(ChangeTrackerTest, TimerDrivenPolledMode) {
   producer.publishChange(object4);
   producer.publishChange(object5);
 
-  // Simple timer callback that drives polled consumption (like
-  // programOutDelayTimer)
+  /*
+   * Simple timer callback that drives polled consumption (like
+   * programOutDelayTimer)
+   */
   auto timerCallback = [&consumer, &evb]() noexcept {
     // Start a polled cycle to consume available changes
     co_withExecutor(
@@ -1897,8 +1957,10 @@ TEST(ChangeTrackerTest, TimerDrivenPolledMode) {
         .start();
   };
 
-  // Schedule first timer cycle using folly::AsyncTimeout::schedule (like
-  // out-delay timer)
+  /*
+   * Schedule first timer cycle using folly::AsyncTimeout::schedule (like
+   * out-delay timer)
+   */
   auto timer1 = folly::AsyncTimeout::schedule(
       std::chrono::milliseconds(100), // 100ms delay
       evb,
@@ -1918,8 +1980,10 @@ TEST(ChangeTrackerTest, TimerDrivenPolledMode) {
   EXPECT_EQ(processedItems[0], 1);
   EXPECT_EQ(processedItems[1], 2);
 
-  // Verify the consumer is added to pending list for object 3 (polled mode
-  // behavior)
+  /*
+   * Verify the consumer is added to pending list for object 3 (polled mode
+   * behavior)
+   */
   ASSERT_NE(consumer->getPendedOnItem(), nullptr);
   EXPECT_EQ(consumer->getPendedOnItem()->getTypedObject().getValue(), 3);
 
@@ -1946,12 +2010,14 @@ TEST(ChangeTrackerTest, TimerDrivenPolledMode) {
   EXPECT_EQ(consumer->getProcessedItems()[3], 4);
   EXPECT_EQ(consumer->getProcessedItems()[4], 5);
 
-  // Test demonstrates timer-driven polled consumption pattern with yield:
-  // 1. Timer drives periodic consumption cycles
-  // 2. Consumer processes available items until yield condition
-  // 3. On yield: adds to pending list and returns (no suspension)
-  // 4. Next timer cycle continues from pending item
-  // 5. Consumer processes remaining items and exits when none available
+  /*
+   * Test demonstrates timer-driven polled consumption pattern with yield:
+   * 1. Timer drives periodic consumption cycles
+   * 2. Consumer processes available items until yield condition
+   * 3. On yield: adds to pending list and returns (no suspension)
+   * 4. Next timer cycle continues from pending item
+   * 5. Consumer processes remaining items and exits when none available
+   */
 
   // Stop polled mode
   consumer->setTriggeredMode();
@@ -2075,8 +2141,10 @@ TEST(ChangeTrackerTest, StressRegistrationWithContinuousPublishing) {
   constexpr int numConsumers = 1;
   constexpr int numCycles = 2;
 
-  // Create persistent consumer objects that will be reused (IMPORTANT: keep
-  // same objects)
+  /*
+   * Create persistent consumer objects that will be reused (IMPORTANT: keep
+   * same objects)
+   */
   std::vector<std::shared_ptr<TestConsumer>> consumers;
   consumers.reserve(numConsumers);
   for (int i = 0; i < numConsumers; i++) {
@@ -2100,8 +2168,10 @@ TEST(ChangeTrackerTest, StressRegistrationWithContinuousPublishing) {
       preRegistrationValues.push_back(preObject->get().getValue());
     }
 
-    // Register the SAME consumer objects for this cycle (no new objects
-    // created)
+    /*
+     * Register the SAME consumer objects for this cycle (no new objects
+     * created)
+     */
     std::vector<folly::SemiFuture<folly::Unit>> futures;
     for (int i = 0; i < numConsumers; i++) {
       // Register the existing consumer (same object throughout all cycles)
@@ -2124,8 +2194,10 @@ TEST(ChangeTrackerTest, StressRegistrationWithContinuousPublishing) {
       postRegistrationValues.push_back(postObject->get().getValue());
     }
 
-    // Run the event loop until all consumers process the post-registration
-    // objects
+    /*
+     * Run the event loop until all consumers process the post-registration
+     * objects
+     */
     bool success = runUntil(
         evb,
         [&]() {
@@ -2157,8 +2229,10 @@ TEST(ChangeTrackerTest, StressRegistrationWithContinuousPublishing) {
             << " did not process post-registration object " << expectedValue;
       }
 
-      // Verify consumer did NOT process pre-registration objects from this
-      // cycle
+      /*
+       * Verify consumer did NOT process pre-registration objects from this
+       * cycle
+       */
       for (int preRegValue : preRegistrationValues) {
         EXPECT_TRUE(processedSet.find(preRegValue) == processedSet.end())
             << "Consumer " << i << " in cycle " << cycle
@@ -2166,8 +2240,10 @@ TEST(ChangeTrackerTest, StressRegistrationWithContinuousPublishing) {
       }
     }
 
-    // Terminate and deregister all consumers (IMPORTANT: keep same objects
-    // around)
+    /*
+     * Terminate and deregister all consumers (IMPORTANT: keep same objects
+     * around)
+     */
     for (int i = 0; i < numConsumers; i++) {
       consumers[i]->terminate();
       consumers[i]->deregisterFromTracker();
@@ -2183,8 +2259,10 @@ TEST(ChangeTrackerTest, StressRegistrationWithContinuousPublishing) {
       << "Change list should be empty after all cycles";
 }
 
-// Test that the callback receives the correct TrackableObject and can access
-// its data
+/*
+ * Test that the callback receives the correct TrackableObject and can access
+ * its data
+ */
 TEST(ChangeTrackerTest, CallbackReceivesTrackableObject) {
   // Create a change tracker
   ChangeTracker<TestObject> tracker("CallbackTracker");
@@ -2250,8 +2328,10 @@ TEST(ChangeTrackerTest, CallbackReceivesTrackableObject) {
   // Verify the callback was called for each object with correct data
   ASSERT_EQ(callbackData.size(), 3);
 
-  // Verify the callback received the correct TrackableObject pointers and
-  // values
+  /*
+   * Verify the callback received the correct TrackableObject pointers and
+   * values
+   */
   EXPECT_EQ(callbackData[0].first, object1);
   EXPECT_EQ(callbackData[0].second, 100);
 
@@ -2305,8 +2385,10 @@ TEST(ChangeTrackerTest, CallbackReceivesTrackableObject) {
   evb.loop();
 }
 
-// Test polled mode where same object is published multiple times and consumer
-// gets latest change
+/*
+ * Test polled mode where same object is published multiple times and consumer
+ * gets latest change
+ */
 TEST(ChangeTrackerTest, PolledModeSameObjectMultiplePublishes) {
   // Create a change tracker
   ChangeTracker<TestObject> tracker("PolledTracker");
@@ -2330,8 +2412,10 @@ TEST(ChangeTrackerTest, PolledModeSameObjectMultiplePublishes) {
       consumer->getConsumptionMode(),
       Consumer<TestObject>::ConsumptionMode::POLLED);
 
-  // Publish the same object multiple times with different values
-  // This simulates rapid updates to the same object before polling occurs
+  /*
+   * Publish the same object multiple times with different values
+   * This simulates rapid updates to the same object before polling occurs
+   */
   producer.updateAndPublish(object, 10); // First update
   producer.updateAndPublish(object, 20); // Second update
   producer.updateAndPublish(object, 30); // Third update
@@ -2349,8 +2433,10 @@ TEST(ChangeTrackerTest, PolledModeSameObjectMultiplePublishes) {
         .start();
   };
 
-  // Schedule timer to fire after all updates are published (simulates poll
-  // timer)
+  /*
+   * Schedule timer to fire after all updates are published (simulates poll
+   * timer)
+   */
   auto timer = folly::AsyncTimeout::schedule(
       std::chrono::milliseconds(
           100), // 100ms delay to ensure all updates are queued
@@ -2365,16 +2451,20 @@ TEST(ChangeTrackerTest, PolledModeSameObjectMultiplePublishes) {
       "Timeout waiting for polled consumer to process the latest change");
   ASSERT_TRUE(success);
 
-  // Verify the consumer processed only ONE item (the latest change)
-  // This is the key behavior: multiple publishes of same object should coalesce
+  /*
+   * Verify the consumer processed only ONE item (the latest change)
+   * This is the key behavior: multiple publishes of same object should coalesce
+   */
   const auto& processedItems = consumer->getProcessedItems();
   ASSERT_EQ(processedItems.size(), 1);
 
   // Verify the consumer got the LATEST value (50), not any intermediate values
   EXPECT_EQ(processedItems[0], 50);
 
-  // Verify that intermediate values (10, 20, 30, 40) were NOT processed
-  // This demonstrates change coalescing in polled mode
+  /*
+   * Verify that intermediate values (10, 20, 30, 40) were NOT processed
+   * This demonstrates change coalescing in polled mode
+   */
   for (int intermediateValue : {10, 20, 30, 40}) {
     bool foundIntermediate = false;
     for (int processedValue : processedItems) {
@@ -2401,8 +2491,10 @@ TEST(ChangeTrackerTest, PolledModeSameObjectMultiplePublishes) {
   evb.loop();
 }
 
-// Test polled mode where changes are published BEFORE consumer registration
-// Consumer should only receive changes published AFTER registration
+/*
+ * Test polled mode where changes are published BEFORE consumer registration
+ * Consumer should only receive changes published AFTER registration
+ */
 TEST(ChangeTrackerTest, PolledModeConsumerRegistersAfterPublish) {
   // Create a change tracker
   ChangeTracker<TestObject> tracker("PolledAfterPublishTracker");
@@ -2413,22 +2505,28 @@ TEST(ChangeTrackerTest, PolledModeConsumerRegistersAfterPublish) {
   // Create an event base for scheduling coroutines
   folly::EventBase evb;
 
-  // FIRST register a consumer in polled mode but DON'T start its timer yet
-  // This ensures there are consumers registered so changes will be added to
-  // change list
+  /*
+   * FIRST register a consumer in polled mode but DON'T start its timer yet
+   * This ensures there are consumers registered so changes will be added to
+   * change list
+   */
   auto firstConsumer =
       std::make_shared<TestConsumer>(tracker, "FirstPolledConsumer");
   firstConsumer->registerWithTracker();
   firstConsumer->setPolledMode();
 
-  // Create some objects and publish them AFTER first consumer registration
-  // but BEFORE second consumer registration
+  /*
+   * Create some objects and publish them AFTER first consumer registration
+   * but BEFORE second consumer registration
+   */
   auto* object1 = producer.createObject(1);
   auto* object2 = producer.createObject(2);
   auto* object3 = producer.createObject(3);
 
-  // Publish changes AFTER first consumer registration but BEFORE second
-  // consumer registration
+  /*
+   * Publish changes AFTER first consumer registration but BEFORE second
+   * consumer registration
+   */
   producer.publishChange(object1);
   producer.publishChange(object2);
   producer.publishChange(object3);
@@ -2436,8 +2534,10 @@ TEST(ChangeTrackerTest, PolledModeConsumerRegistersAfterPublish) {
   // Verify that changes are in the tracker since there's a registered consumer
   EXPECT_FALSE(tracker.getChangeList().empty());
 
-  // NOW register the SECOND consumer in polled mode AFTER the initial changes
-  // were published
+  /*
+   * NOW register the SECOND consumer in polled mode AFTER the initial changes
+   * were published
+   */
   auto secondConsumer =
       std::make_shared<TestConsumer>(tracker, "SecondPolledConsumer");
   secondConsumer->registerWithTracker();
@@ -2455,10 +2555,12 @@ TEST(ChangeTrackerTest, PolledModeConsumerRegistersAfterPublish) {
   EXPECT_EQ(firstConsumer->getProcessedItems().size(), 0);
   EXPECT_EQ(secondConsumer->getProcessedItems().size(), 0);
 
-  // CRITICAL PART: Call consumeChanges on the second consumer
-  // It will go through the list but won't process anything because objects were
-  // published before registration Due to a bug, when it reaches the end without
-  // consuming, it's not added to the ready list
+  /*
+   * CRITICAL PART: Call consumeChanges on the second consumer
+   * It will go through the list but won't process anything because objects were
+   * published before registration Due to a bug, when it reaches the end without
+   * consuming, it's not added to the ready list
+   */
   auto secondConsumerEmptyRunCallback = [&secondConsumer, &evb]() noexcept {
     co_withExecutor(
         &evb,
@@ -2543,8 +2645,10 @@ TEST(ChangeTrackerTest, PolledModeConsumerRegistersAfterPublish) {
   evb.loop();
 }
 
-// Simple test with single polled consumer
-// Consumer registers first, consumes initial objects correctly
+/*
+ * Simple test with single polled consumer
+ * Consumer registers first, consumes initial objects correctly
+ */
 TEST(ChangeTrackerTest, SimplePolledConsumerReadyList) {
   // Create a change tracker
   ChangeTracker<TestObject> tracker("SimplePolledTracker");
@@ -2640,8 +2744,10 @@ TEST(ChangeTrackerTest, SimplePolledConsumerReadyList) {
   evb.loop();
 }
 
-// Test that publishing an object without any consumers does not call the
-// callback
+/*
+ * Test that publishing an object without any consumers does not call the
+ * callback
+ */
 TEST(ChangeTrackerTest, PublishWithoutConsumersNoCallback) {
   // Create a change tracker
   ChangeTracker<TestObject> tracker("TestTracker");
@@ -2762,8 +2868,10 @@ TEST(ChangeTrackerTest, JoinReadyConsumer) {
   evb.loop();
 }
 
-// Test Case 1b: Join consumer when existing consumer has consumed all items
-// and is ready (marker is nullptr). The new consumer should also become ready.
+/*
+ * Test Case 1b: Join consumer when existing consumer has consumed all items
+ * and is ready (marker is nullptr). The new consumer should also become ready.
+ */
 TEST(ChangeTrackerTest, JoinReadyConsumerWithNullptrMarker) {
   ChangeTracker<TestObject> tracker("JoinReadyNullptrTracker");
   TestProducer producer(tracker);
@@ -2785,8 +2893,10 @@ TEST(ChangeTrackerTest, JoinReadyConsumerWithNullptrMarker) {
           }))
           .start();
 
-  // Publish and consume an item so consumer1 reaches ready state with
-  // marker == nullptr (as opposed to nullopt)
+  /*
+   * Publish and consume an item so consumer1 reaches ready state with
+   * marker == nullptr (as opposed to nullopt)
+   */
   auto* object1 = producer.createObject(1);
   producer.publishChange(object1);
 
@@ -2963,8 +3073,10 @@ TEST(ChangeTrackerTest, JoinPendedConsumer) {
   evb.loop();
 }
 
-// Test Case 3: Join consumer when existing consumer is pended, then publish
-// more items
+/*
+ * Test Case 3: Join consumer when existing consumer is pended, then publish
+ * more items
+ */
 TEST(ChangeTrackerTest, JoinConsumerPendedWithNewItems) {
   // Create a change tracker
   ChangeTracker<TestObject> tracker("JoinPendedNewItemsTracker");
@@ -3069,9 +3181,11 @@ TEST(ChangeTrackerTest, JoinConsumerPendedWithNewItems) {
   EXPECT_EQ(finalItems1[4], 5);
   EXPECT_EQ(finalItems1[5], 6);
 
-  // Verify consumer2 processed items from where it joined (2, 3, 4, 5, 6)
-  // This is the critical test - consumer2 should process items 4, 5, 6
-  // because its bit was set in those items when it joined
+  /*
+   * Verify consumer2 processed items from where it joined (2, 3, 4, 5, 6)
+   * This is the critical test - consumer2 should process items 4, 5, 6
+   * because its bit was set in those items when it joined
+   */
   const auto& finalItems2 = consumer2->getProcessedItems();
   ASSERT_EQ(finalItems2.size(), 5);
   EXPECT_EQ(finalItems2[0], 2);
@@ -3200,8 +3314,10 @@ TEST(ChangeTrackerTest, MultipleConsumersJoinSamePendedPosition) {
   EXPECT_EQ(items1[2], 3);
   EXPECT_EQ(items1[3], 4);
 
-  // Consumer2 and Consumer3 should have processed items from where they joined
-  // (2, 3, 4)
+  /*
+   * Consumer2 and Consumer3 should have processed items from where they joined
+   * (2, 3, 4)
+   */
   ASSERT_EQ(items2.size(), 3);
   EXPECT_EQ(items2[0], 2);
   EXPECT_EQ(items2[1], 3);
@@ -3304,9 +3420,11 @@ TEST(ChangeTrackerTest, DebugFacilityCallbacks) {
   std::string plainDisplayStr = plainConsumer->getDisplayString();
   EXPECT_TRUE(plainDisplayStr.find("Consumer@") != std::string::npos);
 
-  // Test debug flag functionality
-  // Note: We can't easily test the actual debug output without enabling the
-  // flag but we can test that the debug functions exist and work
+  /*
+   * Test debug flag functionality
+   * Note: We can't easily test the actual debug output without enabling the
+   * flag but we can test that the debug functions exist and work
+   */
   bool debugEnabled = facebook::neteng::fboss::bgp::changetracker::
       ChangeTrackerDebug::isDebugEnabled();
   // Debug should be disabled by default
@@ -3379,8 +3497,10 @@ TEST(ChangeTrackerTest, IsConsumerSetOnTrackableObject) {
       "Timeout waiting for consumers to pend on dummy object");
   ASSERT_TRUE(success);
 
-  // NOW consumers are blocked on the dummy object, we can test with stable
-  // state Create test objects
+  /*
+   * NOW consumers are blocked on the dummy object, we can test with stable
+   * state Create test objects
+   */
   auto* object1 = producer.createObject(1);
   auto* object2 = producer.createObject(2);
   auto* object3 = producer.createObject(3);
@@ -3702,12 +3822,14 @@ TEST(ChangeTrackerTest, EmptyBitmapTest) {
   evb.loop();
 }
 
-// Test iterator-based consumption with YIELD behavior
-// This test verifies that when using iterateChanges():
-// 1. Consumer processes items until YIELD
-// 2. end() is called to add consumer to pending list
-// 3. Marker stays on the item that caused YIELD (not advanced)
-// 4. Consumer can be resumed and continues from same item
+/*
+ * Test iterator-based consumption with YIELD behavior
+ * This test verifies that when using iterateChanges():
+ * 1. Consumer processes items until YIELD
+ * 2. end() is called to add consumer to pending list
+ * 3. Marker stays on the item that caused YIELD (not advanced)
+ * 4. Consumer can be resumed and continues from same item
+ */
 TEST(ChangeTrackerTest, IteratorBasedConsumptionWithYield) {
   // Create a change tracker
   ChangeTracker<TestObject> tracker("IteratorYieldTracker");
@@ -3743,8 +3865,10 @@ TEST(ChangeTrackerTest, IteratorBasedConsumptionWithYield) {
   EXPECT_EQ(processedItems[0], 1);
   EXPECT_EQ(processedItems[1], 2);
 
-  // CRITICAL: Verify consumer is on pending list of object3
-  // This proves end() was called
+  /*
+   * CRITICAL: Verify consumer is on pending list of object3
+   * This proves end() was called
+   */
   ASSERT_NE(consumer->getPendedOnItem(), nullptr);
   EXPECT_EQ(consumer->getPendedOnItem()->getTypedObject().getValue(), 3);
 
@@ -3752,8 +3876,10 @@ TEST(ChangeTrackerTest, IteratorBasedConsumptionWithYield) {
   ASSERT_NE(consumer->getMarker(), nullptr);
   EXPECT_EQ(consumer->getMarker()->getTypedObject().getValue(), 3);
 
-  // MOST CRITICAL: Verify consumer is ACTUALLY in the item's pendingConsumers
-  // list This is the REAL proof that end() was called correctly
+  /*
+   * MOST CRITICAL: Verify consumer is ACTUALLY in the item's pendingConsumers
+   * list This is the REAL proof that end() was called correctly
+   */
   auto* item3 = consumer->getMarker();
   bool foundInPendingList = false;
   for (const auto& pendingConsumer : item3->pendingConsumers) {
@@ -3856,8 +3982,10 @@ TEST(ChangeTrackerTest, ChangeListHasOnlyOneItem_MultipleItems) {
   consumer->deregisterFromTracker();
 }
 
-// Test changeListHasOnlyOneItem transitions correctly as items are
-// added/removed
+/*
+ * Test changeListHasOnlyOneItem transitions correctly as items are
+ * added/removed
+ */
 TEST(ChangeTrackerTest, ChangeListHasOnlyOneItem_Transitions) {
   TestableChangeTracker tracker("TestTracker");
 
@@ -3883,11 +4011,13 @@ TEST(ChangeTrackerTest, ChangeListHasOnlyOneItem_Transitions) {
   consumer->deregisterFromTracker();
 }
 
-// Test that items published with consumer bitmap 0 (no consumers set) are
-// properly cleaned up from the change list and don't remain forever.
-// This verifies that when an item has an empty consumer bitmap (meaning no
-// consumers need to process it), the item is immediately removed from the
-// change list rather than staying there indefinitely.
+/*
+ * Test that items published with consumer bitmap 0 (no consumers set) are
+ * properly cleaned up from the change list and don't remain forever.
+ * This verifies that when an item has an empty consumer bitmap (meaning no
+ * consumers need to process it), the item is immediately removed from the
+ * change list rather than staying there indefinitely.
+ */
 TEST(ChangeTrackerTest, ItemsWithEmptyBitmapAreCleanedUp) {
   // Create a change tracker
   ChangeTracker<TestObject> tracker("TestTracker");
@@ -3943,8 +4073,10 @@ TEST(ChangeTrackerTest, ItemsWithEmptyBitmapAreCleanedUp) {
   // Create an empty consumer bitmap (bitmap 0 - no consumers set)
   ConsumerBitmap emptyBitmap;
 
-  // Publish changes with empty bitmap - these items should be cleaned up
-  // immediately since no consumers need to process them
+  /*
+   * Publish changes with empty bitmap - these items should be cleaned up
+   * immediately since no consumers need to process them
+   */
   tracker.publishChange(object1, emptyBitmap);
   tracker.publishChange(object2, emptyBitmap);
   tracker.publishChange(object3, emptyBitmap);
@@ -3954,8 +4086,10 @@ TEST(ChangeTrackerTest, ItemsWithEmptyBitmapAreCleanedUp) {
     evb.loopOnce(EVLOOP_NONBLOCK);
   }
 
-  // Verify that all items with empty bitmap are cleaned up from the change list
-  // This test will FAIL if items remain on the change list forever
+  /*
+   * Verify that all items with empty bitmap are cleaned up from the change list
+   * This test will FAIL if items remain on the change list forever
+   */
   EXPECT_TRUE(tracker.getChangeList().empty())
       << "Items published with empty consumer bitmap (bitmap 0) should be "
          "immediately cleaned up from the change list, but "
@@ -4006,8 +4140,10 @@ TEST(ChangeTrackerTest, ItemsWithEmptyBitmapAreCleanedUp) {
   evb.loop();
 }
 
-// Test that multiple items published with empty bitmap while consumers are
-// actively processing other items are still cleaned up properly
+/*
+ * Test that multiple items published with empty bitmap while consumers are
+ * actively processing other items are still cleaned up properly
+ */
 TEST(ChangeTrackerTest, EmptyBitmapItemsCleanedUpDuringActiveProcessing) {
   // Create a change tracker
   ChangeTracker<TestObject> tracker("TestTracker");
@@ -4086,13 +4222,17 @@ TEST(ChangeTrackerTest, EmptyBitmapItemsCleanedUpDuringActiveProcessing) {
     evb.loopOnce(EVLOOP_NONBLOCK);
   }
 
-  // Check that items with empty bitmap were cleaned up (or at least didn't
-  // increase the list size significantly)
-  // The change list should not grow indefinitely due to empty bitmap items
+  /*
+   * Check that items with empty bitmap were cleaned up (or at least didn't
+   * increase the list size significantly)
+   * The change list should not grow indefinitely due to empty bitmap items
+   */
   size_t listSizeAfter = tracker.getChangeList().size();
 
-  // The empty bitmap items should have been cleaned up, so list size should
-  // not have grown by 3 (the number of empty bitmap items we published)
+  /*
+   * The empty bitmap items should have been cleaned up, so list size should
+   * not have grown by 3 (the number of empty bitmap items we published)
+   */
   EXPECT_LE(listSizeAfter, listSizeBeforeEmptyBitmapPublish)
       << "Items published with empty consumer bitmap should be cleaned up "
          "immediately and not accumulate in the change list. "
@@ -4138,9 +4278,11 @@ TEST(ChangeTrackerTest, EmptyBitmapItemsCleanedUpDuringActiveProcessing) {
   evb.loop();
 }
 
-// Test that demonstrates O(1) removal of consumers from pending list
-// (T250391172) This test verifies that removePendingConsumer uses iterator_to()
-// for O(1) removal instead of std::find which was O(n)
+/*
+ * Test that demonstrates O(1) removal of consumers from pending list
+ * (T250391172) This test verifies that removePendingConsumer uses iterator_to()
+ * for O(1) removal instead of std::find which was O(n)
+ */
 TEST(ChangeTrackerTest, PendingConsumerRemovalIsO1) {
   // Create a change tracker
   ChangeTracker<TestObject> tracker("TestTracker");
@@ -4151,9 +4293,11 @@ TEST(ChangeTrackerTest, PendingConsumerRemovalIsO1) {
   // Create an object
   auto* object1 = producer.createObject(1);
 
-  // Create multiple consumers - having many consumers helps demonstrate the
-  // issue With O(n) removal and many consumers, removal would be slow With O(1)
-  // removal via intrusive list, it's always fast
+  /*
+   * Create multiple consumers - having many consumers helps demonstrate the
+   * issue With O(n) removal and many consumers, removal would be slow With O(1)
+   * removal via intrusive list, it's always fast
+   */
   std::vector<std::shared_ptr<TestConsumer>> consumers;
   const int numConsumers = 100;
 
@@ -4213,8 +4357,10 @@ TEST(ChangeTrackerTest, PendingConsumerRemovalIsO1) {
   // Verify the pending list size matches
   EXPECT_EQ(item->pendingConsumers.size(), static_cast<size_t>(numConsumers));
 
-  // Now remove a consumer from the middle - this should be O(1) with intrusive
-  // list Previously with std::find + erase on std::list, this was O(n)
+  /*
+   * Now remove a consumer from the middle - this should be O(1) with intrusive
+   * list Previously with std::find + erase on std::list, this was O(n)
+   */
   auto& middleConsumer = consumers[numConsumers / 2];
   EXPECT_TRUE(middleConsumer->pendingConsumerHook.is_linked());
 
@@ -4640,9 +4786,11 @@ TEST(ChangeTrackerTest, DoubleRegistrationPrevented) {
   consumer->deregisterFromTracker();
 }
 
-// ============================================================
-// Consumer Marker Staleness Detection Tests
-// ============================================================
+/*
+ * ============================================================
+ * Consumer Marker Staleness Detection Tests
+ * ============================================================
+ */
 
 TEST(ChangeTrackerTest, StalenessNotStaleWhenMarkerIsNull) {
   ChangeTracker<TestObject> tracker("StalenessNullMarkerTracker");
@@ -5052,9 +5200,11 @@ TEST(ChangeTrackerTest, ConsumeWithIteratorUntil_YieldBeforeBoundary) {
   consumer->deregisterFromTracker();
 }
 
-// ============================================================
-// attachToMarkerAhead Tests
-// ============================================================
+/*
+ * ============================================================
+ * attachToMarkerAhead Tests
+ * ============================================================
+ */
 
 namespace {
 
@@ -5328,8 +5478,10 @@ TEST(ChangeTrackerTest, AttachToMarkerAhead_CurrentAlreadyReady_NoOp) {
   producer.publishChange(object1);
   producer.publishChange(object2);
 
-  // Drive current to the end so it is ready with a null marker; target stays
-  // behind at item 1.
+  /*
+   * Drive current to the end so it is ready with a null marker; target stays
+   * behind at item 1.
+   */
   advanceConsumerBySteps(current, 2);
   ASSERT_TRUE(current->isReady());
   ASSERT_EQ(current->getMarker(), nullptr);
@@ -5365,8 +5517,10 @@ TEST(
   current->registerWithTracker();
   target->registerWithTracker();
 
-  // object1 goes to both consumers; object2 is published to target only, so it
-  // carries target's bit but not current's.
+  /*
+   * object1 goes to both consumers; object2 is published to target only, so it
+   * carries target's bit but not current's.
+   */
   auto* object1 = producer.createObject(1);
   auto* object2 = producer.createObject(2);
   producer.publishChange(object1);
@@ -5375,8 +5529,10 @@ TEST(
   BitmapUtils::setBit(targetOnly, target->getBitPosition());
   tracker.publishChange(object2, targetOnly);
 
-  // Move target ahead to object2 (the item current's bit is not on); current
-  // stays pended at object1.
+  /*
+   * Move target ahead to object2 (the item current's bit is not on); current
+   * stays pended at object1.
+   */
   advanceConsumerBySteps(target, 1);
   ASSERT_NE(target->getMarker(), nullptr);
   ASSERT_EQ(target->getMarker()->getTypedObject().getValue(), 2);
@@ -5385,9 +5541,11 @@ TEST(
 
   tracker.attachToMarkerAhead(current, target);
 
-  // The raw walk stops at target's marker by pointer identity even though
-  // current does not own object2, so current acks object1 and parks at object2,
-  // aligned with target -- without running its process callback.
+  /*
+   * The raw walk stops at target's marker by pointer identity even though
+   * current does not own object2, so current acks object1 and parks at object2,
+   * aligned with target -- without running its process callback.
+   */
   EXPECT_FALSE(current->isReady());
   ASSERT_NE(current->getMarker(), nullptr);
   EXPECT_EQ(current->getMarker()->getTypedObject().getValue(), 2);
@@ -5395,8 +5553,10 @@ TEST(
   EXPECT_FALSE(current->isInReadyList());
   EXPECT_TRUE(current->getProcessedItems().empty());
 
-  // object1 was acked by both consumers -> fully processed -> freed; object2
-  // remains, owned by target and now also current's parked marker.
+  /*
+   * object1 was acked by both consumers -> fully processed -> freed; object2
+   * remains, owned by target and now also current's parked marker.
+   */
   EXPECT_EQ(tracker.getChangeList().size(), 1u);
   ASSERT_NE(target->getMarker(), nullptr);
   EXPECT_EQ(target->getMarker()->getTypedObject().getValue(), 2);
@@ -5405,9 +5565,11 @@ TEST(
   target->deregisterFromTracker();
 }
 
-// ============================================================
-// attachToMarkerBehind Tests
-// ============================================================
+/*
+ * ============================================================
+ * attachToMarkerBehind Tests
+ * ============================================================
+ */
 
 namespace {
 
@@ -5462,9 +5624,11 @@ TEST(ChangeTrackerTest, AttachToMarkerBehind_RewindsSourceAndRetiresTarget) {
   producer.publishChange(object4);
   producer.publishChange(object5);
 
-  // Move source ahead to item 3 (acking items 1-2 without processing them);
-  // target stays behind at item 1. Items survive because target still owns
-  // them.
+  /*
+   * Move source ahead to item 3 (acking items 1-2 without processing them);
+   * target stays behind at item 1. Items survive because target still owns
+   * them.
+   */
   advanceConsumerBySteps(source, 2);
   ASSERT_NE(source->getMarker(), nullptr);
   ASSERT_EQ(source->getMarker()->getTypedObject().getValue(), 3);
@@ -5488,16 +5652,20 @@ TEST(ChangeTrackerTest, AttachToMarkerBehind_RewindsSourceAndRetiresTarget) {
   EXPECT_TRUE(isInPendingList(item1, source));
   EXPECT_FALSE(source->isInReadyList());
 
-  // source re-owns every item from item 1 to the end -- including the prefix it
-  // had already acked -- so it will reprocess them.
+  /*
+   * source re-owns every item from item 1 to the end -- including the prefix it
+   * had already acked -- so it will reprocess them.
+   */
   EXPECT_TRUE(tracker.isConsumerSetOnTrackableObject(object1, source));
   EXPECT_TRUE(tracker.isConsumerSetOnTrackableObject(object2, source));
   EXPECT_TRUE(tracker.isConsumerSetOnTrackableObject(object3, source));
   EXPECT_TRUE(tracker.isConsumerSetOnTrackableObject(object4, source));
   EXPECT_TRUE(tracker.isConsumerSetOnTrackableObject(object5, source));
 
-  // target is reset: marker null, unpended, owns no item all the way to the
-  // end.
+  /*
+   * target is reset: marker null, unpended, owns no item all the way to the
+   * end.
+   */
   EXPECT_EQ(target->getMarker(), nullptr);
   EXPECT_FALSE(isInPendingList(item1, target));
   EXPECT_FALSE(tracker.isConsumerSetOnTrackableObject(object1, target));
@@ -5533,8 +5701,10 @@ TEST(ChangeTrackerTest, AttachToMarkerBehind_ReadySourceRewindsToTarget) {
   producer.publishChange(object2);
   producer.publishChange(object3);
 
-  // Drive source off the end -> ready with a null marker; target stays at
-  // item1.
+  /*
+   * Drive source off the end -> ready with a null marker; target stays at
+   * item1.
+   */
   advanceConsumerBySteps(source, 3);
   ASSERT_TRUE(source->isReady());
   ASSERT_TRUE(source->isInReadyList());
@@ -5543,8 +5713,10 @@ TEST(ChangeTrackerTest, AttachToMarkerBehind_ReadySourceRewindsToTarget) {
 
   tracker.attachToMarkerBehind(source, target);
 
-  // source leaves the ready list, pends at target's marker, and owns the whole
-  // list again.
+  /*
+   * source leaves the ready list, pends at target's marker, and owns the whole
+   * list again.
+   */
   EXPECT_EQ(source->getMarker(), item1);
   EXPECT_FALSE(source->isReady());
   EXPECT_FALSE(source->isInReadyList());

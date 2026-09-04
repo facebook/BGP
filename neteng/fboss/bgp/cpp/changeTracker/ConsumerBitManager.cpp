@@ -100,8 +100,10 @@ ConsumerBitError ConsumerBitManager::freeConsumerBit(size_t bitPosition) {
         auto extendedLowerIt =
             availableIntervals_.find({lowerStart, bitPosition});
         if (extendedLowerIt != availableIntervals_.end()) {
-          // Create a new interval that spans from the lower start to the upper
-          // end
+          /*
+           * Create a new interval that spans from the lower start to the upper
+           * end
+           */
           size_t newStart = extendedLowerIt->first;
           availableIntervals_.erase(extendedLowerIt);
           availableIntervals_.insert({newStart, upperEnd});
@@ -131,8 +133,10 @@ bool ConsumerBitManager::isBitInUse(size_t bitPosition) const {
     return false;
   }
 
-  // Use the optimized findInterval function to check if the bit is in any
-  // available interval
+  /*
+   * Use the optimized findInterval function to check if the bit is in any
+   * available interval
+   */
   auto it = findInterval(bitPosition);
 
   // If the bit is in an available interval, it's not in use

@@ -104,8 +104,10 @@ TEST(ConsumerBitManagerTest, BitAllocationOrder) {
   // Get a new bit position - will reuse bit1 immediately
   size_t bit4 = bitManager->getConsumerBit();
 
-  // Verify the new bit is the same as the freed bit (ConsumerBitManager reuses
-  // freed bits immediately)
+  /*
+   * Verify the new bit is the same as the freed bit (ConsumerBitManager reuses
+   * freed bits immediately)
+   */
   EXPECT_EQ(bit1, bit4);
 
   // Free more bit positions

@@ -47,8 +47,10 @@ using ChangeItemList =
 template <typename T>
 class ChangeItem {
  public:
-  // Define the intrusive list type for pending consumers inside the class
-  // This defers instantiation until ChangeItem<T> is used
+  /*
+   * Define the intrusive list type for pending consumers inside the class
+   * This defers instantiation until ChangeItem<T> is used
+   */
   using PendingConsumerList =
       folly::SafeIntrusiveList<Consumer<T>, &Consumer<T>::pendingConsumerHook>;
 
@@ -66,9 +68,11 @@ class ChangeItem {
    * Destructor.
    */
   ~ChangeItem() {
-    // Note: We don't clear the reference in the trackable object here
-    // because the TrackableObject owns this ChangeItem via unique_ptr
-    // and will handle the cleanup itself.
+    /*
+     * Note: We don't clear the reference in the trackable object here
+     * because the TrackableObject owns this ChangeItem via unique_ptr
+     * and will handle the cleanup itself.
+     */
     if (changeListHook.is_linked()) {
       XLOG(DBG1, "ChangeItem destroyed without unlink");
     }
@@ -118,8 +122,10 @@ class ChangeItem {
   }
 
   void removePendingConsumer(std::shared_ptr<Consumer<T>> consumer) {
-    // O(1) removal using intrusive list iterator_to()
-    // Check if the consumer's hook is linked (i.e., it's in a pending list)
+    /*
+     * O(1) removal using intrusive list iterator_to()
+     * Check if the consumer's hook is linked (i.e., it's in a pending list)
+     */
     if (consumer && consumer->pendingConsumerHook.is_linked()) {
       pendingConsumers.erase(pendingConsumers.iterator_to(*consumer));
     }
@@ -134,8 +140,10 @@ class ChangeItem {
   // Bitmap of consumers that need to process this item
   ConsumerBitmap consumerBitmap;
 
-  // List of consumers that are pended on this item
-  // Uses intrusive list for O(1) removal via iterator_to()
+  /*
+   * List of consumers that are pended on this item
+   * Uses intrusive list for O(1) removal via iterator_to()
+   */
   PendingConsumerList pendingConsumers;
 };
 

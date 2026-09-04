@@ -54,8 +54,10 @@ class Consumer : public std::enable_shared_from_this<Consumer<T>> {
 
   // Enum to represent the consumption mode
   enum class ConsumptionMode {
-    // Event-driven mode: suspend when no items available, resume on
-    // notification
+    /*
+     * Event-driven mode: suspend when no items available, resume on
+     * notification
+     */
     TRIGGERED,
     // Timer-driven mode: process available items periodically, no suspension
     POLLED
@@ -380,8 +382,10 @@ void Consumer<T>::registerWithTracker() {
   // Register with the tracker
   bitPosition_ = tracker.registerConsumer(this->shared_from_this());
 
-  // This needs to be done here to allow for deregistration to cancel coro in
-  // triggered mode
+  /*
+   * This needs to be done here to allow for deregistration to cancel coro in
+   * triggered mode
+   */
   shouldTerminate_ = false;
   // Clean up any pending coroutine state first
   if (pendingCoroutine_) {
@@ -413,9 +417,11 @@ folly::coro::Task<void> Consumer<T>::consumeChanges() {
     item->removePendingConsumer(this->shared_from_this());
   }
 
-  // Initialize result to CONTINUE. In case if processChangeItemCallback is
-  // not initialized, we just loop through all change items and be done with
-  // the consumer
+  /*
+   * Initialize result to CONTINUE. In case if processChangeItemCallback is
+   * not initialized, we just loop through all change items and be done with
+   * the consumer
+   */
   auto result = ProcessResult::CONTINUE;
   while (!shouldTerminate_) {
     CT_DEBUG_LOG(
@@ -432,8 +438,10 @@ folly::coro::Task<void> Consumer<T>::consumeChanges() {
           getDisplayString(),
           consumptionMode_ == ConsumptionMode::POLLED ? "POLLED" : "TRIGGERED");
 
-      // we will either bail out, or suspend the coro
-      // in either case go to ready state
+      /*
+       * we will either bail out, or suspend the coro
+       * in either case go to ready state
+       */
       tracker.addToReadyConsumers(this->shared_from_this());
       if (consumptionMode_ == ConsumptionMode::POLLED) {
         CT_DEBUG_LOG(
@@ -587,8 +595,10 @@ folly::coro::Task<void> Consumer<T>::waitForNewItems() {
       "Consumer {}: Suspending coroutine to wait for new items",
       getDisplayString());
 
-  // Use our custom awaitable to suspend the coroutine
-  // This will store the coroutine handle in pendingCoroutine_
+  /*
+   * Use our custom awaitable to suspend the coroutine
+   * This will store the coroutine handle in pendingCoroutine_
+   */
   co_await SuspendAwaitable{this};
 
   CT_DEBUG_LOG(
@@ -599,9 +609,11 @@ folly::coro::Task<void> Consumer<T>::waitForNewItems() {
   // After being resumed, we should have a new marker
 }
 
-// Iterator-based interface implementation (for
-// enable_iterable_change_list_tracker) Get the next item in the change list
-// (forward declaration - defined in ChangeItem.h)
+/*
+ * Iterator-based interface implementation (for
+ * enable_iterable_change_list_tracker) Get the next item in the change list
+ * (forward declaration - defined in ChangeItem.h)
+ */
 template <typename T>
 inline ChangeItem<T>* get_next(
     const ChangeItem<T>* item,
@@ -657,9 +669,11 @@ void Consumer<T>::markProcessed(ChangeItem<T>* item) {
   // Remove from pending list since we're processing (not yielding)
   item->removePendingConsumer(this->shared_from_this());
 
-  // CRITICAL SAFETY: Find and save next item BEFORE clearing the bit
-  // This ensures that if the item is destroyed after clearing the bit,
-  // our marker will still be valid
+  /*
+   * CRITICAL SAFETY: Find and save next item BEFORE clearing the bit
+   * This ensures that if the item is destroyed after clearing the bit,
+   * our marker will still be valid
+   */
   auto* nextItem = get_next(item, tracker.getChangeList());
 
   // Skip items that don't have our bit set
@@ -708,10 +722,12 @@ void Consumer<T>::end() {
       getDisplayString(),
       tracker.getItemDisplayString(marker_));
 
-  // If we have a marker pointing to an item, add ourselves to its pending list
-  // This means consumer is YIELDING on this item
-  // If marker is null, consumer will already be in ready list by
-  // markProcessed()
+  /*
+   * If we have a marker pointing to an item, add ourselves to its pending list
+   * This means consumer is YIELDING on this item
+   * If marker is null, consumer will already be in ready list by
+   * markProcessed()
+   */
   if (marker_ != nullptr) {
     if (!pendingConsumerHook.is_linked()) {
       marker_->pendingConsumers.push_back(*this);
@@ -768,8 +784,10 @@ void Consumer<T>::iterateChangesUntilExcluding(ChangeItem<T>* untilMarker) {
   // Capture initial marker to detect progress at end of cycle
   auto* initialMarker = marker_;
 
-  // Tracks the last callback result. Defaults to CONTINUE so the boundary-first
-  // case (loop breaks before any callback runs) is treated as "did not yield".
+  /*
+   * Tracks the last callback result. Defaults to CONTINUE so the boundary-first
+   * case (loop breaks before any callback runs) is treated as "did not yield".
+   */
   ProcessResult result = ProcessResult::CONTINUE;
 
   // Iterator-based polling cycle to consume available changes
@@ -792,8 +810,10 @@ void Consumer<T>::iterateChangesUntilExcluding(ChangeItem<T>* untilMarker) {
     if (result == ProcessResult::YIELD) {
       CT_DEBUG_LOG(
           DBG3, "Consumer {}: Yielded during processing", getDisplayString());
-      // Break out of loop - end() will handle adding to pending list
-      // Do NOT call markProcessed() - marker stays on current item for retry
+      /*
+       * Break out of loop - end() will handle adding to pending list
+       * Do NOT call markProcessed() - marker stays on current item for retry
+       */
       break;
     }
 
@@ -805,9 +825,11 @@ void Consumer<T>::iterateChangesUntilExcluding(ChangeItem<T>* untilMarker) {
     recordMarkerAdvance();
   }
 
-  // Always call end() to properly register consumer state
-  // - If marker points to item (YIELD case): adds to pending list
-  // - If marker is null (finished): adds to ready list if needed
+  /*
+   * Always call end() to properly register consumer state
+   * - If marker points to item (YIELD case): adds to pending list
+   * - If marker is null (finished): adds to ready list if needed
+   */
   end();
 
   CT_DEBUG_LOG(
