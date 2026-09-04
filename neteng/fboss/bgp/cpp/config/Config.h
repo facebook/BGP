@@ -238,8 +238,10 @@ class Config {
     return peerGroups_;
   }
 
-  // Get the common config of a peer address
-  // (could be either static peer or dynamic peer)
+  /*
+   * Get the common config of a peer address
+   * (could be either static peer or dynamic peer)
+   */
   std::optional<const BgpCommonPeerGroupConfig> getConfigOfAPeer(
       const folly::IPAddress& peerAddr) const;
 
@@ -260,16 +262,20 @@ class Config {
   static std::shared_ptr<PolicyManager> createPolicyManager(
       const std::shared_ptr<facebook::bgp::Config>& config);
 
-  // helper functions to parse link bandwidth string with optional
-  // suffix (K, M, G) to number, support following two falvors. return none if
-  // parsing failure
-  //
-  // 1) return link speed in bits per second as int64_t
-  // e.g "1G" -> 1,000,000,000
+  /*
+   * helper functions to parse link bandwidth string with optional
+   * suffix (K, M, G) to number, support following two falvors. return none if
+   * parsing failure
+   *
+   * 1) return link speed in bits per second as int64_t
+   * e.g "1G" -> 1,000,000,000
+   */
   static std::optional<int64_t> getLinkBandwidthBps(const std::string& lbwStr);
 
-  // 2) per RFC, lbw will be represented as float in Bytes Per Sec
-  // "1G" -> 1.25e+8
+  /*
+   * 2) per RFC, lbw will be represented as float in Bytes Per Sec
+   * "1G" -> 1.25e+8
+   */
   std::optional<float> getLinkBandwidthBytesPerSec(
       const std::string& lbwStr,
       const thrift::BgpPeer& peer);

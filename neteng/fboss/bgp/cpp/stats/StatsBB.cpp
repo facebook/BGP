@@ -117,8 +117,10 @@ void incrNhtLinkHoldReleased() {
 }
 
 void initCounters() {
-  // Set them to zero, so that the keys are present on a device where
-  // dampening is off.
+  /*
+   * Set them to zero, so that the keys are present on a device where
+   * dampening is off.
+   */
   fb303::ThreadCachedServiceData::get()->setCounter(kNhtLinkHoldActive, 0);
   fb303::ThreadCachedServiceData::get()->setCounter(
       kNhtLinkHoldStarted + ".count", 0);

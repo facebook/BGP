@@ -38,10 +38,12 @@ BgpUcmpQuantizer::BgpUcmpQuantizer(
   std::set<uint64_t> fixedQuantizedBpsSet{
       fixedQuantizedBpsList.begin(), fixedQuantizedBpsList.end()};
 
-  // start from specified max-bps, go top down by each minStepBps
-  // set new output_bps if
-  // 1) error >= threshold or
-  // 2) input_bps is specified in fixedQuantizedBpsList.
+  /*
+   * start from specified max-bps, go top down by each minStepBps
+   * set new output_bps if
+   * 1) error >= threshold or
+   * 2) input_bps is specified in fixedQuantizedBpsList.
+   */
   uint64_t input_bps = *fixedQuantizedBpsSet.rbegin();
   uint64_t output_bps = *fixedQuantizedBpsSet.rbegin();
   while (input_bps > 0) {
@@ -61,8 +63,10 @@ BgpUcmpQuantizer::BgpUcmpQuantizer(
 float BgpUcmpQuantizer::quantize(float inputBytesPerSec) const {
   CHECK_GT(quantizedBpsMap.size(), 0);
   uint64_t inputBps = static_cast<uint64_t>(inputBytesPerSec) * 8;
-  // find closest key, return corresponding value
-  // find lower (1st value >= inputBps)
+  /*
+   * find closest key, return corresponding value
+   * find lower (1st value >= inputBps)
+   */
   auto lower = quantizedBpsMap.lower_bound(inputBps);
   if (lower == quantizedBpsMap.end()) {
     // inputBps > max-key

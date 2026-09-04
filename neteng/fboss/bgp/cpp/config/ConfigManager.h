@@ -92,9 +92,11 @@ class ConfigManager {
       const std::vector<folly::IPAddress>& peerAddrs);
 
  private:
-  // splitConfigPolicy_ is the default mode (separate policy file via
-  // --policy flag). Declared first so it is initialized before config_,
-  // allowing std::move of initialConfig in the constructor initializer list.
+  /*
+   * splitConfigPolicy_ is the default mode (separate policy file via
+   * --policy flag). Declared first so it is initialized before config_,
+   * allowing std::move of initialConfig in the constructor initializer list.
+   */
   bool splitConfigPolicy_{false};
   folly::Synchronized<std::pair<std::shared_ptr<const Config>, uint64_t>>
       config_;

@@ -37,9 +37,11 @@ using neteng::fboss::bgp_attr::AddPath;
 using neteng::fboss::bgp_attr::AdvertiseLinkBandwidth;
 using neteng::fboss::bgp_attr::ReceiveLinkBandwidth;
 
-// Set tunable properties of various BGP modules
-// These are typically not explicitly configured, but set by various users of
-// BGP like Bgp++, OpenR-BGP need slighlty different behaviors
+/*
+ * Set tunable properties of various BGP modules
+ * These are typically not explicitly configured, but set by various users of
+ * BGP like Bgp++, OpenR-BGP need slighlty different behaviors
+ */
 struct BgpSettings {
   BgpSettings(
       const ValidateRemoteAs validateRemoteAs = ValidateRemoteAs{true},
@@ -733,9 +735,11 @@ struct PeeringParams {
   std::optional<uint32_t> localConfedAs{std::nullopt};
   std::optional<uint32_t> asConfedId{std::nullopt};
   std::optional<std::string> peerTag{std::nullopt};
-  // This controls whether the transitive extended community of Link-Bandwidth
-  // is forwarded to peers or not.
-  // Note that this does not trigger origination of LBW community.
+  /*
+   * This controls whether the transitive extended community of Link-Bandwidth
+   * is forwarded to peers or not.
+   * Note that this does not trigger origination of LBW community.
+   */
   std::optional<AdvertiseLinkBandwidth> advertiseLinkBandwidth{std::nullopt};
   std::optional<ReceiveLinkBandwidth> receiveLinkBandwidth{std::nullopt};
   std::optional<float> linkBandwidthBps{std::nullopt};
@@ -744,8 +748,10 @@ struct PeeringParams {
   ValidateRemoteAs validateRemoteAs{true};
   std::optional<thrift::RouteLimit> preRouteLimit;
   std::optional<thrift::RouteLimit> postRouteLimit;
-  // This controls if loopback peer learnt prefixes can be
-  // announced(reflected)
+  /*
+   * This controls if loopback peer learnt prefixes can be
+   * announced(reflected)
+   */
   bool allowLoopbackReflection{false};
 
   // set from config directly

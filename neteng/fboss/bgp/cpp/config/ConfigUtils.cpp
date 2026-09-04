@@ -68,8 +68,10 @@ DeDuplicatedAsPath createBgpAttrAsPathDedup(
   result.reserve(asPaths.size());
   for (const auto& asPath : asPaths) {
     BgpAttrAsPathSegmentC pathSegC;
-    // Backward compatibility: use asns_4_byte if present
-    // TODO: deprecate asns T113736668
+    /*
+     * Backward compatibility: use asns_4_byte if present
+     * TODO: deprecate asns T113736668
+     */
     std::vector<uint32_t> asns;
     // Python thirft may default to empty list.
     if (asPath.asns_4_byte().is_set() && !asPath.asns_4_byte()->empty()) {

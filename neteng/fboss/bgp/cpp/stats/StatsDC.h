@@ -84,9 +84,11 @@ namespace RibStatsDC {
 
 void initCounters();
 
-// Device-level partial drain state: 1 when at least one prefix is partially
-// drained, 0 otherwise. Updated on each 0<->1 transition so a true<->false
-// flip is observable on ODS independent of the FSDB publish path.
+/*
+ * Device-level partial drain state: 1 when at least one prefix is partially
+ * drained, 0 otherwise. Updated on each 0<->1 transition so a true<->false
+ * flip is observable on ODS independent of the FSDB publish path.
+ */
 inline const auto kRibIsPartialDrain =
     fmt::format("{}.rib.is_partial_drain", kBgpcppTag);
 void setIsPartialDrain(bool isPartiallyDrained);

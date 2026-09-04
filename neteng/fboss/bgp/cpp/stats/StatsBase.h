@@ -105,9 +105,11 @@ constexpr auto kThriftSuspend = "bgpd.thriftSuspend"_fs;
 constexpr auto kRibInQueueSize = "bgpd.watchdog.rib_in_queue_size"_fs;
 constexpr auto kRibOutQueueSize = "bgpd.watchdog.rib_out_queue_size"_fs;
 
-// Bumped when a neighbor entry's portId and state fields disagree
-// (portId != 0 but state != Reachable, or vice versa); see
-// FsdbNeighborWatcher::isNeighborResolved.
+/*
+ * Bumped when a neighbor entry's portId and state fields disagree
+ * (portId != 0 but state != Reachable, or vice versa); see
+ * FsdbNeighborWatcher::isNeighborResolved.
+ */
 constexpr auto kNeighborPortIdStateMismatch =
     "bgpd.neighbor.portid_state_mismatch"_fs;
 
@@ -279,14 +281,18 @@ void setRunningVipSessions(uint32_t val);
 // add session state changes stats
 void addSessionStateChanges();
 
-// Set number of configured peers.
-// NOTE: Dynamic peers (subnet peer configs) are counted as 1, because of that
-// total number of peers established, running sessions could be higher than
-// configured peers.
+/*
+ * Set number of configured peers.
+ * NOTE: Dynamic peers (subnet peer configs) are counted as 1, because of that
+ * total number of peers established, running sessions could be higher than
+ * configured peers.
+ */
 void setConfiguredPeers(uint32_t val);
 
-// Set 1 if --policy gFlag has valid symbolic link
-// Set 0 if --policy gFlag does not have any symbolic link set
+/*
+ * Set 1 if --policy gFlag has valid symbolic link
+ * Set 0 if --policy gFlag does not have any symbolic link set
+ */
 void setPolicySymlink(uint32_t val);
 
 // Initialize non-graceful peers
@@ -352,8 +358,10 @@ void addIngressRouteFilterPeerGroupProcessTimeMs(
     int64_t timeMs,
     const std::string& peerGroupName);
 
-// Set the duration of the most recent ingress policy re-evaluation across all
-// peers
+/*
+ * Set the duration of the most recent ingress policy re-evaluation across all
+ * peers
+ */
 void setIngressPolicyAllPeersLastReEvaluationTimeMs(int64_t timeMs);
 
 // Configured switch prefix limits
@@ -591,9 +599,11 @@ inline const auto kFibBatchListSize =
 DECLARE_quantile_stat(fibBatchListSize);
 void addFibBatchListSize(int64_t size);
 
-// Device-level aggregate of adjRibIn entries across all peers.
-// Tracks combined size of adjRibInPathTree_ (add-path peers) and
-// adjRibInLiteTree_ (non-add-path peers).
+/*
+ * Device-level aggregate of adjRibIn entries across all peers.
+ * Tracks combined size of adjRibInPathTree_ (add-path peers) and
+ * adjRibInLiteTree_ (non-add-path peers).
+ */
 inline const auto kAdjRibInCount =
     fmt::format("{}.adj_rib_in.count", kBgpcppTag);
 void incrAdjRibInCount();
@@ -629,9 +639,11 @@ DECLARE_timeseries(rfPolicyUpdate);
 inline constexpr auto kRibPolicyMsgEnqueued = "bgpd.ribPolicy.numEnqueuedMsg";
 DECLARE_timeseries(ribPolicyMsgEnqueued);
 
-// rib policy messages coalesced into an already-pending same-slot message --
-// the redundant applies the merge queue saved the consumer; a spike means the
-// producers are churning (e.g., the empty->full route-attribute thrash)
+/*
+ * rib policy messages coalesced into an already-pending same-slot message --
+ * the redundant applies the merge queue saved the consumer; a spike means the
+ * producers are churning (e.g., the empty->full route-attribute thrash)
+ */
 inline constexpr auto kRibPolicyMsgCoalesced = "bgpd.ribPolicy.numCoalescedMsg";
 DECLARE_timeseries(ribPolicyMsgCoalesced);
 
@@ -658,8 +670,10 @@ inline constexpr auto ribBestPathAndFibProgrammingPauseTimeMs =
     "bgpd.rib.bestPathAndFibProgrammingPauseTimeMs";
 DECLARE_quantile_stat(ribBestPathAndFibProgrammingPauseTimeMs);
 
-// RouteAttributePolicy cache preservation counters
-// Cache hit/miss during overwriteRouteAttributes()
+/*
+ * RouteAttributePolicy cache preservation counters
+ * Cache hit/miss during overwriteRouteAttributes()
+ */
 inline constexpr auto kRaPolicyCacheHit =
     "bgpd.ribPolicy.routeAttributePolicyCache.hit";
 DECLARE_timeseries(raPolicyCacheHit);
@@ -697,8 +711,10 @@ inline constexpr auto kFibUcastUpdates = "fib.fibUcastUpdates";
 inline constexpr auto kTotalUcastRoutesKey = "fib.totalUcastRoutes";
 inline constexpr auto kFibSyncStatus = "fib.synced";
 
-// Is the fib agent currently programmable?
-// 1: yes, 0: no, -1: unknown
+/*
+ * Is the fib agent currently programmable?
+ * 1: yes, 0: no, -1: unknown
+ */
 inline constexpr auto kAgentProgrammable = "fib.agentProgrammable";
 
 // Counter for FIB flush events (when all non-local routes are removed)
@@ -721,8 +737,10 @@ void publishTotalUCastRoutes(uint32_t routeCount);
 // Set fib sync status
 void setFibSyncStatus(bool isSynced);
 
-// Set agentProgrammable to
-// true: 1 , false: 0
+/*
+ * Set agentProgrammable to
+ * true: 1 , false: 0
+ */
 void setAgentProgrammable(bool programmable);
 
 // Increment counter for FIB flush events
@@ -816,11 +834,15 @@ void initPeerCounters(const std::string& peerId);
 void clearPeerCounters(
     const std::string& peerIdOdsStr,
     const std::string& noGrRestartPeerId);
-// Clears only the per-peer EGRESS (sent) message counters (not prefix gauges
-// or recv counters). Used by the clearEgressCounters debug RPC.
+/*
+ * Clears only the per-peer EGRESS (sent) message counters (not prefix gauges
+ * or recv counters). Used by the clearEgressCounters debug RPC.
+ */
 void clearPeerEgressMessageCounters(const std::string& peerId);
-// Clears only the per-peer INGRESS (recv) message counters (not prefix gauges
-// or sent counters). Used by the clearIngressCounters debug RPC.
+/*
+ * Clears only the per-peer INGRESS (recv) message counters (not prefix gauges
+ * or sent counters). Used by the clearIngressCounters debug RPC.
+ */
 void clearPeerIngressMessageCounters(const std::string& peerId);
 void setTotalRcvdPrefixes(uint32_t val);
 void setTotalAcceptedPrefixes(uint32_t val);
@@ -945,8 +967,10 @@ inline constexpr auto kRejectectedOutboundRoutes =
     "peer_rejected_outbound_routes"_fs;
 void incrRejectedOutboundRoutes();
 
-// Outbound peer announcement events rejected because the resolved nexthop
-// cannot be encoded for the negotiated AFI.
+/*
+ * Outbound peer announcement events rejected because the resolved nexthop
+ * cannot be encoded for the negotiated AFI.
+ */
 DECLARE_timeseries(peer_invalid_nexthop_encoding);
 inline const auto kInvalidNexthopEncoding = fmt::format(
     "{}.{}.peer_invalid_nexthop_encoding",
@@ -958,15 +982,19 @@ DECLARE_timeseries(empty_gar_weights_rejects);
 inline constexpr auto kEmptyGarWeightsRejects = "empty_gar_weights_rejects"_fs;
 void incrEmptyGarWeightsRejects();
 
-// Device-level count of connection collisions resolved locally by closing the
-// losing connection (i.e. we sent a BN_CEASE_CONN_COLLISION_RES notification).
+/*
+ * Device-level count of connection collisions resolved locally by closing the
+ * losing connection (i.e. we sent a BN_CEASE_CONN_COLLISION_RES notification).
+ */
 DECLARE_timeseries(connection_collision_closed);
 inline constexpr auto kConnectionCollisionClosed =
     "connection_collision_closed"_fs;
 void incrConnectionCollisionClosed();
 
-// Device-level count of BN_CEASE connection-collision-resolution NOTIFICATIONs
-// received from peers (i.e. the peer resolved the collision by closing us).
+/*
+ * Device-level count of BN_CEASE connection-collision-resolution NOTIFICATIONs
+ * received from peers (i.e. the peer resolved the collision by closing us).
+ */
 DECLARE_timeseries(connection_collision_closed_by_peer);
 inline constexpr auto kConnectionCollisionClosedByPeer =
     "connection_collision_closed_by_peer"_fs;

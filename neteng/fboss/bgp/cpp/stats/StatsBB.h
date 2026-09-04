@@ -47,9 +47,11 @@ constexpr auto kAddPeersRejected = "bgpd.addPeers.rejected"_fs;
 constexpr auto kDelPeersSuccess = "bgpd.delPeers.success"_fs;
 constexpr auto kDelPeersRejected = "bgpd.delPeers.rejected"_fs;
 
-// The effective link-up hold setting. 0 when enable_netlink_dampening was not
-// requested, or when it was requested and forced off because
-// bgp_resolve_nexthops_from_interface_state is set.
+/*
+ * The effective link-up hold setting. 0 when enable_netlink_dampening was not
+ * requested, or when it was requested and forced off because
+ * bgp_resolve_nexthops_from_interface_state is set.
+ */
 constexpr auto kNetlinkDampeningEnabled =
     "bgpd.config.netlink_dampening_enabled"_fs;
 
@@ -71,8 +73,10 @@ void incrUnsetPeersPolicyFailure();
 
 namespace RibStatsBB {
 
-// unexpected CTE/CPS policy message received on a platform that does not
-// support it (e.g., BB receiving a RouteAttributePolicySetMsg)
+/*
+ * unexpected CTE/CPS policy message received on a platform that does not
+ * support it (e.g., BB receiving a RouteAttributePolicySetMsg)
+ */
 inline constexpr auto kUnsupportedPolicyMsg =
     "bgpd.ribPolicy.numUnsupportedPolicyMsg";
 DECLARE_timeseries(unsupportedPolicyMsg);

@@ -208,8 +208,10 @@ ConfigManager::createConfigWithUpdatedPeerGroupPolicies(
   // Create mutable copy of current config
   auto thriftConfig = currentConfig.getConfig();
 
-  // Update peer group policies only
-  // Peers inherit group policy via getValue() resolution in Config constructor.
+  /*
+   * Update peer group policies only
+   * Peers inherit group policy via getValue() resolution in Config constructor.
+   */
   if (thriftConfig.peer_groups().has_value()) {
     for (auto& peerGroup : thriftConfig.peer_groups().value()) {
       const auto& peerGroupName = *peerGroup.name();
@@ -227,9 +229,11 @@ ConfigManager::createConfigWithUpdatedPeerGroupPolicies(
 void ConfigManager::updateConfig(std::shared_ptr<const Config> newConfig) {
   auto wlock = config_.wlock();
 
-  // Write to file before updating in-memory config. If file write fails,
-  // exception propagates and neither config nor version is modified,
-  // keeping the system in a consistent, retryable state.
+  /*
+   * Write to file before updating in-memory config. If file write fails,
+   * exception propagates and neither config nor version is modified,
+   * keeping the system in a consistent, retryable state.
+   */
   if (!configFilePath_.empty()) {
     auto configToWrite = newConfig->getConfig();
     if (splitConfigPolicy_) {
@@ -239,8 +243,10 @@ void ConfigManager::updateConfig(std::shared_ptr<const Config> newConfig) {
     writeConfigToFile(configFilePath_, configToWrite);
   }
 
-  // Update in-memory config and increment version only after
-  // successful file write (or when no file path is configured).
+  /*
+   * Update in-memory config and increment version only after
+   * successful file write (or when no file path is configured).
+   */
   wlock->first = std::move(newConfig);
   ++wlock->second;
 }

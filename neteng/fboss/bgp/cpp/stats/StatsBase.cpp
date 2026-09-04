@@ -32,38 +32,40 @@ namespace facebook::bgp {
 namespace BgpStats {
 
 void initCounters() {
-  // When BGP restarts it is important to differentiate values from previous
-  // incarnation from those of this incarnation.  This is particularly true if
-  // the counter is used in an NHS check during push.  Here are the options we
-  // considered:
-  //
-  // -- Initialize to 0 or some "meaningful" value.  This is the wrong thing
-  //    to do.  Consider the case of "statefulGR".  If we initialize to zero,
-  //    after BGP restarts and before it has had time to reflect the
-  //    statefulGR status, fbagent will export a value of zero, and NHS will
-  //    have no idea about whether statefulGR failed or BGP is still being
-  //    initialized.
-  //
-  // -- Do not initialize.  In this case fbagent will not populate any value
-  //    until we set it to either 0 or 1.  This is correct as such, but we are
-  //    missing useful information (at least within one minute of granularity)
-  //    of how long it took the device to set this counter after it came up.
-  //    For example, if we miss five minutes of data, did the BGP take four
-  //    minutes to restart and one minute to set the counter, or did BGP take
-  //    one minute to restart and four minutes before it set the counter?
-  //
-  // -- Initialize to -1 or some "flag" which is not a normal running value.
-  //    Doing this takes care of both the above deficiencies.  We will know,
-  //    for example, that it took approximately 1 minute for BGP to restart
-  //    and four minutes before it set the counter, which can be useful
-  //    information.  One potential problem is that NHS, or whatever
-  //    monitoring system we use, now needs to differentiate a value of -1
-  //    from the other values, but this is not difficult because the
-  //    information is consistent.
-  //
-  // Caution: in some places in Stats we increment and decrement counters.  In
-  // those cases, we need to initialize to zero in order to get an accurate
-  // count.
+  /*
+   * When BGP restarts it is important to differentiate values from previous
+   * incarnation from those of this incarnation.  This is particularly true if
+   * the counter is used in an NHS check during push.  Here are the options we
+   * considered:
+   *
+   * -- Initialize to 0 or some "meaningful" value.  This is the wrong thing
+   *    to do.  Consider the case of "statefulGR".  If we initialize to zero,
+   *    after BGP restarts and before it has had time to reflect the
+   *    statefulGR status, fbagent will export a value of zero, and NHS will
+   *    have no idea about whether statefulGR failed or BGP is still being
+   *    initialized.
+   *
+   * -- Do not initialize.  In this case fbagent will not populate any value
+   *    until we set it to either 0 or 1.  This is correct as such, but we are
+   *    missing useful information (at least within one minute of granularity)
+   *    of how long it took the device to set this counter after it came up.
+   *    For example, if we miss five minutes of data, did the BGP take four
+   *    minutes to restart and one minute to set the counter, or did BGP take
+   *    one minute to restart and four minutes before it set the counter?
+   *
+   * -- Initialize to -1 or some "flag" which is not a normal running value.
+   *    Doing this takes care of both the above deficiencies.  We will know,
+   *    for example, that it took approximately 1 minute for BGP to restart
+   *    and four minutes before it set the counter, which can be useful
+   *    information.  One potential problem is that NHS, or whatever
+   *    monitoring system we use, now needs to differentiate a value of -1
+   *    from the other values, but this is not difficult because the
+   *    information is consistent.
+   *
+   * Caution: in some places in Stats we increment and decrement counters.  In
+   * those cases, we need to initialize to zero in order to get an accurate
+   * count.
+   */
   fb303::ThreadCachedServiceData::get()->setCounter(kRunningSessions, -1);
   fb303::ThreadCachedServiceData::get()->setCounter(kOpenRejectAsnMismatch, 0);
   fb303::ThreadCachedServiceData::get()->addStatExportType(
@@ -623,10 +625,12 @@ void markPlannedExit() {
 }
 
 void handlePreviousExit() {
-  // check whether exit-in-progress file exists. If so, remove
-  // and emit plannedExit=1. Otherwise emit plannedExit=0 (previous run
-  // of bgpd potentially crashed. Need to correlate with other signals to
-  // confirm)
+  /*
+   * check whether exit-in-progress file exists. If so, remove
+   * and emit plannedExit=1. Otherwise emit plannedExit=0 (previous run
+   * of bgpd potentially crashed. Need to correlate with other signals to
+   * confirm)
+   */
   if (boost::filesystem::exists(FLAGS_exit_in_progress_file)) {
     setPlannedExit(true);
     try {
@@ -929,8 +933,10 @@ void initCounters() {
   fb303::ThreadCachedServiceData::get()->setCounter(kAgentProgrammable, -1);
   fb303::ThreadCachedServiceData::get()->addStatExportType(
       kFibUcastUpdates, fb303::SUM);
-  // Initialize FIB flush counter - set both base and .sum counters
-  // so getCounter works before addStatValue is called
+  /*
+   * Initialize FIB flush counter - set both base and .sum counters
+   * so getCounter works before addStatValue is called
+   */
   fb303::ThreadCachedServiceData::get()->setCounter(
       std::string(kFibFlushed) + ".sum", 0);
   fb303::ThreadCachedServiceData::get()->addStatExportType(
@@ -961,8 +967,10 @@ void setFibSyncStatus(bool isSynced) {
       kFibSyncStatus, isSynced ? 1 : 0);
 }
 
-// Set agentProgrammable to
-// true: 1 , false: 0
+/*
+ * Set agentProgrammable to
+ * true: 1 , false: 0
+ */
 void setAgentProgrammable(bool programmable) {
   fb303::ThreadCachedServiceData::get()->setCounter(
       kAgentProgrammable, programmable ? 1 : 0);
@@ -1059,13 +1067,15 @@ void initCounters() {
 }
 
 namespace {
-// All per-peer counters keyed by peerIdOdsStr. Both initPeerCounters and
-// clearPeerCounters apply their operation through this helper, ensuring
-// symmetry. Add new per-peer counters here to get init + cleanup for free.
-//
-// kPeerSessionStateChanges and kNoGrRestartPeer are Stats rather than
-// Counters. clearPeerCounters removes their global and thread-local storage
-// separately after this helper clears the flat counters.
+/*
+ * All per-peer counters keyed by peerIdOdsStr. Both initPeerCounters and
+ * clearPeerCounters apply their operation through this helper, ensuring
+ * symmetry. Add new per-peer counters here to get init + cleanup for free.
+ *
+ * kPeerSessionStateChanges and kNoGrRestartPeer are Stats rather than
+ * Counters. clearPeerCounters removes their global and thread-local storage
+ * separately after this helper clears the flat counters.
+ */
 template <typename Fn>
 void forEachPeerCounterKey(const std::string& peerIdOdsStr, Fn&& fn) {
   // peer_{} — single arg (peerId)
@@ -1115,9 +1125,11 @@ void forEachPeerCounterKey(const std::string& peerIdOdsStr, Fn&& fn) {
       kPeerMessagesRecvRouteRefresh, kEbbPlatform, kBgpcppTag, peerIdOdsStr));
 }
 
-// Per-peer EGRESS (sent) message counters only. Used by
-// clearPeerEgressMessageCounters. Does NOT include prefix gauges (which are
-// live state) or recv counters.
+/*
+ * Per-peer EGRESS (sent) message counters only. Used by
+ * clearPeerEgressMessageCounters. Does NOT include prefix gauges (which are
+ * live state) or recv counters.
+ */
 template <typename Fn>
 void forEachPeerEgressMessageKey(const std::string& peerIdOdsStr, Fn&& fn) {
   fn(fmt::format(
@@ -1142,9 +1154,11 @@ void forEachPeerEgressMessageKey(const std::string& peerIdOdsStr, Fn&& fn) {
       kPeerMessagesSentSocketFailure, kEbbPlatform, kBgpcppTag, peerIdOdsStr));
 }
 
-// Per-peer INGRESS (recv) message counters only. Used by
-// clearPeerIngressMessageCounters. Does NOT include prefix gauges or sent
-// counters.
+/*
+ * Per-peer INGRESS (recv) message counters only. Used by
+ * clearPeerIngressMessageCounters. Does NOT include prefix gauges or sent
+ * counters.
+ */
 template <typename Fn>
 void forEachPeerIngressMessageKey(const std::string& peerIdOdsStr, Fn&& fn) {
   fn(fmt::format(
@@ -1212,8 +1226,10 @@ void setTotalAcceptedPrefixes(uint32_t val) {
       kTotalAcceptedPrefixes, val);
 }
 void incrementTotalPrefixesDroppedByLimit(uint32_t val) {
-  // Use the global ServiceData (not the thread-cached wrapper) so the increment
-  // writes through immediately and is visible to getCounter() on any thread.
+  /*
+   * Use the global ServiceData (not the thread-cached wrapper) so the increment
+   * writes through immediately and is visible to getCounter() on any thread.
+   */
   fb303::fbData->incrementCounter(kTotalPrefixesDroppedByLimit, val);
 }
 void setTotalPaths(uint32_t val) {

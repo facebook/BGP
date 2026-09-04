@@ -80,18 +80,20 @@ T& castToOptionalOrForward(T& t) {
   return t;
 }
 
-// This method is used for setting per peer config based on peer group config
-// and peer specific overrides.
-// @params: Getter - functor that gets member from peer
-//          std::optional<thrift::PeerGroup> - peer group config
-//          BgpPeer - peer specific overrides
-// @returns: std::optional<Field> - peer member
-// E.g. getValue([](auto&& peer) {
-//                 // `peer` can be thrift::PeerGroup or thrift::BgpPeer
-//                 return peer.is_confed_peer();
-//               },
-//               peerGroup,
-//               peer)
+/*
+ * This method is used for setting per peer config based on peer group config
+ * and peer specific overrides.
+ * @params: Getter - functor that gets member from peer
+ *          std::optional<thrift::PeerGroup> - peer group config
+ *          BgpPeer - peer specific overrides
+ * @returns: std::optional<Field> - peer member
+ * E.g. getValue([](auto&& peer) {
+ *                 // `peer` can be thrift::PeerGroup or thrift::BgpPeer
+ *                 return peer.is_confed_peer();
+ *               },
+ *               peerGroup,
+ *               peer)
+ */
 
 template <typename Getter>
 auto getValue(
@@ -364,8 +366,10 @@ std::string Config::getPolicyConfig() const {
   return configStr;
 }
 
-// Verify that ingress and egress policies configured for each peer
-// exist in policy config
+/*
+ * Verify that ingress and egress policies configured for each peer
+ * exist in policy config
+ */
 void Config::verifyIfPoliciesExist(
     const std::shared_ptr<const PolicyManager>& policy) const {
   for (const auto& peer : *config_.peers()) {
@@ -520,8 +524,10 @@ BgpCommonPeerGroupConfig Config::createCommonPeerGroupConfig(
     peerGroup = it->second;
   }
 
-  // TODO: change required fields in BgpPeer to optional:
-  // remote_as, local_addr, next_hop4, next_hop6
+  /*
+   * TODO: change required fields in BgpPeer to optional:
+   * remote_as, local_addr, next_hop4, next_hop6
+   */
 
   // connectMode
   std::optional<TBgpSessionConnectMode> connectMode(
@@ -605,8 +611,10 @@ BgpCommonPeerGroupConfig Config::createCommonPeerGroupConfig(
   auto peerTag =
       getValue([](auto&& peer) { return peer.peer_tag(); }, peerGroup, peer);
   if (!peer.peer_tag() && peer.type()) {
-    // Prefer legacy field peer.type over peerGroup.peer_tag if
-    // peer.peer_tag is not set.
+    /*
+     * Prefer legacy field peer.type over peerGroup.peer_tag if
+     * peer.peer_tag is not set.
+     */
     peerTag = peer.type().to_optional();
   }
 
@@ -651,9 +659,11 @@ BgpCommonPeerGroupConfig Config::createCommonPeerGroupConfig(
         fmt::format("Peer [{}] link_bandwidth_bps not set", *peer.peer_addr()));
   }
 
-  // Resolve link-bandwidth value whenever it is configured -- downstream
-  // consumers (policy engine, AGGREGATE_LOCAL) read it regardless of per-peer
-  // advertise/receive config.
+  /*
+   * Resolve link-bandwidth value whenever it is configured -- downstream
+   * consumers (policy engine, AGGREGATE_LOCAL) read it regardless of per-peer
+   * advertise/receive config.
+   */
   bool staticPeer = folly::IPAddress::validate(*peer.peer_addr());
   if (lbwStr.has_value()) {
     linkBandwidthBps = getLinkBandwidthBytesPerSec(*lbwStr, peer);
@@ -1123,8 +1133,10 @@ std::optional<const BgpCommonPeerGroupConfig> Config::getConfigOfAPeer(
     return itr->second->commonPeerGroupConfig;
   }
 
-  // Search in dynamic peers. Number of such prefixes currently are small so
-  // searching sequentially is fine. Can optimize later if needed.
+  /*
+   * Search in dynamic peers. Number of such prefixes currently are small so
+   * searching sequentially is fine. Can optimize later if needed.
+   */
   for (const auto& [peerPrefix, dynamicPeerConfig] : dynamicPeerToConfig_) {
     if (peerAddr.inSubnet(peerPrefix.first, peerPrefix.second)) {
       return dynamicPeerConfig->commonPeerGroupConfig;
@@ -1342,8 +1354,10 @@ bool Config::validatePeerExists(const std::string& peerAddr) const {
     auto mayBeNetwork = folly::IPAddress::tryCreateNetwork(peerAddr);
     if (mayBeNetwork.hasValue()) {
       auto prefix = mayBeNetwork.value();
-      // For dynamic peers, check if this prefix matches any configured dynamic
-      // peer
+      /*
+       * For dynamic peers, check if this prefix matches any configured dynamic
+       * peer
+       */
       for (const auto& [peerPrefix, _] : dynamicPeerToConfig_) {
         if (prefix.first.inSubnet(peerPrefix.first, peerPrefix.second)) {
           return true;
