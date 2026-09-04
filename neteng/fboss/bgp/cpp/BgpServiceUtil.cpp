@@ -189,9 +189,11 @@ TBgpPath createTBgpPath(const facebook::bgp::BgpPath& attr) {
   }
   path.cluster_list() = std::move(clusterList);
 
-  // TODO: need to change to bit test
-  // BgpUpdate2 doesn't populate if a value is set or not
-  // so need to change library code (same above)
+  /*
+   * TODO: need to change to bit test
+   * BgpUpdate2 doesn't populate if a value is set or not
+   * so need to change library code (same above)
+   */
   if (attr.getLocalPref()) {
     path.local_pref() = *attr.getLocalPref();
   }
@@ -443,9 +445,11 @@ std::unique_ptr<PeerToPolicyMap> resolveEffectivePeerPolicies(
     }
     const auto& resolved = peerConfig->commonPeerGroupConfig;
     auto& dirMap = (*result)[peerAddr.str()];
-    // Always include both directions with optional semantics:
-    // - std::nullopt means "clear/unset this policy"
-    // - A value means "set to this policy name"
+    /*
+     * Always include both directions with optional semantics:
+     * - std::nullopt means "clear/unset this policy"
+     * - A value means "set to this policy name"
+     */
     dirMap[facebook::bgp::bgp_policy::DIRECTION::IN] =
         resolved.ingressPolicyName;
     dirMap[facebook::bgp::bgp_policy::DIRECTION::OUT] =
@@ -467,9 +471,11 @@ std::vector<std::string> getUnsupportedBgpPeerFields(
     }
     auto&& ref = apache::thrift::op::get<Id>(peer);
     bool isSet = false;
-    // The lambda is instantiated for every field, and
-    // is_non_optional_field_set_manually_or_by_serializer only compiles for
-    // non-optional field_ref (not optional_field_ref).
+    /*
+     * The lambda is instantiated for every field, and
+     * is_non_optional_field_set_manually_or_by_serializer only compiles for
+     * non-optional field_ref (not optional_field_ref).
+     */
     if constexpr (requires {
                     apache::thrift::
                         is_non_optional_field_set_manually_or_by_serializer(

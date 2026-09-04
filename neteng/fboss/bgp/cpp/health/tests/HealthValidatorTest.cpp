@@ -1421,8 +1421,10 @@ TEST(HealthValidatorPrefixLimitDropsTest, WarnListsExactPerPeerCounts) {
 }
 
 CO_TEST_F(HealthValidatorTest, Peer_PrefixLimitDrops_SkippedWhenNoPeerMgr) {
-  // The fixture validator has a null PeerManagerBase, so per-peer enumeration
-  // is skipped rather than failed.
+  /*
+   * The fixture validator has a null PeerManagerBase, so per-peer enumeration
+   * is skipped rather than failed.
+   */
   auto report = co_await validator_->generateReport();
   auto* check = findCheck(report, HealthCheckId::PEER_PREFIX_LIMIT_DROPS);
   EXPECT_NE(check, nullptr);

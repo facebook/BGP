@@ -84,8 +84,10 @@ folly::F14FastMap<std::string, int> MonitoredModule::getQueueSizes(
 
   monitoredItems_.withRLock([&](const auto& monitoredItems) {
     for (const auto& [itemName, item] : monitoredItems) {
-      // according to whether the item is a module or a queue, populate
-      // queueSizes
+      /*
+       * according to whether the item is a module or a queue, populate
+       * queueSizes
+       */
       folly::variant_match(
           item,
           [queryNode, moduleName = itemName, &queueSizes](

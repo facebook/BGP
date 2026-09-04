@@ -175,10 +175,12 @@ bool waitUntilFibServiceReady(
 inline void initFlagsFromConfig(
     const std::string& configFile,
     const std::string& policyFile) {
-  // Get config file.  Set peerSubnetLbwMap to nullopt and populateConfigDb to
-  // false in Config constructor because we are not yet fully initialized.
-  // Our intent at this stage is to only get myConfig.defaultCommandLineArgs
-  // from the config file
+  /*
+   * Get config file.  Set peerSubnetLbwMap to nullopt and populateConfigDb to
+   * false in Config constructor because we are not yet fully initialized.
+   * Our intent at this stage is to only get myConfig.defaultCommandLineArgs
+   * from the config file
+   */
   auto config = Config(configFile);
   bool splitConfigPolicy = !policyFile.empty();
   if (splitConfigPolicy) {
@@ -189,8 +191,10 @@ inline void initFlagsFromConfig(
   auto myConfig = config.getConfig();
   FeatureFlags::LoadFromThriftConfig(myConfig);
 
-  // Iterate over defaultCommandLineArgs params and use them to override
-  // hardcoded defaults
+  /*
+   * Iterate over defaultCommandLineArgs params and use them to override
+   * hardcoded defaults
+   */
   for (const auto& item : *myConfig.defaultCommandLineArgs()) {
     // logging not initialized yet, need to use std::cerr
     std::cerr << "Overriding default flag from config: " << item.first.c_str()

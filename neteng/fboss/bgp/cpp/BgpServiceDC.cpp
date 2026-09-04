@@ -397,8 +397,10 @@ folly::coro::Task<void> BgpServiceDC::co_clearRibPolicy() {
     decrRequestsInExecution();
   };
 
-  // Enqueue directly on the calling thread; the coalescing MergeQueue is
-  // thread-safe, so there is no RIB evb hop to queue behind a long walk.
+  /*
+   * Enqueue directly on the calling thread; the coalescing MergeQueue is
+   * thread-safe, so there is no RIB evb hop to queue behind a long walk.
+   */
   rib_.clearRibPolicy();
 }
 
@@ -461,8 +463,10 @@ BgpServiceDC::co_setRouteAttributePolicy(
       anyExpiration ? std::to_string(minExpirationTimeS) : "N/A",
       anyExpiration ? std::to_string(maxExpirationTimeS) : "N/A");
 
-  // Enqueue directly on the calling thread; the coalescing MergeQueue is
-  // thread-safe, so there is no RIB evb hop to queue behind a long walk.
+  /*
+   * Enqueue directly on the calling thread; the coalescing MergeQueue is
+   * thread-safe, so there is no RIB evb hop to queue behind a long walk.
+   */
   co_return std::make_unique<TResult>(
       rib_.setRouteAttributePolicy(std::move(policy)));
 }
@@ -520,9 +524,11 @@ BgpServiceDC::co_setPathSelectionPolicy(
     std::unique_ptr<rib_policy::TPathSelectionPolicy> policy) {
   auto log = LOG_THRIFT_CALL(DBG2);
 
-  // Validate the request before taking the lock so a null policy or shutdown
-  // keeps its specific error ("Empty policy" / "Session exits") regardless of
-  // FILE_MODE, and an invalid call never contends on cpsPolicyMutex_.
+  /*
+   * Validate the request before taking the lock so a null policy or shutdown
+   * keeps its specific error ("Empty policy" / "Session exits") regardless of
+   * FILE_MODE, and an invalid call never contends on cpsPolicyMutex_.
+   */
   if (exitInitiated_ || policy == nullptr) {
     auto errStr = exitInitiated_ ? "Session exits" : "Empty policy";
     XLOGF(
@@ -552,8 +558,10 @@ BgpServiceDC::co_setPathSelectionPolicy(
     decrRequestsInExecution();
   };
 
-  // Enqueue directly on the calling thread; the coalescing MergeQueue is
-  // thread-safe, so there is no RIB evb hop to queue behind a long walk.
+  /*
+   * Enqueue directly on the calling thread; the coalescing MergeQueue is
+   * thread-safe, so there is no RIB evb hop to queue behind a long walk.
+   */
   co_return std::make_unique<TResult>(
       dcRib_.setPathSelectionPolicy(std::move(policy)));
 }
@@ -843,8 +851,10 @@ void BgpServiceDC::addNetworks(
 
   XLOGF(INFO, "Adding {} networks", networks->size());
 
-  // To avoid CPU hogging on one end and avoid excessive context switches on
-  // other extreme, split number of routes to be injected and add in chunks.
+  /*
+   * To avoid CPU hogging on one end and avoid excessive context switches on
+   * other extreme, split number of routes to be injected and add in chunks.
+   */
   std::map<TIpPrefix, TBgpAttributes> chunkOfNetworks;
 
   for (auto iter = networks->cbegin(); iter != networks->cend(); ++iter) {
@@ -907,8 +917,10 @@ void BgpServiceDC::delNetworks(std::unique_ptr<std::set<TIpPrefix>> prefixes) {
 
   XLOGF(INFO, "Deleting {} prefixes", prefixes->size());
 
-  // To avoid CPU hogging on one end and avoid excessive context switches on
-  // other extreme, split number of prefixes to be withdrawn and add in chunks.
+  /*
+   * To avoid CPU hogging on one end and avoid excessive context switches on
+   * other extreme, split number of prefixes to be withdrawn and add in chunks.
+   */
   std::set<TIpPrefix> chunkOfPrefixes;
 
   for (auto iter = prefixes->cbegin(); iter != prefixes->cend(); ++iter) {
@@ -1158,9 +1170,11 @@ BgpServiceDC::co_setCpsPolicyFromFile() {
   }
   BgpStatsDC::incrCpsArtifactReadSuccess();
 
-  // Read the file-mode flag once under the lock; it can only change inside this
-  // exclusive-locked handler, so a single read is authoritative for both the
-  // dryrun no-op guard and the apply-failure rollback below.
+  /*
+   * Read the file-mode flag once under the lock; it can only change inside this
+   * exclusive-locked handler, so a single read is authoritative for both the
+   * dryrun no-op guard and the apply-failure rollback below.
+   */
   const bool wasFileModeEnabled = dcRib_.isCpsFileModeEnabled();
 
   bool fileMode = !*artifact->dryrun();
@@ -1217,9 +1231,11 @@ BgpServiceDC::co_setCpsPolicyFromFile() {
     co_return std::make_unique<TResult>(std::move(result));
   }
 
-  // policy_applied.success is emitted by RibDC::replacePathSelectionPolicy when
-  // the RIB actually applies the policy (hasUpdate), not here at enqueue time —
-  // enqueues can be coalesced away or be no-ops for an identical policy.
+  /*
+   * policy_applied.success is emitted by RibDC::replacePathSelectionPolicy when
+   * the RIB actually applies the policy (hasUpdate), not here at enqueue time —
+   * enqueues can be coalesced away or be no-ops for an identical policy.
+   */
   auto ret = std::make_unique<TResult>();
   ret->success() = true;
   ret->err() = "CPS policy applied from file (FILE_MODE)";

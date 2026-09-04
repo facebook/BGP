@@ -75,8 +75,10 @@ class MonitoredModule : public MonitorableTrace {
           std::reference_wrapper<MonitoredQueueBase>>>>
       monitoredItems_;
 
-// per class placeholder for test code injection
-// only need to be setup once here
+/*
+ * per class placeholder for test code injection
+ * only need to be setup once here
+ */
 #ifdef MonitoredModule_TEST_FRIENDS
   MonitoredModule_TEST_FRIENDS
 #endif

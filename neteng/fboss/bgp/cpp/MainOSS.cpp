@@ -138,9 +138,11 @@ int main(int argc, char** argv) {
   folly::SingletonVault::singleton()->setType(
       folly::SingletonVault::Type::Relaxed);
 
-  // emit a signal for whether previous exit was planned or potentially a crash.
-  // requires SingletonVault type to be Relaxed, and also should preferably be
-  // as early as possible to avoid a crash before handling previous exit signal.
+  /*
+   * emit a signal for whether previous exit was planned or potentially a crash.
+   * requires SingletonVault type to be Relaxed, and also should preferably be
+   * as early as possible to avoid a crash before handling previous exit signal.
+   */
   BgpStats::handlePreviousExit();
 
   // Override default values of gflags with optional value in config file
@@ -148,9 +150,11 @@ int main(int argc, char** argv) {
   facebook::bgp::initFlagsFromConfig(
       FLAGS_config, splitConfigPolicy ? FLAGS_policy : emptyPolicy);
 
-  // Call folly::Init only after the call to initFlagsFromConfig().  This
-  // will ensure that flags specified in command line override values
-  // specified in config file
+  /*
+   * Call folly::Init only after the call to initFlagsFromConfig().  This
+   * will ensure that flags specified in command line override values
+   * specified in config file
+   */
   folly::Init init(&argc, &argv);
 
   // Set main thread name
@@ -174,9 +178,11 @@ int main(int argc, char** argv) {
     BgpStats::setPolicySymlink(0);
   }
 
-  // Start the publish thread to periodically flush thread-cached stats.
-  // ServiceFramework::go() normally starts this via ThriftStatsModuleLight.
-  // Without ServiceFramework, we start it explicitly.
+  /*
+   * Start the publish thread to periodically flush thread-cached stats.
+   * ServiceFramework::go() normally starts this via ThriftStatsModuleLight.
+   * Without ServiceFramework, we start it explicitly.
+   */
   facebook::fb303::ThreadCachedServiceData::get()->startPublishThread(
       std::chrono::milliseconds{1000});
 
@@ -256,8 +262,10 @@ int main(int argc, char** argv) {
   XLOGF(INFO, "Setting Policy Cache size to {}", FLAGS_bgp_policy_cache_size);
   AdjRibPolicyCache::get()->setCacheSize(FLAGS_bgp_policy_cache_size);
 
-  // Start rib thread before peer thread
-  // We restore RIB Policy from file in RIB ctor
+  /*
+   * Start rib thread before peer thread
+   * We restore RIB Policy from file in RIB ctor
+   */
   RibDC rib(
       config->getLocalRoutes(),
       *(config->getBgpGlobalConfig()),
@@ -287,8 +295,10 @@ int main(int argc, char** argv) {
   peerMgr.setSessionManager(sessionMgr);
   watchdog.monitorModule(peerMgr.getModuleName(), peerMgr);
 
-  // now that RIB Policy is loaded in RIB, we pass the route filter policy to
-  // PeerManagerBase before AdjRibs are created
+  /*
+   * now that RIB Policy is loaded in RIB, we pass the route filter policy to
+   * PeerManagerBase before AdjRibs are created
+   */
   auto tRouteFilterPolicy = rib.getRouteFilterPolicy();
 
   // Validate peer group configuration in route filter policy
@@ -379,8 +389,10 @@ int main(int argc, char** argv) {
   bgpServer->stop();
   streamServer->stop();
 
-  // Queue has been closed by injecting null object
-  // inside stop() method.
+  /*
+   * Queue has been closed by injecting null object
+   * inside stop() method.
+   */
   rib.stop();
   neighborWatcher->stop();
 

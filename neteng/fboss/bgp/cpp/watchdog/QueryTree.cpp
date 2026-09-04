@@ -40,8 +40,10 @@ void QueryNode::markLeaf() {
 void QueryTree::addPath(const std::string& path) {
   std::istringstream iss(path);
   std::string entity;
-  // Must use pointer instead of reference, as we cannot
-  // rebind a reference
+  /*
+   * Must use pointer instead of reference, as we cannot
+   * rebind a reference
+   */
   auto current_node = &root;
   while (std::getline(iss, entity, '.')) {
     if (current_node->isLeaf) {

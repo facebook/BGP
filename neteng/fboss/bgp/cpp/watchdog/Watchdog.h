@@ -115,8 +115,10 @@ class Watchdog : public BgpModuleBase {
       folly::F14FastMap<std::string, std::deque<HeartbeatSnapshot>>>
       heartbeatSnapshots_;
 
-// per class placeholder for test code injection
-// only need to be setup once here
+/*
+ * per class placeholder for test code injection
+ * only need to be setup once here
+ */
 #ifdef Watchdog_TEST_FRIENDS
   Watchdog_TEST_FRIENDS
 #endif

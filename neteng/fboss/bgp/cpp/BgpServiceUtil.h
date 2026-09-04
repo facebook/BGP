@@ -74,9 +74,11 @@ constexpr auto kUpdateGroupEgressFilterError =
     "Failed to apply route filter policy: egress route filters are not "
     "supported when update groups are enabled";
 
-// Used in getRibEntries grouping to indicate a path is selected as part of
-// bestpath/ECMP vs when it is not (in that case it will be grouped
-// under "default").
+/*
+ * Used in getRibEntries grouping to indicate a path is selected as part of
+ * bestpath/ECMP vs when it is not (in that case it will be grouped
+ * under "default").
+ */
 constexpr auto kBestPathGroup = "best";
 constexpr auto kMultiPathGroup = "multiPaths";
 

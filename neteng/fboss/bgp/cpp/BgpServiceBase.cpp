@@ -108,9 +108,11 @@ BgpServiceBase::BgpServiceBase(
               /*nexthopHandler=*/nullptr,
               configManager_)),
       thriftProtectionEnabled_(enable_thrift_protection) {
-  // Allow the fb303 setOption() call to update the command line flag
-  // settings.  This allows us to change the log levels on the fly using
-  // fbData->setOption().
+  /*
+   * Allow the fb303 setOption() call to update the command line flag
+   * settings.  This allows us to change the log levels on the fly using
+   * fbData->setOption().
+   */
   facebook::fb303::registerFollyLoggingOptionHandlers();
 };
 
@@ -1681,10 +1683,12 @@ void BgpServiceBase::validateConfig(
     auto policyManager = Config::createPolicyManager(config);
     ret.success() = true;
   } catch (const std::exception& ex) {
-    // This is a giant catch all. Config parsing, policy parsing does lot of
-    // sanity checks on config file and throw errors so that main() exits for
-    // errors in config file. For dryRun we do not want to exit or crash
-    // for any mistakes in config files. Hence this giant catch all.
+    /*
+     * This is a giant catch all. Config parsing, policy parsing does lot of
+     * sanity checks on config file and throw errors so that main() exits for
+     * errors in config file. For dryRun we do not want to exit or crash
+     * for any mistakes in config files. Hence this giant catch all.
+     */
     XLOGF(
         ERR,
         "Verify config file {} failed. Error: {}",
@@ -1740,10 +1744,12 @@ void BgpServiceBase::validateConfigAndPolicy(
       }
     }
   } catch (const std::exception& ex) {
-    // This is a giant catch all. Config parsing, policy parsing does lot of
-    // sanity checks on config file and throw errors so that main() exits for
-    // errors in config file. For dryRun we do not want to exit or crash
-    // for any mistakes in config files. Hence this giant catch all.
+    /*
+     * This is a giant catch all. Config parsing, policy parsing does lot of
+     * sanity checks on config file and throw errors so that main() exits for
+     * errors in config file. For dryRun we do not want to exit or crash
+     * for any mistakes in config files. Hence this giant catch all.
+     */
     XLOGF(
         ERR,
         "Verify config file {} and policy file {} failed. Error: {}",
@@ -2010,8 +2016,10 @@ BgpServiceBase::co_setRouteFilterPolicy(
     co_return ret;
   }
 
-  // No RIB evb hop: the coalescing MergeQueue is thread-safe, so enqueue on the
-  // calling thread.
+  /*
+   * No RIB evb hop: the coalescing MergeQueue is thread-safe, so enqueue on the
+   * calling thread.
+   */
   rib_.setRouteFilterPolicy(std::move(policy));
 
   auto ret = std::make_unique<TResult>();
@@ -2409,8 +2417,10 @@ BgpServiceBase::co_getRibEntries(TBgpAfi afi) {
 folly::coro::Task<std::unique_ptr<TRibSummary>>
 BgpServiceBase::co_getRibSummary(TBgpAfi afi) {
   auto log = LOG_THRIFT_CALL(DBG2);
-  // Always echo back the requested afi so the client can attribute an
-  // empty/error response to the right address family.
+  /*
+   * Always echo back the requested afi so the client can attribute an
+   * empty/error response to the right address family.
+   */
   auto emptySummary = [afi]() {
     auto summary = std::make_unique<TRibSummary>();
     summary->afi() = afi;
@@ -2737,9 +2747,11 @@ BgpServiceBase::co_getNexthopInfos(
     decrRequestsInExecution();
   };
 
-  // Empty request = all cache entries. A non-empty request filters to the
-  // valid IPs; invalid entries are dropped (and logged) rather than silently
-  // widening the query back to "list all".
+  /*
+   * Empty request = all cache entries. A non-empty request filters to the
+   * valid IPs; invalid entries are dropped (and logged) rather than silently
+   * widening the query back to "list all".
+   */
   const bool filterRequested = !nexthops->empty();
   std::vector<folly::IPAddress> filter;
   std::vector<std::string> invalidNexthops;
@@ -2759,8 +2771,10 @@ BgpServiceBase::co_getNexthopInfos(
         fmt::join(invalidNexthops, ", "));
   }
 
-  // The caller asked for specific IPs but none were valid: return empty rather
-  // than falling through to the list-all path (an empty filter = every entry).
+  /*
+   * The caller asked for specific IPs but none were valid: return empty rather
+   * than falling through to the list-all path (an empty filter = every entry).
+   */
   if (filterRequested && filter.empty()) {
     co_return std::make_unique<
         std::vector<neteng::fboss::bgp::thrift::TNexthopInfo>>();
@@ -2900,8 +2914,10 @@ folly::coro::Task<void> BgpServiceBase::co_clearCounters(
   // Data plane: zero each peer's socket tx/rx counters on the I/O evb.
   co_await sessionMgr_->co_clearSocketCounters(peerAddrs);
 
-  // Control plane: zero each AdjRib's + update-group's sent/recv message counts
-  // and their fb303 keys (runs on the PeerManager evb).
+  /*
+   * Control plane: zero each AdjRib's + update-group's sent/recv message counts
+   * and their fb303 keys (runs on the PeerManager evb).
+   */
   co_await peerMgr_.co_clearCounters(peerAddrs);
 }
 
