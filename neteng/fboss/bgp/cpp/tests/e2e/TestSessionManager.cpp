@@ -117,6 +117,7 @@ uint64_t E2ETestSessionManager::simulateSessionEstablished(
   state.adjRibOutQ = adjRibOutQ;
   state.boundedAdjRibOutQ = boundedAdjRibOutQ;
   state.displayInfo = displayInfo;
+  state.displayInfo.state = BgpSessionState::ESTABLISHED;
   state.displayInfo.remoteAs = remoteAs;
   state.established = true;
 

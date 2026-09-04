@@ -113,6 +113,20 @@ void E2ESessionTestFixture::createPeerManager(
 
 void E2ESessionTestFixture::bringUpPeer(
     const folly::IPAddress& peerAddr,
+    uint64_t versionNumber) {
+  bringUpPeerImpl(peerAddr, std::nullopt, versionNumber);
+}
+
+void E2ESessionTestFixture::bringUpPeerWithRemoteAs(
+    const folly::IPAddress& peerAddr,
+    uint32_t remoteAs,
+    uint64_t versionNumber) {
+  bringUpPeerImpl(peerAddr, remoteAs, versionNumber);
+}
+
+void E2ESessionTestFixture::bringUpPeerImpl(
+    const folly::IPAddress& peerAddr,
+    std::optional<uint32_t> remoteAs,
     uint64_t /*versionNumber*/) {
   BgpPeerId peerId{peerAddr, peerAddr.asV4().toLongHBO()};
   XLOGF(INFO, "=== bringUpPeer (session pipeline) for: {} ===", peerAddr.str());
@@ -136,8 +150,21 @@ void E2ESessionTestFixture::bringUpPeer(
   displayInfo.peeringParams.holdTime =
       cfg.holdTime.value_or(std::chrono::seconds(90));
   displayInfo.peeringParams.description = cfg.description.value_or("");
-  displayInfo.peeringParams.isAfiIpv4Configured = true;
-  displayInfo.peeringParams.isAfiIpv6Configured = true;
+  displayInfo.peeringParams.isConfedPeer = cfg.isConfedPeer.value_or(false);
+  if (displayInfo.peeringParams.isConfedPeer &&
+      globalConfig->localConfedAsn.has_value()) {
+    displayInfo.peeringParams.localConfedAs = *globalConfig->localConfedAsn;
+    displayInfo.peeringParams.asConfedId =
+        cfg.localAsn.value_or(globalConfig->localAsn);
+    displayInfo.peeringParams.localAs = *globalConfig->localConfedAsn;
+  }
+  displayInfo.peeringParams.isRrClient =
+      RrClientConfigured{cfg.isRrClient.value_or(false)};
+  displayInfo.peeringParams.peerGroupName = cfg.peerGroupName;
+  displayInfo.peeringParams.isAfiIpv4Configured =
+      !cfg.disableIpv4Afi.value_or(false);
+  displayInfo.peeringParams.isAfiIpv6Configured =
+      !cfg.disableIpv6Afi.value_or(false);
   displayInfo.peeringParams.nexthopV4 = cfg.nexthopV4;
   displayInfo.peeringParams.nexthopV6 = cfg.nexthopV6;
   ASSERT_TRUE(cfg.bindAddr.has_value());
@@ -179,7 +206,7 @@ void E2ESessionTestFixture::bringUpPeer(
   auto version = testSessionManager_->simulateSessionEstablished(
       peerId,
       displayInfo,
-      cfg.additionalRemoteAs.value_or(cfg.peerAsn),
+      remoteAs.value_or(cfg.additionalRemoteAs.value_or(cfg.peerAsn)),
       defaultQueueCapacity_,
       defaultQueueHighWm_,
       defaultQueueLowWm_);

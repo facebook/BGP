@@ -44,6 +44,11 @@ class E2ESessionTestFixture : public E2ETestFixture {
       const folly::IPAddress& peerAddr,
       uint64_t versionNumber = 0);
 
+  void bringUpPeerWithRemoteAs(
+      const folly::IPAddress& peerAddr,
+      uint32_t remoteAs,
+      uint64_t versionNumber = 0);
+
   void bringUpPeerAndWait(
       const folly::IPAddress& peerAddr,
       uint64_t versionNumber = 0,
@@ -82,6 +87,12 @@ class E2ESessionTestFixture : public E2ETestFixture {
       const folly::IPAddress& peerAddr) const override;
 
   std::shared_ptr<E2ETestSessionManager> testSessionManager_;
+
+ private:
+  void bringUpPeerImpl(
+      const folly::IPAddress& peerAddr,
+      std::optional<uint32_t> remoteAs,
+      uint64_t versionNumber);
 };
 
 } // namespace facebook::bgp
