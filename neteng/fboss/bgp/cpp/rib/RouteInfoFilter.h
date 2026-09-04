@@ -27,8 +27,10 @@ namespace facebook::bgp {
 
 class RouteInfoFilter : nettools::edge::RouteFilter {
  public:
-  // Factory method for constructing RouteFilter that filters on the specified
-  // metric.
+  /*
+   * Factory method for constructing RouteFilter that filters on the specified
+   * metric.
+   */
   static std::unique_ptr<nettools::edge::RouteFilter> fromRouteFilterConfig(
       const nettools::edge::RouteFilterConfig& routeFilterConfig);
 

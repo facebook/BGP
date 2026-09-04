@@ -58,10 +58,12 @@ std::string formatRibOutWithdrawalLog(
       addPath ? " add-path " : " ");
 }
 
-// this is a relatively simple way to find a new path ID interval to use once
-// an interval has no more free path IDs. This should be very rarely
-// invoked given that the maximum path ID is quite large and BGPd's release
-// cadence will naturally reset them back to starting from 0 anyway.
+/*
+ * this is a relatively simple way to find a new path ID interval to use once
+ * an interval has no more free path IDs. This should be very rarely
+ * invoked given that the maximum path ID is quite large and BGPd's release
+ * cadence will naturally reset them back to starting from 0 anyway.
+ */
 std::pair<uint32_t, uint32_t> findLargestFreePathIdInterval(
     const folly::F14NodeMap<
         nettools::bgplib::BgpPeerId,
@@ -71,8 +73,10 @@ std::pair<uint32_t, uint32_t> findLargestFreePathIdInterval(
     uint32_t maxPathId) {
   XCHECK(minPathId < maxPathId)
       << fmt::format("minPathId={}>=maxPathId={}", minPathId, maxPathId);
-  // Store all ids already in use in the requested range. Use the requested
-  // limits as guard posts.
+  /*
+   * Store all ids already in use in the requested range. Use the requested
+   * limits as guard posts.
+   */
   std::vector<int64_t> usedIds = {
       static_cast<int64_t>(minPathId) - 1, static_cast<int64_t>(maxPathId) + 1};
   for (const auto& [peerId, routeInfos] : peerIdToRouteInfos) {

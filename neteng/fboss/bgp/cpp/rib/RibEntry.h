@@ -49,8 +49,10 @@ class RibEntry {
   std::shared_ptr<RouteInfo> getBestPath() const {
     return bestpath_;
   }
-  // Raw best path for read-only use without copying the owning shared_ptr
-  // (avoids refcount traffic on the per-RibEntry best-path hot path).
+  /*
+   * Raw best path for read-only use without copying the owning shared_ptr
+   * (avoids refcount traffic on the per-RibEntry best-path hot path).
+   */
   const RouteInfo* getBestPathRaw() const {
     return bestpath_.get();
   }
@@ -211,9 +213,11 @@ class RibEntry {
    * [Mutator Methods]
    */
 
-  // commit best path selection when it's safe to advertise path back
-  // return true if advertisedBestpath_ has changed or aggregated LBW changed
-  // which indicates rib needs to advertise new path to peers
+  /*
+   * commit best path selection when it's safe to advertise path back
+   * return true if advertisedBestpath_ has changed or aggregated LBW changed
+   * which indicates rib needs to advertise new path to peers
+   */
   bool commitBestpath() {
     bool ret = (advertisedBestpath_ != bestpath_);
     ret |=
@@ -246,18 +250,22 @@ class RibEntry {
     return advertisedMultipaths_ != multipaths_;
   }
 
-  // only used in add path feature to help determine if multipaths has
-  // been changed.
+  /*
+   * only used in add path feature to help determine if multipaths has
+   * been changed.
+   */
   bool commitMultipaths() {
     bool ret = (advertisedMultipaths_ != multipaths_);
     advertisedMultipaths_ = multipaths_;
     return ret;
   }
 
-  // update routeInfos based on that peer
-  // return true if a new route is added
-  //             or an existing route is updated with new attributes
-  //        false if there's a same route with the same attributes exists
+  /*
+   * update routeInfos based on that peer
+   * return true if a new route is added
+   *             or an existing route is updated with new attributes
+   *        false if there's a same route with the same attributes exists
+   */
   bool updatePath(
       const TinyPeerInfo& peer,
       std::shared_ptr<const BgpPath> attrs,
@@ -266,13 +274,17 @@ class RibEntry {
       std::optional<facebook::bgp::NexthopInfo*> nexthopInfo =
           std::nullopt) noexcept;
 
-  // Path selection (selectBestPath + 7 phase helpers + PathSelectionInput /
-  // MultiPathSelectionResult structs) lives on RibBase as static methods
-  // taking RibEntry& by reference, gated by the RibBase friend declaration
-  // below.
+  /*
+   * Path selection (selectBestPath + 7 phase helpers + PathSelectionInput /
+   * MultiPathSelectionResult structs) lives on RibBase as static methods
+   * taking RibEntry& by reference, gated by the RibBase friend declaration
+   * below.
+   */
 
-  // Check if the entry is already on Fib batch processing list by checking
-  // if the list hook is linked or not.
+  /*
+   * Check if the entry is already on Fib batch processing list by checking
+   * if the list hook is linked or not.
+   */
   bool isOnFibBatchList() const {
     return fibBatchListHook_.is_linked();
   }
@@ -303,8 +315,10 @@ class RibEntry {
     ribVersion_ = version;
   }
 
-  // Set the needPathSelection_ = true so that the entry will be picked up for
-  // path selection when preparing the Fib programming
+  /*
+   * Set the needPathSelection_ = true so that the entry will be picked up for
+   * path selection when preparing the Fib programming
+   */
   inline void requirePathSelection() {
     needPathSelection_ = true;
   }
@@ -317,16 +331,20 @@ class RibEntry {
    */
   void overrideWeightedNexthops(WeightedNexthopMap& weigtedNexthops);
 
-  // gets the first ID from this entry's free interval, to be assigned to
-  // selected paths
+  /*
+   * gets the first ID from this entry's free interval, to be assigned to
+   * selected paths
+   */
   uint32_t getPathIdToSend();
 
  private:
   // v4 or v6 prefix for this RibEntry
   const folly::CIDRNetwork prefix_;
 
-  // core data structure containing BgpPath/BgpPeer/etc.
-  // {peerId: {receivedPathID: routeInfo}}
+  /*
+   * core data structure containing BgpPath/BgpPeer/etc.
+   * {peerId: {receivedPathID: routeInfo}}
+   */
   folly::F14NodeMap<
       nettools::bgplib::BgpPeerId,
       folly::F14NodeMap<uint32_t, std::shared_ptr<RouteInfo>>>
@@ -391,8 +409,10 @@ class RibEntry {
   // Time stmap when the entry was first installed in local-RIB
   std::chrono::time_point<std::chrono::system_clock> installTimeStamp_;
 
-  // false if bestpath is local route and install_to_fib is configured false;
-  // true, otherwise.
+  /*
+   * false if bestpath is local route and install_to_fib is configured false;
+   * true, otherwise.
+   */
   bool installToFib_{true};
 
   // ucmp active indicator
@@ -463,8 +483,10 @@ class RibEntry {
   friend class RibBase;
   friend class RibDC;
 
-  // store a free ID interval for this prefix, starting as [minPathId,
-  // maxPathId] (inclusive)
+  /*
+   * store a free ID interval for this prefix, starting as [minPathId,
+   * maxPathId] (inclusive)
+   */
   std::pair<uint32_t, uint32_t> freePathIdInterval_{
       kMinPathIDToSend,
       kMaxPathIDToSend};

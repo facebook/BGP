@@ -97,8 +97,10 @@ void FibFboss::disconnectAgent() {
   client_.reset();
   fullSynced_ = false;
   agentAliveSince_ = 0;
-  // No need to have the batch_ anymore since we do not connect to
-  // the agent anymore. And no need to create a new batch either.
+  /*
+   * No need to have the batch_ anymore since we do not connect to
+   * the agent anymore. And no need to create a new batch either.
+   */
   batch_.reset();
 }
 
@@ -182,10 +184,12 @@ void FibFboss::updateUnicastRouteWithBackup(
         backupAddr->str(),
         folly::IPAddress::networkToString(prefix));
   }
-  // TODO: For now, treat all bgp routes as EBGP. Change it to be either EBGP
-  // or IBGP depending on the route type
-  // When installToFib is true for local route, we set the nexthop empty.
-  // This is what agent expects to program Null nexthop.
+  /*
+   * TODO: For now, treat all bgp routes as EBGP. Change it to be either EBGP
+   * or IBGP depending on the route type
+   * When installToFib is true for local route, we set the nexthop empty.
+   * This is what agent expects to program Null nexthop.
+   */
   if (isLocalRouteBest) {
     tNextHops.clear();
     XLOGF(
@@ -244,15 +248,19 @@ folly::coro::Task<void> FibFboss::program(bool isSync) {
     XLOGF(DBG1, "Sync FIB with {} routes to delete.", batch_->toDelete.size());
   }
 
-  // Now handle this batch. And prepare for the new batch. The calls after the
-  // next two lines could be blocked to wait for FBOSS agent to ack.
-  // During the wait time, a new batch could be formed.
+  /*
+   * Now handle this batch. And prepare for the new batch. The calls after the
+   * next two lines could be blocked to wait for FBOSS agent to ack.
+   * During the wait time, a new batch could be formed.
+   */
   auto process = std::move(batch_);
   batch_ = std::make_unique<Batch>();
 
   try {
-    // the following call could be blocked
-    // if in fullSync, call syncFib regardless of toAdd.size()
+    /*
+     * the following call could be blocked
+     * if in fullSync, call syncFib regardless of toAdd.size()
+     */
 
     if (isSync) {
       XLOG(INFO, "Start syncFib...");
@@ -395,8 +403,10 @@ folly::coro::Task<void> FibFboss::keepAlive() {
         "Detect agent restart at unix time {}; new agent status: {}",
         aliveSince,
         apache::thrift::util::enumNameSafe(status));
-    // (status >= CONFIGURED) is not checked since there is EXITING above
-    // CONFIGURED state.
+    /*
+     * (status >= CONFIGURED) is not checked since there is EXITING above
+     * CONFIGURED state.
+     */
     if (status == fboss::SwitchRunState::CONFIGURED) {
       if (holdDownState_->clearHoldDownState()) {
         XLOG(INFO, "Request full SyncFib.");
@@ -416,9 +426,11 @@ fboss::NetworkTopologyInformation FibFboss::createNetworkTopoInfo(
     const std::unordered_map<std::string, int64_t>& topoInfoMap) {
   using TopoInfo = fboss::NetworkTopologyInformation;
   TopoInfo tTopoInfo;
-  // iterate over all fields of NetworkTopologyInformation
-  // for a key (field name) found in topologyInfo (dictionary)
-  // assign the value to the corresponding field
+  /*
+   * iterate over all fields of NetworkTopologyInformation
+   * for a key (field name) found in topologyInfo (dictionary)
+   * assign the value to the corresponding field
+   */
   apache::thrift::op::for_each_field_id<TopoInfo>([&topoInfoMap,
                                                    &tTopoInfo]<class Id>(Id) {
     auto it =

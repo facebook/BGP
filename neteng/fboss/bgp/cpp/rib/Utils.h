@@ -40,8 +40,10 @@ std::string formatRibOutWithdrawalLog(
     const facebook::bgp::RibOutWithdrawal& withdrawal,
     bool addPath = false);
 
-// finds the largest free interval given current pathID assignments pulled
-// from routeInfos
+/*
+ * finds the largest free interval given current pathID assignments pulled
+ * from routeInfos
+ */
 std::pair<uint32_t, uint32_t> findLargestFreePathIdInterval(
     const folly::F14NodeMap<
         nettools::bgplib::BgpPeerId,

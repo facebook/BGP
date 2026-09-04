@@ -128,8 +128,10 @@ void FibEbb::disconnectAgent() {
   client_.reset();
   fullSynced_ = false;
   agentAliveSince_ = 0;
-  // No need to have the batch_ anymore since we do not connect to
-  // the agent anymore. And no need to create a new batch either.
+  /*
+   * No need to have the batch_ anymore since we do not connect to
+   * the agent anymore. And no need to create a new batch either.
+   */
   batch_.reset();
 }
 
@@ -242,16 +244,20 @@ folly::coro::Task<void> FibEbb::program(bool isSync) {
     XLOGF(DBG1, "Sync FIB with {} routes to delete.", batch_->toDelete.size());
   }
 
-  // Now handle this batch. And prepare for the new batch. The calls after the
-  // next two lines could be blocked to wait for Ebb Fib agent to ack.
-  // During the wait time, a new batch could be formed.
+  /*
+   * Now handle this batch. And prepare for the new batch. The calls after the
+   * next two lines could be blocked to wait for Ebb Fib agent to ack.
+   * During the wait time, a new batch could be formed.
+   */
   std::unique_ptr<FibEbb::Batch> process = std::move(batch_);
   batch_ = std::make_unique<Batch>();
   bool isFullSynced = fullSynced_;
 
   try {
-    // the following call could be blocked
-    // if in fullSync, call syncFib regardless of toAdd.size()
+    /*
+     * the following call could be blocked
+     * if in fullSync, call syncFib regardless of toAdd.size()
+     */
 
     if (isSync) {
       XLOG(INFO, "Start syncFib...");
@@ -404,8 +410,10 @@ folly::coro::Task<void> FibEbb::keepAlive() {
     co_return;
   }
 
-  // update agent status, send full sync request only if agent is connected and
-  // restarted.
+  /*
+   * update agent status, send full sync request only if agent is connected and
+   * restarted.
+   */
   if (agentAliveSince_ != aliveSince) {
     if (holdDownState_->clearHoldDownState()) {
       XLOG(INFO, "Request full SyncFib.");

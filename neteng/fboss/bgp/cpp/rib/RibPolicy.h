@@ -40,8 +40,10 @@ class BgpPathMatcher {
  private:
   std::vector<std::unique_ptr<AttributesMatch>> matches_{};
 
-// per class placeholder for code injection
-// only need to setup once
+/*
+ * per class placeholder for code injection
+ * only need to setup once
+ */
 #ifdef BgpPathMatcher_TEST_FRIENDS
   BgpPathMatcher_TEST_FRIENDS
 #endif
@@ -107,8 +109,10 @@ class PathSelectionCriteria {
   const std::vector<std::unique_ptr<BgpPathMatcher>> pathMatchers_{};
   const std::optional<int32_t> minNexthop_{std::nullopt};
 
-// per class placeholder for code injection
-// only need to setup once
+/*
+ * per class placeholder for code injection
+ * only need to setup once
+ */
 #ifdef PathSelectionCriteria_TEST_FRIENDS
   PathSelectionCriteria_TEST_FRIENDS
 #endif
@@ -231,10 +235,12 @@ class PathSelector {
   static std::vector<std::unique_ptr<PathSelectionCriteria>>
   getCentralizedCriteriaList(const rib_policy::TPathSelector& selector);
 
-  // the list of centralized criteria list
-  // We need to use unique_ptr<PathSelectionCriteria> here instead of
-  // PathSelectionCriteria as vector could grow when emplacing new criteria at
-  // the back, which involves moving the BgpPathMatcher (unique_ptr).
+  /*
+   * the list of centralized criteria list
+   * We need to use unique_ptr<PathSelectionCriteria> here instead of
+   * PathSelectionCriteria as vector could grow when emplacing new criteria at
+   * the back, which involves moving the BgpPathMatcher (unique_ptr).
+   */
   const std::vector<std::unique_ptr<PathSelectionCriteria>>
       centralizedCriteriaList_{};
 
@@ -244,8 +250,10 @@ class PathSelector {
   const std::optional<int64_t> bgpNativeMinAggLbwbps_{std::nullopt};
   const std::optional<bool> relaxBgpNativeMinAggLbwbps_{std::nullopt};
 
-// per class placeholder for code injection
-// only need to setup once
+/*
+ * per class placeholder for code injection
+ * only need to setup once
+ */
 #ifdef PathSelector_TEST_FRIENDS
   PathSelector_TEST_FRIENDS
 #endif
@@ -302,9 +310,11 @@ class RibPolicyRouteMatcher {
   // save for easier retrieve
   const rib_policy::TRibRouteMatcher tMatcher_;
 
-  // Unordered set for efficient lookup on matching
-  // NOTE: The matching requires the same prefix representation (fully
-  // qualified)
+  /*
+   * Unordered set for efficient lookup on matching
+   * NOTE: The matching requires the same prefix representation (fully
+   * qualified)
+   */
   const std::unordered_set<folly::CIDRNetwork> prefixSet_{};
 
   const std::optional<CommunityMatch> communityMatch_{std::nullopt};
@@ -488,9 +498,11 @@ class RouteAttributeActions {
    */
   std::optional<bool> divideWeightsByMatchingPathCount_;
 
-  // Inverted index: path attrs -> (first matching action index, weight) or
-  // nullopt if no action matches. Keyed on interned BgpPath for dedup across
-  // prefixes. Mutable for lazy population in updateUcmpWeight.
+  /*
+   * Inverted index: path attrs -> (first matching action index, weight) or
+   * nullopt if no action matches. Keyed on interned BgpPath for dedup across
+   * prefixes. Mutable for lazy population in updateUcmpWeight.
+   */
   mutable folly::F14FastMap<
       std::shared_ptr<const BgpPath>,
       std::optional<std::pair<size_t, int32_t>>>
@@ -755,26 +767,32 @@ class RouteAttributePolicy {
   // unordered maps: statement name -> statement
   folly::F14NodeMap<std::string, RouteAttributeStatement> statements_{};
 
-  // Cache: prefix -> matched statement name (or nullopt if no match)
-  // This cache is mutable because it's a performance optimization that
-  // doesn't affect the logical const-ness of overwriteRouteAttributes().
-  // The cache is automatically invalidated when a new RouteAttributePolicy
-  // object is created (each policy push creates a new object with empty cache).
-  // Using unique_ptr for O(1) cache migration during policy updates.
+  /*
+   * Cache: prefix -> matched statement name (or nullopt if no match)
+   * This cache is mutable because it's a performance optimization that
+   * doesn't affect the logical const-ness of overwriteRouteAttributes().
+   * The cache is automatically invalidated when a new RouteAttributePolicy
+   * object is created (each policy push creates a new object with empty cache).
+   * Using unique_ptr for O(1) cache migration during policy updates.
+   */
   mutable std::unique_ptr<
       folly::F14NodeMap<folly::CIDRNetwork, std::optional<RibPolicyResultBase>>>
       matchCache_;
 
-  // Inverted index: interned community-set -> statement name (or nullopt if
-  // none). Mutable for lazy population in overwriteRouteAttributes. Keyed on
-  // nettools::bgplib::BgpAttrCommunitiesC shared_ptr for dedup across prefixes.
+  /*
+   * Inverted index: interned community-set -> statement name (or nullopt if
+   * none). Mutable for lazy population in overwriteRouteAttributes. Keyed on
+   * nettools::bgplib::BgpAttrCommunitiesC shared_ptr for dedup across prefixes.
+   */
   mutable folly::F14FastMap<
       std::shared_ptr<const nettools::bgplib::BgpAttrCommunitiesC>,
       std::optional<std::string>>
       communityToStatement_;
 
-  // Names of statements with non-empty prefix sets, checked linearly per
-  // prefix. Populated in constructor.
+  /*
+   * Names of statements with non-empty prefix sets, checked linearly per
+   * prefix. Populated in constructor.
+   */
   std::vector<std::string> prefixMatcherStatements_;
 
   // Grant tests access to private and protected members of this class.
@@ -919,15 +937,19 @@ class PathSelectionPolicy {
   // path selection policy snapshot version
   int64_t version_{0};
 
-  // map: the prefix of a route -> active path selection result
-  // The map records the active path selection and serves as a cache
-  // If the prefix matches no statement, we map it to std::nullopt
+  /*
+   * map: the prefix of a route -> active path selection result
+   * The map records the active path selection and serves as a cache
+   * If the prefix matches no statement, we map it to std::nullopt
+   */
   folly::
       F14NodeMap<folly::CIDRNetwork, std::optional<PathSelectionPolicyResult>>
           pathSelectionResults_{};
 
-// per class placeholder for code injection
-// only need to setup once
+/*
+ * per class placeholder for code injection
+ * only need to setup once
+ */
 #ifdef PathSelectionPolicy_TEST_FRIENDS
   PathSelectionPolicy_TEST_FRIENDS
 #endif
@@ -947,8 +969,10 @@ class RouteFilter {
     }
   }
 
-  // define copy constructor because unique_ptr<PrefixTree> cannot be implicitly
-  // copied
+  /*
+   * define copy constructor because unique_ptr<PrefixTree> cannot be implicitly
+   * copied
+   */
   RouteFilter(RouteFilter const& other)
       : prefixList_(other.prefixList_), permissiveMode_(other.permissiveMode_) {
     if (prefixList_) {
@@ -1104,8 +1128,10 @@ class GoldenPrefixSubnetCountingTree {
     int maxSubnetCount_;
     // The golden communities. If nullopt, no special communities are required.
     std::optional<std::set<BgpAttrCommunityC>> communities_;
-    // Maps each of the parent prefix's subnets to that subnet's reference
-    // count.
+    /*
+     * Maps each of the parent prefix's subnets to that subnet's reference
+     * count.
+     */
     folly::F14NodeMap<folly::CIDRNetwork, int> subnets_;
   };
   facebook::network::RadixTree<folly::IPAddress, ParentPrefixTreeNode>
@@ -1244,22 +1270,28 @@ class RouteFilterPolicy {
   }
 
  private:
-  // unordered map: statement name -> statement
-  //
-  // use shared_ptr for statements to avoid copying because adjribs also store
-  // statements
+  /*
+   * unordered map: statement name -> statement
+   *
+   * use shared_ptr for statements to avoid copying because adjribs also store
+   * statements
+   */
   std::unordered_map<std::string, std::shared_ptr<const RouteFilterStatement>>
       statements_{};
   // route filter policy snapshot version
   int64_t version_{0};
-  // use shared_ptr for goldenPrefixPolicy to avoid copying because adjribs
-  // share the same goldenPrefixPolicy
+  /*
+   * use shared_ptr for goldenPrefixPolicy to avoid copying because adjribs
+   * share the same goldenPrefixPolicy
+   */
   std::shared_ptr<GoldenPrefixPolicy> goldenPrefixPolicy_{nullptr};
   // route filter statements key type
   std::optional<rib_policy::KeyType> keyType_{std::nullopt};
 
-// per class placeholder for code injection
-// only need to setup once
+/*
+ * per class placeholder for code injection
+ * only need to setup once
+ */
 #ifdef RouteFilterPolicy_TEST_FRIENDS
   RouteFilterPolicy_TEST_FRIENDS
 #endif

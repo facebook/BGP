@@ -29,9 +29,9 @@
 namespace facebook::bgp {
 using namespace rib_policy;
 
-//
-// BgpPathMatcher
-//
+/*
+ * BgpPathMatcher
+ */
 BgpPathMatcher::BgpPathMatcher(const TBgpPathMatcher& matcher) {
   if (matcher.community_list()) {
     matches_.emplace_back(std::make_unique<CommunityMatch>(matcher));
@@ -62,9 +62,9 @@ bool BgpPathMatcher::match(const std::shared_ptr<RouteInfo>& path) const {
   return true;
 }
 
-//
-// PathSelectionCriteria
-//
+/*
+ * PathSelectionCriteria
+ */
 TPathSelectionCriteria PathSelectionCriteria::toThrift() const {
   return tCriteria_;
 }
@@ -102,9 +102,9 @@ PathSelectionCriteria::tryOverrideMultipathSelection(
   return multipaths;
 }
 
-//
-// PathSelector
-//
+/*
+ * PathSelector
+ */
 bool PathSelector::operator==(const PathSelector& other) const {
   if (centralizedCriteriaList_.size() !=
       other.centralizedCriteriaList_.size()) {
@@ -285,9 +285,9 @@ PathSelector::overrideMultipathSelection(
   return multipaths;
 }
 
-//
-// RibPolicyRouteMatcher
-//
+/*
+ * RibPolicyRouteMatcher
+ */
 RibPolicyRouteMatcher::RibPolicyRouteMatcher(const TRibRouteMatcher& matcher)
     : tMatcher_(matcher),
       prefixSet_(getPrefixSet(matcher)),
@@ -295,10 +295,12 @@ RibPolicyRouteMatcher::RibPolicyRouteMatcher(const TRibRouteMatcher& matcher)
   if (prefixSet_.empty() && !communityMatch_) {
     throw BgpError("Missing matching attribute in RibPolicyRouteMatcher");
   }
-  // A statement carries exactly one route matcher -- a prefix set or a
-  // community list, never both. Matching on both is expressible as two separate
-  // statements, and keeping it to one keeps the community->statement index
-  // unambiguous.
+  /*
+   * A statement carries exactly one route matcher -- a prefix set or a
+   * community list, never both. Matching on both is expressible as two separate
+   * statements, and keeping it to one keeps the community->statement index
+   * unambiguous.
+   */
   if (!prefixSet_.empty() && communityMatch_) {
     throw BgpError(
         "RibPolicyRouteMatcher must specify either a prefix set or a community "
@@ -342,9 +344,9 @@ std::unordered_set<folly::CIDRNetwork> RibPolicyRouteMatcher::getPrefixSet(
   return prefixSet;
 }
 
-//
-// RouteAttributeActions
-//
+/*
+ * RouteAttributeActions
+ */
 RouteAttributeActions::RouteAttributeActions(
     const TRouteAttributeActions& actions)
     : linkBandwidth_(
@@ -435,9 +437,11 @@ bool RouteAttributeActions::updateLinkBandwidth(RibEntry& route) const {
   // try to modify rib entry's policy-lbw value
   auto ribLBW = route.getRibPolicyUcmpWeight();
 
-  // bypass lbw update in below condition
-  // 1: rib has no lbw and lbw is 0
-  // 2: rib has lbw and value matches with action lbw
+  /*
+   * bypass lbw update in below condition
+   * 1: rib has no lbw and lbw is 0
+   * 2: rib has lbw and value matches with action lbw
+   */
   if (!ribLBW.has_value() && *linkBandwidth_ == 0) {
     return false;
   } else if (ribLBW == *linkBandwidth_) {
@@ -463,18 +467,22 @@ bool RouteAttributeActions::updateUcmpWeight(RibEntry& route) const {
     return false;
   }
 
-  // If strict match mode is specified and route's next-hops are not matching
-  // bail out.
+  /*
+   * If strict match mode is specified and route's next-hops are not matching
+   * bail out.
+   */
   if (strictMatchNexthops_ &&
       (routeNexthops.get()->size() != nextHopWeightActions_.size())) {
     return false;
   }
 
-  // Only paths whose nexthop is in the multipath-selected set should be
-  // considered: those are the only nexthops that will receive a weight, and
-  // counting non-selected paths in matchingPathCount inflates the divisor for
-  // divide_weights_by_matching_path_count, producing smaller-than-intended
-  // per-nexthop weights for the selected paths.
+  /*
+   * Only paths whose nexthop is in the multipath-selected set should be
+   * considered: those are the only nexthops that will receive a weight, and
+   * counting non-selected paths in matchingPathCount inflates the divisor for
+   * divide_weights_by_matching_path_count, producing smaller-than-intended
+   * per-nexthop weights for the selected paths.
+   */
   std::vector<std::shared_ptr<RouteInfo>> selectedPaths;
   for (const auto& path : route.getAllPaths()) {
     if (routeNexthops->contains(path->attrs->getNexthop())) {
@@ -528,10 +536,12 @@ bool RouteAttributeActions::updateUcmpWeight(RibEntry& route) const {
       // Nexthop already claimed. Keep the one with lower actionIdx.
       const auto [existingIdx, existingWeight] = it->second;
       if (actionIdx != existingIdx) {
-        // A nexthop matched by two different actions is a policy
-        // misconfiguration (actions are expected to be mutually exclusive).
-        // Warn regardless of selectedPaths iteration order; the lowest action
-        // index wins.
+        /*
+         * A nexthop matched by two different actions is a policy
+         * misconfiguration (actions are expected to be mutually exclusive).
+         * Warn regardless of selectedPaths iteration order; the lowest action
+         * index wins.
+         */
         XLOGF(
             WARN,
             "NH {} for route {} matches multiple actions ({} and {})",
@@ -546,8 +556,10 @@ bool RouteAttributeActions::updateUcmpWeight(RibEntry& route) const {
     }
   }
 
-  // Compute matchingPathCount[actionIdx] = number of nexthops whose WINNING
-  // action is actionIdx. This must be computed AFTER resolving winners.
+  /*
+   * Compute matchingPathCount[actionIdx] = number of nexthops whose WINNING
+   * action is actionIdx. This must be computed AFTER resolving winners.
+   */
   std::vector<int> matchingPathCount(nextHopWeightActions_.size(), 0);
   for (const auto& [nh, actionWeightPair] : policyNexthopAction) {
     const auto [actionIdx, _] = actionWeightPair;
@@ -561,20 +573,24 @@ bool RouteAttributeActions::updateUcmpWeight(RibEntry& route) const {
         it != policyNexthopAction.end()) {
       const auto [actionIdx, policyWeight] = it->second;
       if (divideWeightsByMatchingPathCount_.value_or(false)) {
-        // matchingPathCount[actionIdx] is guaranteed to be >= 1 here: it was
-        // computed above (in the loop over policyNexthopAction) as the number
-        // of nexthops whose winning action is actionIdx, so finding `nh` in
-        // policyNexthopAction means its winning action contributed at least one
-        // such increment. std::max with a floor of 1 is for small-numerator
-        // rounding, not divide-by-zero.
+        /*
+         * matchingPathCount[actionIdx] is guaranteed to be >= 1 here: it was
+         * computed above (in the loop over policyNexthopAction) as the number
+         * of nexthops whose winning action is actionIdx, so finding `nh` in
+         * policyNexthopAction means its winning action contributed at least one
+         * such increment. std::max with a floor of 1 is for small-numerator
+         * rounding, not divide-by-zero.
+         */
         updatedRouteNexthops.emplace(
             nh, std::max(policyWeight / matchingPathCount.at(actionIdx), 1));
       } else {
         updatedRouteNexthops.emplace(nh, policyWeight);
       }
     } else {
-      // All next-hops must have a weight. If a next-hop is not matched by the
-      // policy, abort ucmp for the route.
+      /*
+       * All next-hops must have a weight. If a next-hop is not matched by the
+       * policy, abort ucmp for the route.
+       */
       return false;
     }
   }
@@ -587,9 +603,9 @@ bool RouteAttributeActions::updateUcmpWeight(RibEntry& route) const {
   return false;
 }
 
-//
-// RouteAttributeStatement
-//
+/*
+ * RouteAttributeStatement
+ */
 TRouteAttributeStatement RouteAttributeStatement::toThrift() const {
   TRouteAttributeStatement tStmt;
   tStmt.matcher() = matcher_.toThrift();
@@ -606,9 +622,9 @@ bool RouteAttributeStatement::updateAttribute(RibEntry& route) const {
   return actions_.updateAttribute(route);
 }
 
-//
-// RouteAttributePolicy
-//
+/*
+ * RouteAttributePolicy
+ */
 /**
  * Create instance of RouteAttributePolicy.
  *
@@ -661,19 +677,21 @@ std::optional<std::string> RouteAttributePolicy::matchStatement(
     }
   }
 
-  // Check community matchers. Statements are mutually exclusive, so a
-  // community-set matches at most one statement. Cache the first *active*
-  // matching statement per interned community-set (or nullopt), mirroring the
-  // isActive() filter in the prefix loop above. isActive() is re-checked at
-  // lookup so an entry stops matching once its statement expires by wall-clock;
-  // a statement reactivated by an expiration extension takes the selective
-  // migration path, which rebuilds this index, so a cached nullopt never goes
-  // stale within a policy generation.
-  //
-  // Selection returns the statement of the first path (getAllPaths order) whose
-  // community-set maps to an active statement, assuming a route's paths do not
-  // carry community-sets mapping to *different* statements (else the choice is
-  // path-order dependent, as the pre-index code was statement-order dependent).
+  /*
+   * Check community matchers. Statements are mutually exclusive, so a
+   * community-set matches at most one statement. Cache the first *active*
+   * matching statement per interned community-set (or nullopt), mirroring the
+   * isActive() filter in the prefix loop above. isActive() is re-checked at
+   * lookup so an entry stops matching once its statement expires by wall-clock;
+   * a statement reactivated by an expiration extension takes the selective
+   * migration path, which rebuilds this index, so a cached nullopt never goes
+   * stale within a policy generation.
+   *
+   * Selection returns the statement of the first path (getAllPaths order) whose
+   * community-set maps to an active statement, assuming a route's paths do not
+   * carry community-sets mapping to *different* statements (else the choice is
+   * path-order dependent, as the pre-index code was statement-order dependent).
+   */
   for (const auto& path : route.getAllPaths()) {
     const auto& key =
         path->attrs->getFields()->attrs.get().communities.getSharedPtr();
@@ -795,9 +813,9 @@ RouteAttributePolicy::getActiveCteUcmpAction(
   return std::nullopt;
 }
 
-//
-// NextHopWeightAction
-//
+/*
+ * NextHopWeightAction
+ */
 
 /**
  * Get TNextHopWeightAction object, corresponding to this instance, in thrift
@@ -846,9 +864,9 @@ std::pair<bool, uint32_t> NextHopWeightAction::Match(
   return std::make_pair(false, nexthopUcmpWeight_);
 }
 
-//
-// PathSelectionStatement
-//
+/*
+ * PathSelectionStatement
+ */
 TPathSelectionStatement PathSelectionStatement::toThrift() const {
   TPathSelectionStatement tStmt;
   tStmt.matcher() = matcher_.toThrift();
@@ -865,9 +883,9 @@ PathSelectionStatement::overrideMultipathSelection(
       paths, multipathSelector, result);
 }
 
-//
-// PathSelectionPolicy
-//
+/*
+ * PathSelectionPolicy
+ */
 PathSelectionPolicy::PathSelectionPolicy(const TPathSelectionPolicy& policy) {
   for (const auto& [name, tStmt] : *policy.statements()) {
     statements_.emplace(name, tStmt);
@@ -908,8 +926,10 @@ PathSelectionPolicy::overrideMultipathSelection(
     // cache hit: we've matched this prefix before
     auto& pathSelectionResult = cachedItem->second;
     if (pathSelectionResult.has_value()) {
-      // use the cached statement to process paths, which could have changed so
-      // matched criteria might be different
+      /*
+       * use the cached statement to process paths, which could have changed so
+       * matched criteria might be different
+       */
       return statements_.at(pathSelectionResult->getStatementName())
           .overrideMultipathSelection(
               paths, multipathSelector, *pathSelectionResult);
@@ -981,9 +1001,9 @@ std::vector<TPathSelector> PathSelectionPolicy::getActivePathSelectionCriteria(
   return activePathSelectionCriteria;
 }
 
-//
-// RouteFilterPolicy
-//
+/*
+ * RouteFilterPolicy
+ */
 
 TRouteFilter RouteFilter::toThrift() const {
   TRouteFilter filter;
@@ -1138,16 +1158,20 @@ bool GoldenPrefixSubnetCountingTree::allowPrefix(
     const BgpPath& attrs) const {
   auto match = parentPrefixRadixTree_.longestMatch(prefix.first, prefix.second);
   if (match.atEnd()) {
-    // No matching golden parent prefix found => disallow.
-    // Note: this should never happen, since we expect to only check the subnet
-    // counting tree if we've already found a matching parent in the PrefixTree.
+    /*
+     * No matching golden parent prefix found => disallow.
+     * Note: this should never happen, since we expect to only check the subnet
+     * counting tree if we've already found a matching parent in the PrefixTree.
+     */
     return false;
   }
   const auto& node = match.value();
 
-  // Subnet check passes if either:
-  // 1. The subnet is already known
-  // 2. The subnet is new and the number of subnets is below the limit
+  /*
+   * Subnet check passes if either:
+   * 1. The subnet is already known
+   * 2. The subnet is new and the number of subnets is below the limit
+   */
   const bool subnetCheck = node.subnets_.contains(prefix) ||
       node.subnets_.size() < node.maxSubnetCount_;
   if (!subnetCheck) {
@@ -1161,10 +1185,12 @@ bool GoldenPrefixSubnetCountingTree::allowPrefix(
     return false;
   }
 
-  // Community check passes if either:
-  // 1. Golden communities are not required for this prefix
-  // 2. At least one of the prefix's (prepolicy) communities matches one of the
-  // specified golden communities
+  /*
+   * Community check passes if either:
+   * 1. Golden communities are not required for this prefix
+   * 2. At least one of the prefix's (prepolicy) communities matches one of the
+   * specified golden communities
+   */
   if (!node.communities_) {
     // No golden communities required => allow.
     return true;
@@ -1238,8 +1264,10 @@ bool GoldenPrefixPolicy::allowPrefix(
     const folly::CIDRNetwork& prefix,
     const BgpPath& attrs) const {
   if (!prefixTree_ || !goldenPrefixSubnetCountingTree_) {
-    // nothing is blocked if prefix list is null
-    // this is different from an empty list which blocks everything
+    /*
+     * nothing is blocked if prefix list is null
+     * this is different from an empty list which blocks everything
+     */
     return true;
   }
   return prefixTree_->Match(prefix) &&
@@ -1274,8 +1302,10 @@ RouteFilterPolicy::RouteFilterPolicy(const TRouteFilterPolicy& policy) {
   keyType_ = policy.key_type().to_optional();
 
   for (const auto& [name, tStmt] : *policy.statements()) {
-    // verify statement name is a valid regex only if keyType_ is empty or
-    // DEVICE_REGEX
+    /*
+     * verify statement name is a valid regex only if keyType_ is empty or
+     * DEVICE_REGEX
+     */
     if (!keyType_.has_value() || *keyType_ == KeyType::DEVICE_REGEX) {
       re2::RE2 regex(name);
       if (!regex.ok()) {
@@ -1317,9 +1347,9 @@ TRouteFilterPolicy RouteFilterPolicy::toThrift() const {
   return policy;
 }
 
-//
-// RibPolicy
-//
+/*
+ * RibPolicy
+ */
 RibPolicy::RibPolicy(const TRibPolicy& policy)
     : routeAttributePolicy_(policy.route_attribute_policy().to_optional()),
       pathSelectionPolicy_(policy.path_selection_policy().to_optional()),

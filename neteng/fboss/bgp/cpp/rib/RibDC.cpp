@@ -506,9 +506,11 @@ RibDC::RibDC(
                                : "n/a",
       cpsFileMode ? "FILE_MODE" : "THRIFT_MODE");
 
-  // The bootstrap install flows through replacePathSelectionPolicy (via
-  // replaceRibPolicy above), which increments bgpd.cps.policy_applied.success
-  // on the real apply — so no separate bootstrap counter is emitted here.
+  /*
+   * The bootstrap install flows through replacePathSelectionPolicy (via
+   * replaceRibPolicy above), which increments bgpd.cps.policy_applied.success
+   * on the real apply — so no separate bootstrap counter is emitted here.
+   */
   replaceRibPolicy(std::move(ribPolicy), /*isBootstrap=*/true);
   setCrfFileModeEnabled(crfFileMode);
   setCpsFileModeEnabled(cpsFileMode);
@@ -1216,8 +1218,10 @@ bool RibDC::replacePathSelectionPolicy(
    */
   if (hasUpdate && ribEoRReceived_) {
     XLOG(INFO, "[CPS] hasUpdate and ribEoRReceived, triggering FULL_SYNC");
-    // recompute all the paths, similar to fullSync but will send out the
-    // update announcement to the peers
+    /*
+     * recompute all the paths, similar to fullSync but will send out the
+     * update announcement to the peers
+     */
     for (auto& [prefix, ribEntry] : ribEntries_) {
       ribEntry.requirePathSelection();
     }
@@ -1296,10 +1300,12 @@ void RibDC::overwriteRouteAttributes(
 }
 
 std::pair<bool, bool> RibDC::runBestPathSelection(RibEntry& entry) noexcept {
-  // Capture before selectBestPath() — it is the sole producer of
-  // isPartialDrain_ and may flip it on the entry. Recording the transition
-  // here (rather than in RibBase::prepareFibProgramming) keeps all
-  // partial-drain bookkeeping inside RibDC so RibBase stays platform-agnostic.
+  /*
+   * Capture before selectBestPath() — it is the sole producer of
+   * isPartialDrain_ and may flip it on the entry. Recording the transition
+   * here (rather than in RibBase::prepareFibProgramming) keeps all
+   * partial-drain bookkeeping inside RibDC so RibBase stays platform-agnostic.
+   */
   const bool oldIsPartialDrain = entry.getIsPartialDrain();
   /*
    * Capture the winner's source class (a small value, not the owning
@@ -1328,8 +1334,10 @@ std::pair<bool, bool> RibDC::runBestPathSelection(RibEntry& entry) noexcept {
       entry.getPrefix(), oldSource, entry.getBestPathRaw());
   recordInactivePathDelta(entry.getPrefix(), oldInactivePathCount, entry);
 
-  // Mark a publish pending across the pass; onPrepareFibProgrammingComplete()
-  // consumes it to drive a single end-of-pass state publish.
+  /*
+   * Mark a publish pending across the pass; onPrepareFibProgrammingComplete()
+   * consumes it to drive a single end-of-pass state publish.
+   */
   if (recordPartialDrainTransition(
           oldIsPartialDrain, entry.getIsPartialDrain())) {
     partialDrainPublishPending_ = true;

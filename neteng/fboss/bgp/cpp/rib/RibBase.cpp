@@ -108,12 +108,14 @@ RibBase::FibProgrammedPrefixIterator::next() {
     localRouteIter_ = rib_.localRoutes_.cbegin();
     inited_ = true;
   }
-  // if we are in summaryRoutesPass, check if next
-  // localRouteIter_ is presnet in the pfxNhs_ batch.
-  // If found return the same else proceed to next localRoute.
-  // if all localRoutes are exhausted i.e. summaryRoutesPass_ is false
-  // iterate over all routes returned in the map's iterator order
-  // and return any which is not present in localRoutes.
+  /*
+   * if we are in summaryRoutesPass, check if next
+   * localRouteIter_ is presnet in the pfxNhs_ batch.
+   * If found return the same else proceed to next localRoute.
+   * if all localRoutes are exhausted i.e. summaryRoutesPass_ is false
+   * iterate over all routes returned in the map's iterator order
+   * and return any which is not present in localRoutes.
+   */
   if (summaryRoutesPass_) {
     while (localRouteIter_ != rib_.localRoutes_.cend()) {
       const auto& elem = pfxNhs_.find(localRouteIter_->first);
@@ -188,8 +190,10 @@ RibBase::RibBase(
       continue;
     }
     localRoutes_.emplace(prefix, localRouteOpt.value());
-    // store a set of local routes requiring conditional origination
-    // to avoid full walk of localRoutes_ every time nexthop resolution changes
+    /*
+     * store a set of local routes requiring conditional origination
+     * to avoid full walk of localRoutes_ every time nexthop resolution changes
+     */
     if (getRequireNhResolution(localRouteOpt->network)) {
       // if require_nexthop_resolution is set, nexthop must be non-empty
       assert(localRouteOpt->network.nexthop());
@@ -247,8 +251,10 @@ void RibBase::run() noexcept {
   asyncScope_.add(co_withExecutor(&evb_, processFibMsgLoop()));
   asyncScope_.add(co_withExecutor(&evb_, processFibProgrammingMsgLoop()));
   asyncScope_.add(co_withExecutor(&evb_, processRibPolicyMsgLoop()));
-  // Attention: processLocalRoutesRoutine() should be initialized after
-  // processRibInMsgLoop()
+  /*
+   * Attention: processLocalRoutesRoutine() should be initialized after
+   * processRibInMsgLoop()
+   */
   asyncScope_.add(co_withExecutor(&evb_, processLocalRoutesRoutine()));
   if (FLAGS_bgp_coro_profiler_export_ods) {
     asyncScope_.add(co_withExecutor(&evb_, co_exportProfilerStatsLoop()));
@@ -318,8 +324,10 @@ void RibBase::cleanupCommon() noexcept {
   ribCounters_.reset();
   XLOG(INFO, "[Exit] ribEntries_ cleared");
 
-  // kNexthopInfoCount counter does not need to be reset here;
-  // device bootup will initialize the ODS counter to 0
+  /*
+   * kNexthopInfoCount counter does not need to be reset here;
+   * device bootup will initialize the ODS counter to 0
+   */
   nexthopInfoMap_.clear();
   localRoutes_.clear();
 }
@@ -506,26 +514,30 @@ void RibBase::handleRibPolicyClearMsg() noexcept {
   replaceRibPolicy(nullptr);
 }
 
-// Thread-safe: ribPolicyMsgQ_ is a coalescing MergeQueue guarded by its own
-// lock, so callers enqueue directly from any thread (e.g. a thrift handler)
-// rather than hopping onto the RIB evb. Coalescing ahead of the evb keeps a
-// busy consumer (a long RIB walk) from accumulating a backlog of per-call evb
-// tasks.
+/*
+ * Thread-safe: ribPolicyMsgQ_ is a coalescing MergeQueue guarded by its own
+ * lock, so callers enqueue directly from any thread (e.g. a thrift handler)
+ * rather than hopping onto the RIB evb. Coalescing ahead of the evb keeps a
+ * busy consumer (a long RIB walk) from accumulating a backlog of per-call evb
+ * tasks.
+ */
 void RibBase::enqueueRibPolicyMsg(RibPolicyMessage msg) noexcept {
   RibStats::STATS_ribPolicyMsgEnqueued.add(1);
-  // Each sub-policy's set and clear share one slot, so a pending set and a
-  // later clear (or vice versa) coalesce to the latest -- a single-sub-policy
-  // purge is just an in-place merge. RibPolicyClearMsg maps to
-  // kRibPolicyPurgeAllSlot and drops everything queued.
-  //
-  // Coalescing two route-filter sets can drop an earlier one's forceUpdate
-  // flag; this is intended. forceUpdate=true is enqueued only by
-  // setCrfPolicyFromFile (FILE_MODE) and forceUpdate=false only by thrift sets,
-  // and crfPolicyMutex_ rejects thrift sets while FILE_MODE is on, so the two
-  // never coexist in the queue except across a FILE_MODE flip. There the later
-  // message is the superseding intent and must keep its own version-check
-  // semantics -- carrying an earlier file policy's force onto a later thrift
-  // set would wrongly bypass that check.
+  /*
+   * Each sub-policy's set and clear share one slot, so a pending set and a
+   * later clear (or vice versa) coalesce to the latest -- a single-sub-policy
+   * purge is just an in-place merge. RibPolicyClearMsg maps to
+   * kRibPolicyPurgeAllSlot and drops everything queued.
+   *
+   * Coalescing two route-filter sets can drop an earlier one's forceUpdate
+   * flag; this is intended. forceUpdate=true is enqueued only by
+   * setCrfPolicyFromFile (FILE_MODE) and forceUpdate=false only by thrift sets,
+   * and crfPolicyMutex_ rejects thrift sets while FILE_MODE is on, so the two
+   * never coexist in the queue except across a FILE_MODE flip. There the later
+   * message is the superseding intent and must keep its own version-check
+   * semantics -- carrying an earlier file policy's force onto a later thrift
+   * set would wrongly bypass that check.
+   */
   const int slot = folly::variant_match(
       msg,
       [](const RibPolicyClearMsg&) { return kRibPolicyPurgeAllSlot; },
@@ -555,8 +567,10 @@ void RibBase::enqueueRibPolicyMsg(RibPolicyMessage msg) noexcept {
     RibStats::STATS_ribPolicyMsgPurged.add(1);
     ribPolicyMsgQ_.pushPurgeAll(std::move(msg));
   } else if (ribPolicyMsgQ_.pushMerge(std::move(msg), slot)) {
-    // Coalesced into an already-pending same-slot message -- an apply the
-    // consumer will now skip.
+    /*
+     * Coalesced into an already-pending same-slot message -- an apply the
+     * consumer will now skip.
+     */
     RibStats::STATS_ribPolicyMsgCoalesced.add(1);
   }
 }
@@ -632,9 +646,11 @@ folly::coro::Task<void> RibBase::processLocalRoutesRoutine() noexcept {
   XLOG(INFO, "Starting local route advertising coro task...");
 
   for (const auto& [prefix, localRoute] : localRoutes_) {
-    // If min_supporting_route is non 0, or if require_nexthop_resolution is
-    // set, we cannot simply originate the local route here. Instead, we need to
-    // wait for the corresponding condition to be met and originate on-demand.
+    /*
+     * If min_supporting_route is non 0, or if require_nexthop_resolution is
+     * set, we cannot simply originate the local route here. Instead, we need to
+     * wait for the corresponding condition to be met and originate on-demand.
+     */
     if (getMinSupportRoutes(localRoute.network) == 0 &&
         !getRequireNhResolution(localRoute.network)) {
       PrefixPathIds pfxPathIds{{prefix, kDefaultPathID}};
@@ -658,16 +674,20 @@ void RibBase::processRibInAnnouncement(
       pfxPathIds.size());
 
   for (const auto& pfxPathId : pfxPathIds) {
-    // As per RFC-4724 we must send all our local routes along with
-    // peer-received routes before we send our first EoR after graceful-restart.
-    // Following code injects the min-supporting local summary prefixes before
-    // other received prefixes so that FIB can be programmed and summary routes
-    // can be advertised to peers before we send EoR. Process the aggregate
-    // routes first
+    /*
+     * As per RFC-4724 we must send all our local routes along with
+     * peer-received routes before we send our first EoR after graceful-restart.
+     * Following code injects the min-supporting local summary prefixes before
+     * other received prefixes so that FIB can be programmed and summary routes
+     * can be advertised to peers before we send EoR. Process the aggregate
+     * routes first
+     */
     auto aggs = processSingleRibInUpdate(peer, attrs, pfxPathId);
     for (auto& [network, bgpAttrs] : aggs) {
-      // aggs iterated here MUST be local originated routes, not received
-      // routes. Hence they always use default path ID
+      /*
+       * aggs iterated here MUST be local originated routes, not received
+       * routes. Hence they always use default path ID
+       */
       PrefixPathId aggPfxPid{network, kDefaultPathID};
       processSingleRibInUpdate(kV4LocalPeerInfo, bgpAttrs, aggPfxPid);
     }
@@ -723,17 +743,21 @@ void RibBase::processRibInWithdrawal(
       pfxPathIds.size());
 
   for (const auto& pfxPathId : pfxPathIds) {
-    // As per RFC-4724 we must send all our local routes along with
-    // peer-received routes before we send our first EoR after graceful-restart.
-    // Following code injects the min-supporting local summary prefixes before
-    // other received prefixes so that FIB can be programmed and summary routes
-    // can be advertised to peers before we send EoR. Process the aggregate
-    // routes first
+    /*
+     * As per RFC-4724 we must send all our local routes along with
+     * peer-received routes before we send our first EoR after graceful-restart.
+     * Following code injects the min-supporting local summary prefixes before
+     * other received prefixes so that FIB can be programmed and summary routes
+     * can be advertised to peers before we send EoR. Process the aggregate
+     * routes first
+     */
     auto aggs = processSingleRibInUpdate(peer, nullptr, pfxPathId);
 
     for (auto& [network, bgpAttrs] : aggs) {
-      // aggs iterated here MUST be local originated routes, not received
-      // routes. Hence they always use default path ID
+      /*
+       * aggs iterated here MUST be local originated routes, not received
+       * routes. Hence they always use default path ID
+       */
       PrefixPathId aggPfxPid{network, kDefaultPathID};
       processSingleRibInUpdate(kV4LocalPeerInfo, bgpAttrs, aggPfxPid);
     }
@@ -757,14 +781,16 @@ RibBase::processSingleRibInUpdate(
   auto prefix = get<0>(pfxPid);
   auto receivedPathId = get<1>(pfxPid);
 
-  // ** NOTE **
-  // ribEntries_ are managed in two places asynchronously:
-  //   1. here
-  //   2. In handleFibProgrammedMessage(): erase prefix after withdrawal is
-  //   programmed
-  //
-  // It's likely a ribEntry still exists with getAllPathsCnt() == 0.
-  // This should be considered as if the prefix does not exist before.
+  /*
+   * ** NOTE **
+   * ribEntries_ are managed in two places asynchronously:
+   *   1. here
+   *   2. In handleFibProgrammedMessage(): erase prefix after withdrawal is
+   *   programmed
+   *
+   * It's likely a ribEntry still exists with getAllPathsCnt() == 0.
+   * This should be considered as if the prefix does not exist before.
+   */
 
   // check whether prefix exists in ribEntries_
   auto kv = ribEntries_.find(prefix);
@@ -778,14 +804,18 @@ RibBase::processSingleRibInUpdate(
     ribCounters_.onPrefixAdded(prefix.first.isV4(), prefix.second);
   }
   auto& entry = kv->second;
-  // oldAllPathCnt is used in aggregate route logic to indentify
-  // prefix announcement/withdrawal (to distinguish with ecmp change)
+  /*
+   * oldAllPathCnt is used in aggregate route logic to indentify
+   * prefix announcement/withdrawal (to distinguish with ecmp change)
+   */
   auto oldAllPathCnt = entry.getAllPathsCnt();
 
   if (!attrs && oldAllPathCnt == 0) {
-    // A previous withdrawn has been processed, but has not been programmed yet.
-    // this is equal to withdraw route of a prefix that does not exist.
-    // nothing more to do here.
+    /*
+     * A previous withdrawn has been processed, but has not been programmed yet.
+     * this is equal to withdraw route of a prefix that does not exist.
+     * nothing more to do here.
+     */
     return {};
   }
 
@@ -842,46 +872,56 @@ RibBase::processSingleRibInUpdate(
       BgpPeerId{peer.addr, peer.routerId}.str());
 
   if (enableNexthopTracking_) {
-    // On withdrawals, check if the nexthopInfo can be deleted from the
-    // nexthopInfoMap_
+    /*
+     * On withdrawals, check if the nexthopInfo can be deleted from the
+     * nexthopInfoMap_
+     */
     if (!attrs && nexthopInfo != nullptr) {
       checkAndDeleteNexthopInfo(nexthopInfo->getNextHop());
     }
   }
 
-  // If route is configured with minimum_supporting_routes > 0, do not
-  // aggregate For all other cases run aggregate logic:
-  // 1. local route with minimum_supporting_routes = 0
-  // 2. local injected routes (peer == localPeer, but not in localRoutes_)
-  // 3. peer learnt routes
+  /*
+   * If route is configured with minimum_supporting_routes > 0, do not
+   * aggregate For all other cases run aggregate logic:
+   * 1. local route with minimum_supporting_routes = 0
+   * 2. local injected routes (peer == localPeer, but not in localRoutes_)
+   * 3. peer learnt routes
+   */
 
   // skip aggreagate route
   if (isAggRoute) {
     return {};
   }
 
-  // determine if this is supporting route announcement/withdrawn
-  // TODO: Is sameAsLocalRoute logic expected behavior in RFC?
+  /*
+   * determine if this is supporting route announcement/withdrawn
+   * TODO: Is sameAsLocalRoute logic expected behavior in RFC?
+   */
   bool sameAsLocalRoute = localRoutes_.find(prefix) != localRoutes_.cend();
-  // supporting route withdrawn:
-  // 1. prefix != agg (prefix withdrawn):
-  //      oldAllPathCnt == 1 and newAllPathCnt == 0
-  // 2. prefix == agg (path withdrawn):
-  //      getAllPathsCnt() = oldPathCnt - 1
-  //    e.g. agg = <1.0.0.0/24, nh=0.0.0.0, supportPfxCnt=1>
-  //         supporting prefix = <1.0.0.0/24, nh=peer1>
-  //    If peer1 withdrawn supporting prefix => agg.supportPfxCnt--
+  /*
+   * supporting route withdrawn:
+   * 1. prefix != agg (prefix withdrawn):
+   *      oldAllPathCnt == 1 and newAllPathCnt == 0
+   * 2. prefix == agg (path withdrawn):
+   *      getAllPathsCnt() = oldPathCnt - 1
+   *    e.g. agg = <1.0.0.0/24, nh=0.0.0.0, supportPfxCnt=1>
+   *         supporting prefix = <1.0.0.0/24, nh=peer1>
+   *    If peer1 withdrawn supporting prefix => agg.supportPfxCnt--
+   */
   bool supportingRouteWithdrawn =
       (!sameAsLocalRoute && oldAllPathCnt == 1 && newAllPathCnt == 0) ||
       (sameAsLocalRoute && newAllPathCnt == oldAllPathCnt - 1);
-  // supporting route announcement:
-  // 1. prefix != agg (prefix announcement):
-  //      oldAllPathCnt == 0 and newAllPathCnt == 1
-  // 2. prefix == agg (path announcement):
-  //      getAllPathsCnt() = oldPathCnt + 1
-  //    e.g. agg = <1.0.0.0/24, nh=0.0.0.0, supportPfxCnt=0>
-  //         supporting prefix = <1.0.0.0/24, nh=peer1>
-  //    If peer1 announce supporting prefix, agg.supportPfxCnt++
+  /*
+   * supporting route announcement:
+   * 1. prefix != agg (prefix announcement):
+   *      oldAllPathCnt == 0 and newAllPathCnt == 1
+   * 2. prefix == agg (path announcement):
+   *      getAllPathsCnt() = oldPathCnt + 1
+   *    e.g. agg = <1.0.0.0/24, nh=0.0.0.0, supportPfxCnt=0>
+   *         supporting prefix = <1.0.0.0/24, nh=peer1>
+   *    If peer1 announce supporting prefix, agg.supportPfxCnt++
+   */
   bool supportingRouteAnnouncement =
       (!sameAsLocalRoute && oldAllPathCnt == 0 && newAllPathCnt == 1) ||
       (sameAsLocalRoute && newAllPathCnt == oldAllPathCnt + 1);
@@ -1062,10 +1102,12 @@ void RibBase::processPauseBestPathAndFibProgramming(
   }
 
   if (taskName == RibPauseResumeCause::BACKPRESSURE) {
-    // Case 1: BACKPRESSURE pause will not invoke pause timer.
-    // Pause from BACKPRESSURE is a hardblocker and will not
-    // rely on ribPauseTimer to unblock, whereas the other tasks will have a
-    // max-cap timer duration.
+    /*
+     * Case 1: BACKPRESSURE pause will not invoke pause timer.
+     * Pause from BACKPRESSURE is a hardblocker and will not
+     * rely on ribPauseTimer to unblock, whereas the other tasks will have a
+     * max-cap timer duration.
+     */
     return;
   }
 
@@ -1079,8 +1121,10 @@ void RibBase::processPauseBestPathAndFibProgramming(
 
     ribPauseTimer_->scheduleTimeout(ribPauseTime_);
   } else {
-    // Initialize ribPauseTimer_ and schedule timeout to resume best path and
-    // fib programming when ribPauseTimer_ expires
+    /*
+     * Initialize ribPauseTimer_ and schedule timeout to resume best path and
+     * fib programming when ribPauseTimer_ expires
+     */
     ribPauseTimer_ = folly::AsyncTimeout::make(
         evb_, [this]() noexcept { mayResumeBestPathAndFibProgramming(); });
     ribPauseTimer_->scheduleTimeout(ribPauseTime_);
@@ -1106,8 +1150,10 @@ void RibBase::processResumeBestPathAndFibProgramming(
       "Received ResumeBestPathAndFibProgramming from {}",
       magic_enum::enum_name(taskName));
 
-  // Erase the received task name bestPathAndFibProgrammingPausedBy_ set. It
-  // is a no-op if the task name is already removed from the list.
+  /*
+   * Erase the received task name bestPathAndFibProgrammingPausedBy_ set. It
+   * is a no-op if the task name is already removed from the list.
+   */
   bestPathAndFibProgrammingPausedBy_.wlock()->erase(taskName);
 
   if (!bestPathAndFibProgrammingPausedBy_.rlock()->empty()) {
@@ -1118,9 +1164,11 @@ void RibBase::processResumeBestPathAndFibProgramming(
     return;
   }
 
-  // Resume best path and fib programming once
-  // all tasks that sent PauseBestPathAndFibProgramming have sent
-  // ResumeBestPathAndFibProgramming
+  /*
+   * Resume best path and fib programming once
+   * all tasks that sent PauseBestPathAndFibProgramming have sent
+   * ResumeBestPathAndFibProgramming
+   */
   mayResumeBestPathAndFibProgramming(taskName);
 }
 
@@ -1156,8 +1204,10 @@ void RibBase::mayResumeBestPathAndFibProgramming(
       bestPathAndFibProgrammingPausedBy_.wlock()->swap(causes);
       return;
     } else {
-      // Clear all entries in bestPathAndFibProgrammingPausedBy_ if
-      // BACKPRESSURE is not present
+      /*
+       * Clear all entries in bestPathAndFibProgrammingPausedBy_ if
+       * BACKPRESSURE is not present
+       */
       bestPathAndFibProgrammingPausedBy_.wlock()->clear();
     }
   }
@@ -1279,9 +1329,11 @@ void RibBase::processRibInNexthopUpdate(
           continue;
         }
 
-        // Iterate over RouteInfo in the association list to mark
-        // requirePathSelection only if
-        // ribEoRReceived: True => already fulfilled the initial FULL_SYNC
+        /*
+         * Iterate over RouteInfo in the association list to mark
+         * requirePathSelection only if
+         * ribEoRReceived: True => already fulfilled the initial FULL_SYNC
+         */
         for (auto routeInfoIt = it->second.begin();
              routeInfoIt != it->second.end();
              routeInfoIt++) {
@@ -1294,9 +1346,11 @@ void RibBase::processRibInNexthopUpdate(
         }
       }
     } else {
-      // If the nexthop is not in NexthopInfoMap_, create a new entry
-      // This can happen if we receive a nexthop update before any routes using
-      // this nexthop
+      /*
+       * If the nexthop is not in NexthopInfoMap_, create a new entry
+       * This can happen if we receive a nexthop update before any routes using
+       * this nexthop
+       */
       XLOGF(
           INFO,
           "Creating new NexthopInfo for nexthop {} (reachable: {}, igpCost: {})",
@@ -1339,8 +1393,10 @@ folly::coro::Task<void> RibBase::monitorRouteChurn() noexcept {
     // when cancelAndJoinAsync is called, guaranteed to exit
     co_await folly::coro::co_safe_point;
 
-    // Handle route churn detection and pause/resume best path and Fib
-    // programming
+    /*
+     * Handle route churn detection and pause/resume best path and Fib
+     * programming
+     */
     if (isRouteChurnDetected()) {
       XLOG(
           INFO,
@@ -1350,8 +1406,10 @@ folly::coro::Task<void> RibBase::monitorRouteChurn() noexcept {
           PauseBestPathAndFibProgramming(RibPauseResumeCause::ROUTE_CHURN));
     } else if (bestPathAndFibProgrammingPausedBy_.rlock()->contains(
                    RibPauseResumeCause::ROUTE_CHURN)) {
-      // Resume best path and Fib programming if it was already paused due to
-      // route churn
+      /*
+       * Resume best path and Fib programming if it was already paused due to
+       * route churn
+       */
       XLOG(
           INFO,
           "Route churn is stable, resuming best path selection and Fib programming");
@@ -1403,9 +1461,11 @@ RibBase::aggregateRoute(
       continue;
     }
 
-    // no need to aggregate local route that do not need
-    // minimum_supporting_routes assumption here is local routes does not
-    // overlap with each other in configurations
+    /*
+     * no need to aggregate local route that do not need
+     * minimum_supporting_routes assumption here is local routes does not
+     * overlap with each other in configurations
+     */
     auto minSupportRoutes = getMinSupportRoutes(localRoute.network);
     if (minSupportRoutes == 0) {
       continue;
@@ -1427,8 +1487,10 @@ RibBase::aggregateRoute(
           folly::IPAddress::networkToString(prefix),
           localRoute.supportPfxCnt);
 
-      // minimum_supporting_routes drop down to threshold,
-      // withdrawn aggregated RouteInfo
+      /*
+       * minimum_supporting_routes drop down to threshold,
+       * withdrawn aggregated RouteInfo
+       */
       if (localRoute.supportPfxCnt == minSupportRoutes - 1) {
         aggRoutes.emplace_back(localPrefix, nullptr);
       }
@@ -1440,8 +1502,10 @@ RibBase::aggregateRoute(
           folly::IPAddress::networkToString(localPrefix),
           folly::IPAddress::networkToString(prefix),
           localRoute.supportPfxCnt);
-      // prefix announcement causes count reaches minimum_supporting_routes,
-      // advertise aggregated route
+      /*
+       * prefix announcement causes count reaches minimum_supporting_routes,
+       * advertise aggregated route
+       */
       if (localRoute.supportPfxCnt == minSupportRoutes) {
         aggRoutes.emplace_back(localPrefix, localRoute.attrs);
       }
@@ -1702,13 +1766,15 @@ std::pair<bool, bool> RibBase::selectBestPath(
 
 std::optional<BgpRouteType> RibBase::bestpathSource(
     const RouteInfo* bestpath) noexcept {
-  // A null best path maps to nullopt (counted in no source bucket).
-  // getBgpPathType classifies every real path into one of
-  // LOCAL/EBGP/ConfedEBGP/ IBGP -- its residual (non-local, non-external,
-  // non-confed-external) case is IBGP, the internal-peer class -- so it does
-  // not return UNKNOWN today. The RibCounters `unknown` bucket therefore stays
-  // 0 in practice; it exists only so an UNKNOWN winner would be isolated there
-  // rather than mis-attributed.
+  /*
+   * A null best path maps to nullopt (counted in no source bucket).
+   * getBgpPathType classifies every real path into one of
+   * LOCAL/EBGP/ConfedEBGP/ IBGP -- its residual (non-local, non-external,
+   * non-confed-external) case is IBGP, the internal-peer class -- so it does
+   * not return UNKNOWN today. The RibCounters `unknown` bucket therefore stays
+   * 0 in practice; it exists only so an UNKNOWN winner would be isolated there
+   * rather than mis-attributed.
+   */
   if (bestpath == nullptr) {
     return std::nullopt;
   }
@@ -1774,8 +1840,10 @@ void RibBase::prepareFibProgramming(bool fullSync) noexcept {
   RibOutWithdrawal withdrawalAddPath;
   withdrawal.entries.reserve(kRibChunkSize);
   withdrawalAddPath.addPathEntries.reserve(kRibChunkSize);
-  // Full sync: clear current fibBatchList_ and populate with entire
-  // ribEntries
+  /*
+   * Full sync: clear current fibBatchList_ and populate with entire
+   * ribEntries
+   */
   if (fullSync) {
     fibBatchList_.clear();
     XLOGF(
@@ -1783,15 +1851,19 @@ void RibBase::prepareFibProgramming(bool fullSync) noexcept {
         "Start full sync best path selection for {} ribEntries",
         ribEntries_.size());
   }
-  // record rib entries that "needPathSelection", which need to go through
-  // route attribute policy again
+  /*
+   * record rib entries that "needPathSelection", which need to go through
+   * route attribute policy again
+   */
   folly::F14FastSet<folly::CIDRNetwork> prefixesToOverwriteRouteAttributes;
   // record start time before we perform path selection
   auto ribPolicyProcessingStartTime = std::chrono::steady_clock::now();
   for (auto& [prefix, ribEntry] : ribEntries_) {
-    // Check if there was any update to the prefix; if not, continue. Note
-    // that the change could be something that does not affect bestpath or
-    // multipath nexthops.
+    /*
+     * Check if there was any update to the prefix; if not, continue. Note
+     * that the change could be something that does not affect bestpath or
+     * multipath nexthops.
+     */
     if (!fullSync && !ribEntry.needPathSelection()) {
       continue;
     }
@@ -1827,12 +1899,14 @@ void RibBase::prepareFibProgramming(bool fullSync) noexcept {
       fibBatchList_.push_back(ribEntry);
     }
 
-    // Incremental update:
-    // If neither bestpath nor nexthops changed, there is nothing to be done
-    // for Fib. However, there may still be some attribute change in one of
-    // the ECMP paths that need to be advertised to the neighbor that has
-    // expressed interest in AddPath. If so, add ribEntry to fibBatchList
-    // and continue.
+    /*
+     * Incremental update:
+     * If neither bestpath nor nexthops changed, there is nothing to be done
+     * for Fib. However, there may still be some attribute change in one of
+     * the ECMP paths that need to be advertised to the neighbor that has
+     * expressed interest in AddPath. If so, add ribEntry to fibBatchList
+     * and continue.
+     */
     if (!bestpathChanged && !nexthopChanged && ribEntry.multipathChanged()) {
       if (!ribEntry.isOnFibBatchList()) {
         fibBatchList_.push_back(ribEntry);
@@ -1853,11 +1927,13 @@ void RibBase::prepareFibProgramming(bool fullSync) noexcept {
           weightedNexthops ? "not null" : "null",
           bestpath ? "not null" : "null");
 
-      // If prefix is being withdrawn, advertise the withdrawal right away,
-      // before programming fib
-      // Since weightedNexthops could be non-null while bestpath be null, we
-      // can't rely solely on weightedNexthops == null to determine if prefix
-      // is to be withdrawn
+      /*
+       * If prefix is being withdrawn, advertise the withdrawal right away,
+       * before programming fib
+       * Since weightedNexthops could be non-null while bestpath be null, we
+       * can't rely solely on weightedNexthops == null to determine if prefix
+       * is to be withdrawn
+       */
       if (!weightedNexthops || (bestpathChanged && !bestpath)) {
         XLOGF(
             DBG3,
@@ -2021,8 +2097,10 @@ std::chrono::seconds RibBase::getFibBackoffTimeout() const noexcept {
  */
 void RibBase::schedulePrepareFibProgrammingTimer() noexcept {
   if (pauseBestPathAndFibProgramming_ || fibBatchTimer_->isScheduled()) {
-    // Best path selection and Fib programming is paused or timer has been
-    // scheduled already
+    /*
+     * Best path selection and Fib programming is paused or timer has been
+     * scheduled already
+     */
     return;
   }
 
@@ -2046,9 +2124,11 @@ void RibBase::handleFibProgrammedMessage(
   // Initial dump to all established peers
   auto sendWithEoR = msg.isSync && !initialEorSent_;
   if (sendWithEoR) {
-    // Mark one-time flag
-    // Because of this flag, sendWithEoR can only be true once at
-    // initialization.
+    /*
+     * Mark one-time flag
+     * Because of this flag, sendWithEoR can only be true once at
+     * initialization.
+     */
     initialEorSent_ = true;
 
     /**
@@ -2104,8 +2184,10 @@ void RibBase::handleFibProgrammedMessage(
       }
       auto& entry = kv->second;
 
-      // For any withdraw routes, we must have already notified all peers.
-      // Erase ribEntry if no update in the interim.
+      /*
+       * For any withdraw routes, we must have already notified all peers.
+       * Erase ribEntry if no update in the interim.
+       */
       if (weightedNexthops == nullptr) {
         XLOGF(
             DBG3,
@@ -2131,13 +2213,17 @@ void RibBase::handleFibProgrammedMessage(
         continue;
       }
 
-      // If there has been some change to any of the ECMP paths, delay sending
-      // the update
+      /*
+       * If there has been some change to any of the ECMP paths, delay sending
+       * the update
+       */
       if (entry.getMultipathWeightedNexthops() != weightedNexthops) {
-        // nexthops have been changed. Do not advertise it to BGP peers now.
-        // The new nexthops will trigger another Fib programming and then come
-        // back here with the new nexthops. We will advertise the prefix to
-        // BGP peers then.
+        /*
+         * nexthops have been changed. Do not advertise it to BGP peers now.
+         * The new nexthops will trigger another Fib programming and then come
+         * back here with the new nexthops. We will advertise the prefix to
+         * BGP peers then.
+         */
         XLOGF(
             DBG3,
             "Done updating {} to Fib. But nexthops will change in next fib "
@@ -2172,12 +2258,14 @@ void RibBase::handleFibProgrammedMessage(
       const auto newAdvMultipathNHs =
           entry.getAdvertisedMultipathWeightedNexthops();
 
-      // If this is the first time we are calculating a bestpath then mark it
-      // as new entry later in the RibOutAnnouncement for out-delay purpose.
-      // Note that if a route was already in RIB and then withdrawn by all
-      // advertising peers and then readvertised again by some(all) of peers
-      // it is also treated as eligible for out-delay and as such marked with
-      // newlyInstalledInRib flag.
+      /*
+       * If this is the first time we are calculating a bestpath then mark it
+       * as new entry later in the RibOutAnnouncement for out-delay purpose.
+       * Note that if a route was already in RIB and then withdrawn by all
+       * advertising peers and then readvertised again by some(all) of peers
+       * it is also treated as eligible for out-delay and as such marked with
+       * newlyInstalledInRib flag.
+       */
       bool newlyInstalledInLocalRib = false;
       if (entry.advertisedBestpath_ == nullptr) {
         entry.installTimeStamp_ = std::chrono::system_clock::now();
@@ -2185,10 +2273,12 @@ void RibBase::handleFibProgrammedMessage(
       }
 
       if (entry.commitMultipaths() && entry.bestpath_) {
-        // TODO: It looks here that we are re-advertising all paths whether or
-        // not they changed.  While this is not incorrect, it will result in
-        // sending more info than we need.  Something can be done here, or in
-        // AdjRib to fix this.
+        /*
+         * TODO: It looks here that we are re-advertising all paths whether or
+         * not they changed.  While this is not incorrect, it will result in
+         * sending more info than we need.  Something can be done here, or in
+         * AdjRib to fix this.
+         */
         const auto advMultPaths = entry.getAdvertisedMultipaths();
         for (const auto& [_, advMultPath] : advMultPaths) {
           if (announcementAddPath.addPathEntries.size() == kRibChunkSize) {
@@ -2278,9 +2368,11 @@ void RibBase::handleFibProgrammedMessage(
           "Done updating {} to Fib. Added to BGP peer announcement.",
           folly::IPAddress::networkToString(prefix));
 
-      // Announce the messages if we reached chunk size. This ensures that
-      // while Rib is processing remaining message, adjRib, FiberBgp etc will
-      // start working on previous chunks.
+      /*
+       * Announce the messages if we reached chunk size. This ensures that
+       * while Rib is processing remaining message, adjRib, FiberBgp etc will
+       * start working on previous chunks.
+       */
       if (announcement.entries.size() == kRibChunkSize) {
         flushAnnouncementChunk(
             announcement, /*reserveAddPath=*/false, sendWithEoR);
@@ -2330,8 +2422,10 @@ void RibBase::handleFibProgrammedMessage(
 }
 
 void RibBase::handleFibSyncReq(const Fib::FibSyncReq& /* unused */) noexcept {
-  // skip processing full-sync request sending from FIB
-  // since initial RIB full-sync has NOT be triggered yet
+  /*
+   * skip processing full-sync request sending from FIB
+   * since initial RIB full-sync has NOT be triggered yet
+   */
   if (!ribEoRReceived_) {
     return;
   }
@@ -2432,8 +2526,10 @@ std::vector<TRibEntry> RibBase::getRibEntriesForCommunities(
         continue;
       }
       auto tRibEntry = *ret;
-      // if all paths were pruned out by community filter above, then exclude
-      // this entry from o/p list.
+      /*
+       * if all paths were pruned out by community filter above, then exclude
+       * this entry from o/p list.
+       */
       if (tRibEntry.paths()->size()) {
         tRibEntries.emplace_back(tRibEntry);
       }
@@ -2674,8 +2770,10 @@ std::optional<facebook::bgp::LocalRoute> RibBase::createLocalRoute(
   auto attrs = std::make_shared<facebook::bgp::BgpPath>(
       static_cast<facebook::bgp::BgpPathFields>(pathC));
 
-  // Set weight to 2^15 on local routes to ensure they win in path selection
-  // when weight comparison is enabled
+  /*
+   * Set weight to 2^15 on local routes to ensure they win in path selection
+   * when weight comparison is enabled
+   */
   attrs->setWeight(1 << 15);
 
   if (auto policyName = network.policy_name()) {
@@ -2733,14 +2831,18 @@ RibBase::createTRibEntryWithFilter(
   }
 
   const auto& bestpath = ribEntry.getBestPath();
-  // Don't exit pre-maturely because we can have bestpath == null but
-  // multipath not null in the case of bgp_native_path_selection_min_nexthop
+  /*
+   * Don't exit pre-maturely because we can have bestpath == null but
+   * multipath not null in the case of bgp_native_path_selection_min_nexthop
+   */
   if (bestpath) {
     auto bestNexthop = bestpath->attrs->getNexthop();
     tRibEntry.best_next_hop() = createTIpPrefix(bestNexthop);
   }
-  // We group the paths into two groups:
-  // (i) Selected Best/Multipath and (ii) default.
+  /*
+   * We group the paths into two groups:
+   * (i) Selected Best/Multipath and (ii) default.
+   */
   std::vector<TBgpPath> tDefaultPaths{};
   std::vector<TBgpPath> tBestPaths{};
 
@@ -2803,8 +2905,10 @@ RibBase::createTRibEntryWithFilter(
   }
   tRibEntry.paths() = pathGrps;
 
-  // Indicate if path selection is pending (IGP cost may have changed
-  // but best-path hasn't been recalculated yet)
+  /*
+   * Indicate if path selection is pending (IGP cost may have changed
+   * but best-path hasn't been recalculated yet)
+   */
   if (ribEntry.needPathSelection()) {
     tRibEntry.path_selection_pending() = true;
   }
@@ -2835,9 +2939,11 @@ std::vector<TOriginatedRoute> RibBase::getOriginatedRoutes() {
       tRoute.prefix() = tPrefix;
       tRoute.path() = createTBgpPath(*localRoute.attrs);
 
-      // TODO: Communities are deprecated. We already populate attrs which has
-      // communities.
-      //       Remove communities support.
+      /*
+       * TODO: Communities are deprecated. We already populate attrs which has
+       * communities.
+       *       Remove communities support.
+       */
       std::vector<TBgpCommunity> tComms;
       for (const auto& comm : localRoute.attrs->getCommunities().get()) {
         TBgpCommunity tComm;
@@ -2980,10 +3086,12 @@ bool RibBase::replaceRouteFilterPolicy(
   bool hasUpdate;
 
   if (routeFilterPolicy_) {
-    // When routeFilterPolicy_ has cached one policy, hasUpdate if
-    // 1. newPolicy == nullptr
-    // 2. cached policy has delta with new one
-    // forceUpdate bypasses the version check (used by FILE_MODE)
+    /*
+     * When routeFilterPolicy_ has cached one policy, hasUpdate if
+     * 1. newPolicy == nullptr
+     * 2. cached policy has delta with new one
+     * forceUpdate bypasses the version check (used by FILE_MODE)
+     */
     hasUpdate = (newPolicy == nullptr) ||
         ((*routeFilterPolicy_ != *newPolicy) &&
          (forceUpdate ||
@@ -2993,8 +3101,10 @@ bool RibBase::replaceRouteFilterPolicy(
       BgpStats::incrCrfForceUpdateBypass();
     }
   } else {
-    // routeFilterPolicy_ does not cache anything, hasUpdate if newPolicy is
-    // not nullptr
+    /*
+     * routeFilterPolicy_ does not cache anything, hasUpdate if newPolicy is
+     * not nullptr
+     */
     hasUpdate = (newPolicy != nullptr);
   }
 
@@ -3228,9 +3338,11 @@ NexthopInfo* FOLLY_NULLABLE RibBase::getNexthopInfo(
       return &it->second;
     }
 
-    // Get nexthop status from nexthopCache
-    // nexthopCache will always return a NexthopStatus, creating a new one with
-    // default values if needed
+    /*
+     * Get nexthop status from nexthopCache
+     * nexthopCache will always return a NexthopStatus, creating a new one with
+     * default values if needed
+     */
     auto nextHopStatus = nexthopCache_->registerAndGetNexthopStatus(nexthop);
     auto isReachable = nextHopStatus.isReachable();
     auto igpCost = nextHopStatus.getIgpCost();
@@ -3345,11 +3457,13 @@ bool RibBase::checkAndDeleteNexthopInfo(const folly::IPAddress& nexthop) {
         routeInfoCount);
     return false;
   }
-  // At this point, no RouteInfo objects are associated with this nexthop
-  // Unregister and try to remove from nexthopCache.
-  //
-  // NOTE: nexthopCache only removes nexthopInfo if
-  // the nexthop is unreachable.
+  /*
+   * At this point, no RouteInfo objects are associated with this nexthop
+   * Unregister and try to remove from nexthopCache.
+   *
+   * NOTE: nexthopCache only removes nexthopInfo if
+   * the nexthop is unreachable.
+   */
   XLOGF(
       DBG2, "Deleting nexthop status for {} from nexthopCache", nexthop.str());
   nexthopCache_->unregisterAndRemoveNexthopStatus(nexthop);
@@ -3388,8 +3502,10 @@ TNexthopInfo toTNexthopInfo(
       nexthopInfo.isResolvedForSelection();
   nexthopInfoThrift.route_count() = nexthopInfo.getRouteInfoListSize();
 
-  // Report change times as an age (seconds ago), computed here on the RIB
-  // thread that owns the timestamps. Unset => never resolved.
+  /*
+   * Report change times as an age (seconds ago), computed here on the RIB
+   * thread that owns the timestamps. Unset => never resolved.
+   */
   const auto now = std::chrono::steady_clock::now();
   if (const auto ts = nexthopInfo.getLastReachabilityChangeTs()) {
     nexthopInfoThrift.last_reachability_change_age_s() =

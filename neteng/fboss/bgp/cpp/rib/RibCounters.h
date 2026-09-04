@@ -247,11 +247,13 @@ class RibCounters {
     // Subset of totalPaths that best-path selection excluded as candidates.
     int64_t inactivePaths{0};
     std::array<int64_t, kMaxPrefixLen + 1> prefixLenCounts{};
-    // Best-path source breakdown, by the selected best path's class. The
-    // `unknown` bucket maps 1:1 to BgpRouteType::UNKNOWN. getBgpPathType does
-    // not emit UNKNOWN today (its residual case is IBGP, the internal-peer
-    // class), so this bucket stays 0 in practice; it exists only so an UNKNOWN
-    // winner would land here rather than be folded into another source bucket.
+    /*
+     * Best-path source breakdown, by the selected best path's class. The
+     * `unknown` bucket maps 1:1 to BgpRouteType::UNKNOWN. getBgpPathType does
+     * not emit UNKNOWN today (its residual case is IBGP, the internal-peer
+     * class), so this bucket stays 0 in practice; it exists only so an UNKNOWN
+     * winner would land here rather than be folded into another source bucket.
+     */
     int64_t ebgp{0};
     int64_t ibgp{0};
     int64_t confedEbgp{0};
@@ -284,9 +286,11 @@ class RibCounters {
         a.local += delta;
         break;
       case BgpRouteType::UNKNOWN:
-        // 1:1 with the enum. getBgpPathType does not return UNKNOWN today (its
-        // residual case is IBGP), so this is reached only by direct callers; it
-        // keeps any UNKNOWN winner out of the other source buckets.
+        /*
+         * 1:1 with the enum. getBgpPathType does not return UNKNOWN today (its
+         * residual case is IBGP), so this is reached only by direct callers; it
+         * keeps any UNKNOWN winner out of the other source buckets.
+         */
         a.unknown += delta;
         break;
     }

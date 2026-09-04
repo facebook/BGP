@@ -66,8 +66,10 @@ class FibDev : public Fib {
   // One time flag to mark initial full-sync to FIB finished
   bool initialFibSynced_{false};
 
-  // this is to make sure we do not process calls before syncFib
-  // when agent reconnects (or first time connect)
+  /*
+   * this is to make sure we do not process calls before syncFib
+   * when agent reconnects (or first time connect)
+   */
   bool fullSynced_{false};
 };
 

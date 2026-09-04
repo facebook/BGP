@@ -168,9 +168,9 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
       RouteFilterPolicySetMsg,
       RouteFilterPolicyClearMsg>;
 
-  //
-  // Creates RibBase instance
-  //
+  /*
+   * Creates RibBase instance
+   */
   RibBase(
       const std::unordered_map<folly::CIDRNetwork, thrift::BgpNetwork>&
           localRoutes,
@@ -226,9 +226,9 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
     nexthopSubscribeRequester_ = std::move(requester);
   }
 
-  //
-  // Thrift service handlers
-  //
+  /*
+   * Thrift service handlers
+   */
 
   // Get the timestamp
   inline int64_t getLastProgrammedRoutesTimeStamp() {
@@ -256,28 +256,36 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
   std::vector<neteng::fboss::bgp::thrift::TRibEntry> getRibEntries(
       neteng::fboss::bgp_attr::TBgpAfi afi);
 
-  // Get a compact summary (total prefixes + per-prefix-length histogram) of the
-  // RIB for one address family, read from ribCounters_ on this module's evb.
+  /*
+   * Get a compact summary (total prefixes + per-prefix-length histogram) of the
+   * RIB for one address family, read from ribCounters_ on this module's evb.
+   */
   neteng::fboss::bgp::thrift::TRibSummary getRibSummary(
       neteng::fboss::bgp_attr::TBgpAfi afi);
 
-  // Get ribEntries by prefixes:
-  // prefix: prefix to match from the ribEntries.
+  /*
+   * Get ribEntries by prefixes:
+   * prefix: prefix to match from the ribEntries.
+   */
   std::vector<neteng::fboss::bgp::thrift::TRibEntry> getRibEntryForPrefix(
       std::unique_ptr<std::string> prefix);
 
-  // Get ribEntries by community
-  // afi: AFI to match or all AFIs
-  // comms: community list with match-any logic (in contrast of match-all)
-  // rib entry returned should match at least 1 community in comms.
-  // when comms is emtpy, no rib entry should be returned.
+  /*
+   * Get ribEntries by community
+   * afi: AFI to match or all AFIs
+   * comms: community list with match-any logic (in contrast of match-all)
+   * rib entry returned should match at least 1 community in comms.
+   * when comms is emtpy, no rib entry should be returned.
+   */
   std::vector<neteng::fboss::bgp::thrift::TRibEntry>
   getRibEntriesForCommunities(
       neteng::fboss::bgp_attr::TBgpAfi afi,
       const std::vector<nettools::bgplib::BgpAttrCommunityC>& comms);
 
-  // Get ribEntries whose prefix is within a given prefix:
-  // prefix: prefix to match from the ribEntries.
+  /*
+   * Get ribEntries whose prefix is within a given prefix:
+   * prefix: prefix to match from the ribEntries.
+   */
   std::vector<neteng::fboss::bgp::thrift::TRibEntry>
   getRibEntriesForSubprefixes(std::unique_ptr<std::string> prefix);
 
@@ -415,8 +423,10 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
 
   virtual void clearRibPolicy();
 
-  // Append a timestamped entry to the RIB policy change history file.
-  // Keeps at most the last 50 entries.
+  /*
+   * Append a timestamped entry to the RIB policy change history file.
+   * Keeps at most the last 50 entries.
+   */
   static void appendRibPolicyChangeHistory(
       const std::string& policyType,
       int64_t version) noexcept;
@@ -649,27 +659,35 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
   // Periodic interval in seconds to check for route churn
   std::chrono::seconds routeChurnCheckInterval_{kRouteChurnCheckInterval};
 
-  // Higher watermark value for number of prefixes that are allowed within the
-  // interval
+  /*
+   * Higher watermark value for number of prefixes that are allowed within the
+   * interval
+   */
   static inline uint64_t highWatermarkForRouteChurn_{
       kHighWaterMarkForRouteChurn};
 
-  // Lower watermark value for number of prefixes to fall to after threshold
-  // exceeded
+  /*
+   * Lower watermark value for number of prefixes to fall to after threshold
+   * exceeded
+   */
   static inline uint64_t lowWatermarkForRouteChurn_{kLowWaterMarkForRouteChurn};
 
   std::unique_ptr<Fib> fib_;
 
-  // Based on configuration, we use different multipath and bestpath selectors.
-  // These will be passed to rib entry during best path selection.
+  /*
+   * Based on configuration, we use different multipath and bestpath selectors.
+   * These will be passed to rib entry during best path selection.
+   */
   std::unique_ptr<RouteInfoSelector> multipathSelector_{nullptr};
   std::unique_ptr<RouteInfoSelector> bestpathSelector_{nullptr};
 
   // prefix -> RibEntry map
   folly::F14NodeMap<folly::CIDRNetwork, RibEntry> ribEntries_;
 
-  // Single authoritative aggregate of RIB-wide counts (mirrors fb303 ODS
-  // counters). Mutated only on this module's EventBase alongside ribEntries_.
+  /*
+   * Single authoritative aggregate of RIB-wide counts (mirrors fb303 ODS
+   * counters). Mutated only on this module's EventBase alongside ribEntries_.
+   */
   RibCounters ribCounters_;
 
   /*
@@ -720,22 +738,25 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
    */
   std::unique_ptr<RouteFilterPolicy> routeFilterPolicy_{nullptr};
 
-  // The list to store all RibEntry that have been updated and needs to
-  // be programmed in Fib and/or send to peers.
-  //
-  // Using a non-intrusive list requires storing either a key or a shared
-  // pointer of the entry. It could contribute to some performance overload.
-  // Using folly::IntrusiveList could help in this case. Measurement shows
-  // IntrusiveList has about 4x performance gain on constructing the list
-  // and 7x gain on looping, comparing with std::forward_list.
+  /*
+   * The list to store all RibEntry that have been updated and needs to
+   * be programmed in Fib and/or send to peers.
+   *
+   * Using a non-intrusive list requires storing either a key or a shared
+   * pointer of the entry. It could contribute to some performance overload.
+   * Using folly::IntrusiveList could help in this case. Measurement shows
+   * IntrusiveList has about 4x performance gain on constructing the list
+   * and 7x gain on looping, comparing with std::forward_list.
+   */
   folly::IntrusiveList<RibEntry, &RibEntry::fibBatchListHook_> fibBatchList_;
 
  private:
-  //
-  // Member functions
-  //
-  // apply policy and get new attrs
-  // nullptr indicates the policy rejected the prefix
+  /*
+   * Member functions
+   *
+   * apply policy and get new attrs
+   * nullptr indicates the policy rejected the prefix
+   */
   std::shared_ptr<BgpPath> getBgpPathFromPolicy(
       const std::string& policyName,
       const folly::CIDRNetwork& prefixes,
@@ -880,8 +901,10 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
   virtual void processNexthopResolutionUpdate(
       const NexthopResolutionUpdate& /* nexthopResolutionUpdate */) noexcept {}
 
-  // Util function to return aggregated route(locally originated) update to be
-  // processed if any
+  /*
+   * Util function to return aggregated route(locally originated) update to be
+   * processed if any
+   */
   std::vector<std::pair<folly::CIDRNetwork, std::shared_ptr<const BgpPath>>>
   processSingleRibInUpdate(
       const TinyPeerInfo& peer,
@@ -982,11 +1005,13 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
   virtual void replaceRibPolicy(
       std::unique_ptr<RibPolicy> newRibPolicy,
       bool isBootstrap = false) = 0;
-  // We only replace instead of updating route filter policy
-  // Each time the route filter policy is replaced, we also need to save route
-  // filter policy to disk. After that, when there is delta and not in read-only
-  // mode, trigger fib programming and force routes to be sent to AdjRibs
-  // @return: hasUpdate: whether the newPolicy contains update
+  /*
+   * We only replace instead of updating route filter policy
+   * Each time the route filter policy is replaced, we also need to save route
+   * filter policy to disk. After that, when there is delta and not in read-only
+   * mode, trigger fib programming and force routes to be sent to AdjRibs
+   * @return: hasUpdate: whether the newPolicy contains update
+   */
   virtual bool replaceRouteFilterPolicy(
       std::unique_ptr<RouteFilterPolicy> newPolicy,
       bool isBootstrap = false,
@@ -1084,9 +1109,9 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
    */
   bool checkAndDeleteNexthopInfo(const folly::IPAddress& nexthop);
 
-  //
-  // Member variables
-  //
+  /*
+   * Member variables
+   */
   const BgpGlobalConfig globalConfig_;
 
  protected:
@@ -1096,10 +1121,12 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
   std::shared_ptr<facebook::bgp::PolicyManager> policyManager_{nullptr};
 
   folly::F14NodeMap<folly::CIDRNetwork, LocalRoute> localRoutes_{};
-  // There could be more than one route pointing to the same nexthop ip,
-  // hence we store a map of nexthop ip to a list of routes.
-  // Routes in each list conditionally originate based on resolution of the
-  // nexthop ip
+  /*
+   * There could be more than one route pointing to the same nexthop ip,
+   * hence we store a map of nexthop ip to a list of routes.
+   * Routes in each list conditionally originate based on resolution of the
+   * nexthop ip
+   */
   folly::F14NodeMap<
       folly::IPAddress /* nexthop ip */,
       std::vector<folly::CIDRNetwork> /* route */>
@@ -1107,10 +1134,12 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
   std::chrono::steady_clock::time_point
       pauseBestPathAndFibProgrammingStartTime_;
 
-  // Max-cap timer for pausing best-path computation and Fib programming in Rib.
-  // This is used to avoid deadlocks or extra long locking time for RIB/FIB
-  // programming. If the pause time exceeds the set limit, Rib will resume
-  // operations.
+  /*
+   * Max-cap timer for pausing best-path computation and Fib programming in Rib.
+   * This is used to avoid deadlocks or extra long locking time for RIB/FIB
+   * programming. If the pause time exceeds the set limit, Rib will resume
+   * operations.
+   */
   std::unique_ptr<folly::AsyncTimeout> ribPauseTimer_;
 
   // Number of prefixes learnt since the last reset.
@@ -1126,14 +1155,18 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
   MonitoredMPMCQueue<RibOutMessage>& ribOutQ_;
 
  protected:
-  // Flag used to pause Rib operations such as best-path computation and Fib
-  // programming while policy re-evaluation is in progress
-  // TODO: revisit this collection since it is changed by single thread.
+  /*
+   * Flag used to pause Rib operations such as best-path computation and Fib
+   * programming while policy re-evaluation is in progress
+   * TODO: revisit this collection since it is changed by single thread.
+   */
   std::atomic<bool> pauseBestPathAndFibProgramming_{false};
 
  private:
-  // Set containing all the operations due to which best
-  // path computation and Fib programming are paused
+  /*
+   * Set containing all the operations due to which best
+   * path computation and Fib programming are paused
+   */
   folly::Synchronized<folly::F14NodeSet<RibPauseResumeCause>>
       bestPathAndFibProgrammingPausedBy_{};
 
@@ -1202,8 +1235,10 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
   friend class MockRib;
   friend class RibBaseFixture;
 
-  // e.g., for rsw001.p002.f03.abc4, switchId is 1
-  // e.g., for fa001-uu002.abc3, switchId is 2
+  /*
+   * e.g., for rsw001.p002.f03.abc4, switchId is 1
+   * e.g., for fa001-uu002.abc3, switchId is 2
+   */
   std::optional<size_t> switchId_{std::nullopt};
 
   /**
@@ -1266,8 +1301,10 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
    */
   uint64_t ribVersion_{0};
 
-// per class placeholder for test code injection
-// only need to be setup once here
+/*
+ * per class placeholder for test code injection
+ * only need to be setup once here
+ */
 #ifdef RibBase_TEST_FRIENDS
   RibBase_TEST_FRIENDS
 #endif

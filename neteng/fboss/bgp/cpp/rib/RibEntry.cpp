@@ -162,13 +162,17 @@ void RibEntry::linkRouteInfoToNexthop(
   }
 }
 
-// when a path ID is requested, return the left element of the Rib Entry's free
-// interval and then increment it. The interval is exhausted when the left
-// element exceeds the right one, in which case a new free interval would need
-// to be determined
+/*
+ * when a path ID is requested, return the left element of the Rib Entry's free
+ * interval and then increment it. The interval is exhausted when the left
+ * element exceeds the right one, in which case a new free interval would need
+ * to be determined
+ */
 uint32_t RibEntry::getPathIdToSend() {
-  // if the interval has no remaining free path IDs, we need to find the largest
-  // free interval among assigned path IDs
+  /*
+   * if the interval has no remaining free path IDs, we need to find the largest
+   * free interval among assigned path IDs
+   */
   if (freePathIdInterval_.first > freePathIdInterval_.second) {
     freePathIdInterval_ = findLargestFreePathIdInterval(
         routeInfos_, kMinPathIDToSend, kMaxPathIDToSend);
