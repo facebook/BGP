@@ -170,16 +170,20 @@ class NexthopCache {
       folly::F14NodeMap<folly::IPAddress, NexthopStatusWithRegistration>>
       nexthopStatusMap_;
 
-  // Hook fired (outside the map lock) from registerAndGetNexthopStatus when a
-  // registered nexthop has no reachable answer yet. Set once at startup before
-  // any thread registers nexthops (see setOnNexthopRegistered), so it needs no
-  // synchronization. Empty unless the interface-state resolution flag is on.
+  /*
+   * Hook fired (outside the map lock) from registerAndGetNexthopStatus when a
+   * registered nexthop has no reachable answer yet. Set once at startup before
+   * any thread registers nexthops (see setOnNexthopRegistered), so it needs no
+   * synchronization. Empty unless the interface-state resolution flag is on.
+   */
   std::function<void(folly::IPAddress)> onNexthopRegistered_;
 
   friend class NexthopCacheTestFixture;
 
-  // per class placeholder for test code injection
-  // only need to be setup once here
+  /*
+   * per class placeholder for test code injection
+   * only need to be setup once here
+   */
 #ifdef NexthopCache_TEST_FRIENDS
   NexthopCache_TEST_FRIENDS
 #endif

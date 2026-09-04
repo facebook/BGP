@@ -269,8 +269,10 @@ void FsdbFibWatcher::registerPeers(
 }
 
 void FsdbFibWatcher::stop() noexcept {
-  // Subscription lifecycle is managed by the shared FsdbCowStateSubManager
-  // owner
+  /*
+   * Subscription lifecycle is managed by the shared FsdbCowStateSubManager
+   * owner
+   */
 }
 
 folly::coro::Task<void> FsdbFibWatcher::co_updateCacheAndPushToRib(

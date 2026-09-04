@@ -144,12 +144,16 @@ class NexthopStatus {
    */
   bool isReachable_{false};
 
-  // If metric/cost to reach a reachable nexthop, nullopt if unreachable
-  // If IgpCost is unset, the value is considered as INT_MAX by BGP++
+  /*
+   * If metric/cost to reach a reachable nexthop, nullopt if unreachable
+   * If IgpCost is unset, the value is considered as INT_MAX by BGP++
+   */
   std::optional<uint32_t> igpCost_;
 
-  // True if the nexthop is directly connected, false if not directly connected,
-  // nullopt if unknown
+  /*
+   * True if the nexthop is directly connected, false if not directly connected,
+   * nullopt if unknown
+   */
   std::optional<bool> isConnected_;
 
   /*

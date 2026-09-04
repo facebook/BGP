@@ -140,14 +140,16 @@ NetlinkWrapper::NetlinkWrapper(
       BgpStatsBB::kNetlinkDampeningEnabled, enableNetlinkDampening_ ? 1 : 0);
 
   if (FLAGS_bgp_resolve_nexthops_from_interface_state) {
-    // Drive the pull (RIB-registration) resolution path: when the RIB registers
-    // a nexthop that has no answer yet, evaluate it against interface link
-    // state on our own fiber. The hook runs on the RIB thread, so it only
-    // schedules work here via addTaskRemote (thread-safe) and never touches our
-    // state directly. Set once here, before any thread registers nexthops, so
-    // the cache needs no synchronization for the hook pointer; we never clear
-    // it because our EventBase outlives the RIB (see MainBB shutdown order),
-    // and a post-stop addTaskRemote is a harmless no-op.
+    /*
+     * Drive the pull (RIB-registration) resolution path: when the RIB registers
+     * a nexthop that has no answer yet, evaluate it against interface link
+     * state on our own fiber. The hook runs on the RIB thread, so it only
+     * schedules work here via addTaskRemote (thread-safe) and never touches our
+     * state directly. Set once here, before any thread registers nexthops, so
+     * the cache needs no synchronization for the hook pointer; we never clear
+     * it because our EventBase outlives the RIB (see MainBB shutdown order),
+     * and a post-stop addTaskRemote is a harmless no-op.
+     */
     nexthopCache_->setOnNexthopRegistered([this](folly::IPAddress nexthopIp) {
       fm_.addTaskRemote(
           [this, nexthopIp]() mutable { evaluateNexthop(nexthopIp); });
@@ -162,8 +164,10 @@ void NetlinkWrapper::run() noexcept {
   connectOpenrFibAgent();
 
   {
-    // NOTE: We wan to maintain the order for Netlink Messages so that the final
-    // state is correct.
+    /*
+     * NOTE: We wan to maintain the order for Netlink Messages so that the final
+     * state is correct.
+     */
 
     auto fiber = fm_.addTaskFuture([this]() mutable noexcept {
       XLOG(DBG1, "Starting sync interfaces task");
@@ -225,8 +229,10 @@ void NetlinkWrapper::run() noexcept {
       XLOG(DBG1, "Starting OpenR update queue processor fiber");
 
       while (true) {
-        // Blocks this fiber (not the thread) if queue is empty
-        // Returns nullopt when queue is closed
+        /*
+         * Blocks this fiber (not the thread) if queue is empty
+         * Returns nullopt when queue is closed
+         */
         auto maybeRequest = pendingFibOpenrUpdates_.get();
         if (!maybeRequest) {
           XLOG(INFO, "Queue closed, OpenR update processor fiber exiting");
@@ -268,8 +274,10 @@ void NetlinkWrapper::stop() noexcept {
     }
   });
 
-  // Close the queue to signal the OpenR update processing fiber to stop
-  // This will cause get() to return nullopt, allowing the fiber to exit cleanly
+  /*
+   * Close the queue to signal the OpenR update processing fiber to stop
+   * This will cause get() to return nullopt, allowing the fiber to exit cleanly
+   */
   pendingFibOpenrUpdates_.close();
 
   disconnectOpenrFibAgent();
@@ -351,11 +359,13 @@ bool NetlinkWrapper::syncInterfaces() {
       interfaces.size());
 
   if (FLAGS_bgp_resolve_nexthops_from_interface_state) {
-    // Interface-state mode: a directly-connected nexthop's reachability is
-    // driven purely by interface link state. Record the interface snapshot,
-    // then seed the cache by re-evaluating the RIB-registered nexthops covered
-    // by each interface's prefixes. No host-IP enumeration and no OpenR FIB
-    // agent feed on this path.
+    /*
+     * Interface-state mode: a directly-connected nexthop's reachability is
+     * driven purely by interface link state. Record the interface snapshot,
+     * then seed the cache by re-evaluating the RIB-registered nexthops covered
+     * by each interface's prefixes. No host-IP enumeration and no OpenR FIB
+     * agent feed on this path.
+     */
     for (auto& [ifIndex, interface] : interfaces) {
       ifIndexToName_[ifIndex] = interface.getIfName();
       interfaces_.insert_or_assign(interface.getIfName(), interface);
@@ -371,8 +381,10 @@ bool NetlinkWrapper::syncInterfaces() {
     return true;
   }
 
-  // Legacy path: seed the cache from the host IPs enumerated in each interface
-  // prefix and feed the OpenR FIB agent.
+  /*
+   * Legacy path: seed the cache from the host IPs enumerated in each interface
+   * prefix and feed the OpenR FIB agent.
+   */
   std::vector<NexthopStatus> vec;
   openr::thrift::ConnectedNextHopStatusRequest request;
   std::vector<openr::thrift::ConnectedNextHopStatus> thriftNextHopStatuses;
@@ -397,8 +409,10 @@ folly::F14NodeMap<int, InterfaceEntry> NetlinkWrapper::getAllInterfaces() {
   folly::F14NodeMap<int, InterfaceEntry> result;
 
   XLOG(DBG2, "Fetching all links...");
-  // via(&evb_).get() blocks the fiber (not the thread) while EventBase
-  // processes the request
+  /*
+   * via(&evb_).get() blocks the fiber (not the thread) while EventBase
+   * processes the request
+   */
   auto links = nlSock_->getAllLinks().via(&evb_).get();
   if (links.hasError()) {
     throw openr::fbnl::NlException("failed fetching links", links.error());
@@ -421,11 +435,13 @@ folly::F14NodeMap<int, InterfaceEntry> NetlinkWrapper::getAllInterfaces() {
         "failed fetching interface addresses", addrs.error());
   }
   if (FLAGS_bgp_resolve_nexthops_from_interface_state) {
-    // Interface-state mode: rebuild the global directly-connected prefix table
-    // (and each interface's reverse index) from this full snapshot.
-    // Reachability is driven by interface link state, not address enumeration,
-    // and the kernel neighbor (ARP/ND) table is not consulted -- so neighbors
-    // are not fetched.
+    /*
+     * Interface-state mode: rebuild the global directly-connected prefix table
+     * (and each interface's reverse index) from this full snapshot.
+     * Reachability is driven by interface link state, not address enumeration,
+     * and the kernel neighbor (ARP/ND) table is not consulted -- so neighbors
+     * are not fetched.
+     */
     prefixes_.clear();
     for (auto& addr : addrs.value()) {
       auto value = folly::get_ptr(result, addr.getIfIndex());
@@ -439,8 +455,10 @@ folly::F14NodeMap<int, InterfaceEntry> NetlinkWrapper::getAllInterfaces() {
     return result;
   }
 
-  // Legacy path: seed each interface's trackable host IPs from its addresses,
-  // then resolve their reachability from the kernel neighbor (ARP/ND) table.
+  /*
+   * Legacy path: seed each interface's trackable host IPs from its addresses,
+   * then resolve their reachability from the kernel neighbor (ARP/ND) table.
+   */
   for (auto& addr : addrs.value()) {
     auto value = folly::get_ptr(result, addr.getIfIndex());
     auto prefix = addr.getPrefix();
@@ -491,8 +509,10 @@ void NetlinkWrapper::processLinkEvent(openr::fbnl::Link&& link) {
   auto& ifName = link.getLinkName();
   auto ifIndex = link.getIfIndex();
   auto isUp = link.isUp();
-  // For directly connected next hops, we only care about port channel
-  // interfaces. All other interfaces we will ignore
+  /*
+   * For directly connected next hops, we only care about port channel
+   * interfaces. All other interfaces we will ignore
+   */
   if (!isIfNameRegexMatch(ifName)) {
     return;
   }
@@ -502,11 +522,13 @@ void NetlinkWrapper::processLinkEvent(openr::fbnl::Link&& link) {
   interfaceEntry.updateIfIndex(ifIndex);
 
   if (FLAGS_bgp_resolve_nexthops_from_interface_state) {
-    // Interface-state mode: link state is the source of truth for
-    // directly-connected reachability. On a state change, re-evaluate the
-    // RIB-registered nexthops covered by this interface's prefixes: link-up
-    // makes a covered nexthop reachable, link-down makes it unreachable
-    // (hidden) unless another covering interface is still up. No ARP/ND.
+    /*
+     * Interface-state mode: link state is the source of truth for
+     * directly-connected reachability. On a state change, re-evaluate the
+     * RIB-registered nexthops covered by this interface's prefixes: link-up
+     * makes a covered nexthop reachable, link-down makes it unreachable
+     * (hidden) unless another covering interface is still up. No ARP/ND.
+     */
     if (interfaceEntry.setUp(isUp)) {
       for (const auto& prefix : interfaceEntry.getPrefixes()) {
         for (const auto& nexthopIp :
@@ -670,8 +692,10 @@ void NetlinkWrapper::processIfAddressEvent(openr::fbnl::IfAddress&& addr) {
   }
 
   if (!FLAGS_bgp_resolve_nexthops_from_interface_state) {
-    // Legacy: enumerate the host IPs of the prefix into the per-interface
-    // reachability map and push the change.
+    /*
+     * Legacy: enumerate the host IPs of the prefix into the per-interface
+     * reachability map and push the change.
+     */
     auto& interfaceEntry = getOrCreateInterfaceEntry(it->second);
     if (interfaceEntry.updateAddr(prefix.value(), isValid)) {
       if (isValid) {
@@ -687,11 +711,13 @@ void NetlinkWrapper::processIfAddressEvent(openr::fbnl::IfAddress&& addr) {
     return;
   }
 
-  // Interface-state mode: maintain the global directly-connected prefix table
-  // and this interface's reverse index. Reachability is driven by link state
-  // and is not touched by address events. Only a coverage change (a prefix node
-  // created or destroyed in the global table) warrants re-evaluation -- a
-  // same-subnet sibling add/remove on another interface does not.
+  /*
+   * Interface-state mode: maintain the global directly-connected prefix table
+   * and this interface's reverse index. Reachability is driven by link state
+   * and is not touched by address events. Only a coverage change (a prefix node
+   * created or destroyed in the global table) warrants re-evaluation -- a
+   * same-subnet sibling add/remove on another interface does not.
+   */
   auto& interfaceEntry = getOrCreateInterfaceEntry(it->second);
   bool coverageChanged;
   if (isValid) {
@@ -705,19 +731,25 @@ void NetlinkWrapper::processIfAddressEvent(openr::fbnl::IfAddress&& addr) {
     return;
   }
 
-  // Coverage changed: re-evaluate the registered nexthops that fall within this
-  // prefix, since their directly-connected classification may have changed.
+  /*
+   * Coverage changed: re-evaluate the registered nexthops that fall within this
+   * prefix, since their directly-connected classification may have changed.
+   */
   for (const auto& nexthopIp :
        nexthopCache_->getRegisteredNexthopsInSubnet(prefix.value())) {
     if (isValid) {
-      // Prefix added: the nexthop may now be directly connected.
-      // evaluateNexthop pushes its current reachability if so, or leaves it to
-      // the FIB path.
+      /*
+       * Prefix added: the nexthop may now be directly connected.
+       * evaluateNexthop pushes its current reachability if so, or leaves it to
+       * the FIB path.
+       */
       evaluateNexthop(nexthopIp);
     } else if (!evaluateNexthop(nexthopIp)) {
-      // Prefix removed and the nexthop is no longer directly connected on any
-      // interface (no sibling prefix covers it). Relinquish connected ownership
-      // so the recursive/FIB path can take over, and notify the RIB.
+      /*
+       * Prefix removed and the nexthop is no longer directly connected on any
+       * interface (no sibling prefix covers it). Relinquish connected ownership
+       * so the recursive/FIB path can take over, and notify the RIB.
+       */
       auto cleared = nexthopCache_->clearConnectedStatus(nexthopIp);
       if (cleared.has_value()) {
         ribInQ_.fiberPush(RibInNexthopUpdate({*cleared}));
@@ -728,9 +760,11 @@ void NetlinkWrapper::processIfAddressEvent(openr::fbnl::IfAddress&& addr) {
 
 void NetlinkWrapper::processNeighborEvent(openr::fbnl::Neighbor&& nbr) {
   if (FLAGS_bgp_resolve_nexthops_from_interface_state) {
-    // Interface-state mode ignores the kernel neighbor (ARP/ND) table entirely;
-    // a directly-connected nexthop's reachability is driven by interface link
-    // state, so neighbor events are dropped.
+    /*
+     * Interface-state mode ignores the kernel neighbor (ARP/ND) table entirely;
+     * a directly-connected nexthop's reachability is driven by interface link
+     * state, so neighbor events are dropped.
+     */
     return;
   }
 
@@ -899,14 +933,16 @@ void NetlinkWrapper::releaseAndReschedule() noexcept {
 }
 
 bool NetlinkWrapper::evaluateNexthop(const folly::IPAddress& nexthopIp) {
-  // Classify the nexthop as directly connected via a global longest-prefix
-  // (best) match over all interface prefixes. If no interface prefix covers
-  // it, it is not directly connected -- leave it to the recursive/FIB path,
-  // untouched. Otherwise its reachability is driven purely by interface link
-  // state: reachable iff a covering interface is up. A directly-connected
-  // nexthop whose covering interfaces are all down is pushed
-  // unreachable-but-connected, which hides the route until a covering
-  // interface comes back up.
+  /*
+   * Classify the nexthop as directly connected via a global longest-prefix
+   * (best) match over all interface prefixes. If no interface prefix covers
+   * it, it is not directly connected -- leave it to the recursive/FIB path,
+   * untouched. Otherwise its reachability is driven purely by interface link
+   * state: reachable iff a covering interface is up. A directly-connected
+   * nexthop whose covering interfaces are all down is pushed
+   * unreachable-but-connected, which hides the route until a covering
+   * interface comes back up.
+   */
   auto ifIndex = prefixes_.coveringIfIndex(nexthopIp);
   if (!ifIndex.has_value()) {
     XLOGF(
@@ -948,8 +984,10 @@ InterfaceEntry& NetlinkWrapper::getOrCreateInterfaceEntry(
 
 void NetlinkWrapper::enqueueConnectedNextHopStatus(
     openr::thrift::ConnectedNextHopStatusRequest&& request) {
-  // Blocks this fiber (not the thread) if there is no space in the queue
-  // Other fibers on this thread can continue running
+  /*
+   * Blocks this fiber (not the thread) if there is no space in the queue
+   * Other fibers on this thread can continue running
+   */
   pendingFibOpenrUpdates_.put(std::move(request));
 
   XLOGF(

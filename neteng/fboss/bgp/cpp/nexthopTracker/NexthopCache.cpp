@@ -32,8 +32,10 @@ std::vector<NexthopStatus> NexthopCache::addOrUpdateNextHopStatus(
   std::vector<NexthopStatus> statusesToPush;
   statusesToPush.reserve(nexthopStatusList.size());
 
-  // Update the nexthopStatusMap_ with the provided list of NexthopStatus
-  // objects and track which entries were changed or newly added
+  /*
+   * Update the nexthopStatusMap_ with the provided list of NexthopStatus
+   * objects and track which entries were changed or newly added
+   */
   nexthopStatusMap_.withWLock([&](folly::F14NodeMap<
                                   folly::IPAddress,
                                   NexthopStatusWithRegistration>& statusMap) {
@@ -138,8 +140,10 @@ std::vector<NexthopStatus> NexthopCache::addOrUpdateNextHopStatus(
         statusMap.emplace(nexthopIp, std::make_tuple(nexthopStatus, false));
         RibStats::incrNexthopStatusMapCount();
 
-        // New entries are not registered from RIB yet, so no need to add to
-        // push list
+        /*
+         * New entries are not registered from RIB yet, so no need to add to
+         * push list
+         */
       }
     }
   });
@@ -154,10 +158,12 @@ NexthopStatus NexthopCache::registerAndGetNexthopStatus(
       "Getting nexthop status for {} and registering from RIB",
       nexthopIp.str());
 
-  // Whether to fire the registration hook after releasing the lock: true when
-  // the registered nexthop has no reachable answer yet (new entry, or an
-  // existing entry that is currently unreachable), so the on-demand resolver
-  // gets a chance to look it up.
+  /*
+   * Whether to fire the registration hook after releasing the lock: true when
+   * the registered nexthop has no reachable answer yet (new entry, or an
+   * existing entry that is currently unreachable), so the on-demand resolver
+   * gets a chance to look it up.
+   */
   bool needsResolution = false;
 
   auto status = nexthopStatusMap_.withWLock(
@@ -182,8 +188,10 @@ NexthopStatus NexthopCache::registerAndGetNexthopStatus(
           return entryStatus;
         }
 
-        // Create a new entry with default values (unreachable, no IGP cost)
-        // and set the registration flag to true
+        /*
+         * Create a new entry with default values (unreachable, no IGP cost)
+         * and set the registration flag to true
+         */
         XLOGF(
             DBG2,
             "Nexthop status not found for {}, creating new entry with default values and registeredFromRib: true",
@@ -200,9 +208,11 @@ NexthopStatus NexthopCache::registerAndGetNexthopStatus(
         return defaultStatus;
       });
 
-  // Fire the on-demand resolution hook OUTSIDE the lock (the hook is
-  // non-blocking and may, in turn, call back into the cache). It is only set
-  // when the neighbor-event resolution flag is on.
+  /*
+   * Fire the on-demand resolution hook OUTSIDE the lock (the hook is
+   * non-blocking and may, in turn, call back into the cache). It is only set
+   * when the neighbor-event resolution flag is on.
+   */
   if (needsResolution && onNexthopRegistered_) {
     onNexthopRegistered_(nexthopIp);
   }
@@ -260,8 +270,10 @@ std::optional<NexthopStatus> NexthopCache::clearConnectedStatus(
             status.isReachable());
 
         bool wasReachable = status.isReachable();
-        // Reset to unreachable with isConnected unset so a non-connected source
-        // (e.g. FsdbFibWatcher) can take over authority again.
+        /*
+         * Reset to unreachable with isConnected unset so a non-connected source
+         * (e.g. FsdbFibWatcher) can take over authority again.
+         */
         status = NexthopStatus(
             nexthopIp, /*isReachable*/ false, std::nullopt, std::nullopt);
         if (wasReachable) {

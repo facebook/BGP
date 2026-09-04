@@ -43,12 +43,14 @@ namespace facebook::bgp {
 InterfaceEntry::InterfaceEntry(std::string const& ifName) : ifName_(ifName) {}
 
 bool InterfaceEntry::updateAddr(folly::CIDRNetwork const& addr, bool isValid) {
-  // Legacy (default) path: seed/clear reachability by enumerating every host IP
-  // in the interface prefix. Bounded by kDefaultMaxIPsInCIDR, so any prefix
-  // wider than a /31 (v4) or /127 (v6) seeds nothing. When
-  // bgp_resolve_nexthops_from_interface_state is on, reachability is driven
-  // purely by interface link state and interface prefixes are tracked globally
-  // by NetlinkWrapper (InterfacePrefixTable), so this is not called.
+  /*
+   * Legacy (default) path: seed/clear reachability by enumerating every host IP
+   * in the interface prefix. Bounded by kDefaultMaxIPsInCIDR, so any prefix
+   * wider than a /31 (v4) or /127 (v6) seeds nothing. When
+   * bgp_resolve_nexthops_from_interface_state is on, reachability is driven
+   * purely by interface link state and interface prefixes are tracked globally
+   * by NetlinkWrapper (InterfacePrefixTable), so this is not called.
+   */
   bool isUpdated = false;
   auto ips = listAllIPsInCIDR(addr);
   if (isValid) {
@@ -89,8 +91,10 @@ bool InterfaceEntry::updateReachability(
     bool reachability) {
   auto it = ipReachabilityMap_.find(ip);
   if (it == ipReachabilityMap_.end()) {
-    // Legacy behavior: only IPs seeded by updateAddr are tracked; an update for
-    // an untracked IP is dropped.
+    /*
+     * Legacy behavior: only IPs seeded by updateAddr are tracked; an update for
+     * an untracked IP is dropped.
+     */
     return false;
   }
 

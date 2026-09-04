@@ -35,8 +35,10 @@ class NexthopInfoBase {
   NexthopInfoBase() = default;
   virtual ~NexthopInfoBase() = default;
 
-  // Delete copy constructor and assignment operator to be consistent with
-  // derived class
+  /*
+   * Delete copy constructor and assignment operator to be consistent with
+   * derived class
+   */
   NexthopInfoBase(const NexthopInfoBase&) = delete;
   NexthopInfoBase& operator=(const NexthopInfoBase&) = delete;
 

@@ -269,9 +269,11 @@ class FsdbFibWatcher : public std::enable_shared_from_this<FsdbFibWatcher> {
   nettools::bgplib::MonitoredBackPressuredQueue<RibInMessage>& ribInQ_;
   folly::EventBase* evb_;
 
-  // Protocol/client whose nexthops the IGP cost is read from. Unset => cost is
-  // read from the resolved fwd nexthops only (current behavior). See
-  // lookupIgpCostFromRoute().
+  /*
+   * Protocol/client whose nexthops the IGP cost is read from. Unset => cost is
+   * read from the resolved fwd nexthops only (current behavior). See
+   * lookupIgpCostFromRoute().
+   */
   std::optional<fboss::ClientID> igpCostClientId_;
 };
 

@@ -56,9 +56,11 @@ class InterfacePrefixTable {
    * covered prefix, or re-adding an address already recorded, returns false.
    */
   bool addPrefix(const folly::CIDRNetwork& addr, int ifIndex) {
-    // RadixTree masks addr.first to addr.second internally, so two siblings in
-    // the same subnet land on one node; the unmasked host address is the
-    // contributor key, mapped to the interface it is configured on.
+    /*
+     * RadixTree masks addr.first to addr.second internally, so two siblings in
+     * the same subnet land on one node; the unmasked host address is the
+     * contributor key, mapped to the interface it is configured on.
+     */
     auto [it, inserted] = tree_.insert(
         addr.first, addr.second, folly::F14FastMap<folly::IPAddress, int>{});
     it->value().insert_or_assign(addr.first, ifIndex);
@@ -105,8 +107,10 @@ class InterfacePrefixTable {
     if (it.atEnd()) {
       return std::nullopt;
     }
-    // A live node always has at least one contributor (it is erased when the
-    // last one leaves), and all contributors share an interface index.
+    /*
+     * A live node always has at least one contributor (it is erased when the
+     * last one leaves), and all contributors share an interface index.
+     */
     return it->value().begin()->second;
   }
 

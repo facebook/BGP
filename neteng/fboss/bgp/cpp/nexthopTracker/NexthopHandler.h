@@ -108,8 +108,10 @@ class NexthopHandler : public BgpModuleBase {
 
   friend class NexthopHandlerTestFixture;
 
-// per class placeholder for test code injection
-// only need to be setup once here
+/*
+ * per class placeholder for test code injection
+ * only need to be setup once here
+ */
 #ifdef NexthopHandler_TEST_FRIENDS
   NexthopHandler_TEST_FRIENDS
 #endif

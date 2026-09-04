@@ -30,8 +30,10 @@ namespace facebook::bgp {
 class NexthopInfo : public NexthopInfoBase {
  public:
   explicit NexthopInfo(const NexthopStatus& status) : status_(status) {
-    // Stamp the initial resolution state so "never resolved" (unset) is
-    // distinguishable from "resolved at least once".
+    /*
+     * Stamp the initial resolution state so "never resolved" (unset) is
+     * distinguishable from "resolved at least once".
+     */
     const auto now = std::chrono::steady_clock::now();
     if (status_.isReachable()) {
       lastReachabilityChangeTs_ = now;
@@ -41,8 +43,10 @@ class NexthopInfo : public NexthopInfoBase {
     }
   }
 
-  // Delete copy constructor and assignment operator since
-  // NexthopAssociationList is not copyable
+  /*
+   * Delete copy constructor and assignment operator since
+   * NexthopAssociationList is not copyable
+   */
   NexthopInfo(const NexthopInfo&) = delete;
   NexthopInfo& operator=(const NexthopInfo&) = delete;
 
@@ -146,8 +150,10 @@ class NexthopInfo : public NexthopInfoBase {
   NexthopStatus status_;
   // List of routes associated with the nexthop
   NexthopAssociationList nexthopAssociationList_;
-  // Timestamps of the last reachability / IGP-cost change. nullopt means the
-  // corresponding value has never been resolved since this entry was created.
+  /*
+   * Timestamps of the last reachability / IGP-cost change. nullopt means the
+   * corresponding value has never been resolved since this entry was created.
+   */
   std::optional<std::chrono::steady_clock::time_point>
       lastReachabilityChangeTs_;
   std::optional<std::chrono::steady_clock::time_point> lastIgpCostChangeTs_;

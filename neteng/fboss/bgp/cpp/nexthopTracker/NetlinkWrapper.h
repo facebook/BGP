@@ -309,17 +309,21 @@ class NetlinkWrapper : public BgpModuleBase {
   // Queue to listen to LINK/ADDRESS/NEIGHBOR events from netlink
   openr::messaging::RQueue<openr::fbnl::NetlinkEvent> netlinkEventsRQueue_;
 
-  // Interface index to name. Used to resolve ifIndex on address and neighbor
-  // events
+  /*
+   * Interface index to name. Used to resolve ifIndex on address and neighbor
+   * events
+   */
   folly::F14NodeMap<int64_t, std::string> ifIndexToName_;
 
   // Interface index to Interface Entry. Used to store tracked interfaces.
   folly::F14NodeMap<std::string, InterfaceEntry> interfaces_;
 
-  // Global table of local interface prefixes across all tracked interfaces.
-  // Classifies whether a nexthop is directly connected in a single
-  // longest-prefix (best) match. Only populated when
-  // bgp_resolve_nexthops_from_interface_state is on.
+  /*
+   * Global table of local interface prefixes across all tracked interfaces.
+   * Classifies whether a nexthop is directly connected in a single
+   * longest-prefix (best) match. Only populated when
+   * bgp_resolve_nexthops_from_interface_state is on.
+   */
   InterfacePrefixTable prefixes_;
 
   // Pointer to interface with NetlinkProtocolSocket
@@ -401,13 +405,17 @@ class NetlinkWrapper : public BgpModuleBase {
   // OpenR FIB agent client
   std::unique_ptr<apache::thrift::Client<openr::thrift::FibService>> client_;
 
-  // Queue for pending OpenR FIB agent updates (fiber-aware bounded queue)
-  // Uses folly::fibers::Baton for fiber-level blocking when queue is full/empty
+  /*
+   * Queue for pending OpenR FIB agent updates (fiber-aware bounded queue)
+   * Uses folly::fibers::Baton for fiber-level blocking when queue is full/empty
+   */
   nettools::bgplib::RWQueue<openr::thrift::ConnectedNextHopStatusRequest>
       pendingFibOpenrUpdates_;
 
-// Per class placeholder for test code injection
-// only need to be setup once here
+/*
+ * Per class placeholder for test code injection
+ * only need to be setup once here
+ */
 #ifdef NetlinkWrapper_TEST_FRIENDS
   NetlinkWrapper_TEST_FRIENDS
 #endif

@@ -155,8 +155,10 @@ folly::coro::Task<void> NexthopHandler::co_processUpdates(
   // Process the response
   const auto& nexthopStatuses = *response.nexthopStatuses();
 
-  // Convert the map to a vector of NexthopStatus objects using the utility
-  // function and move it directly to update the cache
+  /*
+   * Convert the map to a vector of NexthopStatus objects using the utility
+   * function and move it directly to update the cache
+   */
   co_await co_updateCacheAndNotifyRib(
       convertFibAgentStatusToNexthopStatus(nexthopStatuses));
 }

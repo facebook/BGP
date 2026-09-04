@@ -40,8 +40,10 @@ class NexthopAssociationList {
    *         false if the RouteInfo was already in the list and not linked
    */
   bool link(RouteInfo& routeInfo) {
-    // If the routeInfo is not already associated with the nexthop, link it
-    // to the list and increment the size
+    /*
+     * If the routeInfo is not already associated with the nexthop, link it
+     * to the list and increment the size
+     */
     if (routeInfo.nextHopListHook_.is_linked()) {
       XLOG(
           DBG2,
@@ -61,8 +63,10 @@ class NexthopAssociationList {
    *         false if the RouteInfo was not in the list and couldn't be unlinked
    */
   bool unlink(RouteInfo& routeInfo) {
-    // If the routeInfo is associated with the nexthop, unlink it from the list
-    // and decrement the size
+    /*
+     * If the routeInfo is associated with the nexthop, unlink it from the list
+     * and decrement the size
+     */
     if (!routeInfo.nextHopListHook_.is_linked()) {
       XLOG(
           DBG2,

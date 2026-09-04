@@ -234,8 +234,10 @@ class InterfaceEntry final {
    * link-down.
    */
   std::chrono::milliseconds holdTime_{0};
-  // Prefixes this interface contributes to the global InterfacePrefixTable.
-  // Only populated on the bgp_resolve_nexthops_from_interface_state path.
+  /*
+   * Prefixes this interface contributes to the global InterfacePrefixTable.
+   * Only populated on the bgp_resolve_nexthops_from_interface_state path.
+   */
   folly::F14FastSet<folly::CIDRNetwork> prefixes_{};
 };
 
