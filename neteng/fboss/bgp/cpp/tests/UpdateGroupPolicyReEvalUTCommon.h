@@ -255,6 +255,7 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
     adjRib->pathIdGenerator_ = std::make_unique<PathIdGenerator>(false);
     adjRib->enableEgressQueueBackpressure(true);
     adjRib->isAfiIpv4Negotiated_ = true;
+    adjRib->remoteAs_ = remoteAs;
     adjRib->markStateEstablished();
     return adjRib;
   }

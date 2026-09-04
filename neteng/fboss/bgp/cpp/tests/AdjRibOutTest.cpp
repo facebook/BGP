@@ -62,6 +62,9 @@
   FRIEND_TEST(                                                                   \
       AdjRibOutboundFixture, GetPostPolicyOutAttrsAndPolicyFromMessageTest);     \
   FRIEND_TEST(AdjRibOutboundFixture, SuppressLoopedAdvertisementsTest);          \
+  FRIEND_TEST(                                                                   \
+      AdjRibOutboundFixture,                                                     \
+      SuppressLoopedAdvertisementsUsesAcceptedRemoteAs);                         \
   FRIEND_TEST(AdjRibOutboundFixture, VerifyCowNhAttributeModification);          \
   FRIEND_TEST(                                                                   \
       UpdateExtCommunitiesCommonTest, CustomizedLbwEnabledNoModification);       \
@@ -106,6 +109,28 @@ TEST_F(AdjRibOutboundFixture, VipInjectorPeerIdTest) {
   bgpPeerId.peerAddr = folly::IPAddress("169.254.0.1");
   bgpPeerId.remoteBgpId = folly::IPAddressV4("255.0.0.1").toLongHBO();
   setupAdjRib(bgpPeerId, 65000 /* VIP peer ASN */);
+  EXPECT_EQ(bgpPeerId.toOdsKey(), adjRib_->getStats().getPeerIdOdsStr());
+}
+
+TEST_F(AdjRibOutboundFixture, VipInjectorAdditionalRemoteAsPeerIdTest) {
+  BgpPeerId bgpPeerId;
+  bgpPeerId.peerAddr = folly::IPAddress("169.254.0.1");
+  bgpPeerId.remoteBgpId = folly::IPAddressV4("255.0.0.1").toLongHBO();
+
+  PeeringParams peeringParams;
+  peeringParams.peerAddr = bgpPeerId.peerAddr;
+  peeringParams.remoteAs = kRemoteAs1;
+  peeringParams.additionalRemoteAs = kVipAsn;
+  adjRib_ = std::make_shared<AdjRib>(
+      bgpPeerId,
+      peeringParams,
+      evb_,
+      ribInQ_,
+      observerQ_,
+      std::make_shared<folly::coro::Baton>(),
+      nullptr,
+      std::make_shared<std::atomic<bool>>(false));
+
   EXPECT_EQ(bgpPeerId.toOdsKey(), adjRib_->getStats().getPeerIdOdsStr());
 }
 
@@ -4589,6 +4614,7 @@ TEST_F(AdjRibOutboundFixture, SuppressLoopedAdvertisementsTest) {
 
   adjRib_->peeringParams_.localAs = 12345;
   adjRib_->peeringParams_.remoteAs = 12345;
+  adjRib_->remoteAs_ = 12345;
 
   auto attrs = std::make_shared<BgpPath>();
 
@@ -4599,6 +4625,7 @@ TEST_F(AdjRibOutboundFixture, SuppressLoopedAdvertisementsTest) {
   AsNum duplicatedRemoteAs = 54321;
   adjRib_->peeringParams_.isConfedPeer = true;
   adjRib_->peeringParams_.remoteAs = duplicatedRemoteAs;
+  adjRib_->remoteAs_ = duplicatedRemoteAs;
   {
     // has AS set loop
     BgpAttrAsPathSegmentC segmentSet;
@@ -4654,6 +4681,29 @@ TEST_F(AdjRibOutboundFixture, SuppressLoopedAdvertisementsTest) {
 
     EXPECT_FALSE(adjRib_->suppressLoopedAdvertisements(attrs));
   }
+}
+
+TEST_F(
+    AdjRibOutboundFixture,
+    SuppressLoopedAdvertisementsUsesAcceptedRemoteAs) {
+  setupAdjRibForOutUnitTest();
+
+  const AsNum configuredRemoteAs = 54320;
+  const AsNum acceptedRemoteAs = 54321;
+  adjRib_->peeringParams_.localAs = 12345;
+  adjRib_->peeringParams_.remoteAs = configuredRemoteAs;
+  adjRib_->remoteAs_ = acceptedRemoteAs;
+  adjRib_->peeringParams_.isConfedPeer = false;
+
+  auto attrs = std::make_shared<BgpPath>();
+  BgpAttrAsPathSegmentC segment;
+  segment.asSequence = {acceptedRemoteAs};
+  attrs->setAsPath(BgpAttrAsPathC{{segment}});
+  EXPECT_TRUE(adjRib_->suppressLoopedAdvertisements(attrs));
+
+  segment.asSequence = {configuredRemoteAs};
+  attrs->setAsPath(BgpAttrAsPathC{{segment}});
+  EXPECT_FALSE(adjRib_->suppressLoopedAdvertisements(attrs));
 }
 
 TEST_F(AdjRibOutboundFixture, GetPostPolicyAttributesPolicyTermAndInfoTest) {
@@ -5384,7 +5434,7 @@ TEST_F(UpdateExtCommunitiesCommonTest, CustomizedLbwEnabledNoModification) {
   // Use EBGP peer params (which would normally prune non-transitive)
   auto peeringParams = buildEBgpPeeringParams();
 
-  updateExtCommunitiesCommon(peeringParams, &mask, attrs);
+  updateExtCommunitiesCommon(peeringParams, BgpSessionType::EBGP, &mask, attrs);
 
   // Non-transitive LBW kept during EBGP filtering, but then pruned to lowest
   // LBW (100.0f transitive) by pruneLbwExtCommunitiesCommon
@@ -5414,7 +5464,7 @@ TEST_F(UpdateExtCommunitiesCommonTest, ReceiveAdvertiseLbwNoModification) {
   auto peeringParams = buildEBgpPeeringParams();
   peeringParams.receiveLinkBandwidth = ReceiveLinkBandwidth::ACCEPT;
 
-  updateExtCommunitiesCommon(peeringParams, &mask, attrs);
+  updateExtCommunitiesCommon(peeringParams, BgpSessionType::EBGP, &mask, attrs);
 
   // Non-transitive LBW kept during EBGP filtering, but then pruned to lowest
   // LBW (100.0f transitive) by pruneLbwExtCommunitiesCommon
@@ -5433,7 +5483,7 @@ TEST_F(UpdateExtCommunitiesCommonTest, ReceiveAdvertiseLbwNoModification) {
   peeringParams.receiveLinkBandwidth = std::nullopt;
   peeringParams.advertiseLinkBandwidth = AdvertiseLinkBandwidth::BEST_PATH;
 
-  updateExtCommunitiesCommon(peeringParams, &mask, attrs);
+  updateExtCommunitiesCommon(peeringParams, BgpSessionType::EBGP, &mask, attrs);
 
   // Same behavior - pruned to lowest LBW
   EXPECT_EQ(2, attrs->getExtCommunities()->size());
@@ -5455,7 +5505,8 @@ TEST_F(UpdateExtCommunitiesCommonTest, EBgpPrunesNonTransitiveLbw) {
 
     auto peeringParams = buildEBgpPeeringParams();
 
-    updateExtCommunitiesCommon(peeringParams, nullptr, attrs);
+    updateExtCommunitiesCommon(
+        peeringParams, BgpSessionType::EBGP, nullptr, attrs);
 
     // EBGP removes non-transitive communities (RFC 4360)
     // After pruning: 1 transitive non-LBW + 1 lowest transitive LBW
@@ -5477,7 +5528,8 @@ TEST_F(UpdateExtCommunitiesCommonTest, EBgpPrunesNonTransitiveLbw) {
 
     auto peeringParams = buildEBgpPeeringParams();
 
-    updateExtCommunitiesCommon(peeringParams, &mask, attrs);
+    updateExtCommunitiesCommon(
+        peeringParams, BgpSessionType::EBGP, &mask, attrs);
 
     // EBGP removes non-transitive communities (RFC 4360)
     // After pruning: 1 transitive non-LBW + 1 lowest transitive LBW
@@ -5525,7 +5577,8 @@ TEST_F(
   peeringParams.advertiseLinkBandwidth =
       AdvertiseLinkBandwidth::AGGREGATE_LOCAL;
 
-  updateExtCommunitiesCommon(peeringParams, nullptr, attrs);
+  updateExtCommunitiesCommon(
+      peeringParams, BgpSessionType::EBGP, nullptr, attrs);
 
   // With advertiseLinkBandwidth set, non-transitive LBW is kept during EBGP
   // filtering and participates in LBW selection. Since 50.0f (non-transitive)
@@ -5551,7 +5604,8 @@ TEST_F(UpdateExtCommunitiesCommonTest, IBgpConfedKeepsAllLbwTypes) {
 
     auto peeringParams = buildIBgpPeeringParams();
 
-    updateExtCommunitiesCommon(peeringParams, nullptr, attrs);
+    updateExtCommunitiesCommon(
+        peeringParams, BgpSessionType::IBGP, nullptr, attrs);
 
     // IBGP keeps non-transitive communities but prunes LBW to absolute lowest
     // After pruning: 1 non-LBW + 1 lowest LBW (100.0f transitive)
@@ -5570,7 +5624,8 @@ TEST_F(UpdateExtCommunitiesCommonTest, IBgpConfedKeepsAllLbwTypes) {
 
     auto peeringParams = buildConfedEBgpPeeringParams();
 
-    updateExtCommunitiesCommon(peeringParams, nullptr, attrs);
+    updateExtCommunitiesCommon(
+        peeringParams, BgpSessionType::ConfedEBGP, nullptr, attrs);
 
     // ConfedEBGP keeps non-transitive communities but prunes LBW to absolute
     // lowest. After pruning: 1 non-LBW + 1 lowest LBW (100.0f transitive)
@@ -5592,7 +5647,8 @@ TEST_F(UpdateExtCommunitiesCommonTest, IBgpConfedKeepsAllLbwTypes) {
 
     auto peeringParams = buildIBgpPeeringParams();
 
-    updateExtCommunitiesCommon(peeringParams, &mask, attrs);
+    updateExtCommunitiesCommon(
+        peeringParams, BgpSessionType::IBGP, &mask, attrs);
 
     // IBGP with explicit mask prunes LBW to absolute lowest
     EXPECT_EQ(2, attrs->getExtCommunities()->size());
@@ -5662,6 +5718,7 @@ TEST_F(AdjRibOutboundFixture, EgressPolicyLinkBandwidthPropagationEBGPTest) {
       std::nullopt, /* ingress policy name */
       policyName /* egress policy name */,
       adjRibOutGroup};
+  adjRibOutPeer.remoteAs_ = kRemoteAs2;
   adjRibOutPeer.isAfiIpv4Negotiated_ = true;
   adjRibOutPeer.pathIdGenerator_ = std::make_unique<PathIdGenerator>(false);
 
@@ -5776,6 +5833,7 @@ TEST_F(AdjRibOutboundFixture, EgressPolicyLinkBandwidthPropagationIBGPTest) {
       std::nullopt, /* ingress policy name */
       policyName /* egress policy name */,
       adjRibOutGroup};
+  adjRibOutPeer.remoteAs_ = kLocalAs1;
   adjRibOutPeer.isAfiIpv4Negotiated_ = true;
   adjRibOutPeer.pathIdGenerator_ = std::make_unique<PathIdGenerator>(false);
 

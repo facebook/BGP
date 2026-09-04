@@ -761,6 +761,10 @@ struct PeeringParams {
 
   std::optional<std::string> peerGroupName;
 
+  bool acceptsRemoteAs(uint32_t asn) const noexcept {
+    return remoteAs == asn || additionalRemoteAs == asn;
+  }
+
   std::string getUniquePeerId() const {
     std::string uniquePeerId = peerId;
 

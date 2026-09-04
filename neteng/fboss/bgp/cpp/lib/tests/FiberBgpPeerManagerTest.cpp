@@ -37,6 +37,9 @@
       DeleteTerminatedSessionPreservesNewerSession);                          \
   FRIEND_TEST(                                                                \
       FiberBgpPeerManagerFixture,                                             \
+      DeleteTerminatedSessionRemovesSessionForAdditionalRemoteAsVipPeer);     \
+  FRIEND_TEST(                                                                \
+      FiberBgpPeerManagerFixture,                                             \
       DeleteTerminatedSessionRemovesSessionFromDynamicPassivePeer);
 
 #define FiberBgpPeer_TEST_FRIENDS                                       \
@@ -422,6 +425,63 @@ TEST_F(
     EXPECT_TRUE(peerMgr1->getBgpSessionInfo(peerId1).has_value());
     EXPECT_TRUE(runCoroOnEventBase(peerMgr1->co_deleteTerminatedSession(
         peerId1, kTerminatedVersion, facebook::bgp::kVipAsn)));
+    EXPECT_FALSE(peerMgr1->getBgpSessionInfo(peerId1).has_value());
+    EXPECT_TRUE(peerMgr1->allPeers_.contains(peerAddr1));
+    EXPECT_TRUE(dynamicPeerInfo->activePeers.contains(peerAddr1));
+
+    peerMgr1->allPeers_.erase(peerAddr1);
+    dynamicPeerInfo->activePeers.erase(peerAddr1);
+    facebook::bgp::BgpStats::decrAllPeersCount();
+    facebook::bgp::BgpStats::decrDynamicPeersCount();
+
+    peerMgr1->shutdownWithGR(false);
+    peerMgr2->shutdownWithGR(false);
+  });
+
+  evb.loop();
+}
+
+/*
+ * During an ASN migration a dynamic VIP peer can carry the VIP ASN as its
+ * *additional* remote AS while the configured primary stays non-VIP.
+ *
+ * PeerManagerBase::sessionTerminated gates this call on
+ * isDynamicVipPeer(peerAddr, adjRib->getRemoteAs()) -- the ASN the session was
+ * actually established with -- so a session that came up on the additional VIP
+ * ASN does reach co_deleteTerminatedSession. The revalidation here compares
+ * against peeringParams.remoteAs (the configured primary), so it rejects that
+ * peer and the terminated session is never erased from sessionInfos.
+ */
+TEST_F(
+    FiberBgpPeerManagerFixture,
+    DeleteTerminatedSessionRemovesSessionForAdditionalRemoteAsVipPeer) {
+  auto& fm = fmWrapper.get();
+  initTwoPeerMgrs(fm);
+
+  fm.addTask([this] {
+    constexpr uint64_t kTerminatedVersion = 7;
+    auto peerInfo = std::make_shared<BgpPeerInfoInternal>();
+    // Configured primary is non-VIP; the VIP ASN is the migration ASN.
+    peerInfo->peeringParams.remoteAs = facebook::bgp::AsNum(kAs1);
+    peerInfo->peeringParams.additionalRemoteAs = facebook::bgp::kVipAsn;
+    auto sessionInfo = std::make_shared<BgpSessionInfo>();
+    sessionInfo->versionNumber =
+        std::make_shared<VersionNumber>(kTerminatedVersion);
+    peerInfo->sessionInfos.emplace(peerId1.remoteBgpId, sessionInfo);
+    auto dynamicPeerInfo = std::make_shared<BgpDynamicPeerGroupInfo>();
+    dynamicPeerInfo->activePeers.insert(peerAddr1);
+    peerMgr1
+        ->dynamicPeerGroups_[folly::IPAddress::createNetwork("127.0.0.0/8")] =
+        dynamicPeerInfo;
+    peerMgr1->allPeers_[peerAddr1] = std::move(peerInfo);
+    facebook::bgp::BgpStats::incrAllPeersCount();
+    facebook::bgp::BgpStats::incrDynamicPeersCount();
+
+    EXPECT_TRUE(peerMgr1->getBgpSessionInfo(peerId1).has_value());
+    EXPECT_TRUE(runCoroOnEventBase(peerMgr1->co_deleteTerminatedSession(
+        peerId1, kTerminatedVersion, facebook::bgp::kVipAsn)))
+        << "session established on additionalRemoteAs == kVipAsn was not "
+           "deleted; its sessionInfos entry leaks for the process lifetime";
     EXPECT_FALSE(peerMgr1->getBgpSessionInfo(peerId1).has_value());
     EXPECT_TRUE(peerMgr1->allPeers_.contains(peerAddr1));
     EXPECT_TRUE(dynamicPeerInfo->activePeers.contains(peerAddr1));

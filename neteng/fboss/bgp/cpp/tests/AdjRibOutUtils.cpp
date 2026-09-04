@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
+#define AdjRib_TEST_FRIENDS friend class AdjRibOutboundFixture;
 #include "AdjRibOutUtils.h"
+#undef AdjRib_TEST_FRIENDS
 
 #include <folly/container/small_vector.h>
 
@@ -156,6 +158,7 @@ void AdjRibOutboundFixture::setupAdjRib(
       adjRibOutGroup,
       std::nullopt /* outDelay */,
       config_ ? std::make_shared<ConfigManager>(config_) : nullptr);
+  adjRib_->remoteAs_ = remoteAs;
 
   adjRib_->enableEgressQueueBackpressure(
       FLAGS_enable_egress_backpressure_in_adjribout_tests);

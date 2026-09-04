@@ -383,10 +383,11 @@ bool validateEnforceFirstAs(
 
 void updateAsPathAttributesCommon(
     const PeeringParams& peeringParams,
+    BgpSessionType sessionType,
     std::shared_ptr<BgpPath> attrsToUpdate) noexcept {
   replaceZerosInAsPath(attrsToUpdate, peeringParams.localAs);
 
-  if (AdjRibCommonUtils::isEBgpPeer(peeringParams)) {
+  if (sessionType == BgpSessionType::EBGP) {
     auto newAsPath = attrsToUpdate->getAsPath().get();
 
     removeConfedAsPathSegments(newAsPath);
@@ -400,7 +401,7 @@ void updateAsPathAttributesCommon(
         : peeringParams.localAs;
     prependAsPath(newAsPath, asnToPrepend, false);
     attrsToUpdate->setAsPath(std::move(newAsPath));
-  } else if (AdjRibCommonUtils::isConfedEBgpPeer(peeringParams)) {
+  } else if (sessionType == BgpSessionType::ConfedEBGP) {
     auto newAsPath = attrsToUpdate->getAsPath().get();
     prependAsPath(newAsPath, peeringParams.localAs, true);
     attrsToUpdate->setAsPath(std::move(newAsPath));
@@ -408,21 +409,21 @@ void updateAsPathAttributesCommon(
 }
 
 void updateLocalPrefCommon(
-    const PeeringParams& peeringParams,
+    BgpSessionType sessionType,
     std::shared_ptr<BgpPath> attrsToUpdate) noexcept {
-  if (AdjRibCommonUtils::isEBgpPeer(peeringParams)) {
+  if (sessionType == BgpSessionType::EBGP) {
     attrsToUpdate->setLocalPref(std::nullopt);
   }
 }
 
 void updateMedCommon(
-    const PeeringParams& peeringParams,
+    BgpSessionType sessionType,
     std::shared_ptr<BgpPath> attrsToUpdate,
     const PostPolicyInfo& postPolicyInfo) noexcept {
   const FeatureFlags::BgpBestpathFeatures& bgpBestpathFeatures =
       FeatureFlags::getBgpBestpathFeatures();
 
-  if (AdjRibCommonUtils::isEBgpPeer(peeringParams)) {
+  if (sessionType == BgpSessionType::EBGP) {
     if (!bgpBestpathFeatures.enableMedComparison ||
         !postPolicyInfo.isMedSetByPolicy) {
       attrsToUpdate->unSetMed();
@@ -432,10 +433,11 @@ void updateMedCommon(
 
 void updateOriginAndClusterListCommon(
     const PeeringParams& peeringParams,
+    BgpSessionType sessionType,
     const RibOutAnnouncementEntry& update,
     std::shared_ptr<BgpPath> attrsToUpdate) noexcept {
-  if (AdjRibCommonUtils::isEBgpPeer(peeringParams) ||
-      AdjRibCommonUtils::isConfedEBgpPeer(peeringParams)) {
+  if (sessionType == BgpSessionType::EBGP ||
+      sessionType == BgpSessionType::ConfedEBGP) {
     attrsToUpdate->setOriginatorId(0);
     attrsToUpdate->setClusterList({});
   }
@@ -516,7 +518,8 @@ void pruneLbwExtCommunitiesCommon(BgpAttrExtCommunitiesC& communities) {
 
 void updateExtCommunitiesCommon(
     const PeeringParams& peeringParams,
-    const PolicyAttributesMask* mask,
+    BgpSessionType sessionType,
+    const PolicyAttributesMask* FOLLY_NULLABLE mask,
     std::shared_ptr<BgpPath> attrsToUpdate) noexcept {
   if (!attrsToUpdate) {
     return;
@@ -540,7 +543,7 @@ void updateExtCommunitiesCommon(
   BgpAttrExtCommunitiesC newExtCommunities;
   auto& extCommunities = attrsToUpdate->getExtCommunities().get();
 
-  if (AdjRibCommonUtils::isEBgpPeer(peeringParams)) {
+  if (sessionType == BgpSessionType::EBGP) {
     /**
      * For EBGP peers, remove non-transitive extended communities (RFC 4360).
      * If a custom LBW is in effect, keep it on the extCommunities attribute.
@@ -649,17 +652,20 @@ void updateAttributesOutWithoutNexthopCommon(
   }
   CHECK(!attrsToUpdate->isPublished());
 
-  const PolicyAttributesMask* mask = nullptr;
+  const PolicyAttributesMask* FOLLY_NULLABLE mask = nullptr;
   if (config.egressPolicyName.has_value() && config.policy) {
     mask = config.policy->getPolicyAttributesMask(*config.egressPolicyName);
     overridePrePolicyAttributesCommon(mask, policyResultAttrs, attrsToUpdate);
   }
 
-  updateAsPathAttributesCommon(config.peeringParams, attrsToUpdate);
-  updateLocalPrefCommon(config.peeringParams, attrsToUpdate);
-  updateMedCommon(config.peeringParams, attrsToUpdate, postPolicyInfo);
-  updateOriginAndClusterListCommon(config.peeringParams, update, attrsToUpdate);
-  updateExtCommunitiesCommon(config.peeringParams, mask, attrsToUpdate);
+  updateAsPathAttributesCommon(
+      config.peeringParams, config.sessionType, attrsToUpdate);
+  updateLocalPrefCommon(config.sessionType, attrsToUpdate);
+  updateMedCommon(config.sessionType, attrsToUpdate, postPolicyInfo);
+  updateOriginAndClusterListCommon(
+      config.peeringParams, config.sessionType, update, attrsToUpdate);
+  updateExtCommunitiesCommon(
+      config.peeringParams, config.sessionType, mask, attrsToUpdate);
 }
 
 uint32_t packPrefixesCommon(

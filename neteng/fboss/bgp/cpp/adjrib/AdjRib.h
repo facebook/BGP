@@ -282,7 +282,7 @@ class AdjRib : boost::noncopyable,
         adjRibOutGroup_(adjRibOutGroup),
         // log VIPs from dynamic peers to ODS as well as static peers
         stats_(
-            peeringParams.remoteAs == kVipAsn
+            peeringParams.acceptsRemoteAs(kVipAsn)
                 ? peerId.toOdsKey()
                 : peeringParams.getUniquePeerId()),
         outDelay_(outDelay.has_value() ? *outDelay : std::chrono::seconds(0)),
@@ -850,7 +850,11 @@ class AdjRib : boost::noncopyable,
 
   // Get PeerConfig for this AdjRib (used for attribute updates)
   PeerConfig getPeerConfig() const noexcept {
-    return PeerConfig{peeringParams_, egressPolicyName_, policyManager_.get()};
+    return PeerConfig{
+        peeringParams_,
+        getBgpSessionType(),
+        egressPolicyName_,
+        policyManager_.get()};
   }
 
   // Get the state of adjrib for this peer (Established/Terminated)
@@ -2038,12 +2042,16 @@ class AdjRib : boost::noncopyable,
   }
 
   inline BgpSessionType getBgpSessionType() const {
-    // treat intra-confed sessions as internal
+    /*
+     * remoteAs_ is the ASN accepted for the current session, while
+     * peeringParams_.remoteAs is the configured primary ASN and can differ
+     * during ASN migration.
+     */
     if (peeringParams_.isConfedPeer &&
-        peeringParams_.localAs != peeringParams_.remoteAs) {
+        peeringParams_.localAs != getRemoteAs()) {
       return BgpSessionType::ConfedEBGP;
     }
-    if (peeringParams_.localAs != peeringParams_.remoteAs) {
+    if (peeringParams_.localAs != getRemoteAs()) {
       return BgpSessionType::EBGP;
     }
     return BgpSessionType::IBGP;

@@ -978,9 +978,8 @@ void FiberBgpPeer::processOpenMsg(const BgpOpenMsg& msg) {
 
       // only validate remote asn for things other than monitor.
       if (peeringParams_.validateRemoteAs) {
-        const bool isRemoteAsAccepted = remoteAs == peeringParams_.remoteAs ||
-            (peeringParams_.additionalRemoteAs.has_value() &&
-             remoteAs == *peeringParams_.additionalRemoteAs);
+        const bool isRemoteAsAccepted =
+            peeringParams_.acceptsRemoteAs(remoteAs);
         if (!isRemoteAsAccepted) {
           if (peeringParams_.additionalRemoteAs.has_value()) {
             XLOGF(

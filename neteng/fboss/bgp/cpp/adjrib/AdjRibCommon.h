@@ -57,6 +57,7 @@ struct PostPolicyInfo {
  */
 struct PeerConfig {
   const PeeringParams& peeringParams;
+  BgpSessionType sessionType;
   const std::optional<std::string>& egressPolicyName;
   PolicyManager* policy;
 };
@@ -195,10 +196,12 @@ void replaceZerosInAsPath(
  * - Prepends local AS
  *
  * @param peeringParams - Peer configuration parameters
+ * @param sessionType - Session type derived from the ASN accepted at OPEN
  * @param attrsToUpdate - Attributes to modify (must not be published)
  */
 void updateAsPathAttributesCommon(
     const PeeringParams& peeringParams,
+    BgpSessionType sessionType,
     std::shared_ptr<BgpPath> attrsToUpdate) noexcept;
 
 /**
@@ -251,11 +254,11 @@ bool validateEnforceFirstAs(
  *
  * @details Removes LOCAL_PREF for EBGP peers (RFC 4271)
  *
- * @param peeringParams - Peer configuration parameters
+ * @param sessionType - Session type derived from the ASN accepted at OPEN
  * @param attrsToUpdate - Attributes to modify (must not be published)
  */
 void updateLocalPrefCommon(
-    const PeeringParams& peeringParams,
+    BgpSessionType sessionType,
     std::shared_ptr<BgpPath> attrsToUpdate) noexcept;
 
 /**
@@ -266,12 +269,12 @@ void updateLocalPrefCommon(
  * - Whether to send MED to EBGP (feature flag)
  * - Whether to send MED to IBGP (always sent)
  *
- * @param peeringParams - Peer configuration parameters
+ * @param sessionType - Session type derived from the ASN accepted at OPEN
  * @param attrsToUpdate - Attributes to modify (must not be published)
  * @param postPolicyInfo - Metadata from policy evaluation
  */
 void updateMedCommon(
-    const PeeringParams& peeringParams,
+    BgpSessionType sessionType,
     std::shared_ptr<BgpPath> attrsToUpdate,
     const PostPolicyInfo& postPolicyInfo) noexcept;
 
@@ -283,11 +286,13 @@ void updateMedCommon(
  * - Adds local router ID to CLUSTER_LIST
  *
  * @param peeringParams - Peer configuration parameters
+ * @param sessionType - Session type derived from the ASN accepted at OPEN
  * @param update - The RibOutAnnouncementEntry being processed
  * @param attrsToUpdate - Attributes to modify (must not be published)
  */
 void updateOriginAndClusterListCommon(
     const PeeringParams& peeringParams,
+    BgpSessionType sessionType,
     const RibOutAnnouncementEntry& update,
     std::shared_ptr<BgpPath> attrsToUpdate) noexcept;
 
@@ -335,12 +340,14 @@ void pruneLbwExtCommunitiesCommon(
  * If UCMP/GAR is enabled, allow non-transitive LBW to be persisted.
  *
  * @param peeringParams - Peer configuration parameters
+ * @param sessionType    - Session type derived from the ASN accepted at OPEN
  * @param mask          - Used to infer UCMP/GAR policy
  * @param attrsToUpdate - Attributes to modify (must not be published)
  */
 void updateExtCommunitiesCommon(
     const PeeringParams& peeringParams,
-    const PolicyAttributesMask* mask,
+    BgpSessionType sessionType,
+    const PolicyAttributesMask* FOLLY_NULLABLE mask,
     std::shared_ptr<BgpPath> attrsToUpdate) noexcept;
 
 /**

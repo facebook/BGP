@@ -36,6 +36,10 @@
   FRIEND_TEST(AdjRibOutboundFixture, UpdateGroupKeyCreationTest);             \
   FRIEND_TEST(                                                                \
       AdjRibOutboundFixture,                                                  \
+      EffectiveRemoteAsDrivesSessionTypeAndUpdateGroupKey);                   \
+  FRIEND_TEST(AdjRibOutboundFixture, SessionTypeDrivesSharedAsPathTransform); \
+  FRIEND_TEST(                                                                \
+      AdjRibOutboundFixture,                                                  \
       PartialDrainCommunitySurvivesAcceptAllEgressPolicy);                    \
   FRIEND_TEST(                                                                \
       AdjRibOutboundFixture,                                                  \
@@ -1517,7 +1521,8 @@ TEST_F(AdjRibOutboundFixture, UpdateAsPathAttributesTest) {
   EXPECT_EQ(kAsSeqAsNum, inputAttrs->getAsPath()->at(0).asSequence[0]);
 
   auto attrsToUpdate = inputAttrs->clone();
-  updateAsPathAttributesCommon(adjRib_->peeringParams_, attrsToUpdate);
+  updateAsPathAttributesCommon(
+      adjRib_->peeringParams_, BgpSessionType::EBGP, attrsToUpdate);
 
   EXPECT_EQ(2, attrsToUpdate->getAsPath()->at(0).asSequence.size());
   EXPECT_EQ(kLocalAs1, attrsToUpdate->getAsPath()->at(0).asSequence[0]);
@@ -1543,7 +1548,7 @@ TEST_F(AdjRibOutboundFixture, UpdateLocalPrefTest) {
   EXPECT_EQ(kLocalPref, inputAttrs->getLocalPref());
 
   auto attrsToUpdate = inputAttrs->clone();
-  updateLocalPrefCommon(adjRib_->peeringParams_, attrsToUpdate);
+  updateLocalPrefCommon(BgpSessionType::EBGP, attrsToUpdate);
 
   EXPECT_EQ(std::nullopt, attrsToUpdate->getLocalPref());
 }
@@ -1567,7 +1572,7 @@ TEST_F(AdjRibOutboundFixture, UpdateLocalPrefIBgpTest) {
   EXPECT_EQ(kLocalPref, inputAttrs->getLocalPref());
 
   auto attrsToUpdate = inputAttrs->clone();
-  updateLocalPrefCommon(adjRib_->peeringParams_, attrsToUpdate);
+  updateLocalPrefCommon(BgpSessionType::IBGP, attrsToUpdate);
 
   EXPECT_EQ(kLocalPref, attrsToUpdate->getLocalPref());
 }
@@ -1595,7 +1600,7 @@ TEST_F(AdjRibOutboundFixture, UpdateMedTest) {
   auto attrsToUpdate = inputAttrs->clone();
   PostPolicyInfo postPolicyInfo;
   postPolicyInfo.isMedSetByPolicy = false;
-  updateMedCommon(adjRib_->peeringParams_, attrsToUpdate, postPolicyInfo);
+  updateMedCommon(BgpSessionType::EBGP, attrsToUpdate, postPolicyInfo);
 
   EXPECT_FALSE(attrsToUpdate->getIsMedSet());
 }
@@ -1623,7 +1628,7 @@ TEST_F(AdjRibOutboundFixture, UpdateMedWithPolicySetTest) {
   auto attrsToUpdate = inputAttrs->clone();
   PostPolicyInfo postPolicyInfo;
   postPolicyInfo.isMedSetByPolicy = true;
-  updateMedCommon(adjRib_->peeringParams_, attrsToUpdate, postPolicyInfo);
+  updateMedCommon(BgpSessionType::EBGP, attrsToUpdate, postPolicyInfo);
 
   EXPECT_EQ(kMed, attrsToUpdate->getMed());
 }
@@ -1652,7 +1657,7 @@ TEST_F(AdjRibOutboundFixture, UpdateOriginAndClusterListEBgpTest) {
   RibOutAnnouncementEntry update(
       kV4Prefix1, kDefaultPathID, eBgpPeer_, inputAttrs);
   updateOriginAndClusterListCommon(
-      adjRib_->getPeeringParams(), update, attrsToUpdate);
+      adjRib_->getPeeringParams(), BgpSessionType::EBGP, update, attrsToUpdate);
 
   EXPECT_EQ(0, attrsToUpdate->getOriginatorId());
   EXPECT_TRUE(attrsToUpdate->getClusterList().nullOrEmpty());
@@ -1681,7 +1686,7 @@ TEST_F(AdjRibOutboundFixture, UpdateOriginAndClusterListRRClientTest) {
   RibOutAnnouncementEntry update(
       kV4Prefix1, kDefaultPathID, eBgpPeer_, inputAttrs);
   updateOriginAndClusterListCommon(
-      adjRib_->getPeeringParams(), update, attrsToUpdate);
+      adjRib_->getPeeringParams(), BgpSessionType::EBGP, update, attrsToUpdate);
 
   EXPECT_EQ(kLocalAddr1.asV4().toLongHBO(), attrsToUpdate->getOriginatorId());
   EXPECT_EQ(1, attrsToUpdate->getClusterList()->size());
@@ -1712,7 +1717,7 @@ TEST_F(AdjRibOutboundFixture, UpdateOriginAndClusterListRRClientIBgpTest) {
   RibOutAnnouncementEntry update(
       kV4Prefix1, kDefaultPathID, iBgpPeer_, inputAttrs);
   updateOriginAndClusterListCommon(
-      adjRib_->getPeeringParams(), update, attrsToUpdate);
+      adjRib_->getPeeringParams(), BgpSessionType::IBGP, update, attrsToUpdate);
 
   EXPECT_EQ(kPeerRouterId2, attrsToUpdate->getOriginatorId());
   EXPECT_EQ(1, attrsToUpdate->getClusterList()->size());
@@ -1762,6 +1767,61 @@ TEST_F(AdjRibOutboundFixture, UpdateGroupKeyCreationTest) {
     terminateAdjRib();
   });
   evb_.loop();
+}
+
+TEST_F(
+    AdjRibOutboundFixture,
+    EffectiveRemoteAsDrivesSessionTypeAndUpdateGroupKey) {
+  setupAdjRib(
+      kLocalAs1, /* globalAs */
+      kLocalAs1, /* localAs */
+      kRemoteAs2, /* remoteAs */
+      false, /* isRrClient */
+      false, /* isConfedPeer */
+      false, /* nexthopSelf */
+      kV4Nexthop1, /* v4Nexthop */
+      kV6Nexthop1, /* v6Nexthop */
+      false /* call sessionEstablished */);
+
+  adjRib_->remoteAs_ = kLocalAs1;
+  EXPECT_EQ(BgpSessionType::IBGP, adjRib_->getBgpSessionType());
+  EXPECT_EQ(
+      BgpSessionType::IBGP, adjRib_->buildAndSetUpdateGroupKey().sessionType);
+
+  adjRib_->peeringParams_.remoteAs = kLocalAs1;
+  adjRib_->remoteAs_ = kRemoteAs2;
+  EXPECT_EQ(BgpSessionType::EBGP, adjRib_->getBgpSessionType());
+  EXPECT_EQ(
+      BgpSessionType::EBGP, adjRib_->buildAndSetUpdateGroupKey().sessionType);
+}
+
+TEST_F(AdjRibOutboundFixture, SessionTypeDrivesSharedAsPathTransform) {
+  setupAdjRib(
+      kLocalAs1, /* globalAs */
+      kLocalAs1, /* localAs */
+      kRemoteAs2, /* remoteAs */
+      false, /* isRrClient */
+      false, /* isConfedPeer */
+      false, /* nexthopSelf */
+      kV4Nexthop1, /* v4Nexthop */
+      kV6Nexthop1, /* v6Nexthop */
+      false /* call sessionEstablished */);
+
+  BgpUpdate2 inputUpdate = buildBgpUpdateAttributes(kV4Nexthop2);
+  auto inputAttrs = std::make_shared<facebook::bgp::BgpPath>(
+      BgpPathFields(*BgpUpdate2toBgpPathC(inputUpdate)));
+
+  auto iBgpAttrs = inputAttrs->clone();
+  updateAsPathAttributesCommon(
+      adjRib_->peeringParams_, BgpSessionType::IBGP, iBgpAttrs);
+  EXPECT_EQ(1, iBgpAttrs->getAsPath()->at(0).asSequence.size());
+
+  adjRib_->peeringParams_.remoteAs = kLocalAs1;
+  auto eBgpAttrs = inputAttrs->clone();
+  updateAsPathAttributesCommon(
+      adjRib_->peeringParams_, BgpSessionType::EBGP, eBgpAttrs);
+  EXPECT_EQ(2, eBgpAttrs->getAsPath()->at(0).asSequence.size());
+  EXPECT_EQ(kLocalAs1, eBgpAttrs->getAsPath()->at(0).asSequence[0]);
 }
 
 TEST(ApplyPartialDrainCommunities, AddsDrainOnEmpty) {

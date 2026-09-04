@@ -1850,7 +1850,10 @@ void AdjRibOutGroup::updateAttributesOutWithoutNexthop(
   }
 
   PeerConfig config{
-      *peeringParams_, groupKey_.egressPolicyName, policyManager_.get()};
+      *peeringParams_,
+      groupKey_.sessionType,
+      groupKey_.egressPolicyName,
+      policyManager_.get()};
   updateAttributesOutWithoutNexthopCommon(
       config, update, policyResultAttrs, attrsToUpdate, postPolicyInfo);
 }

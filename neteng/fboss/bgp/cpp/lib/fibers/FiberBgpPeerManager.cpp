@@ -2333,7 +2333,14 @@ folly::coro::Task<bool> FiberBgpPeerManager::co_deleteTerminatedSession(
         }
 
         const auto& peerInfo = peerIt->second;
-        if (peerInfo->peeringParams.remoteAs != expectedRemoteAs) {
+        /*
+         * Accept either configured ASN: the caller gates on the ASN the
+         * session was established with, which during an ASN migration can be
+         * additionalRemoteAs rather than the configured primary. Comparing
+         * against remoteAs alone would reject such a peer and leak its
+         * terminated sessionInfos entry.
+         */
+        if (!peerInfo->peeringParams.acceptsRemoteAs(expectedRemoteAs)) {
           co_return false;
         }
 

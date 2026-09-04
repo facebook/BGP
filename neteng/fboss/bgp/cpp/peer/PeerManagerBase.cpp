@@ -2925,7 +2925,7 @@ folly::coro::Task<void> PeerManagerBase::sessionEstablished(
   onSessionEstablishedEorHook();
 
   addSessionStateChanges();
-  if (isDynamicVipPeer(peerAddr, peerInfo->peeringParams.remoteAs)) {
+  if (isDynamicVipPeer(peerAddr, adjRib->getRemoteAs())) {
     runningVipSessions_ += 1;
     setRunningVipSessions(runningVipSessions_);
   }
@@ -2990,7 +2990,7 @@ folly::coro::Task<void> PeerManagerBase::sessionTerminated(
     co_return;
   }
 
-  const auto remoteAs = adjRib->getPeeringParams().remoteAs;
+  const auto remoteAs = adjRib->getRemoteAs();
   const bool isVipPeer = isDynamicVipPeer(peerAddr, remoteAs);
   if (isVipPeer) {
     co_await sessionMgr_->co_deleteTerminatedSession(

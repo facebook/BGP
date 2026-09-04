@@ -5326,6 +5326,50 @@ TEST_F(AdjRibInboundFixture, V4UpdatePolicyProcessing) {
   evb_.loop();
 }
 
+TEST_F(AdjRibInboundFixture, IngressPolicyAsPathUsesAcceptedRemoteAs) {
+  const std::string policyName = kIngressPolicyName;
+  auto policyManager = setup3TermPolicy(policyName);
+
+  setupAdjRib(
+      kShortGrRestartTime,
+      std::nullopt, /* remoteGrRestartTime */
+      false, /* callSessionEstablished */
+      kLocalAs3,
+      kLocalAs3,
+      kRemoteAs1,
+      AfiIpv4Negotiated(true),
+      AfiIpv6Negotiated(true),
+      policyManager,
+      policyName);
+  establishSession(
+      std::nullopt,
+      AfiIpv4Negotiated(true),
+      AfiIpv6Negotiated(true),
+      kRemoteAs2);
+
+  fm_->addTask([&] {
+    auto update = createV4BgpUpdateMultipleAnnounce({kV4Prefix1});
+    adjRibInQ_->fiberPush(std::move(update));
+  });
+
+  fm_->addTask([&] {
+    auto message = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
+    ASSERT_TRUE(std::holds_alternative<RibInAnnouncement>(message));
+
+    const auto& attrs = std::get<RibInAnnouncement>(message).attrs;
+    ASSERT_NE(nullptr, attrs);
+    const auto& asPath = attrs->getAsPath();
+    ASSERT_EQ(1, asPath->size());
+    EXPECT_EQ(
+        (std::vector<uint32_t>{kRemoteAs2, kRemoteAs2}),
+        asPath->at(0).asSequence);
+
+    terminateAdjRib();
+  });
+
+  evb_.loop();
+}
+
 // Verify that a prefix which is denied due to policy and later changes it's
 // attributes and is permitted by policy due to attribute changes is processed
 // properly and notified to Rib

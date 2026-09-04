@@ -276,7 +276,7 @@ std::shared_ptr<const BgpPath> AdjRib::getPostInPolicyAttributes(
           policyManager_->getPolicyAttributesMask(*ingressPolicyName_),
           policyCachedAttrs,
           attrsToOverride);
-      replaceZerosInAsPath(attrsToOverride, peeringParams_.remoteAs);
+      replaceZerosInAsPath(attrsToOverride, getRemoteAs());
       attrsToOverride->publish();
       return attrsToOverride;
     } else {

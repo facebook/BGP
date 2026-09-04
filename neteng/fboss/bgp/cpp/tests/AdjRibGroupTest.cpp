@@ -126,6 +126,7 @@ class AdjRibGroupTest : public ::testing::Test {
    */
   static UpdateGroupKey createDefaultGroupKey() {
     UpdateGroupKey key;
+    key.sessionType = BgpSessionType::IBGP;
     key.afiIpv4Negotiated = true;
     key.afiIpv6Negotiated = true;
     return key;

@@ -1099,7 +1099,7 @@ bool AdjRib::canAnnounceEntry(const RibOutAnnouncementEntry& update) noexcept {
 
 bool AdjRib::suppressLoopedAdvertisements(
     const std::shared_ptr<const facebook::bgp::BgpPath>& attrs) noexcept {
-  auto remoteAs = facebook::bgp::AsNum(peeringParams_.remoteAs);
+  auto remoteAs = facebook::bgp::AsNum(getRemoteAs());
   // Determine if remote AS exists in the as path (so that remote would reject
   // it)
   // Note: its check is less than hasAsPathLoop it will check confed_as or
@@ -1226,7 +1226,7 @@ void AdjRib::processRibAnnouncedEntry(
    */
   auto postOutAttrsNew = prePolicyAttrs->clone();
   updateAttributesOutWithoutNexthopCommon(
-      PeerConfig{peeringParams_, egressPolicyName_, policyManager_.get()},
+      getPeerConfig(),
       update,
       policyCachedAttrs,
       postOutAttrsNew,

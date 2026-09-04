@@ -5235,6 +5235,7 @@ TEST_F(
    * localAs must differ from remoteAs so isIBgpPeer() returns false. */
   constexpr uint32_t remoteAs = 65001;
   adjRib->peeringParams_.remoteAs = remoteAs;
+  adjRib->remoteAs_ = remoteAs;
   adjRib->peeringParams_.localAs = 65000;
   adjRib->peeringParams_.isConfedPeer = ConfedPeerConfigured{false};
   adjRib->sender_suppress_as_loop_ = true;

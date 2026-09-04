@@ -2756,6 +2756,22 @@ TEST(PeeringParams, getUniquePeerIdTest) {
   EXPECT_EQ(std::nullopt, p.postRouteLimit);
 }
 
+TEST(PeeringParams, AcceptsRemoteAsTest) {
+  constexpr uint32_t kPrimaryAs = 65001;
+  constexpr uint32_t kAdditionalAs = 65002;
+  constexpr uint32_t kUnexpectedAs = 65003;
+  PeeringParams params;
+  params.remoteAs = kPrimaryAs;
+  params.additionalRemoteAs = kAdditionalAs;
+
+  EXPECT_TRUE(params.acceptsRemoteAs(kPrimaryAs));
+  EXPECT_TRUE(params.acceptsRemoteAs(kAdditionalAs));
+  EXPECT_FALSE(params.acceptsRemoteAs(kUnexpectedAs));
+
+  params.additionalRemoteAs.reset();
+  EXPECT_FALSE(params.acceptsRemoteAs(kAdditionalAs));
+}
+
 TEST(Config, GetLinkBandwidthBpsTest) {
   {
     auto linkBps = Config::getLinkBandwidthBps("123");

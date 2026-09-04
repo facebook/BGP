@@ -910,6 +910,15 @@ CO_TEST_F(PeerManagerTestFixture, SessionTerminated_VipErasesDynamicEorState) {
   auto terminateBaton = std::make_shared<folly::coro::Baton>();
   auto mockAdjRib =
       setupMockAdjRib(evb, kDynamicPeerId4, AsNum(kVipAsn), terminateBaton);
+  mockAdjRib->sessionEstablished(
+      kVipAsn,
+      std::nullopt,
+      std::make_shared<AdjRib::AdjRibInQueueT>(),
+      std::make_shared<AdjRib::AdjRibOutQueueT>(),
+      std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+          kMaxEgressQueueSize,
+          kEgressQueueHighWatermark,
+          kEgressQueueLowWatermark));
   mockAdjRib->markStateEstablished();
 
   peerMgr->initialized_ = true;
