@@ -42,10 +42,12 @@ using AcceptedAndRejectedRoutes = std::pair<
     std::vector<std::shared_ptr<RouteBase>>,
     std::vector<std::shared_ptr<RouteBase>>>;
 
-// Rule is a function that looks at a set of routes and returns weight for
-// the one at <current> index. We require all routes for every invocation
-// since certain filters, e.g., LowestMedValue, consider other routes'
-// metrics.
+/*
+ * Rule is a function that looks at a set of routes and returns weight for
+ * the one at <current> index. We require all routes for every invocation
+ * since certain filters, e.g., LowestMedValue, consider other routes'
+ * metrics.
+ */
 using Rule = std::function<__uint128_t(const std::shared_ptr<const RouteBase>)>;
 
 // Please keep this and RouteMetricDescription in sync.
@@ -95,21 +97,27 @@ enum class MembershipRouteFilterAction {
   CHOOSE_NONMEMBER = 2,
 };
 
-// Options for route filters that select routes with value of metric between
-// minValue and maxValue, inclusive.
+/*
+ * Options for route filters that select routes with value of metric between
+ * minValue and maxValue, inclusive.
+ */
 struct RangedRouteFilterOpts {
   int64_t minValue;
   int64_t maxValue;
 };
 
-// Options for route filters that select routes with highest or lowest values
-// of metric, depending on value of action.
+/*
+ * Options for route filters that select routes with highest or lowest values
+ * of metric, depending on value of action.
+ */
 struct HighestLowestRouteFilterOpts {
   HighestLowestRouteFilterAction action;
 };
 
-// Options for route filters that select routes with values of metric that are
-// either members or not members of metricValues, depending on value of action.
+/*
+ * Options for route filters that select routes with values of metric that are
+ * either members or not members of metricValues, depending on value of action.
+ */
 struct MembershipRouteFilterOpts {
   MembershipRouteFilterAction action;
   std::unordered_set<int64_t> metricValues;
@@ -130,16 +138,20 @@ struct RouteFilterConfig {
   std::string str() const;
 };
 
-// Options for RecoverEquivalentRouteFilter. This struct is needed so that the
-// filter can be iterated by RouterFilterOpts
+/*
+ * Options for RecoverEquivalentRouteFilter. This struct is needed so that the
+ * filter can be iterated by RouterFilterOpts
+ */
 struct RecoverEquivalentRouteFilterOpts {
   // Additional tiebreakers to filter routes before recovering
   std::vector<RouteFilterConfig> tiebreakerConfigs;
 };
 
-// RouteFilter provides a way to partition the given routes based on
-// routeFilterConfig. The routes could be multiple paths for a prefix
-// or multiple paths for multiple prefixes.
+/*
+ * RouteFilter provides a way to partition the given routes based on
+ * routeFilterConfig. The routes could be multiple paths for a prefix
+ * or multiple paths for multiple prefixes.
+ */
 class RouteFilter {
  public:
   virtual ~RouteFilter() {}
@@ -151,28 +163,36 @@ class RouteFilter {
           std::shared_ptr<RouteBase>,
           nettools::edge::RouteFilterConfig>*> filterMap = folly::none) = 0;
 
-  // Indicates if a RouterFilter can be used to compare routes
-  // Comparators do not make sense for some filters, such as membership filters
+  /*
+   * Indicates if a RouterFilter can be used to compare routes
+   * Comparators do not make sense for some filters, such as membership filters
+   */
   inline virtual bool comparable() {
     return false;
   }
 
-  // Compares two routes using filters, returning true if ri1 is preferred
-  // If both routes are equal, returns false
-  // If a comparator is not defined, returns false and logs fatal error
+  /*
+   * Compares two routes using filters, returning true if ri1 is preferred
+   * If both routes are equal, returns false
+   * If a comparator is not defined, returns false and logs fatal error
+   */
   virtual bool compare(
       const std::shared_ptr<const RouteBase> ri1,
       const std::shared_ptr<const RouteBase> ri2);
 
-  // Factory method for constructing RouteFilter that filters on the specified
-  // metric.
+  /*
+   * Factory method for constructing RouteFilter that filters on the specified
+   * metric.
+   */
   static std::unique_ptr<RouteFilter> fromRouteFilterConfig(
       const RouteFilterConfig& routeFilterConfig);
   static std::vector<std::unique_ptr<RouteFilter>> fromRouteFilterConfigVec(
       const std::vector<RouteFilterConfig>& routeFilterConfigVec);
 
-  // Helper function for fromRouteFilterConfig(). Given the routeFilterConfig
-  // and the rule, this creates a route filter object.
+  /*
+   * Helper function for fromRouteFilterConfig(). Given the routeFilterConfig
+   * and the rule, this creates a route filter object.
+   */
   static std::unique_ptr<RouteFilter> createRouteFilter(
       const RouteFilterConfig& routeFilterConfig,
       const Rule& rule);
@@ -202,14 +222,18 @@ class RouteFilter {
 
   // Metrics for route selection according to RFC 4271 section 9.1.
 
-  // TODO (section 9.1.1):
-  //   If the route is learned from an external peer, then the local BGP
-  //   speaker computes the degree of preference based on preconfigured
-  //   policy information.
+  /*
+   * TODO (section 9.1.1):
+   *   If the route is learned from an external peer, then the local BGP
+   *   speaker computes the degree of preference based on preconfigured
+   *   policy information.
+   */
 
-  // TODO (section 9.1.2)
-  //   No check for unresolvable routes.
-  //   No check for AS loops because our ASN is present in every AS path.
+  /*
+   * TODO (section 9.1.2)
+   *   No check for unresolvable routes.
+   *   No check for AS loops because our ASN is present in every AS path.
+   */
 
   // Rule 9.1.2.2.d in not applicable as every route is learned via IBGP.
 
@@ -220,16 +244,20 @@ class RouteFilter {
       const std::shared_ptr<const RouteBase> ri);
   // Shortest AS path (9.1.2.2.a)
   static int64_t getBgpAsPathLen(const std::shared_ptr<const RouteBase> ri);
-  // Shortest AS path, counting confed asn in the length
-  // https://datatracker.ietf.org/doc/draft-lapukhov-bgp-ecmp-considerations/
+  /*
+   * Shortest AS path, counting confed asn in the length
+   * https://datatracker.ietf.org/doc/draft-lapukhov-bgp-ecmp-considerations/
+   */
   static int64_t getBgpAsPathLenWithConfed(
       const std::shared_ptr<const RouteBase> ri);
   // Lowest origin number (9.1.2.2.b)
   static int64_t getBgpOriginCode(const std::shared_ptr<const RouteBase> ri);
-  // Keep only routes with lowest MED (9.1.2.2.c)
-  // MED value is reset in inbound BGP policy at PR/BRs and "always-compare-med"
-  // is configured on them. Thus, we will compare route MEDs even if the routes
-  // are being propaged by different peer AS.
+  /*
+   * Keep only routes with lowest MED (9.1.2.2.c)
+   * MED value is reset in inbound BGP policy at PR/BRs and "always-compare-med"
+   * is configured on them. Thus, we will compare route MEDs even if the routes
+   * are being propaged by different peer AS.
+   */
   static int64_t getBgpMedValue(const std::shared_ptr<const RouteBase> ri);
   // Highest Weight
   static uint16_t getBgpWeightValue(const std::shared_ptr<const RouteBase> ri);
@@ -259,8 +287,10 @@ class RouteFilter {
   static __uint128_t getBgpNexthopAsInt(
       const std::shared_ptr<const RouteBase> ri);
 
-  // Useful in recovering routes from the same peer AS
-  // Returns the first ASN in AS Path.
+  /*
+   * Useful in recovering routes from the same peer AS
+   * Returns the first ASN in AS Path.
+   */
   static int64_t getBgpPeerAsn(const std::shared_ptr<const RouteBase> ri);
 
   // Returns 1 if route was learned over Confed EBGP, 0 otherwise.
@@ -273,28 +303,30 @@ class RouteFilter {
   // Returns 1 if route is preferred, 0 otherwise.
   static int64_t getIsRoutePreferred(const std::shared_ptr<const RouteBase> ri);
 
-  // Returns preference at router or metro level based on controller communities
-  // (higher preference == better route, can be compared across routes)
-  //
-  // The impact of controller communities depends on whether we're calculating
-  // the preferred routes for an individual router or the entire metro. While
-  // we always prioritize metro-mode Edge Fabric injections, we only prioritize
-  // router-mode Edge Fabric injections at the router where they were injected
-  // (in router-mode, Edge Fabric injections have no impact on neighbors).
-  //
-  // When EF is running in router-mode, the priority of the injector's BGP
-  // session (aka, the administrative distance) is increased to ensure that the
-  // route takes priority at the router where it was injected. However, this
-  // increase in priority has no impact on other routers. In comparison, when EF
-  // is running in metro-mode BGP communities and/or other BGP attributes are
-  // used to increase the preference of the injected route at all routers in the
-  // metro.
-  //
-  // Thus, when we're calculating preferred route(s) for an individual router,
-  // we increase the preference of a route if it was injected by Edge Fabric
-  // in metro-mode or router-mode. However, if we're calculating the preferred
-  // route(s) across multiple routers, we only increase the preference of a
-  // route if it was injected by EF in metro-mode.
+  /*
+   * Returns preference at router or metro level based on controller communities
+   * (higher preference == better route, can be compared across routes)
+   *
+   * The impact of controller communities depends on whether we're calculating
+   * the preferred routes for an individual router or the entire metro. While
+   * we always prioritize metro-mode Edge Fabric injections, we only prioritize
+   * router-mode Edge Fabric injections at the router where they were injected
+   * (in router-mode, Edge Fabric injections have no impact on neighbors).
+   *
+   * When EF is running in router-mode, the priority of the injector's BGP
+   * session (aka, the administrative distance) is increased to ensure that the
+   * route takes priority at the router where it was injected. However, this
+   * increase in priority has no impact on other routers. In comparison, when EF
+   * is running in metro-mode BGP communities and/or other BGP attributes are
+   * used to increase the preference of the injected route at all routers in the
+   * metro.
+   *
+   * Thus, when we're calculating preferred route(s) for an individual router,
+   * we increase the preference of a route if it was injected by Edge Fabric
+   * in metro-mode or router-mode. However, if we're calculating the preferred
+   * route(s) across multiple routers, we only increase the preference of a
+   * route if it was injected by EF in metro-mode.
+   */
   static int64_t getRouterLevelPreferenceFromControllerCommunities(
       const std::shared_ptr<const RouteBase> ri);
   static int64_t getMetroLevelPreferenceFromControllerCommunities(
@@ -378,11 +410,13 @@ class MembershipRouteFilter : public RouteFilter {
   const std::unordered_set<int64_t> metricValues_;
 };
 
-// Apply tiebreaker filters on the passed in accepted route set,
-// any rejected route is then recovered based on the recovery config.
-// This is useful when we try to select a subset of multipath routes
-// as the final multipath set based on some parameter of the bestPath
-// route.
+/*
+ * Apply tiebreaker filters on the passed in accepted route set,
+ * any rejected route is then recovered based on the recovery config.
+ * This is useful when we try to select a subset of multipath routes
+ * as the final multipath set based on some parameter of the bestPath
+ * route.
+ */
 class RecoverEquivalentRouteFilter : public RouteFilter {
  public:
   RecoverEquivalentRouteFilter(

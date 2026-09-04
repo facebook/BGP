@@ -166,8 +166,10 @@ AcceptedAndRejectedRoutes RouteSelector::applyFilters(
     folly::Optional<std::map<
         std::shared_ptr<RouteBase>,
         nettools::edge::RouteFilterConfig>*> filterMap) const {
-  // We pass the routes acccepted and rejected by the previous filter to the
-  // immediate successor, this enables the successor to recover rejected routes
+  /*
+   * We pass the routes acccepted and rejected by the previous filter to the
+   * immediate successor, this enables the successor to recover rejected routes
+   */
 
   // Initially, all routes are "accepted" and none are "rejected"
   AcceptedAndRejectedRoutes filteredRoutes{routes, {}};
@@ -178,8 +180,10 @@ AcceptedAndRejectedRoutes RouteSelector::applyFilters(
       break;
     }
 
-    // We accumulate rejected routes from all rules,
-    // but permitted routes are "chain passed" through the rule set.
+    /*
+     * We accumulate rejected routes from all rules,
+     * but permitted routes are "chain passed" through the rule set.
+     */
     filteredRoutes = filter->filter(filteredRoutes, filterMap);
     std::copy(
         filteredRoutes.second.begin(),

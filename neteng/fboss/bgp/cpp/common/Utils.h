@@ -28,8 +28,10 @@
 
 namespace facebook::bgp {
 
-// In-place lower-case conversion.
-// Replaces common/strings::toLower without pulling in that dependency.
+/*
+ * In-place lower-case conversion.
+ * Replaces common/strings::toLower without pulling in that dependency.
+ */
 inline void toLower(std::string& s) {
   std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
     return std::tolower(c);
@@ -67,21 +69,27 @@ bool isSubnet(
     const folly::CIDRNetwork& subPfx,
     const folly::CIDRNetwork& parentPfx) noexcept;
 
-// Parse a given community string (ex) "123:456" into pair<uint16_t, uint16_t>.
-// The first contains asn and the second contains value. If unsuccessful,
-// folly::none is returned.
+/*
+ * Parse a given community string (ex) "123:456" into pair<uint16_t, uint16_t>.
+ * The first contains asn and the second contains value. If unsuccessful,
+ * folly::none is returned.
+ */
 folly::Expected<std::pair<uint16_t, uint16_t>, std::string> parseCommunityStr(
     const std::string& commStr);
 
-// extract add path capability to two bool.
-// first bool: true if send add path
-// second bool: trye if receive add path
+/*
+ * extract add path capability to two bool.
+ * first bool: true if send add path
+ * second bool: trye if receive add path
+ */
 std::pair<bool, bool> getAddPathCapa(
     const std::optional<nettools::bgplib::BgpAddPathSendRec>& capa);
 
-// This logRouteWithNexthops function is used to log the route with nexthops.
-// This should be called with the DBG3 level, since the log messages could be
-// overwhelm. For example, an FSW has 36 SSW as their next hops i.e. 36 spines.
+/*
+ * This logRouteWithNexthops function is used to log the route with nexthops.
+ * This should be called with the DBG3 level, since the log messages could be
+ * overwhelm. For example, an FSW has 36 SSW as their next hops i.e. 36 spines.
+ */
 std::string logRouteWithNexthops(
     const folly::CIDRNetwork& prefix,
     const std::shared_ptr<

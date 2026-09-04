@@ -81,8 +81,10 @@ class BgpModuleBase : public boost::noncopyable {
    */
   folly::coro::Task<void> heartbeatLoop() noexcept;
 
-// per class placeholder for test code injection
-// only need to be setup once here
+/*
+ * per class placeholder for test code injection
+ * only need to be setup once here
+ */
 #ifdef BgpModuleBase_TEST_FRIENDS
   BgpModuleBase_TEST_FRIENDS
 #endif

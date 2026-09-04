@@ -104,9 +104,11 @@ constexpr auto kFibBatchTimeDefault = std::chrono::milliseconds(200);
  */
 constexpr auto kFibBatchTimeoutChurn = std::chrono::seconds(1);
 
-// Rib pause timeout for BGP++
-// Set to 2 minutes initially, will be adjusted based on benchmarking data
-// analysis
+/*
+ * Rib pause timeout for BGP++
+ * Set to 2 minutes initially, will be adjusted based on benchmarking data
+ * analysis
+ */
 constexpr auto kRibPauseTimeout = std::chrono::minutes(2);
 
 // Fboss Fib agent constants
@@ -132,12 +134,16 @@ constexpr std::chrono::milliseconds kFibOpenrKeepAliveTimeout = 1000ms;
 
 // OpenR FibAgent constants
 constexpr auto kOpenrFibAgentTimeout = 1000ms;
-// Maximum queue size to prevent unbounded memory growth for pending Updates
-// from NetlinkWrapper to OpenRFibAgent
+/*
+ * Maximum queue size to prevent unbounded memory growth for pending Updates
+ * from NetlinkWrapper to OpenRFibAgent
+ */
 constexpr size_t kFibOpenrMaxPendingUpdates = 1000;
 
-// Netlink Wrapper constants
-// Maximum time we wait to read on socket
+/*
+ * Netlink Wrapper constants
+ * Maximum time we wait to read on socket
+ */
 constexpr auto kNetlinkSyncReadTimeout = std::chrono::milliseconds(1000);
 // Maximum number of retries to sync interface
 constexpr auto kNetlinkSyncRetries = 5;
@@ -180,26 +186,36 @@ constexpr auto kMaxSerializedChainLen = 10;
 // Maximum number of local routes injection processed per iteration
 constexpr auto kInjectRouteChunkSize = 100;
 
-// String terminating Stateful GR file.
-// Used as a signature to verify proper termination of saved file.
+/*
+ * String terminating Stateful GR file.
+ * Used as a signature to verify proper termination of saved file.
+ */
 constexpr auto kGrStateFileTermination = "END GR STATE BGP++";
 
-// String terminating Rib Policy file.
-// Used as a signature to verify proper termination of saved file.
+/*
+ * String terminating Rib Policy file.
+ * Used as a signature to verify proper termination of saved file.
+ */
 constexpr auto kRibPolicyFileTermination = "END RIB POLICY BGP++";
 
-// Rib stores RouteInfos as a map<pathId, RouteInfo>
-// AdjRib radix tree use prefix -> map<pathId, attribute> mapping
-// DefaultPathId is used when add-path is not activated.
+/*
+ * Rib stores RouteInfos as a map<pathId, RouteInfo>
+ * AdjRib radix tree use prefix -> map<pathId, attribute> mapping
+ * DefaultPathId is used when add-path is not activated.
+ */
 inline const uint32_t kDefaultPathID = 0;
 
-// placeholder value for ADD-PATH send-side changes
-// TODO: remove this var and replace it with generated IDs wherever it's used
+/*
+ * placeholder value for ADD-PATH send-side changes
+ * TODO: remove this var and replace it with generated IDs wherever it's used
+ */
 inline const uint32_t kPlaceholderPathID = 0;
 
-// per RFC7911, path ID is a 4 octet field. Thus
-// we cannot send anything that would exceed the max
-// value of an unsigned 32 bit int
+/*
+ * per RFC7911, path ID is a 4 octet field. Thus
+ * we cannot send anything that would exceed the max
+ * value of an unsigned 32 bit int
+ */
 inline const uint32_t kMinPathIDToSend = 0;
 inline const uint32_t kMaxPathIDToSend = UINT32_MAX;
 
@@ -209,12 +225,16 @@ inline const float BpsPerKBps = 1000.0f;
 inline const float BpsPerMBps = BpsPerKBps * 1000.0f;
 // Conversion from Bytes to Gigabytes per second
 inline const float BpsPerGBps = BpsPerMBps * 1000.0f;
-// LBW is expressed in the Extended Community as Bytes (not bits) per second.
-// For easy reference, convert this to Gigabits per second while programming
-// weights so, for example a 100Gbps value will show up with a weight of 100
+/*
+ * LBW is expressed in the Extended Community as Bytes (not bits) per second.
+ * For easy reference, convert this to Gigabits per second while programming
+ * weights so, for example a 100Gbps value will show up with a weight of 100
+ */
 inline const float LbwToUcmpWt = BpsPerGBps / 8.0f;
-// when link_bandwidth_bps == auto, bgp calculates that value based on
-// information from the wedge agent
+/*
+ * when link_bandwidth_bps == auto, bgp calculates that value based on
+ * information from the wedge agent
+ */
 constexpr auto kAutoLbwBps = "auto";
 
 // Policy to block everything from propagation
@@ -285,8 +305,10 @@ constexpr size_t kMaxHeartbeatSnapshots = 3;
 constexpr uint64_t kRibOutQueueSizePauseThreshold = 200;
 constexpr uint64_t kRibOutQueueSizeResumeThreshold = 100;
 
-// Batch size for prefixPathIds sent to Rib during policy re-evaluation
-// TODO: Tune this threshold based on RibInQ backpressure metrics
+/*
+ * Batch size for prefixPathIds sent to Rib during policy re-evaluation
+ * TODO: Tune this threshold based on RibInQ backpressure metrics
+ */
 constexpr uint64_t kPolicyReEvaluationBatchSize = 1000;
 
 constexpr auto kModuleSessionManager = "session_manager";
@@ -337,21 +359,29 @@ constexpr nettools::bgplib::BgpAttrCommunityC kDrainCommunity{65446, 10};
 constexpr nettools::bgplib::BgpAttrCommunityC kLiveCommunity{65446, 30};
 
 inline const RE2 kPortNameRegex = "(?P<port>.*)\\/\\d+$";
-// Used in dsfSwitchReachability table to indicate
-// the switch is not reachable.
+/*
+ * Used in dsfSwitchReachability table to indicate
+ * the switch is not reachable.
+ */
 constexpr int32_t kNoPortGroup = 0;
 
-// Maximum number of prefixes learnt in an interval(High watermark),
-// beyond this detected as route churn
+/*
+ * Maximum number of prefixes learnt in an interval(High watermark),
+ * beyond this detected as route churn
+ */
 constexpr uint64_t kHighWaterMarkForRouteChurn{20000};
-// Minimum number of paths to fall to(lower watermark) once
-// route churn is detected
+/*
+ * Minimum number of paths to fall to(lower watermark) once
+ * route churn is detected
+ */
 constexpr uint64_t kLowWaterMarkForRouteChurn{5000};
 // Interval to check for route churn
 constexpr auto kRouteChurnCheckInterval = std::chrono::seconds(5);
 
-// Staleness threshold for change list consumers: if a consumer's marker
-// has not advanced for this long, it is considered stuck.
+/*
+ * Staleness threshold for change list consumers: if a consumer's marker
+ * has not advanced for this long, it is considered stuck.
+ */
 constexpr auto kConsumerStalenessThreshold = std::chrono::minutes(10);
 
 // BGP++ platform tag for ODS counters

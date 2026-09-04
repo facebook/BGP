@@ -23,9 +23,11 @@
 
 namespace facebook::bgp {
 
-// used for communication between AdjRib and Rib
-// NOTE: Any change in TinyPeerInfo might have impact on TTinyPeerInfo
-// in openr/prefix-manager/facebook/if/Bgp.thrift
+/*
+ * used for communication between AdjRib and Rib
+ * NOTE: Any change in TinyPeerInfo might have impact on TTinyPeerInfo
+ * in openr/prefix-manager/facebook/if/Bgp.thrift
+ */
 struct TinyPeerInfo {
   const folly::IPAddress addr;
   const uint32_t asn{0};
@@ -80,15 +82,19 @@ using NeighborWatcherMessage =
 // Map of Nexthop address to weight
 using WeightedNexthopMap = folly::F14NodeMap<folly::IPAddress, uint32_t>;
 
-// Map of Nexthop address to topology information map
-// Example: {1.2.3.4/32: {"rack_id": 1, "plane_id: 2", "spine_capacity": 36,
-// "remote_pod_capacity": 36}}
-// The second level key is the Thrift field names of the encoding scheme
+/*
+ * Map of Nexthop address to topology information map
+ * Example: {1.2.3.4/32: {"rack_id": 1, "plane_id: 2", "spine_capacity": 36,
+ * "remote_pod_capacity": 36}}
+ * The second level key is the Thrift field names of the encoding scheme
+ */
 using NexthopTopoInfoMap = std::
     unordered_map<folly::IPAddress, std::unordered_map<std::string, int64_t>>;
 
-// Store information of all operations that can cause RIB bestpath calculation
-// and FIB programming to be paused or resumed.
+/*
+ * Store information of all operations that can cause RIB bestpath calculation
+ * and FIB programming to be paused or resumed.
+ */
 enum RibPauseResumeCause {
   SAFE_MODE = 0,
   ROUTE_CHURN = 2,

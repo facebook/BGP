@@ -488,8 +488,10 @@ AcceptedAndRejectedRoutes RecoverEquivalentRouteFilter::filter(
         remainingRejectedRoutes.push_back(rejectedRoute);
       }
     }
-    // Get ready for the next iteration and only keep any routes that are still
-    // rejected
+    /*
+     * Get ready for the next iteration and only keep any routes that are still
+     * rejected
+     */
     rejectedRoutes = remainingRejectedRoutes;
     remainingRejectedRoutes = std::vector<std::shared_ptr<RouteBase>>();
   }

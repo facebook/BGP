@@ -226,8 +226,10 @@ struct RibOutAnnouncementEntry {
   // Rib policy ucmp weight override
   const std::optional<float> ribPolicyUcmpWeight{std::nullopt};
 
-  // A prefix is subjected to out-delay if it is the first time we installed it
-  // in FIB.
+  /*
+   * A prefix is subjected to out-delay if it is the first time we installed it
+   * in FIB.
+   */
   bool newlyInstalledInLocalRib{false};
 
   // Rib entry's installation time stamp
@@ -433,8 +435,10 @@ struct ShadowRibOutAnnouncementEntry {
   // Rib policy ucmp weight override
   std::optional<float> ribPolicyUcmpWeight{std::nullopt};
 
-  // A prefix is subjected to out-delay if it is the first time we installed it
-  // in FIB.
+  /*
+   * A prefix is subjected to out-delay if it is the first time we installed it
+   * in FIB.
+   */
   bool newlyInstalledInLocalRib{false};
 
   // Rib entry's installation time stamp

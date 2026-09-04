@@ -54,24 +54,32 @@ class RouteSelector : boost::noncopyable {
   RouteSelector() = default;
   virtual ~RouteSelector() = default;
 
-  // Compare all routes for a single prefix and mark with the
-  // appropriate PREFERRED/WITHDRAWN flag.
-  // Return true if there are any routes that were marked.
+  /*
+   * Compare all routes for a single prefix and mark with the
+   * appropriate PREFERRED/WITHDRAWN flag.
+   * Return true if there are any routes that were marked.
+   */
   bool markPreferredRoutes(
       const std::vector<std::shared_ptr<RouteBase>>& routes);
 
-  // Selects from provided routes. If filters match multiple, it will return
-  // all of them. If filters match none, it will return an empty vector.
+  /*
+   * Selects from provided routes. If filters match multiple, it will return
+   * all of them. If filters match none, it will return an empty vector.
+   */
   std::vector<std::shared_ptr<RouteBase>> selectRoutes(
       const std::vector<std::shared_ptr<RouteBase>>& routes) const;
 
-  // In addition to the behavior of selectRoutes, it marks the filter by
-  // which a path was rejected.
+  /*
+   * In addition to the behavior of selectRoutes, it marks the filter by
+   * which a path was rejected.
+   */
   std::vector<std::shared_ptr<RouteBase>> selectRoutesAndSetRejectionFilter(
       const std::vector<std::shared_ptr<RouteBase>>& routes) const;
 
-  // Compares two routes using configured filters that support comparison
-  // Return true if ri2 is preferred, false if equal or if ri1 is preferred
+  /*
+   * Compares two routes using configured filters that support comparison
+   * Return true if ri2 is preferred, false if equal or if ri1 is preferred
+   */
   bool compareRoutes(
       const std::shared_ptr<const RouteBase>& ri1,
       const std::shared_ptr<const RouteBase>& ri2) const;

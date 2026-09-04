@@ -96,8 +96,10 @@ folly::Expected<std::pair<uint16_t, uint16_t>, std::string> parseCommunityStr(
   try {
     folly::split(':', commStr, parts);
   } catch (const std::exception& ex) {
-    // This will catch issues like non-numeric values (excluding delimiter :),
-    // overflow of uint16_t
+    /*
+     * This will catch issues like non-numeric values (excluding delimiter :),
+     * overflow of uint16_t
+     */
     auto message = fmt::format(
         "Invalid community value: {}. Exception message: {}",
         commStr,
@@ -138,8 +140,10 @@ std::string logRouteWithNexthops(
   }
   // weightedNexthops is not nullptr
 
-  // sort the weightedNexthops by ip address:
-  // guarantees the order of next hops in each call is the same
+  /*
+   * sort the weightedNexthops by ip address:
+   * guarantees the order of next hops in each call is the same
+   */
   auto ipComparator = [](const folly::IPAddress& lhs,
                          const folly::IPAddress& rhs) {
     return lhs.str() < rhs.str();
@@ -221,8 +225,10 @@ std::vector<folly::IPAddress> listAllIPsInCIDR(
       ips.emplace_back(addr);
     }
   } else {
-    // If prefix length <= 64, the number of IPs would be >= 2^64,
-    // which exceeds any possible maxIPs value (2^64 - 1)
+    /*
+     * If prefix length <= 64, the number of IPs would be >= 2^64,
+     * which exceeds any possible maxIPs value (2^64 - 1)
+     */
     if (prefixLen <= 64) {
       XLOGF(
           DBG2,

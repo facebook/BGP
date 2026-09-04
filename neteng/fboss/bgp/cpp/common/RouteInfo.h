@@ -76,17 +76,23 @@ struct RouteInfo : nettools::edge::RouteBase {
   const uint32_t receivedPathId;
   // only has a value when this path has been selected in best path selection
   std::optional<uint32_t> pathIdToSend;
-  // false if local route's install_to_fib is false to avoid fib programming.
-  // true, otherwise.
+  /*
+   * false if local route's install_to_fib is false to avoid fib programming.
+   * true, otherwise.
+   */
   bool installToFib;
   RouteStateFlags status{RouteStateFlags::NONE};
-  // Captures information about Bgp BestPathSelection Algo's filter for which
-  // this route was not selected as best path.
+  /*
+   * Captures information about Bgp BestPathSelection Algo's filter for which
+   * this route was not selected as best path.
+   */
   std::optional<nettools::edge::RouteFilterConfig> bestPathFilterConfig;
 
-  // The timestamp of the last modification for route in microseconds.
-  // XXX: Since we keep track of lastUpdateRcvdTime in AdjRib, this is now
-  // redundant and can be removed if we have memory constraints.
+  /*
+   * The timestamp of the last modification for route in microseconds.
+   * XXX: Since we keep track of lastUpdateRcvdTime in AdjRib, this is now
+   * redundant and can be removed if we have memory constraints.
+   */
   int64_t lastModifiedTime_;
 
   RouteInfo(
@@ -157,19 +163,25 @@ struct RouteInfo : nettools::edge::RouteBase {
   RibEntry& getRibEntry() const;
 
  private:
-  // UCMP weight derived from the Link-Bandwidth extended community.
-  // Reference b/w used is 1MBytes (not bits!).
+  /*
+   * UCMP weight derived from the Link-Bandwidth extended community.
+   * Reference b/w used is 1MBytes (not bits!).
+   */
   std::optional<float> ucmpWeight_{std::nullopt};
 
   __uint128_t transformIP2Int(const folly::IPAddress& addr) const;
 
-  // Non-owning pointer to the NexthopInfo to get the IGP cost
-  // Lifetime managed by NexthopInfo via explicit link/unlink calls
-  // MUST be null-checked before use
+  /*
+   * Non-owning pointer to the NexthopInfo to get the IGP cost
+   * Lifetime managed by NexthopInfo via explicit link/unlink calls
+   * MUST be null-checked before use
+   */
   const NexthopInfoBase* nexthopInfo_{nullptr};
 
-  // reference to the ribEntry to avoid lookups when this path is accessed
-  // independent of RibEntry
+  /*
+   * reference to the ribEntry to avoid lookups when this path is accessed
+   * independent of RibEntry
+   */
   RibEntry& ribEntry;
 };
 

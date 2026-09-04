@@ -38,9 +38,11 @@ inline std::vector<RouteFilterConfig> concatRouteFilterConfigs(
   return mergedConfigVec;
 }
 
-// CONTROLLER_COMMUNITY prioritizes routes with EF's router-mode or metro-mode
-// controller community, which is necessary to identify a individual router's
-// preferred route(s) when we're considering EF routes.
+/*
+ * CONTROLLER_COMMUNITY prioritizes routes with EF's router-mode or metro-mode
+ * controller community, which is necessary to identify a individual router's
+ * preferred route(s) when we're considering EF routes.
+ */
 const std::vector<RouteFilterConfig> kRouterFilterConfigsBase = {
     getMembershipFilterConfig(
         RouteMetric::DELETED_ROUTE,
@@ -81,11 +83,13 @@ const std::vector<RouteFilterConfig> kRouterFilterConfigsNoMultipath =
              RouteMetric::BGP_PEER_IP,
              HighestLowestRouteFilterAction::CHOOSE_LOWEST)});
 
-// Rules for selecting the best route(s) at a single PR.
-//
-// These filters are designed for Juniper's BGP multipath behavior.
-// The filter set should be an extension of kRouterFilterConfigsNoMultipath,
-// adding any additional logic required for multipath computation.
+/*
+ * Rules for selecting the best route(s) at a single PR.
+ *
+ * These filters are designed for Juniper's BGP multipath behavior.
+ * The filter set should be an extension of kRouterFilterConfigsNoMultipath,
+ * adding any additional logic required for multipath computation.
+ */
 const std::vector<RouteFilterConfig> kRouterFilterConfigs =
     concatRouteFilterConfigs(
         kRouterFilterConfigsBase,
@@ -99,21 +103,23 @@ const std::vector<RouteFilterConfig> kRouterFilterConfigs =
                  RouteMetric::BGP_PEER_IP,
                  HighestLowestRouteFilterAction::CHOOSE_LOWEST)})});
 
-// Rules for selecting the best route(s) at ASWs / PSWs from routes from PRs.
-//
-// These filters are designed for Arista's BGP multipath behavior.
-//
-// CONTROLLER_COMMUNITY_METRO prioritizes EF's metro-mode controller community,
-// which is necessary to identify the metro-level preferred routes from all of
-// the router-level preferred routes. If EF router-mode is in use, it will not
-// impact the distribution of traffic across PRs in a metro.
-//
-// We don't use RouteMetric::EXTERNAL_ROUTE in these filters, as all routes will
-// either be redistributed via iBGP (in clusers with ASWs) or eBGP (in all other
-// cluster, which have PSWs). In addition, the Route objects are generated from
-// the perspective of the PRs, so calling Route::getIsRouteExternal returns if
-// the routes are external or internal from the perspective of the PRs, not
-// the perspective of the ASW / PSWs.
+/*
+ * Rules for selecting the best route(s) at ASWs / PSWs from routes from PRs.
+ *
+ * These filters are designed for Arista's BGP multipath behavior.
+ *
+ * CONTROLLER_COMMUNITY_METRO prioritizes EF's metro-mode controller community,
+ * which is necessary to identify the metro-level preferred routes from all of
+ * the router-level preferred routes. If EF router-mode is in use, it will not
+ * impact the distribution of traffic across PRs in a metro.
+ *
+ * We don't use RouteMetric::EXTERNAL_ROUTE in these filters, as all routes will
+ * either be redistributed via iBGP (in clusers with ASWs) or eBGP (in all other
+ * cluster, which have PSWs). In addition, the Route objects are generated from
+ * the perspective of the PRs, so calling Route::getIsRouteExternal returns if
+ * the routes are external or internal from the perspective of the PRs, not
+ * the perspective of the ASW / PSWs.
+ */
 const std::vector<RouteFilterConfig> kMetroFilterConfigs = {
     getMembershipFilterConfig(
         RouteMetric::DELETED_ROUTE,

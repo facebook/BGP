@@ -233,8 +233,10 @@ std::optional<std::pair<uint16_t, uint32_t>> BgpPath::getNonTransitiveRawLbw()
   return std::make_pair<uint16_t, uint32_t>(lbw->getAsn(), lbw->getValue());
 }
 
-// Populate BgpUpdate2.attrs from BgpPath
-// Note: User has to fill all other fields in BgpUpdate2
+/*
+ * Populate BgpUpdate2.attrs from BgpPath
+ * Note: User has to fill all other fields in BgpUpdate2
+ */
 std::shared_ptr<BgpUpdate2> BgpPath::getBgpUpdate2() const {
   auto update = std::make_shared<BgpUpdate2>();
 
@@ -299,8 +301,10 @@ std::shared_ptr<BgpUpdate2> BgpPath::getBgpUpdate2() const {
   return update;
 }
 
-// AS PATH length used in policy. AS_SET is counted as 1 irrespective
-// of number of asn in the set, for AS_SEQUENCE number of asn is counted.
+/*
+ * AS PATH length used in policy. AS_SET is counted as 1 irrespective
+ * of number of asn in the set, for AS_SEQUENCE number of asn is counted.
+ */
 int64_t BgpPath::getBgpAsPathLen() const {
   int pathLen = 0;
 
@@ -314,9 +318,11 @@ int64_t BgpPath::getBgpAsPathLen() const {
   return pathLen;
 }
 
-// AS Confed PATH length used in policy. AS_SET, AS_CONFED_SET are
-// counted as 1 irrespective of number of asn in the set, for AS_SEQUENCE,
-// AS_CONFED_SEQUENCE, it counts number of asn.
+/*
+ * AS Confed PATH length used in policy. AS_SET, AS_CONFED_SET are
+ * counted as 1 irrespective of number of asn in the set, for AS_SEQUENCE,
+ * AS_CONFED_SEQUENCE, it counts number of asn.
+ */
 int64_t BgpPath::getBgpAsPathLenWithConfed() const {
   int pathLen = 0;
 

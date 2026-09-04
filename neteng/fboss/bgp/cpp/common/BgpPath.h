@@ -233,8 +233,10 @@ class BgpPath : public fboss::NodeBaseT<BgpPath, BgpPathFields> {
   }
 
   bool hasNonTransitiveLbwExtCommunity() const;
-  // Set LBW ext community to given asn/value.  Prune existing LBW if it
-  // exists.
+  /*
+   * Set LBW ext community to given asn/value.  Prune existing LBW if it
+   * exists.
+   */
   void setNonTransitiveLbwExtCommunity(uint16_t asn, float lbwValue);
   // Prune LBW extended community if it exists
   void pruneNonTransitiveLbwExtCommunity();
@@ -269,12 +271,16 @@ class BgpPath : public fboss::NodeBaseT<BgpPath, BgpPathFields> {
   // implement virtual function in NodeBaseT
   folly::dynamic toFollyDynamic() const override;
 
-  // This method does not compare nodeId, generation and published fields
-  // Used in RouteInfo to compare pure contents of the two attributes
+  /*
+   * This method does not compare nodeId, generation and published fields
+   * Used in RouteInfo to compare pure contents of the two attributes
+   */
   inline bool operator==(const BgpPath& other) const {
-    // We need to compare Address families, to avoid matching
-    // 10.0.0.1 == ::ffff:10.0.0.1, one is ipv4 address and another is ipv6
-    // mapped ipv4 address. == operator in IPAddress.h treats them same.
+    /*
+     * We need to compare Address families, to avoid matching
+     * 10.0.0.1 == ::ffff:10.0.0.1, one is ipv4 address and another is ipv6
+     * mapped ipv4 address. == operator in IPAddress.h treats them same.
+     */
     return (this->getNexthop().family() == other.getNexthop().family()) &&
         (*(this->getFields()) == *(other.getFields()));
   }
@@ -301,11 +307,13 @@ class BgpPath : public fboss::NodeBaseT<BgpPath, BgpPathFields> {
     size_t operator()(
         std::shared_ptr<const BgpPath> const& attr1,
         std::shared_ptr<const BgpPath> const& attr2) const {
-      // We need to compare Address families, to avoid matching
-      // 10.0.0.1 == ::ffff:10.0.0.1, one is ipv4 address and another is ipv6
-      // mapped ipv4 address. == operator in IPAddress.h treats them same,
-      // but in all the code related to hashing/grouping attributes we need
-      // to treat these as different.
+      /*
+       * We need to compare Address families, to avoid matching
+       * 10.0.0.1 == ::ffff:10.0.0.1, one is ipv4 address and another is ipv6
+       * mapped ipv4 address. == operator in IPAddress.h treats them same,
+       * but in all the code related to hashing/grouping attributes we need
+       * to treat these as different.
+       */
       return (attr1->getNexthop().family() == attr2->getNexthop().family()) &&
           (*(attr1->getFields()) == *(attr2->getFields()));
     }
@@ -323,7 +331,9 @@ class BgpPath : public fboss::NodeBaseT<BgpPath, BgpPathFields> {
 } // namespace facebook::bgp
 
 namespace facebook::nettools::bgplib {
-// BgpPath constructors are private (gated through CloneAllocator), so only
-// the shared_ptr<BgpPath> constructors of DeDuplicatedAttribute are usable.
+/*
+ * BgpPath constructors are private (gated through CloneAllocator), so only
+ * the shared_ptr<BgpPath> constructors of DeDuplicatedAttribute are usable.
+ */
 using DeDuplicatedBgpPath = DeDuplicatedAttribute<facebook::bgp::BgpPath>;
 } // namespace facebook::nettools::bgplib

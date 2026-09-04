@@ -42,8 +42,10 @@ RouteInfo::RouteInfo(
       pathIdToSend(pathIdToSend),
       installToFib(installToFib),
       ribEntry(ribEntry) {
-  // RouteInfo is used in Rib, by the time Rib receive a prefix
-  // local preference should have a value or is default to 100
+  /*
+   * RouteInfo is used in Rib, by the time Rib receive a prefix
+   * local preference should have a value or is default to 100
+   */
   CHECK(attrs->isPublished()) << "Attributes is not published.";
   CHECK(attrs->getLocalPref()) << "Local Preference should have a value.";
 
@@ -111,9 +113,11 @@ RouteInfo::getOriginAsnAndPeerAsn() const {
   using folly::gen::appendTo;
   using folly::gen::from;
 
-  // flatten as path. Note that this does not return the right as path(s) in
-  // case asSet is used. But, the first and last of asPath willl contain one
-  // right origin asn and one right peer asn.
+  /*
+   * flatten as path. Note that this does not return the right as path(s) in
+   * case asSet is used. But, the first and last of asPath willl contain one
+   * right origin asn and one right peer asn.
+   */
   std::vector<uint32_t> asPath;
   for (auto const& asSeg : attrs->getAsPath().get()) {
     (from(asSeg.asSet) + from(asSeg.asSequence)) | appendTo(asPath);
@@ -129,13 +133,15 @@ RouteInfo::getOriginAsnAndPeerAsn() const {
   return std::make_pair(originAsn, peerAsn);
 }
 
-// Notice this returns the combination of originator ID, if originator id is
-// present, and router id for bestpath calculation
-// We need both the originator ID (or peerIp) and peer router ID is due to
-// multiple sessions could be injected by VIP injector, that caused issue that
-// when the prefix was injected by multiple sessions on the same peer the best
-// route selector cannot break tie just based on peer IP. Therefore, we need to
-// add the router ID to break tie in route selection.
+/*
+ * Notice this returns the combination of originator ID, if originator id is
+ * present, and router id for bestpath calculation
+ * We need both the originator ID (or peerIp) and peer router ID is due to
+ * multiple sessions could be injected by VIP injector, that caused issue that
+ * when the prefix was injected by multiple sessions on the same peer the best
+ * route selector cannot break tie just based on peer IP. Therefore, we need to
+ * add the router ID to break tie in route selection.
+ */
 uint64_t RouteInfo::getBgpRouterId() const {
   // cast it to 64-bit to prepare for the shifting
   uint64_t originatorId =
@@ -146,10 +152,12 @@ uint64_t RouteInfo::getBgpRouterId() const {
 __uint128_t RouteInfo::transformIP2Int(const folly::IPAddress& addr) const {
   __uint128_t ipBytes = 0;
 
-  // capture the address bytes in an iterable structure
-  //
-  // bytes are captured in network byte ordering to ensure that we can run
-  // the controller on ARM processors (obviously, this is happening real soon)
+  /*
+   * capture the address bytes in an iterable structure
+   *
+   * bytes are captured in network byte ordering to ensure that we can run
+   * the controller on ARM processors (obviously, this is happening real soon)
+   */
   const auto& bytes =
       addr.isV4() ? addr.asV4().toBinary() : addr.asV6().toBinary();
   const auto& numBytes = bytes.size();
@@ -177,9 +185,11 @@ int64_t RouteInfo::getBgpOriginCode() const {
   return static_cast<int64_t>(attrs->getOrigin());
 }
 
-// MED value is reset in inbound BGP policy at PR/BRs and "always-compare-med"
-// is configured on them. Thus, we will compare route MEDs even if the routes
-// are being propagated by different peer AS.
+/*
+ * MED value is reset in inbound BGP policy at PR/BRs and "always-compare-med"
+ * is configured on them. Thus, we will compare route MEDs even if the routes
+ * are being propagated by different peer AS.
+ */
 int64_t RouteInfo::getBgpMedValue() const {
   return attrs->getMed();
 }
