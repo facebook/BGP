@@ -165,21 +165,27 @@ TEST_F(AdjRibPolicyCacheFixture, PolicyCacheMaskedKeyHashTest) {
         &mask, prefix, path, nullptr /* policyActionData */, isPartialDrain);
   };
   AdjRibPolicyCache::PolicyCacheMaskedKeyHash hasher{};
-  // BEGIN TEST CASES
-  // 1A) m1 == m2, r1 == r2, true
+  /*
+   * BEGIN TEST CASES
+   * 1A) m1 == m2, r1 == r2, true
+   */
   EXPECT_EQ(
       hasher(MaskedKey(mask5Attrs, kV4Prefix1, path1)),
       hasher(MaskedKey(mask5Attrs, kV4Prefix1, path1)));
 
-  // 1B) m1 == m2, r1 ~ r2, true
-  // r1 ~ r2: extCommunities is different, but mask3Attrs doesn't use
-  // extCommunities.
+  /*
+   * 1B) m1 == m2, r1 ~ r2, true
+   * r1 ~ r2: extCommunities is different, but mask3Attrs doesn't use
+   * extCommunities.
+   */
   EXPECT_EQ(
       hasher(MaskedKey(mask3Attrs, kV4Prefix1, path2)),
       hasher(MaskedKey(mask3Attrs, kV4Prefix1, path1)));
 
-  // 1C) m1 == m2, r1 !~ r2, false
-  // r1 !~ r2: prefix is different, and mask3Attrs uses prefix.
+  /*
+   * 1C) m1 == m2, r1 !~ r2, false
+   * r1 !~ r2: prefix is different, and mask3Attrs uses prefix.
+   */
   EXPECT_NE(
       hasher(MaskedKey(mask3Attrs, kV4Prefix1, path2)),
       hasher(MaskedKey(mask3Attrs, kV4Prefix2, path1)));
@@ -190,15 +196,19 @@ TEST_F(AdjRibPolicyCacheFixture, PolicyCacheMaskedKeyHashTest) {
       hasher(MaskedKey(mask3Attrs, kV4Prefix1, path2)),
       hasher(MaskedKey(mask3AttrsCopy, kV4Prefix1, path2)));
 
-  // 2B) m1 ~ m2, r1 ~ r2, false
-  // r1 ~ r2: extCommunities is different, but mask3Attrs doesn't use
-  // extCommunities.
+  /*
+   * 2B) m1 ~ m2, r1 ~ r2, false
+   * r1 ~ r2: extCommunities is different, but mask3Attrs doesn't use
+   * extCommunities.
+   */
   EXPECT_NE(
       hasher(MaskedKey(mask3Attrs, kV4Prefix1, path2)),
       hasher(MaskedKey(mask3AttrsCopy, kV4Prefix1, path1)));
 
-  // 2C) m1 ~ m2, r1 !~ r2, false
-  // r1 !~ r2: prefix is different, and mask3Attrs uses prefix.
+  /*
+   * 2C) m1 ~ m2, r1 !~ r2, false
+   * r1 !~ r2: prefix is different, and mask3Attrs uses prefix.
+   */
   EXPECT_NE(
       hasher(MaskedKey(mask3Attrs, kV4Prefix1, path2)),
       hasher(MaskedKey(mask3AttrsCopy, kV4Prefix2, path2)));
@@ -210,21 +220,25 @@ TEST_F(AdjRibPolicyCacheFixture, PolicyCacheMaskedKeyHashTest) {
 
   // 3B) m1 !~ m2, r1 ~ r2, false
   const PolicyAttributesMask mask2Attrs{.origin = true, .asPath = true};
-  //  1. mask2Attrs and mask3Attrs are physically and logically different.
-  //  2. r1 and r2 have the same origin, asPath, communities, and prefix, but
-  //     differ in extCommunities, which is ignored. So they are considered
-  //     'equivalent' in a sense, meaning both masks would consider r1, r2
-  //     as equal. i.e.,
-  //      m1(r1) = m1(r2), AND m2(r1) = m2(r2), WITH r1 != r2.
+  /*
+   *  1. mask2Attrs and mask3Attrs are physically and logically different.
+   *  2. r1 and r2 have the same origin, asPath, communities, and prefix, but
+   *     differ in extCommunities, which is ignored. So they are considered
+   *     'equivalent' in a sense, meaning both masks would consider r1, r2
+   *     as equal. i.e.,
+   *      m1(r1) = m1(r2), AND m2(r1) = m2(r2), WITH r1 != r2.
+   */
   EXPECT_NE(
       hasher(MaskedKey(mask2Attrs, kV4Prefix1, path2)),
       hasher(MaskedKey(mask3Attrs, kV4Prefix1, path1)));
 
-  // 3C) m1 !~ m2, r1 !~ r2, false
-  //  1. mask5Attrs and mask3Attrs are physically and logically different.
-  //  2. r1 and r2 have the same origin, asPath, communities, but different
-  //     prefix and extCommunities, so they can never be considered logically
-  //     equivalent for either mask.
+  /*
+   * 3C) m1 !~ m2, r1 !~ r2, false
+   *  1. mask5Attrs and mask3Attrs are physically and logically different.
+   *  2. r1 and r2 have the same origin, asPath, communities, but different
+   *     prefix and extCommunities, so they can never be considered logically
+   *     equivalent for either mask.
+   */
   EXPECT_NE(
       hasher(MaskedKey(mask5Attrs, kV4Prefix1, path2)),
       hasher(MaskedKey(mask3Attrs, kV4Prefix2, path1)));
@@ -245,9 +259,11 @@ TEST_F(AdjRibPolicyCacheFixture, PolicyCacheMaskedKeyHashTest) {
               data2,
               /*isPartialDrain=*/false)));
 
-  // isPartialDrain differs => different hash. The drain community is mutated
-  // outside policy evaluation, so it is not captured by the masked attrs or
-  // policyActionData; keying on isPartialDrain keeps the two states distinct.
+  /*
+   * isPartialDrain differs => different hash. The drain community is mutated
+   * outside policy evaluation, so it is not captured by the masked attrs or
+   * policyActionData; keying on isPartialDrain keeps the two states distinct.
+   */
   EXPECT_NE(
       hasher(
           MaskedKey(mask5Attrs, kV4Prefix1, path1, /*isPartialDrain=*/false)),
@@ -322,21 +338,27 @@ TEST_F(AdjRibPolicyCacheFixture, PolicyCacheMaskedKeyEqualToTest) {
         &mask, prefix, path, nullptr /* policyActionData */, isPartialDrain);
   };
   AdjRibPolicyCache::PolicyCacheMaskedKeyEqualTo maskedEquals{};
-  // BEGIN TEST CASES
-  // 1A) m1 == m2, r1 == r2, true
+  /*
+   * BEGIN TEST CASES
+   * 1A) m1 == m2, r1 == r2, true
+   */
   EXPECT_TRUE(maskedEquals(
       MaskedKey(mask5Attrs, kV4Prefix1, path1),
       MaskedKey(mask5Attrs, kV4Prefix1, path1)));
 
-  // 1B) m1 == m2, r1 ~ r2, true
-  // r1 ~ r2: extCommunities is different, but mask3Attrs doesn't use
-  // extCommunities.
+  /*
+   * 1B) m1 == m2, r1 ~ r2, true
+   * r1 ~ r2: extCommunities is different, but mask3Attrs doesn't use
+   * extCommunities.
+   */
   EXPECT_TRUE(maskedEquals(
       MaskedKey(mask3Attrs, kV4Prefix1, path2),
       MaskedKey(mask3Attrs, kV4Prefix1, path1)));
 
-  // 1C) m1 == m2, r1 !~ r2, false
-  // r1 !~ r2: prefix is different, and mask3Attrs uses prefix.
+  /*
+   * 1C) m1 == m2, r1 !~ r2, false
+   * r1 !~ r2: prefix is different, and mask3Attrs uses prefix.
+   */
   EXPECT_FALSE(maskedEquals(
       MaskedKey(mask3Attrs, kV4Prefix1, path2),
       MaskedKey(mask3Attrs, kV4Prefix2, path1)));
@@ -347,15 +369,19 @@ TEST_F(AdjRibPolicyCacheFixture, PolicyCacheMaskedKeyEqualToTest) {
       MaskedKey(mask3Attrs, kV4Prefix1, path2),
       MaskedKey(mask3AttrsCopy, kV4Prefix1, path2)));
 
-  // 2B) m1 ~ m2, r1 ~ r2, false
-  // r1 ~ r2: extCommunities is different, but mask3Attrs doesn't use
-  // extCommunities.
+  /*
+   * 2B) m1 ~ m2, r1 ~ r2, false
+   * r1 ~ r2: extCommunities is different, but mask3Attrs doesn't use
+   * extCommunities.
+   */
   EXPECT_FALSE(maskedEquals(
       MaskedKey(mask3Attrs, kV4Prefix1, path2),
       MaskedKey(mask3AttrsCopy, kV4Prefix1, path1)));
 
-  // 2C) m1 ~ m2, r1 !~ r2, false
-  // r1 !~ r2: prefix is different, and mask3Attrs uses prefix.
+  /*
+   * 2C) m1 ~ m2, r1 !~ r2, false
+   * r1 !~ r2: prefix is different, and mask3Attrs uses prefix.
+   */
   EXPECT_FALSE(maskedEquals(
       MaskedKey(mask3Attrs, kV4Prefix1, path2),
       MaskedKey(mask3AttrsCopy, kV4Prefix2, path2)));
@@ -367,21 +393,25 @@ TEST_F(AdjRibPolicyCacheFixture, PolicyCacheMaskedKeyEqualToTest) {
 
   // 3B) m1 !~ m2, r1 ~ r2, false
   const PolicyAttributesMask mask2Attrs{.origin = true, .asPath = true};
-  //  1. mask2Attrs and mask3Attrs are physically and logically different.
-  //  2. r1 and r2 have the same origin, asPath, communities, and prefix, but
-  //     differ in extCommunities, which is ignored. So they are considered
-  //     'equivalent' in a sense, meaning both masks would consider r1, r2
-  //     as equal. i.e.,
-  //      m1(r1) = m1(r2), AND m2(r1) = m2(r2), WITH r1 != r2.
+  /*
+   *  1. mask2Attrs and mask3Attrs are physically and logically different.
+   *  2. r1 and r2 have the same origin, asPath, communities, and prefix, but
+   *     differ in extCommunities, which is ignored. So they are considered
+   *     'equivalent' in a sense, meaning both masks would consider r1, r2
+   *     as equal. i.e.,
+   *      m1(r1) = m1(r2), AND m2(r1) = m2(r2), WITH r1 != r2.
+   */
   EXPECT_FALSE(maskedEquals(
       MaskedKey(mask2Attrs, kV4Prefix1, path2),
       MaskedKey(mask3Attrs, kV4Prefix1, path1)));
 
-  // 3C) m1 !~ m2, r1 !~ r2, false
-  //  1. mask5Attrs and mask3Attrs are physically and logically different.
-  //  2. r1 and r2 have the same origin, asPath, communities, but different
-  //     prefix and extCommunities, so they can never be considered logically
-  //     equivalent for either mask.
+  /*
+   * 3C) m1 !~ m2, r1 !~ r2, false
+   *  1. mask5Attrs and mask3Attrs are physically and logically different.
+   *  2. r1 and r2 have the same origin, asPath, communities, but different
+   *     prefix and extCommunities, so they can never be considered logically
+   *     equivalent for either mask.
+   */
   EXPECT_FALSE(maskedEquals(
       MaskedKey(mask5Attrs, kV4Prefix1, path2),
       MaskedKey(mask3Attrs, kV4Prefix2, path1)));
@@ -397,8 +427,10 @@ TEST_F(AdjRibPolicyCacheFixture, PolicyCacheMaskedKeyEqualToTest) {
       AdjRibPolicyCache::PolicyCacheMaskedKey(
           &mask5Attrs, kV4Prefix1, path1, data2, /*isPartialDrain=*/false)));
 
-  // isPartialDrain differs => keys are NOT equal, even though every masked
-  // attribute is identical.
+  /*
+   * isPartialDrain differs => keys are NOT equal, even though every masked
+   * attribute is identical.
+   */
   EXPECT_FALSE(maskedEquals(
       MaskedKey(mask5Attrs, kV4Prefix1, path1, /*isPartialDrain=*/false),
       MaskedKey(mask5Attrs, kV4Prefix1, path1, /*isPartialDrain=*/true)));
@@ -555,9 +587,11 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheLruEviction) {
   folly::fibers::Baton pfx2EgpUpdateBaton;
   folly::fibers::Baton pfx3IncompleteUpdateBaton;
 
-  // Create a policy with two terms
-  // Term1 match origin IGP and deny
-  // Term2 permit all
+  /*
+   * Create a policy with two terms
+   * Term1 match origin IGP and deny
+   * Term2 permit all
+   */
   auto policyManager = setupDenyIgpOriginAcceptAllPolicy(kEgressPolicyName);
   const PolicyAttributesMask expectedMask{.origin = true};
   EXPECT_EQ(
@@ -584,8 +618,10 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheLruEviction) {
     {
       facebook::bgp::test::boundedBatonWait(
           pfx1EgpUpdateBaton, "pfx1EgpUpdateBaton");
-      // Announcement 2 (EGP origin) for prefix1 will be accepted by
-      // policy
+      /*
+       * Announcement 2 (EGP origin) for prefix1 will be accepted by
+       * policy
+       */
       auto ribMsg = createRibSingleAnnounce(
           kV4Prefix1,
           kV4Nexthop1,
@@ -597,8 +633,10 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheLruEviction) {
     {
       facebook::bgp::test::boundedBatonWait(
           pfx2EgpUpdateBaton, "pfx2EgpUpdateBaton");
-      // Announcement 3 (EGP origin) for prefix2 will be accepted by
-      // policy
+      /*
+       * Announcement 3 (EGP origin) for prefix2 will be accepted by
+       * policy
+       */
       auto ribMsg = createRibSingleAnnounce(
           kV4Prefix2,
           kV4Nexthop1,
@@ -610,8 +648,10 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheLruEviction) {
     {
       facebook::bgp::test::boundedBatonWait(
           pfx3IncompleteUpdateBaton, "pfx3IncompleteUpdateBaton");
-      // Announcement 3 (origin INCOMPLETE) for prefix3 will be accepted by
-      // policy
+      /*
+       * Announcement 3 (origin INCOMPLETE) for prefix3 will be accepted by
+       * policy
+       */
       auto ribMsg = createRibSingleAnnounce(
           kV4Prefix3,
           kV4Nexthop1,
@@ -623,8 +663,10 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheLruEviction) {
   });
 
   fm_->addTask([&] {
-    // Announcement 1 will not lead to any bgp update but
-    // we should see v4 and v6 EoRs
+    /*
+     * Announcement 1 will not lead to any bgp update but
+     * we should see v4 and v6 EoRs
+     */
     auto msg =
         facebook::bgp::test::boundedBlockingPop(*adjRibOutQ_, "adjRibOutQ_");
     ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*msg));
@@ -637,10 +679,12 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheLruEviction) {
     ASSERT_NE(nullptr, igpPreOut);
     ASSERT_EQ(nullptr, adjRibEntry->getPostAttr());
     EXPECT_EQ(1, adjRib_->policyCache_->size());
-    // Verify policy-cache has only one entry.
-    // Entry will be for the IGP attributes.
-    // As this is a drop case, we should expect the cached entry's
-    // post-attrs to be nullptr.
+    /*
+     * Verify policy-cache has only one entry.
+     * Entry will be for the IGP attributes.
+     * As this is a drop case, we should expect the cached entry's
+     * post-attrs to be nullptr.
+     */
     {
       auto cacheEntry =
           (adjRib_->policyCache_->policyLruCache_.rlock()->begin());
@@ -674,9 +718,11 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheLruEviction) {
     EXPECT_EQ(
         BgpAttrOrigin::BGP_ORIGIN_EGP, adjRibEntry->getPreOut()->getOrigin());
 
-    // Verify policy-cache has 2 entries:
-    // first exactly same as the prev case and in addition
-    // we should see a new entry for the EGP attrs.
+    /*
+     * Verify policy-cache has 2 entries:
+     * first exactly same as the prev case and in addition
+     * we should see a new entry for the EGP attrs.
+     */
     EXPECT_EQ(2, adjRib_->policyCache_->size());
     {
       auto cacheEntry =
@@ -701,8 +747,10 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheLruEviction) {
     // Verify stats
     EXPECT_EQ(1, adjRib_->getStats().getPostOutPrefixCount());
 
-    // Perform cache lookup -
-    // egpPreOut key is MRU and igpPreOut key is LRU.
+    /*
+     * Perform cache lookup -
+     * egpPreOut key is MRU and igpPreOut key is LRU.
+     */
     {
       const auto preCacheHitCount = adjRib_->policyCache_->getTotalCacheHit();
       const auto preCacheMissCount = adjRib_->policyCache_->getTotalCacheMiss();
@@ -755,10 +803,12 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheLruEviction) {
       EXPECT_EQ(nullptr, cachedAttrs2);
     }
 
-    // After sending the 3rd update Verify that LRU entry i.e. corresponding to
-    // igpPreOut is not evicted because prefix2 entry has the same EGP origin,
-    // and matches to existing EGP entry for prefix1. Both entries still
-    // belong to prefix1.
+    /*
+     * After sending the 3rd update Verify that LRU entry i.e. corresponding to
+     * igpPreOut is not evicted because prefix2 entry has the same EGP origin,
+     * and matches to existing EGP entry for prefix1. Both entries still
+     * belong to prefix1.
+     */
     pfx2EgpUpdateBaton.post();
     fiberSleepFor(10ms);
     msg = facebook::bgp::test::boundedBlockingPop(*adjRibOutQ_, "adjRibOutQ_");
@@ -787,10 +837,12 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheLruEviction) {
       EXPECT_EQ(nullptr, cachedAttrs2);
     }
 
-    // After sending the 3rd update Verify that LRU entry i.e. corresponding to
-    // igpPreOut is evicted and is replaced with the prefix3 entry.
-    // Cache should now have ORIGIN_INCOMPLETE with prefix3 and EGP with
-    // prefix1.
+    /*
+     * After sending the 3rd update Verify that LRU entry i.e. corresponding to
+     * igpPreOut is evicted and is replaced with the prefix3 entry.
+     * Cache should now have ORIGIN_INCOMPLETE with prefix3 and EGP with
+     * prefix1.
+     */
     pfx3IncompleteUpdateBaton.post();
     fiberSleepFor(10ms);
     msg = facebook::bgp::test::boundedBlockingPop(*adjRibOutQ_, "adjRibOutQ_");
@@ -834,9 +886,11 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheStaleEviction) {
   // Used for fine grain control over message posting.
   folly::fibers::Baton baton;
 
-  // Create a policy with two terms
-  // Term1 match origin IGP and deny
-  // Term2 permit all
+  /*
+   * Create a policy with two terms
+   * Term1 match origin IGP and deny
+   * Term2 permit all
+   */
   auto policyManager = setupDenyIgpOriginAcceptAllPolicy(kEgressPolicyName);
   // IBGP peer
   setupAdjRib(policyManager, kEgressPolicyName);
@@ -854,8 +908,10 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheStaleEviction) {
     }
     {
       baton.wait();
-      // Announcement 2 (modified origin) for same prefix will be accepted by
-      // policy
+      /*
+       * Announcement 2 (modified origin) for same prefix will be accepted by
+       * policy
+       */
       auto ribMsg = createRibSingleAnnounce(
           kV4Prefix1,
           kV4Nexthop1,
@@ -867,8 +923,10 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheStaleEviction) {
   });
 
   fm_->addTask([&] {
-    // Announcement 1 will not lead to any bgp update but
-    // we should see v4 and v6 EoRs
+    /*
+     * Announcement 1 will not lead to any bgp update but
+     * we should see v4 and v6 EoRs
+     */
     auto msg =
         facebook::bgp::test::boundedBlockingPop(*adjRibOutQ_, "adjRibOutQ_");
     ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*msg));
@@ -881,10 +939,12 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheStaleEviction) {
     ASSERT_NE(nullptr, igpPreOut);
     ASSERT_EQ(nullptr, adjRibEntry->getPostAttr());
     EXPECT_EQ(1, adjRib_->policyCache_->size());
-    // Verify policy-cache has only one entry.
-    // Entry will be for the IGP attributes.
-    // As this is a drop case, we should expect the cached entry's
-    // post-attrs to be nullptr.
+    /*
+     * Verify policy-cache has only one entry.
+     * Entry will be for the IGP attributes.
+     * As this is a drop case, we should expect the cached entry's
+     * post-attrs to be nullptr.
+     */
     {
       auto cacheEntry =
           (adjRib_->policyCache_->policyLruCache_.rlock()->begin());
@@ -918,9 +978,11 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheStaleEviction) {
     EXPECT_EQ(
         BgpAttrOrigin::BGP_ORIGIN_EGP, adjRibEntry->getPreOut()->getOrigin());
 
-    // Verify policy-cache has 2 entries:
-    // We should see a new entry for the EGP attrs.
-    // Second entry should be the prev case (LRU).
+    /*
+     * Verify policy-cache has 2 entries:
+     * We should see a new entry for the EGP attrs.
+     * Second entry should be the prev case (LRU).
+     */
     EXPECT_EQ(2, adjRib_->policyCache_->size());
     {
       auto cacheEntry =
@@ -992,15 +1054,19 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheStaleEviction) {
         adjRib_->createPolicyActionData(egpPreOut));
     EXPECT_EQ(std::nullopt, result);
 
-    // Verify cache eviction for stale-entries.
-    // igpPreOut & cached entry hold different ref: the cached entry
-    // has LBW ext community updated
+    /*
+     * Verify cache eviction for stale-entries.
+     * igpPreOut & cached entry hold different ref: the cached entry
+     * has LBW ext community updated
+     */
     EXPECT_EQ(1, igpPreOut.use_count());
     auto igpPreOutAttrs = igpPreOut->clone();
-    // As igpPreOut is not best-path anymore it is removed from the adj's
-    // preout. Thus the entry corresponding to it in cache is stale.
-    // Simulate cacheEvictionRunCount_ runs of add-cache, this should
-    // force eviction of stale entry.
+    /*
+     * As igpPreOut is not best-path anymore it is removed from the adj's
+     * preout. Thus the entry corresponding to it in cache is stale.
+     * Simulate cacheEvictionRunCount_ runs of add-cache, this should
+     * force eviction of stale entry.
+     */
     for (int i = 0; i < adjRib_->policyCache_->cacheEvictionRunCount_; ++i) {
       adjRib_->policyCache_->addToPolicyCache(
           kDummyPolicyName,
@@ -1011,9 +1077,11 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheStaleEviction) {
           nullptr);
     }
 
-    // Note that this loop above creates the dummy entry in cache also.
-    // Verify that the stale attr entry (igp attrs) is purged out.
-    // We only have the dummy entry added above
+    /*
+     * Note that this loop above creates the dummy entry in cache also.
+     * Verify that the stale attr entry (igp attrs) is purged out.
+     * We only have the dummy entry added above
+     */
     EXPECT_EQ(1, adjRib_->policyCache_->size());
 
     adjRib_->policyCache_->policyLruCache_.withRLock([&](const auto& cache) {
@@ -1277,8 +1345,10 @@ TEST_F(AdjRibPolicyCacheFixture, IngressEgressTest) {
       EXPECT_TRUE(inEntry2);
       EXPECT_TRUE(inEntry3);
 
-      // Verify the postAttrs and policyResult are the same for all
-      // AdjRibIn entries.
+      /*
+       * Verify the postAttrs and policyResult are the same for all
+       * AdjRibIn entries.
+       */
       auto postTermIn = inEntry1->getPostInPolicy();
       EXPECT_EQ("Accepted/Modified by Ingress term Term1", *postTermIn);
       EXPECT_EQ(postTermIn, inEntry2->getPostInPolicy());
@@ -1318,8 +1388,10 @@ TEST_F(AdjRibPolicyCacheFixture, IngressEgressTest) {
  * This test should guard improper cloning on egress side.
  */
 TEST_F(AdjRibOutPolicyCacheFixture, ImmutablePolicyCacheKeyTest) {
-  // Set up egress policy accept all on AdjRib
-  // isRrClient = false AdjRib
+  /*
+   * Set up egress policy accept all on AdjRib
+   * isRrClient = false AdjRib
+   */
   setupAdjRib(
       setupMatchEgpOriginSetCommunityPolicy(kEgressPolicyName), // policyMgr
       kEgressPolicyName,
@@ -2136,8 +2208,10 @@ TEST_F(AdjRibInPolicyCacheFixture, MultipleRejectedByPolicyTest) {
  * This test should guard improper cloning on ingress side.
  */
 TEST_F(AdjRibInPolicyCacheFixture, ImmutablePolicyCacheKeyTest) {
-  // Set up ingress policy accept all on AdjRib
-  // isRrClient = false AdjRib
+  /*
+   * Set up ingress policy accept all on AdjRib
+   * isRrClient = false AdjRib
+   */
   auto policy = setupMatchEgpOriginSetCommunityPolicy(kIngressPolicyName);
   // Set up adjRib with policy manager.
   setupAdjRib(

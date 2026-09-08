@@ -358,11 +358,13 @@ TEST_P(IngressUcmpPolicyFixture, IngressUcmpPolicy) {
         }
       };
 
-  // helper function to verify each test case, each test case takes two
-  // prefixes: p1, p2, ONLY p2 will match UCMP policy. Veriy that p1 takes "per
-  // peer config" while p2 takes "per route config"
-  // - recvLinkBandwidth: per peer config
-  // - lbwPolicyActionType: per route config (policy)
+  /*
+   * helper function to verify each test case, each test case takes two
+   * prefixes: p1, p2, ONLY p2 will match UCMP policy. Veriy that p1 takes "per
+   * peer config" while p2 takes "per route config"
+   * - recvLinkBandwidth: per peer config
+   * - lbwPolicyActionType: per route config (policy)
+   */
   auto verify = [&](ReceiveLinkBandwidth recvLinkBandwidth,
                     bgp_policy::LbwExtCommunityActionType lbwPolicyActionType) {
     // create term1 without UCMP policy
@@ -436,11 +438,13 @@ TEST_P(IngressUcmpPolicyFixture, IngressUcmpPolicy) {
   verify(recvLinkBandwidth, lbwPolicyActionType);
 }
 
-// test ucmp conifg/policy when route gets updated
-// - PeerConfig: DISABLE
-// - Policy: ACCEPT (takes precedence over PeerConfig)
-// time0: input: route (LBW 10G) -> output route (LBW 10G)
-// time1: input: route (LBW 20G) -> output route (LBW 20G)
+/*
+ * test ucmp conifg/policy when route gets updated
+ * - PeerConfig: DISABLE
+ * - Policy: ACCEPT (takes precedence over PeerConfig)
+ * time0: input: route (LBW 10G) -> output route (LBW 10G)
+ * time1: input: route (LBW 20G) -> output route (LBW 20G)
+ */
 TEST_F(AdjRibInboundFixture, IngressUcmpPolicyRouteUpdate) {
   // create a single prefix match
   auto createPrefixMatch =

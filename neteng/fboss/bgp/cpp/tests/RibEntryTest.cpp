@@ -89,9 +89,11 @@ TEST(RibEntryTest, SelectBestPathNexthopTest) {
       0 /* ucmp width */);
   getAndCheckAllocatedPathIds({}, ribEntry);
 
-  // 1. Make sure there is no crash of BGP instance.
-  // 2. Verify tie-breaking mechanism chooses the nexthop with a smaller
-  //    integer representation.
+  /*
+   * 1. Make sure there is no crash of BGP instance.
+   * 2. Verify tie-breaking mechanism chooses the nexthop with a smaller
+   *    integer representation.
+   */
   EXPECT_EQ(routeInfo1, ribEntry.getBestPath());
 }
 
@@ -121,8 +123,10 @@ TEST(RibEntryTest, SelectBestPathTest) {
   EXPECT_EQ(nullptr, ribEntry.getBestPath());
   EXPECT_EQ(nullptr, ribEntry.getMultipathWeightedNexthops());
 
-  // Now, trigger the bestpath selection
-  // Case 1: bestpathChanged == true and nexthopChanged == true
+  /*
+   * Now, trigger the bestpath selection
+   * Case 1: bestpathChanged == true and nexthopChanged == true
+   */
   bool bestpathChanged, nexthopChanged;
   std::tie(bestpathChanged, nexthopChanged) = RibBase::selectBestPath(
       ribEntry, multipathSelector, bestpathSelector, false, 0);
@@ -130,8 +134,10 @@ TEST(RibEntryTest, SelectBestPathTest) {
   EXPECT_TRUE(bestpathChanged);
   EXPECT_TRUE(nexthopChanged);
 
-  // Doing bestpath selection again shall not change anything
-  // Case 2: bestpathChanged == false and nexthopChanged == false
+  /*
+   * Doing bestpath selection again shall not change anything
+   * Case 2: bestpathChanged == false and nexthopChanged == false
+   */
   std::tie(bestpathChanged, nexthopChanged) = RibBase::selectBestPath(
       ribEntry, multipathSelector, bestpathSelector, false, 0);
   allocatedPathIds = getAndCheckAllocatedPathIds(allocatedPathIds, ribEntry);
@@ -148,8 +154,10 @@ TEST(RibEntryTest, SelectBestPathTest) {
   EXPECT_THAT(*multipathNexthops, (WeightedNexthopMap{{kV4Nexthop1, 0}}));
   EXPECT_TRUE(ribEntry.getInstallToFib());
 
-  // change the nexthop of peer2's prefix, expect multipath change
-  // Case 3: bestpathChanged == false and nexthopChanged == true
+  /*
+   * change the nexthop of peer2's prefix, expect multipath change
+   * Case 3: bestpathChanged == false and nexthopChanged == true
+   */
   auto attrs2 =
       std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
   attrs2->setNexthop(kV4Nexthop2);
@@ -186,8 +194,10 @@ TEST(RibEntryTest, SelectBestPathTest) {
   EXPECT_THAT(*multipathNexthops, (WeightedNexthopMap{{kV4Nexthop1, 0}}));
   EXPECT_TRUE(ribEntry.getInstallToFib());
 
-  // change local preference for peer1 to 0
-  // Case 4: bestpathChanged == true and nexthopChanged == false
+  /*
+   * change local preference for peer1 to 0
+   * Case 4: bestpathChanged == true and nexthopChanged == false
+   */
   auto attrs1 =
       std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
   attrs1->setLocalPref(0);
@@ -245,8 +255,10 @@ TEST(RibEntryTest, SelectBestPathEncodedLbwTest) {
   EXPECT_EQ(nullptr, ribEntry.getMultipathWeightedNexthops());
   EXPECT_EQ(nullptr, ribEntry.getNexthopTopoInfoMap());
 
-  // Now, trigger the bestpath selection
-  // bestpathChanged == true and nexthopChanged == true
+  /*
+   * Now, trigger the bestpath selection
+   * bestpathChanged == true and nexthopChanged == true
+   */
   bool bestpathChanged, nexthopChanged;
   std::tie(bestpathChanged, nexthopChanged) = RibBase::selectBestPath(
       ribEntry, multipathSelector, bestpathSelector, false, 0);
@@ -267,11 +279,15 @@ TEST(RibEntryTest, SelectBestPathEncodedLbwTest) {
       ribEntry, multipathSelector, bestpathSelector, false, 0);
   allocatedPathIds = getAndCheckAllocatedPathIds(allocatedPathIds, ribEntry);
 
-  // weighted nexthops did not change because we didn't specify
-  // computeUcmp == true
+  /*
+   * weighted nexthops did not change because we didn't specify
+   * computeUcmp == true
+   */
   EXPECT_FALSE(nexthopChanged);
-  // nexthops and topo info map is still nullptr because there's no topology
-  // info in bgp attrs
+  /*
+   * nexthops and topo info map is still nullptr because there's no topology
+   * info in bgp attrs
+   */
   EXPECT_EQ(nullptr, ribEntry.getNexthopTopoInfoMap());
 
   // now set topology info in both attrs
@@ -352,8 +368,10 @@ TEST(RibEntryTest, SelectBestPathTestConfedPeer) {
 
   folly::F14FastMap<std::shared_ptr<RouteInfo>, uint32_t> allocatedPathIds;
   {
-    // with default best path selector, confeds are ignored in as path length
-    // calcuation, both will be chosen as multipath
+    /*
+     * with default best path selector, confeds are ignored in as path length
+     * calcuation, both will be chosen as multipath
+     */
     bool bestpathChanged, nexthopChanged;
     std::tie(bestpathChanged, nexthopChanged) = RibBase::selectBestPath(
         ribEntry, multipathSelector, bestpathSelector, false, 0);
@@ -378,9 +396,11 @@ TEST(RibEntryTest, SelectBestPathTestConfedPeer) {
   }
 
   {
-    // with count confeds in as path len enabled, only peer 1 should be chosen
-    // peer 1 is chosen as best path in last run, so bestpathChanged should be
-    // false
+    /*
+     * with count confeds in as path len enabled, only peer 1 should be chosen
+     * peer 1 is chosen as best path in last run, so bestpathChanged should be
+     * false
+     */
     bool bestpathChanged, nexthopChanged;
     std::tie(bestpathChanged, nexthopChanged) = RibBase::selectBestPath(
         ribEntry, multipathSelectorCountConfeds, bestpathSelector, false, 0);
@@ -412,9 +432,9 @@ TEST(RibEntryTest, UcmpWeightComputation) {
   RibEntry ribEntry(kV4Prefix1);
   folly::F14FastMap<std::shared_ptr<RouteInfo>, uint32_t> allocatedPathIds;
 
-  //
-  // 1. LBW values of paths are in Gbps with
-  //
+  /*
+   * 1. LBW values of paths are in Gbps with
+   */
   {
     auto attrs1 = std::make_shared<facebook::bgp::BgpPath>(attrs);
     attrs1->setNonTransitiveLbwExtCommunity(kLocalAs1, 24 * BpsPerGBps / 8);
@@ -439,9 +459,9 @@ TEST(RibEntryTest, UcmpWeightComputation) {
     EXPECT_EQ(nhWts, *ribEntry.getMultipathWeightedNexthops());
   }
 
-  //
-  // 1. LBW values of paths are in Gbps with
-  //
+  /*
+   * 1. LBW values of paths are in Gbps with
+   */
   {
     auto attrs1 = std::make_shared<facebook::bgp::BgpPath>(attrs);
     attrs1->setNonTransitiveLbwExtCommunity(kLocalAs1, 2400 * BpsPerGBps / 8);
@@ -466,9 +486,9 @@ TEST(RibEntryTest, UcmpWeightComputation) {
     EXPECT_EQ(nhWts, *ribEntry.getMultipathWeightedNexthops());
   }
 
-  //
-  // 2. LBW values of paths are in Mbps with common multiplier
-  //
+  /*
+   * 2. LBW values of paths are in Mbps with common multiplier
+   */
   {
     auto attrs1 = std::make_shared<facebook::bgp::BgpPath>(attrs);
     attrs1->setNonTransitiveLbwExtCommunity(kLocalAs1, 7 * BpsPerMBps / 8);
@@ -493,11 +513,11 @@ TEST(RibEntryTest, UcmpWeightComputation) {
     EXPECT_EQ(nhWts, *ribEntry.getMultipathWeightedNexthops());
   }
 
-  //
-  // 3. LBW values of paths are in Gbps & Mbps. Weights gets scaled down to
-  //    3000:1. The `ucmp-width=1024` kicks in and reduces the ratio to 1024:0.
-  //    This means the next-hop with weight=0 is removed.
-  //
+  /*
+   * 3. LBW values of paths are in Gbps & Mbps. Weights gets scaled down to
+   *    3000:1. The `ucmp-width=1024` kicks in and reduces the ratio to 1024:0.
+   *    This means the next-hop with weight=0 is removed.
+   */
   {
     auto attrs1 = std::make_shared<facebook::bgp::BgpPath>(attrs);
     attrs1->setNonTransitiveLbwExtCommunity(kLocalAs1, 3 * BpsPerGBps / 8);
@@ -522,10 +542,10 @@ TEST(RibEntryTest, UcmpWeightComputation) {
     EXPECT_EQ(nhWts, *ribEntry.getMultipathWeightedNexthops());
   }
 
-  //
-  // 4. LBW values exceeds the ECMP Width. In this case, we'll approximate
-  //    weights to approximately fit it into specified UCMP width
-  //
+  /*
+   * 4. LBW values exceeds the ECMP Width. In this case, we'll approximate
+   *    weights to approximately fit it into specified UCMP width
+   */
   {
     auto attrs1 = std::make_shared<facebook::bgp::BgpPath>(attrs);
     attrs1->setNonTransitiveLbwExtCommunity(kLocalAs1, 1021 * BpsPerGBps / 8);
@@ -686,13 +706,17 @@ TEST(RibEntryTest, AggregateLocalUcmpWeightWithQuantizer) {
   RibEntry ribEntry(kV4Prefix1);
   bool bestpathChanged, nexthopChanged;
 
-  // config with a quantizer with step-size 100, error (0.1), {3600} quantized
-  // bps list, we expect
+  /*
+   * config with a quantizer with step-size 100, error (0.1), {3600} quantized
+   * bps list, we expect
+   */
   BgpUcmpQuantizer quantizer{100, 0.1f, {3600}};
 
-  // Case 1: path1 (3500), path2 (100)
-  // selectBestPath change
-  // new weight announced 3600
+  /*
+   * Case 1: path1 (3500), path2 (100)
+   * selectBestPath change
+   * new weight announced 3600
+   */
   EXPECT_TRUE(ribEntry.updatePath(peer1, attrs, false));
   EXPECT_TRUE(ribEntry.updatePath(peer2, attrs, false));
   std::tie(bestpathChanged, nexthopChanged) = RibBase::selectBestPath(
@@ -704,9 +728,11 @@ TEST(RibEntryTest, AggregateLocalUcmpWeightWithQuantizer) {
   EXPECT_EQ(3600.f / 8, ribEntry.getAggregateLocalUcmpWeight().value());
   EXPECT_TRUE(ribEntry.commitBestpath());
 
-  // Case 2: peer2 update lbw 3500 -> 3400 (minor capacity loss)
-  // selectBestPath: no change
-  // weight: no change
+  /*
+   * Case 2: peer2 update lbw 3500 -> 3400 (minor capacity loss)
+   * selectBestPath: no change
+   * weight: no change
+   */
   EXPECT_TRUE(ribEntry.updatePath(peer2MinorLoss, attrs, false));
   std::tie(bestpathChanged, nexthopChanged) = RibBase::selectBestPath(
       ribEntry, multipathSelector, bestpathSelector, false, 0, quantizer);
@@ -717,9 +743,11 @@ TEST(RibEntryTest, AggregateLocalUcmpWeightWithQuantizer) {
   EXPECT_EQ(3600.f / 8, ribEntry.getAggregateLocalUcmpWeight().value());
   EXPECT_FALSE(ribEntry.commitBestpath());
 
-  // Case 3: peer2 update lbw 3400 -> 3000 (major capacity loss)
-  // selectBestPath: changed due to weight update
-  // weight: changed -> 3200
+  /*
+   * Case 3: peer2 update lbw 3400 -> 3000 (major capacity loss)
+   * selectBestPath: changed due to weight update
+   * weight: changed -> 3200
+   */
   EXPECT_TRUE(ribEntry.updatePath(peer2MajorLoss, attrs, false));
   std::tie(bestpathChanged, nexthopChanged) = RibBase::selectBestPath(
       ribEntry, multipathSelector, bestpathSelector, false, 0, quantizer);
@@ -1133,8 +1161,10 @@ TEST(RibEntryTest, commitBestpathTest) {
       ribEntry, multipathSelector, bestpathSelector, false, 0);
   auto allocatedPathIds = getAndCheckAllocatedPathIds({}, ribEntry);
 
-  // advertisedBestpath and advertisedMultipathNexthops should still be
-  // nullptr before commitBestpathSelection happens
+  /*
+   * advertisedBestpath and advertisedMultipathNexthops should still be
+   * nullptr before commitBestpathSelection happens
+   */
   EXPECT_EQ(nullptr, ribEntry.getAdvertisedBestPath());
   EXPECT_EQ(nullptr, ribEntry.getAdvertisedMultipathWeightedNexthops());
 
@@ -1143,8 +1173,10 @@ TEST(RibEntryTest, commitBestpathTest) {
   EXPECT_EQ(peer1, bestpath->peer);
   EXPECT_EQ(attrs, bestpath->attrs);
   auto multipathNexthops = ribEntry.getMultipathWeightedNexthops();
-  // Because of the nexthops for both paths are same, there is only one
-  // nexthop
+  /*
+   * Because of the nexthops for both paths are same, there is only one
+   * nexthop
+   */
   EXPECT_EQ(1, multipathNexthops->size());
   EXPECT_THAT(*multipathNexthops, (WeightedNexthopMap{{kV4Nexthop1, 0}}));
   EXPECT_TRUE(ribEntry.getInstallToFib());
@@ -1276,8 +1308,10 @@ TEST(RibEntryTest, SelectBestPathWithNextHopTrackingTest) {
     EXPECT_TRUE(bestpathChanged);
     EXPECT_TRUE(nexthopChanged);
 
-    // Both paths should be selected as multipaths since NextHop tracking is
-    // disabled
+    /*
+     * Both paths should be selected as multipaths since NextHop tracking is
+     * disabled
+     */
     auto multipathNexthops = ribEntry.getMultipathWeightedNexthops();
     EXPECT_EQ(2, multipathNexthops->size());
     EXPECT_THAT(
@@ -1466,8 +1500,10 @@ TEST(RibEntryTest, SelectBestPathWithNextHopTrackingTest) {
   }
 }
 
-// two paths with no pre-existing pathID assignment would get two unique
-// assignments upon being selected as best paths
+/*
+ * two paths with no pre-existing pathID assignment would get two unique
+ * assignments upon being selected as best paths
+ */
 TEST(RibEntryTest, SelectBestPathAssignsPathIdsToSend) {
   // create two identical paths from two different peers
   auto attrs =
@@ -1504,8 +1540,10 @@ TEST(RibEntryTest, SelectBestPathAssignsPathIdsToSend) {
   EXPECT_NE(path1Id, path2Id);
 }
 
-// ribEntry.updatePath instantiates a new RouteInfo when an existing path is
-// updated. We want to make sure pathIdToSend is not lost
+/*
+ * ribEntry.updatePath instantiates a new RouteInfo when an existing path is
+ * updated. We want to make sure pathIdToSend is not lost
+ */
 TEST(RibEntryTest, UpdatePathPreservesPathIdToSend) {
   // create a routeInfo in ribEntry and set its pathId to something, say 4
   auto attrs =
@@ -1518,8 +1556,10 @@ TEST(RibEntryTest, UpdatePathPreservesPathIdToSend) {
   ribEntry.updatePath(peer1, attrs);
   ribEntry.routeInfos_[peer1Id][kDefaultPathID]->pathIdToSend = 4;
 
-  // now if an update comes in for this path, it should have the same allocated
-  // pathID
+  /*
+   * now if an update comes in for this path, it should have the same allocated
+   * pathID
+   */
   attrs =
       std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(5, 4, 4, 4));
   attrs->publish();
@@ -1527,13 +1567,17 @@ TEST(RibEntryTest, UpdatePathPreservesPathIdToSend) {
   EXPECT_EQ(ribEntry.routeInfos_[peer1Id][kDefaultPathID]->pathIdToSend, 4);
 }
 
-// if a path has a pathIdToSend already allocated, best path selection should
-// not change the allocated ID, whether the path is selected or not.
-// if a previously selected path is not selected, we still want to preserve
-// the path ID at least until the corresponding RibOut message is created
+/*
+ * if a path has a pathIdToSend already allocated, best path selection should
+ * not change the allocated ID, whether the path is selected or not.
+ * if a previously selected path is not selected, we still want to preserve
+ * the path ID at least until the corresponding RibOut message is created
+ */
 TEST(RibEntryTest, SelectBestPathPreservesPathIdsToSend) {
-  // create two paths from different peers. The one from peer 2 has longer
-  // AS-PATH so that it won't be selected
+  /*
+   * create two paths from different peers. The one from peer 2 has longer
+   * AS-PATH so that it won't be selected
+   */
   auto attrs =
       std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
   attrs->publish();
@@ -1554,8 +1598,10 @@ TEST(RibEntryTest, SelectBestPathPreservesPathIdsToSend) {
   ribEntry.routeInfos_[peer1Id][kDefaultPathID]->pathIdToSend = 4;
   ribEntry.routeInfos_[peer2Id][kDefaultPathID]->pathIdToSend = 5;
 
-  // run selectBestPath and make sure the IDs are preserved, for both the
-  // selected path and the non-selected one
+  /*
+   * run selectBestPath and make sure the IDs are preserved, for both the
+   * selected path and the non-selected one
+   */
   RibBase::selectBestPath(
       ribEntry, multipathSelector, bestpathSelector, false, 0);
   EXPECT_EQ(ribEntry.getMultipaths().size(), 1);
@@ -1563,9 +1609,11 @@ TEST(RibEntryTest, SelectBestPathPreservesPathIdsToSend) {
   EXPECT_EQ(ribEntry.routeInfos_[peer2Id][kDefaultPathID]->pathIdToSend, 5);
 }
 
-// Test that local routes are always considered reachable, regardless of
-// nexthop info. Non-local routes require a valid nexthop to be considered
-// reachable.
+/*
+ * Test that local routes are always considered reachable, regardless of
+ * nexthop info. Non-local routes require a valid nexthop to be considered
+ * reachable.
+ */
 TEST(RibEntryTest, IsNextHopReachableTest) {
   auto attrs = std::make_shared<facebook::bgp::BgpPath>(
       *buildBgpPathFields(4, 4, 4, 4, 0, kV4Nexthop1));
@@ -1596,8 +1644,10 @@ TEST(RibEntryTest, IsNextHopReachableTest) {
   nettools::bgplib::BgpPeerId ebgpPeerId{ebgpPeer.addr, ebgpPeer.routerId};
   auto ebgpRouteInfo = ribEntry2.routeInfos_[ebgpPeerId][kDefaultPathID];
 
-  // Non-local route without nexthop info should not be reachable
-  // (getIgpCostValue returns max when nexthopInfo_ is nullptr)
+  /*
+   * Non-local route without nexthop info should not be reachable
+   * (getIgpCostValue returns max when nexthopInfo_ is nullptr)
+   */
   EXPECT_FALSE(ebgpRouteInfo->getIsRouteLocal());
   EXPECT_FALSE(ebgpRouteInfo->isNextHopReachable());
 
@@ -1638,9 +1688,11 @@ class PathIdGeneratorFixture : public ::testing::Test {
     EXPECT_EQ(id, expectedId) << lineNum;
   }
 
-  // we test useLargestFreeInterval with various pathID vectors which are
-  // initialized in sorted order for readability, but they should be unordered
-  // for testing purposes, hence this convenient helper
+  /*
+   * we test useLargestFreeInterval with various pathID vectors which are
+   * initialized in sorted order for readability, but they should be unordered
+   * for testing purposes, hence this convenient helper
+   */
   void shuffle(std::vector<uint32_t>& vec) {
     unsigned seed = 123; // we don't need a different order every run
     std::shuffle(vec.begin(), vec.end(), std::default_random_engine(seed));
@@ -1682,8 +1734,10 @@ TEST_F(PathIdGeneratorFixture, GetPathIdToSendTest) {
   auto minId = 0;
   auto maxId = 5;
 
-  // generate all IDs from min to max for some prefix's interval. Ensure the
-  // given interval is shrinking as expected as IDs are generated
+  /*
+   * generate all IDs from min to max for some prefix's interval. Ensure the
+   * given interval is shrinking as expected as IDs are generated
+   */
   std::pair<uint32_t, uint32_t> interval = std::make_pair(minId, maxId);
   setInterval(interval);
   for (int i = minId; i <= maxId; i++) {
@@ -1692,11 +1746,13 @@ TEST_F(PathIdGeneratorFixture, GetPathIdToSendTest) {
     EXPECT_EQ(getInterval(), expectedInterval);
   }
 
-  // now the interval should be exhausted. Additional calls to getPathIdToSend
-  // will reset the interval with no path currently being sent (no routeInfos in
-  // ribEntry_)
-  // ribEntry_ doesn't know about minId here, so technically it would reset to
-  // kMinpathIDToSend, the default
+  /*
+   * now the interval should be exhausted. Additional calls to getPathIdToSend
+   * will reset the interval with no path currently being sent (no routeInfos in
+   * ribEntry_)
+   * ribEntry_ doesn't know about minId here, so technically it would reset to
+   * kMinpathIDToSend, the default
+   */
   auto exhaustedInterval = std::make_pair<uint32_t, uint32_t>(maxId + 1, maxId);
   EXPECT_EQ(getInterval(), exhaustedInterval);
   EXPECT_EQ(ribEntry_.getPathIdToSend(), kMinPathIDToSend);
@@ -1706,9 +1762,11 @@ TEST_F(PathIdGeneratorFixture, GetPathIdAfterExhaustionTest) {
   auto minId = 0;
   auto maxId = 5;
 
-  // generate all IDs from min to max for some prefix's interval. Ensure the
-  // given interval is shrinking as expected as IDs are generated. Afterwards,
-  // interval is exhausted
+  /*
+   * generate all IDs from min to max for some prefix's interval. Ensure the
+   * given interval is shrinking as expected as IDs are generated. Afterwards,
+   * interval is exhausted
+   */
   std::pair<uint32_t, uint32_t> interval = std::make_pair(minId, maxId);
   std::pair<uint32_t, uint32_t> exhaustedInterval =
       std::make_pair(maxId + 1, maxId);
@@ -1721,18 +1779,22 @@ TEST_F(PathIdGeneratorFixture, GetPathIdAfterExhaustionTest) {
   }
   EXPECT_EQ(getInterval(), exhaustedInterval);
 
-  // re-generate the interval by invoking findLargestFreePathIdInterval directly
-  // with a few pathIDs, say 0,1,5. Largest interval would be [2, 4]. we have to
-  // call the method directly because internally wider bounds are used for
-  // pathID
+  /*
+   * re-generate the interval by invoking findLargestFreePathIdInterval directly
+   * with a few pathIDs, say 0,1,5. Largest interval would be [2, 4]. we have to
+   * call the method directly because internally wider bounds are used for
+   * pathID
+   */
   expectedInterval = std::make_pair<uint32_t, uint32_t>(2, 4);
   exhaustedInterval = std::make_pair<uint32_t, uint32_t>(5, 4);
   auto sentPathIds = std::vector<uint32_t>{0, 1, 5};
   useAndCheckLargestFreeInterval(
       sentPathIds, expectedInterval, minId, maxId, __LINE__);
 
-  // now we should be able to again generate all path IDs from 2 to 4, with
-  // interval shrinking as expected and ultimately becoming exhausted
+  /*
+   * now we should be able to again generate all path IDs from 2 to 4, with
+   * interval shrinking as expected and ultimately becoming exhausted
+   */
   for (int i = expectedInterval.first; i <= expectedInterval.second; i++) {
     getAndCheckId(i, __LINE__);
     expectedInterval = std::make_pair<uint32_t, uint32_t>(i + 1, 4);

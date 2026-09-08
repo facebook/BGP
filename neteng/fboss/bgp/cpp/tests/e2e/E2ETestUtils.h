@@ -14,8 +14,10 @@
  * limitations under the License.
  */
 
-// E2E test utilities: TestFib, TestRib, and helper functions
-// Minimal mocking (FIB only), real RIB/PeerManagerBase/AdjRib components
+/*
+ * E2E test utilities: TestFib, TestRib, and helper functions
+ * Minimal mocking (FIB only), real RIB/PeerManagerBase/AdjRib components
+ */
 
 #pragma once
 

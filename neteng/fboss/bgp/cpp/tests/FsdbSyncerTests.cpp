@@ -233,8 +233,10 @@ TYPED_TEST(FsdbSyncerTests, testPartialDrainStatePublish) {
              .min_capacity()
              ->next_hop_count_ref(),
         3);
-    // current_capacity carries the same criterion as min_capacity — the
-    // next_hop_count arm (current nexthop count) for this MNH-triggered drain.
+    /*
+     * current_capacity carries the same criterion as min_capacity — the
+     * next_hop_count arm (current nexthop count) for this MNH-triggered drain.
+     */
     EXPECT_EVENTUALLY_EQ(
         *(*stateLk)
              ->drained_prefixes()
@@ -283,8 +285,10 @@ TYPED_TEST(FsdbSyncerTests, testPartialDrainStatePublish) {
              .min_capacity()
              ->next_hop_count_ref(),
         3);
-    // 2nd prefix carries the LBW variant — proves the agg_lbw_bps union
-    // arm survives FSDB serialization just like the next_hop_count arm above.
+    /*
+     * 2nd prefix carries the LBW variant — proves the agg_lbw_bps union
+     * arm survives FSDB serialization just like the next_hop_count arm above.
+     */
     EXPECT_EVENTUALLY_EQ(
         *(*stateLk)
              ->drained_prefixes()
@@ -292,8 +296,10 @@ TYPED_TEST(FsdbSyncerTests, testPartialDrainStatePublish) {
              .min_capacity()
              ->agg_lbw_bps_ref(),
         kAggLbwBpsThreshold);
-    // current_capacity carries the current aggregate LBW on the matching
-    // agg_lbw_bps arm — round-trips through FSDB just like the threshold.
+    /*
+     * current_capacity carries the current aggregate LBW on the matching
+     * agg_lbw_bps arm — round-trips through FSDB just like the threshold.
+     */
     EXPECT_EVENTUALLY_EQ(
         *(*stateLk)
              ->drained_prefixes()

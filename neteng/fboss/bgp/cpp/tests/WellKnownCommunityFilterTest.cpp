@@ -70,9 +70,11 @@ int64_t readCounter(folly::StringPiece name) {
 
 } // namespace
 
-// ===========================================================================
-// 3x3 matrix: 3 communities x 3 session types.
-// ===========================================================================
+/*
+ * ===========================================================================
+ * 3x3 matrix: 3 communities x 3 session types.
+ * ===========================================================================
+ */
 
 TEST(WellKnownCommunityFilterTest, NoAdvertise_SuppressesEbgp) {
   auto path = makePath({{kReservedAsn, kNoAdvertise}});
@@ -137,9 +139,11 @@ TEST(WellKnownCommunityFilterTest, NoExportSubconfed_SuppressesConfedEbgp) {
   EXPECT_EQ(RFC1997Community::NoExportSubconfed, *result);
 }
 
-// ===========================================================================
-// Negative / boundary cases.
-// ===========================================================================
+/*
+ * ===========================================================================
+ * Negative / boundary cases.
+ * ===========================================================================
+ */
 
 TEST(WellKnownCommunityFilterTest, EmptyCommunitiesAllowed) {
   auto path = makePath({});
@@ -189,9 +193,11 @@ TEST(WellKnownCommunityFilterTest, ReservedAsnNonWellKnownValueAllowed) {
                    .has_value());
 }
 
-// ===========================================================================
-// Priority and combination cases.
-// ===========================================================================
+/*
+ * ===========================================================================
+ * Priority and combination cases.
+ * ===========================================================================
+ */
 
 TEST(WellKnownCommunityFilterTest, NoAdvertisePriorityOverNoExport) {
   /*
@@ -266,10 +272,12 @@ TEST(WellKnownCommunityFilterTest, WellKnownPlusUserCommunity) {
   EXPECT_EQ(RFC1997Community::NoExport, *result);
 }
 
-// ===========================================================================
-// Counter dispatch (incrementSuppressionStat). Verifies the helper picks
-// the matching bgpd.well_known_community.* counter for each community.
-// ===========================================================================
+/*
+ * ===========================================================================
+ * Counter dispatch (incrementSuppressionStat). Verifies the helper picks
+ * the matching bgpd.well_known_community.* counter for each community.
+ * ===========================================================================
+ */
 
 TEST(WellKnownCommunityFilterTest, IncrementSuppressionStat_NoAdvertise) {
   BgpStats::initWellKnownCommunityStats();
@@ -346,9 +354,11 @@ TEST(WellKnownCommunityFilterTest, BareSymbolCountersAreNotPublished) {
       "well_known_community_no_export_subconfed_suppressed.count.60"));
 }
 
-// ===========================================================================
-// toString round-trips for the enum names used in operator-facing logs.
-// ===========================================================================
+/*
+ * ===========================================================================
+ * toString round-trips for the enum names used in operator-facing logs.
+ * ===========================================================================
+ */
 
 TEST(WellKnownCommunityFilterTest, ToStringMatchesEnumValues) {
   EXPECT_STREQ("NO_ADVERTISE", toString(RFC1997Community::NoAdvertise));

@@ -404,8 +404,10 @@ TEST_F(AdjRibInboundFixture, V4UpdateProcessingMultiple) {
     EXPECT_EQ(kV4Nexthop1, announcement.attrs->getNexthop());
 
     for (auto& prefix : prefixSet) {
-      // Verify multiple RIB entries are created.
-      // Match various fields from input
+      /*
+       * Verify multiple RIB entries are created.
+       * Match various fields from input
+       */
       auto adjRibEntry = adjRib_->getRibEntry(/*ingress=*/true, prefix);
       EXPECT_EQ(nullptr, adjRib_->getRibEntry(/*ingress=*/false, prefix));
       EXPECT_NE(nullptr, adjRibEntry);
@@ -486,8 +488,10 @@ TEST_F(AdjRibInboundFixture, V4UpdateProcessingMultipleInMultipleMsgs) {
     EXPECT_EQ(kV4Nexthop1, announcement2.attrs->getNexthop());
 
     for (auto& prefix : prefixSet1) {
-      // Verify multiple RIB entries are created.
-      // Match various fields from input
+      /*
+       * Verify multiple RIB entries are created.
+       * Match various fields from input
+       */
       auto adjRibEntry = adjRib_->getRibEntry(/*ingress=*/true, prefix);
       EXPECT_EQ(nullptr, adjRib_->getRibEntry(/*ingress=*/false, prefix));
       EXPECT_NE(nullptr, adjRibEntry);
@@ -509,8 +513,10 @@ TEST_F(AdjRibInboundFixture, V4UpdateProcessingMultipleInMultipleMsgs) {
     EXPECT_EQ(adjRibEntry1->getPostAttr(), adjRibEntry2->getPostAttr());
 
     for (auto& prefix : prefixSet2) {
-      // Verify multiple RIB entries are created.
-      // Match various fields from input
+      /*
+       * Verify multiple RIB entries are created.
+       * Match various fields from input
+       */
       auto adjRibEntry = adjRib_->getRibEntry(/*ingress=*/true, prefix);
       EXPECT_EQ(nullptr, adjRib_->getRibEntry(/*ingress=*/false, prefix));
       EXPECT_NE(nullptr, adjRibEntry);
@@ -559,8 +565,10 @@ TEST_F(AdjRibInboundFixture, V4UpdateProcessingMultipleInMultipleMsgs) {
   evb_.loop();
 }
 
-// Ensure that a BGPupdate2 with multiple v4 only fields is properly processed
-// with addpath feature.
+/*
+ * Ensure that a BGPupdate2 with multiple v4 only fields is properly processed
+ * with addpath feature.
+ */
 TEST_F(AdjRibInboundFixture, V4UpdateProcessingMultipleWithAddPath) {
   setupAdjRib();
   std::vector<folly::CIDRNetwork> prefixSet{kV4Prefix1, kV4Prefix2};
@@ -620,10 +628,12 @@ TEST_F(AdjRibInboundFixture, V4UpdateProcessingMultipleWithAddPath) {
 
   fm_->addTask([&] {
     bt1.post();
-    // peer announced kV4Prefix1, kV4Prefix2 with same attr and nexthop
-    // kV4Nexthop1 and path id 1
-    // here we verify adjrib send ribannouncement for these two prefix with
-    // kV4Nexthop1
+    /*
+     * peer announced kV4Prefix1, kV4Prefix2 with same attr and nexthop
+     * kV4Nexthop1 and path id 1
+     * here we verify adjrib send ribannouncement for these two prefix with
+     * kV4Nexthop1
+     */
     auto msg = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
     ASSERT_TRUE(std::holds_alternative<RibInAnnouncement>(msg));
     auto announcement = std::get<RibInAnnouncement>(msg);
@@ -648,10 +658,12 @@ TEST_F(AdjRibInboundFixture, V4UpdateProcessingMultipleWithAddPath) {
     EXPECT_EQ(0, adjRib_->getStats().getRecvWithdrawals());
     EXPECT_EQ(4, adjRib_->getStats().getTotalAttributeUpdates());
 
-    // peer announced kV4Prefix1, kV4Prefix2 with same attr and nexthop
-    // kV4Nexthop2 and path id 2
-    // here we verify adjrib send ribannouncement for these two prefix with
-    // kV4Nexthop2
+    /*
+     * peer announced kV4Prefix1, kV4Prefix2 with same attr and nexthop
+     * kV4Nexthop2 and path id 2
+     * here we verify adjrib send ribannouncement for these two prefix with
+     * kV4Nexthop2
+     */
     bt2.post();
     // Verify rib In message
     auto msg2 = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
@@ -665,9 +677,11 @@ TEST_F(AdjRibInboundFixture, V4UpdateProcessingMultipleWithAddPath) {
     EXPECT_EQ(
         0,
         adjRib_->getRibTreeSize(/*ingress=*/true, /*isAddPathEnabled=*/false));
-    // Verify AdjRibTree size is 2
-    // Radix tree keys prefx and hence tree size still would be 2
-    // Multiple paths for a prefix does not add size to the tree
+    /*
+     * Verify AdjRibTree size is 2
+     * Radix tree keys prefx and hence tree size still would be 2
+     * Multiple paths for a prefix does not add size to the tree
+     */
     EXPECT_EQ(
         2,
         adjRib_->getRibTreeSize(/*ingress=*/true, /*isAddPathEnabled=*/true));
@@ -680,10 +694,12 @@ TEST_F(AdjRibInboundFixture, V4UpdateProcessingMultipleWithAddPath) {
     EXPECT_EQ(0, adjRib_->getStats().getRecvWithdrawals());
     EXPECT_EQ(8, adjRib_->getStats().getTotalAttributeUpdates());
 
-    // peer replace path 1 for kV4Prefix1 and kV4Prefix2. The new nexthop is
-    // kV4Nexthop3.
-    // here we verify adjrib send ribannouncement for updating these two prefix
-    // with kV4Nexthop3.
+    /*
+     * peer replace path 1 for kV4Prefix1 and kV4Prefix2. The new nexthop is
+     * kV4Nexthop3.
+     * here we verify adjrib send ribannouncement for updating these two prefix
+     * with kV4Nexthop3.
+     */
     bt3.post();
     // Verify rib In message
     auto msg3 = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
@@ -697,8 +713,10 @@ TEST_F(AdjRibInboundFixture, V4UpdateProcessingMultipleWithAddPath) {
     EXPECT_EQ(
         0,
         adjRib_->getRibTreeSize(/*ingress=*/true, /*isAddPathEnabled=*/false));
-    // Verify AdjRibTree size should still remain 2 because both
-    // the prefixes are still present in the radix tree
+    /*
+     * Verify AdjRibTree size should still remain 2 because both
+     * the prefixes are still present in the radix tree
+     */
     EXPECT_EQ(
         2,
         adjRib_->getRibTreeSize(/*ingress=*/true, /*isAddPathEnabled=*/true));
@@ -712,10 +730,12 @@ TEST_F(AdjRibInboundFixture, V4UpdateProcessingMultipleWithAddPath) {
     EXPECT_EQ(12, adjRib_->getStats().getTotalAttributeUpdates());
 
     bt4.post();
-    // peer announced kV4Prefix1, kV4Prefix2 with same attr and nexthop
-    // kV4Nexthop1 and path id 3
-    // here we verify adjrib send ribannouncement for these two prefix with
-    // kV4Nexthop1
+    /*
+     * peer announced kV4Prefix1, kV4Prefix2 with same attr and nexthop
+     * kV4Nexthop1 and path id 3
+     * here we verify adjrib send ribannouncement for these two prefix with
+     * kV4Nexthop1
+     */
     auto msg4 = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
     auto announcement4 = std::get<RibInAnnouncement>(msg4);
     EXPECT_EQ(kPeerAddr1, announcement4.peer.addr);
@@ -726,8 +746,10 @@ TEST_F(AdjRibInboundFixture, V4UpdateProcessingMultipleWithAddPath) {
     EXPECT_EQ(
         0,
         adjRib_->getRibTreeSize(/*ingress=*/true, /*isAddPathEnabled=*/false));
-    // Verify AdjRibTree size is still 2
-    // Because announcement is for same prefix with different path
+    /*
+     * Verify AdjRibTree size is still 2
+     * Because announcement is for same prefix with different path
+     */
     EXPECT_EQ(
         2,
         adjRib_->getRibTreeSize(/*ingress=*/true, /*isAddPathEnabled=*/true));
@@ -740,8 +762,10 @@ TEST_F(AdjRibInboundFixture, V4UpdateProcessingMultipleWithAddPath) {
     EXPECT_EQ(0, adjRib_->getStats().getRecvWithdrawals());
     EXPECT_EQ(16, adjRib_->getStats().getTotalAttributeUpdates());
 
-    // peer withdraws path 2 for kV4Prefix1.
-    // adjrib will send Ribwithdraw msg for  kV4Prefix1 with kV4Nexthop2
+    /*
+     * peer withdraws path 2 for kV4Prefix1.
+     * adjrib will send Ribwithdraw msg for  kV4Prefix1 with kV4Nexthop2
+     */
     bt5.post();
     auto msg5 = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
     auto withdrawal = std::get<RibInWithdrawal>(msg5);
@@ -753,9 +777,11 @@ TEST_F(AdjRibInboundFixture, V4UpdateProcessingMultipleWithAddPath) {
     EXPECT_EQ(
         0,
         adjRib_->getRibTreeSize(/*ingress=*/true, /*isAddPathEnabled=*/false));
-    // Verify AdjRibTree size still remains 2
-    // One path for one kV4Prefix1 is withdrawn but other paths
-    // for that prefix still exist
+    /*
+     * Verify AdjRibTree size still remains 2
+     * One path for one kV4Prefix1 is withdrawn but other paths
+     * for that prefix still exist
+     */
     EXPECT_EQ(
         2,
         adjRib_->getRibTreeSize(/*ingress=*/true, /*isAddPathEnabled=*/true));
@@ -768,8 +794,10 @@ TEST_F(AdjRibInboundFixture, V4UpdateProcessingMultipleWithAddPath) {
     EXPECT_EQ(1, adjRib_->getStats().getRecvWithdrawals());
     EXPECT_EQ(16, adjRib_->getStats().getTotalAttributeUpdates());
 
-    // peer withdraws path 1 for kV4Prefix1.
-    // adjrib will send Ribwithdraw msg for  kV4Prefix1 with kV4Nexthop3
+    /*
+     * peer withdraws path 1 for kV4Prefix1.
+     * adjrib will send Ribwithdraw msg for  kV4Prefix1 with kV4Nexthop3
+     */
     bt6.post();
     auto msg6 = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
     auto withdrawal2 = std::get<RibInWithdrawal>(msg6);
@@ -781,9 +809,11 @@ TEST_F(AdjRibInboundFixture, V4UpdateProcessingMultipleWithAddPath) {
     EXPECT_EQ(
         0,
         adjRib_->getRibTreeSize(/*ingress=*/true, /*isAddPathEnabled=*/false));
-    // Verify AdjRibTree size still should be 2
-    // kV4Prefix1 still has non-withdrawn path and hence kV4Prefix1
-    // is still there in the radix tree
+    /*
+     * Verify AdjRibTree size still should be 2
+     * kV4Prefix1 still has non-withdrawn path and hence kV4Prefix1
+     * is still there in the radix tree
+     */
     EXPECT_EQ(
         2,
         adjRib_->getRibTreeSize(/*ingress=*/true, /*isAddPathEnabled=*/true));
@@ -796,8 +826,10 @@ TEST_F(AdjRibInboundFixture, V4UpdateProcessingMultipleWithAddPath) {
     EXPECT_EQ(2, adjRib_->getStats().getRecvWithdrawals());
     EXPECT_EQ(16, adjRib_->getStats().getTotalAttributeUpdates());
 
-    // peer withdraws path 3 for kV4Prefix1.
-    // adjrib will send Ribwithdraw msg for  kV4Prefix1 with kV4Nexthop1
+    /*
+     * peer withdraws path 3 for kV4Prefix1.
+     * adjrib will send Ribwithdraw msg for  kV4Prefix1 with kV4Nexthop1
+     */
     bt7.post();
     auto msg7 = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
     auto withdrawal3 = std::get<RibInWithdrawal>(msg7);
@@ -809,9 +841,11 @@ TEST_F(AdjRibInboundFixture, V4UpdateProcessingMultipleWithAddPath) {
     EXPECT_EQ(
         0,
         adjRib_->getRibTreeSize(/*ingress=*/true, /*isAddPathEnabled=*/false));
-    // Verify AdjRibTree size now is 1
-    // All paths for kV4Prefix1 have been withdrawn, and hence
-    // that prefix should have been removed from the tree
+    /*
+     * Verify AdjRibTree size now is 1
+     * All paths for kV4Prefix1 have been withdrawn, and hence
+     * that prefix should have been removed from the tree
+     */
     EXPECT_EQ(
         1,
         adjRib_->getRibTreeSize(/*ingress=*/true, /*isAddPathEnabled=*/true));
@@ -830,8 +864,9 @@ TEST_F(AdjRibInboundFixture, V4UpdateProcessingMultipleWithAddPath) {
   evb_.loop();
 }
 
-//
-// Ensure that a BGPupdate2 with multiple v6 only fields is properly processed
+/*
+ * Ensure that a BGPupdate2 with multiple v6 only fields is properly processed
+ */
 TEST_F(AdjRibInboundFixture, V6UpdateProcessingMultiple) {
   setupAdjRib();
   std::vector<folly::CIDRNetwork> prefixSet{kV6Prefix1, kV6Prefix2};
@@ -852,8 +887,10 @@ TEST_F(AdjRibInboundFixture, V6UpdateProcessingMultiple) {
     EXPECT_EQ(kV6Nexthop1, announcement.attrs->getNexthop());
 
     for (auto& prefix : prefixSet) {
-      // Verify multiple RIB entries are created.
-      // Match various fields from input
+      /*
+       * Verify multiple RIB entries are created.
+       * Match various fields from input
+       */
       auto adjRibEntry = adjRib_->getRibEntry(/*ingress=*/true, prefix);
       EXPECT_EQ(nullptr, adjRib_->getRibEntry(/*ingress=*/false, prefix));
       EXPECT_NE(nullptr, adjRibEntry);
@@ -894,8 +931,9 @@ TEST_F(AdjRibInboundFixture, V6UpdateProcessingMultiple) {
   evb_.loop();
 }
 
-//
-// Ensure that a BGPupdate2 with multiple v6 only fields is properly processed
+/*
+ * Ensure that a BGPupdate2 with multiple v6 only fields is properly processed
+ */
 TEST_F(AdjRibInboundFixture, V6UpdateProcessingMultipleWithAddPath) {
   setupAdjRib();
   std::vector<folly::CIDRNetwork> prefixSet{kV6Prefix1, kV6Prefix2};
@@ -955,10 +993,12 @@ TEST_F(AdjRibInboundFixture, V6UpdateProcessingMultipleWithAddPath) {
 
   fm_->addTask([&] {
     bt1.post();
-    // peer announced kV6Prefix1, kV6Prefix2 with same attr and nexthop
-    // kV6Nexthop1 and path id 1
-    // here we verify adjrib send ribannouncement for these two prefix with
-    // kV6Nexthop1
+    /*
+     * peer announced kV6Prefix1, kV6Prefix2 with same attr and nexthop
+     * kV6Nexthop1 and path id 1
+     * here we verify adjrib send ribannouncement for these two prefix with
+     * kV6Nexthop1
+     */
     auto msg = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
     auto announcement = std::get<RibInAnnouncement>(msg);
     EXPECT_EQ(kPeerAddr1, announcement.peer.addr);
@@ -982,10 +1022,12 @@ TEST_F(AdjRibInboundFixture, V6UpdateProcessingMultipleWithAddPath) {
     EXPECT_EQ(0, adjRib_->getStats().getRecvWithdrawals());
     EXPECT_EQ(4, adjRib_->getStats().getTotalAttributeUpdates());
 
-    // peer announced kV6Prefix1, kV6Prefix2 with same attr and nexthop
-    // kV6Nexthop2 and path id 2
-    // here we verify adjrib send ribannouncement for these two prefix with
-    // kV6Nexthop2
+    /*
+     * peer announced kV6Prefix1, kV6Prefix2 with same attr and nexthop
+     * kV6Nexthop2 and path id 2
+     * here we verify adjrib send ribannouncement for these two prefix with
+     * kV6Nexthop2
+     */
     bt2.post();
     auto msg2 = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
     auto announcement2 = std::get<RibInAnnouncement>(msg2);
@@ -997,9 +1039,11 @@ TEST_F(AdjRibInboundFixture, V6UpdateProcessingMultipleWithAddPath) {
     EXPECT_EQ(
         0,
         adjRib_->getRibTreeSize(/*ingress=*/true, /*isAddPathEnabled=*/false));
-    // Verify AdjRibTree size is 2
-    // Radix tree keys prefx and hence tree size still would be 2
-    // Multiple paths for a prefix does not add size to the tree
+    /*
+     * Verify AdjRibTree size is 2
+     * Radix tree keys prefx and hence tree size still would be 2
+     * Multiple paths for a prefix does not add size to the tree
+     */
     EXPECT_EQ(
         2,
         adjRib_->getRibTreeSize(/*ingress=*/true, /*isAddPathEnabled=*/true));
@@ -1012,10 +1056,12 @@ TEST_F(AdjRibInboundFixture, V6UpdateProcessingMultipleWithAddPath) {
     EXPECT_EQ(0, adjRib_->getStats().getRecvWithdrawals());
     EXPECT_EQ(8, adjRib_->getStats().getTotalAttributeUpdates());
 
-    // peer replace path 1 for kV6Prefix1 and kV6Prefix2. The new nexthop is
-    // kV6Nexthop3.
-    // here we verify adjrib send ribannouncement for updating these two prefix
-    // with kV6Nexthop3.
+    /*
+     * peer replace path 1 for kV6Prefix1 and kV6Prefix2. The new nexthop is
+     * kV6Nexthop3.
+     * here we verify adjrib send ribannouncement for updating these two prefix
+     * with kV6Nexthop3.
+     */
     bt3.post();
     auto msg3 = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
     auto announcement3 = std::get<RibInAnnouncement>(msg3);
@@ -1027,8 +1073,10 @@ TEST_F(AdjRibInboundFixture, V6UpdateProcessingMultipleWithAddPath) {
     EXPECT_EQ(
         0,
         adjRib_->getRibTreeSize(/*ingress=*/true, /*isAddPathEnabled=*/false));
-    // Verify AdjRibTree size should still remain 2 because both
-    // the prefixes are still present in the radix tree
+    /*
+     * Verify AdjRibTree size should still remain 2 because both
+     * the prefixes are still present in the radix tree
+     */
     EXPECT_EQ(
         2,
         adjRib_->getRibTreeSize(/*ingress=*/true, /*isAddPathEnabled=*/true));
@@ -1037,10 +1085,12 @@ TEST_F(AdjRibInboundFixture, V6UpdateProcessingMultipleWithAddPath) {
     EXPECT_EQ(4, adjRib_->getStats().getPostInPrefixCount());
 
     bt4.post();
-    // peer announced kV6Prefix1, kV6Prefix2 with same attr and nexthop
-    // kV6Nexthop1 and path id 3
-    // here we verify adjrib send ribannouncement for these two prefix with
-    // kV6Nexthop1
+    /*
+     * peer announced kV6Prefix1, kV6Prefix2 with same attr and nexthop
+     * kV6Nexthop1 and path id 3
+     * here we verify adjrib send ribannouncement for these two prefix with
+     * kV6Nexthop1
+     */
     auto msg4 = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
     auto announcement4 = std::get<RibInAnnouncement>(msg4);
     EXPECT_EQ(kPeerAddr1, announcement4.peer.addr);
@@ -1051,8 +1101,10 @@ TEST_F(AdjRibInboundFixture, V6UpdateProcessingMultipleWithAddPath) {
     EXPECT_EQ(
         0,
         adjRib_->getRibTreeSize(/*ingress=*/true, /*isAddPathEnabled=*/false));
-    // Verify AdjRibTree size is still 2
-    // Because announcement is for same prefix with different path
+    /*
+     * Verify AdjRibTree size is still 2
+     * Because announcement is for same prefix with different path
+     */
     EXPECT_EQ(
         2,
         adjRib_->getRibTreeSize(/*ingress=*/true, /*isAddPathEnabled=*/true));
@@ -1065,8 +1117,10 @@ TEST_F(AdjRibInboundFixture, V6UpdateProcessingMultipleWithAddPath) {
     EXPECT_EQ(0, adjRib_->getStats().getRecvWithdrawals());
     EXPECT_EQ(16, adjRib_->getStats().getTotalAttributeUpdates());
 
-    // peer withdraws path 2 for kV6Prefix1.
-    // adjrib will send Ribwithdraw msg for  kV6Prefix with kV6Nexthop2
+    /*
+     * peer withdraws path 2 for kV6Prefix1.
+     * adjrib will send Ribwithdraw msg for  kV6Prefix with kV6Nexthop2
+     */
     bt5.post();
     auto msg5 = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
     auto withdrawal = std::get<RibInWithdrawal>(msg5);
@@ -1081,8 +1135,10 @@ TEST_F(AdjRibInboundFixture, V6UpdateProcessingMultipleWithAddPath) {
     EXPECT_EQ(1, adjRib_->getStats().getRecvWithdrawals());
     EXPECT_EQ(16, adjRib_->getStats().getTotalAttributeUpdates());
 
-    // peer withdraws path 1 for kV6Prefix1.
-    // adjrib will send Ribwithdraw msg for  kV6Prefix with kV6Nexthop3
+    /*
+     * peer withdraws path 1 for kV6Prefix1.
+     * adjrib will send Ribwithdraw msg for  kV6Prefix with kV6Nexthop3
+     */
     bt6.post();
     auto msg6 = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
     auto withdrawal2 = std::get<RibInWithdrawal>(msg6);
@@ -1093,9 +1149,11 @@ TEST_F(AdjRibInboundFixture, V6UpdateProcessingMultipleWithAddPath) {
     EXPECT_EQ(
         0,
         adjRib_->getRibTreeSize(/*ingress=*/true, /*isAddPathEnabled=*/false));
-    // Verify AdjRibTree size still remains 2
-    // One path for one kV4Prefix1 is withdrawn but other paths
-    // for that prefix still exist
+    /*
+     * Verify AdjRibTree size still remains 2
+     * One path for one kV4Prefix1 is withdrawn but other paths
+     * for that prefix still exist
+     */
     EXPECT_EQ(
         2,
         adjRib_->getRibTreeSize(/*ingress=*/true, /*isAddPathEnabled=*/true));
@@ -1109,8 +1167,10 @@ TEST_F(AdjRibInboundFixture, V6UpdateProcessingMultipleWithAddPath) {
     EXPECT_EQ(2, adjRib_->getStats().getRecvWithdrawals());
     EXPECT_EQ(16, adjRib_->getStats().getTotalAttributeUpdates());
 
-    // peer withdraws path 1 for kV6Prefix1.
-    // adjrib will send Ribwithdraw msg for  kV6Prefix with kV6Nexthop1
+    /*
+     * peer withdraws path 1 for kV6Prefix1.
+     * adjrib will send Ribwithdraw msg for  kV6Prefix with kV6Nexthop1
+     */
     bt7.post();
     auto msg7 = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
     auto withdrawal3 = std::get<RibInWithdrawal>(msg7);
@@ -1121,9 +1181,11 @@ TEST_F(AdjRibInboundFixture, V6UpdateProcessingMultipleWithAddPath) {
     EXPECT_EQ(
         0,
         adjRib_->getRibTreeSize(/*ingress=*/true, /*isAddPathEnabled=*/false));
-    // Verify AdjRibTree size now is 1
-    // All paths for kV4Prefix1 have been withdrawn, and hence
-    // that prefix should have been removed from the tree
+    /*
+     * Verify AdjRibTree size now is 1
+     * All paths for kV4Prefix1 have been withdrawn, and hence
+     * that prefix should have been removed from the tree
+     */
     EXPECT_EQ(
         1,
         adjRib_->getRibTreeSize(/*ingress=*/true, /*isAddPathEnabled=*/true));
@@ -1143,8 +1205,10 @@ TEST_F(AdjRibInboundFixture, V6UpdateProcessingMultipleWithAddPath) {
   evb_.loop();
 }
 
-// Verify that withdraw is processed properly and withdraw message is
-// queued properly to rib
+/*
+ * Verify that withdraw is processed properly and withdraw message is
+ * queued properly to rib
+ */
 TEST_F(AdjRibInboundFixture, V4AnnounceAndWithdraw) {
   setupAdjRib();
   auto acceptedBefore = totalAcceptedPrefixCount;
@@ -1266,9 +1330,11 @@ TEST_F(AdjRibInboundFixture, ConsecutiveV4Withdraw) {
       auto msg1 = facebook::bgp::test::boundedBlockingPop(
           ribInQ_, "ribInQ_"); // withdraw
 
-      // Verify AdjRibStaleTree size. One stale entry (for the prefix with two
-      // duplicate withdraws) was moved while the other stale entry was not
-      // moved. Thus the size should be 1
+      /*
+       * Verify AdjRibStaleTree size. One stale entry (for the prefix with two
+       * duplicate withdraws) was moved while the other stale entry was not
+       * moved. Thus the size should be 1
+       */
       EXPECT_EQ(1, adjRib_->getRibInStaleTreeSize());
       // Stale ODS counter decremented (one stale entry promoted for withdrawal)
       tcData->publishStats();
@@ -1300,8 +1366,10 @@ TEST_F(AdjRibInboundFixture, ConsecutiveV4Withdraw) {
   evb_.loop();
 }
 
-// Verify that withdraw without announcement doesn't lead to any message
-// Or AdjRibEntry creation
+/*
+ * Verify that withdraw without announcement doesn't lead to any message
+ * Or AdjRibEntry creation
+ */
 TEST_F(AdjRibInboundFixture, SpuriousWithdraw) {
   setupAdjRib();
 
@@ -1312,8 +1380,10 @@ TEST_F(AdjRibInboundFixture, SpuriousWithdraw) {
   });
 
   fm_->addTask([&] {
-    // As we are checking for queue to be empty, sleeping for a while
-    // to ensure processing is completed
+    /*
+     * As we are checking for queue to be empty, sleeping for a while
+     * to ensure processing is completed
+     */
     fiberSleepFor(50ms);
     EXPECT_TRUE(ribInQ_.empty());
     EXPECT_EQ(0, adjRib_->getStats().getPreInPrefixCount());
@@ -1336,8 +1406,10 @@ TEST_F(AdjRibInboundFixture, SpuriousWithdraw) {
 TEST_F(AdjRibInboundFixture, ReceivedPathIdReachesRib) {
   setupAdjRib();
 
-  // withdraw/announce route, ensure pathID reaches RibIn message.
-  // pathID would be some nonzero value in ADD-PATH case, and 0 otherwise
+  /*
+   * withdraw/announce route, ensure pathID reaches RibIn message.
+   * pathID would be some nonzero value in ADD-PATH case, and 0 otherwise
+   */
   fm_->addTask([&] {
     uint32_t expectedPathId = 135;
     adjRib_->recAddPath_ = true;
@@ -1708,8 +1780,10 @@ TEST_F(AdjRibProcessPeerAnnouncedFixture, CanAddRibEntryTest_WithinLimit) {
 TEST_F(
     AdjRibProcessPeerAnnouncedFixture,
     PreFilterDroppedRouteCountIncrementsOnCap) {
-  // Hitting the pre-filter cap increments the per-peer pre-filter dropped
-  // route counter (consumed by `show bgp summary` and the health validator).
+  /*
+   * Hitting the pre-filter cap increments the per-peer pre-filter dropped
+   * route counter (consumed by `show bgp summary` and the health validator).
+   */
   for (int i = 0; i < adjRib_->peeringParams_.preRouteLimit->max_routes();
        ++i) {
     adjRib_->stats_.incrementPreInPrefixCount(
@@ -1726,8 +1800,10 @@ TEST_F(
 TEST_F(
     AdjRibProcessPeerAnnouncedFixture,
     PreFilterDroppedRouteCountClearedOnSessionDown) {
-  // clear() is invoked on session teardown (AdjRib::sessionTerminated), so the
-  // per-peer dropped counter resets when the session goes down.
+  /*
+   * clear() is invoked on session teardown (AdjRib::sessionTerminated), so the
+   * per-peer dropped counter resets when the session goes down.
+   */
   adjRib_->stats_.incrementPreFilterDroppedRouteCount();
   adjRib_->stats_.incrementPreFilterDroppedRouteCount();
   EXPECT_EQ(2, adjRib_->stats_.getPreFilterDroppedRouteCount());
@@ -2058,8 +2134,10 @@ TEST_F(AdjRibInboundFixture, RejectRouteWithConfedAsLoop) {
   evb_.loop();
 }
 
-// With a local-as session test verifies an update with no
-// loop is accepted into AdjRibIn.
+/*
+ * With a local-as session test verifies an update with no
+ * loop is accepted into AdjRibIn.
+ */
 TEST_F(AdjRibInboundFixture, AcceptPathLocalAsSession) {
   setupAdjRib(
       kShortGrRestartTime,
@@ -2162,8 +2240,10 @@ TEST_F(AdjRibInboundFixture, RejectRouteAsLoopLocalAsSession) {
  *      START   -   Invalid BGP attribute related route rejection tests.      *
  ******************************************************************************/
 
-// Verify that a route from iBGP peer without local preference in
-// path attributes is not learnt
+/*
+ * Verify that a route from iBGP peer without local preference in
+ * path attributes is not learnt
+ */
 TEST_F(AdjRibInboundFixture, RejectIbgpRouteWithoutLocalPref) {
   setupAdjRib(
       kShortGrRestartTime,
@@ -2221,16 +2301,20 @@ TEST_F(AdjRibInboundFixture, OriginatorIdFiltering) {
   evb_.loop();
 }
 
-// Verify that a route with different originatorId but same cluster id in
-// cluster list is not learnt
+/*
+ * Verify that a route with different originatorId but same cluster id in
+ * cluster list is not learnt
+ */
 TEST_F(AdjRibInboundFixture, ClusterListFiltering) {
   setupAdjRib();
 
   fm_->addTask([&] {
     auto update = createV4BgpUpdateSingleAnnounce(
         kV4Prefix1, kV4Nexthop1, kMed, kPeerAddr3.asV4().toLongHBO());
-    // push our clusterId (kLocalAddr1) into the clusterList
-    // cluster list should be in network byte order
+    /*
+     * push our clusterId (kLocalAddr1) into the clusterList
+     * cluster list should be in network byte order
+     */
     update->attrs()->clusterList()->push_back(kLocalAddr1.asV4().toLong());
     adjRibInQ_->fiberPush(std::move(update));
   });
@@ -2250,8 +2334,10 @@ TEST_F(AdjRibInboundFixture, ClusterListFiltering) {
   evb_.loop();
 }
 
-// Verify we stop the following invalid behaviors
-// 1. receiving updates with confed fileds set from non members in EBGP
+/*
+ * Verify we stop the following invalid behaviors
+ * 1. receiving updates with confed fileds set from non members in EBGP
+ */
 TEST_F(AdjRibInboundFixture, RejectConfedAsPathFromNonConfedPeerWithEBGP) {
   // make current adjRib not in same confed
   setupAdjRib(
@@ -2313,8 +2399,10 @@ TEST_F(AdjRibInboundFixture, RejectConfedAsPathFromNonConfedPeerWithEBGP) {
   evb_.loop();
 }
 
-// Verify we stop the following invalid behaviors
-// 2. receiving updates without confed as path segment from confed ebgp peer
+/*
+ * Verify we stop the following invalid behaviors
+ * 2. receiving updates without confed as path segment from confed ebgp peer
+ */
 TEST_F(AdjRibInboundFixture, CheckConfedAsPathFromConfedEbgpPeer) {
   // make current adjRib in same confed
   setupAdjRib(
@@ -2334,14 +2422,18 @@ TEST_F(AdjRibInboundFixture, CheckConfedAsPathFromConfedEbgpPeer) {
 
   fm_->addTask([&] {
     {
-      // create an update without confed fields set
-      // invalid, expect to generate a notification
+      /*
+       * create an update without confed fields set
+       * invalid, expect to generate a notification
+       */
       auto update = createV4BgpUpdateSingleAnnounce();
       adjRibInQ_->fiberPush(std::move(update));
     }
     {
-      // create an update with empty asPathSeg
-      // invalid, expect to generate a notification
+      /*
+       * create an update with empty asPathSeg
+       * invalid, expect to generate a notification
+       */
       auto update = createV4BgpUpdateSingleAnnounce();
       update->attrs()->asPath()->clear();
       adjRibInQ_->fiberPush(std::move(update));
@@ -2383,8 +2475,10 @@ TEST_F(AdjRibInboundFixture, CheckConfedAsPathFromConfedEbgpPeer) {
   evb_.loop();
 }
 
-// Verify we stop the following invalid behaviors
-// 3. without confed fileds set from members in IBGP
+/*
+ * Verify we stop the following invalid behaviors
+ * 3. without confed fileds set from members in IBGP
+ */
 TEST_F(AdjRibInboundFixture, CheckConfedAsPathFromConfedPeerWithIBGP) {
   // make current adjRib in same confed
   setupAdjRib(
@@ -2404,14 +2498,18 @@ TEST_F(AdjRibInboundFixture, CheckConfedAsPathFromConfedPeerWithIBGP) {
 
   fm_->addTask([&] {
     {
-      // create an update without confed fields set
-      // valid, we won't get a notification
+      /*
+       * create an update without confed fields set
+       * valid, we won't get a notification
+       */
       auto update = createV4BgpUpdateSingleAnnounce();
       adjRibInQ_->fiberPush(std::move(update));
     }
     {
-      // create an update with empty asPathSeg
-      // valid, we won't get a notification
+      /*
+       * create an update with empty asPathSeg
+       * valid, we won't get a notification
+       */
       auto update = createV4BgpUpdateSingleAnnounce();
       update->attrs()->asPath()->clear();
       adjRibInQ_->fiberPush(std::move(update));
@@ -2429,10 +2527,12 @@ TEST_F(AdjRibInboundFixture, CheckConfedAsPathFromConfedPeerWithIBGP) {
   evb_.loop();
 }
 
-// Verify enforce-first-as behavior for non confed eBGP peer
-// Create 2 updates, 1 with the correct AS number at the left most position and
-// one without. The invalid one should be discarded, and ribInQ_ should have
-// only the prefix from the valid update
+/*
+ * Verify enforce-first-as behavior for non confed eBGP peer
+ * Create 2 updates, 1 with the correct AS number at the left most position and
+ * one without. The invalid one should be discarded, and ribInQ_ should have
+ * only the prefix from the valid update
+ */
 TEST_F(AdjRibInboundFixture, EnforceFirstAsUsesRemoteAsTest) {
   // make current adjRib not in same confed
   setupAdjRib(
@@ -2467,8 +2567,10 @@ TEST_F(AdjRibInboundFixture, EnforceFirstAsUsesRemoteAsTest) {
 
   fm_->addTask([&] {
     {
-      // enforce-first-as validation should fail as left most AS of this update
-      // does not match peer AS
+      /*
+       * enforce-first-as validation should fail as left most AS of this update
+       * does not match peer AS
+       */
       auto update = createV4BgpUpdateSingleAnnounce();
       update->attrs()->asPath()[0].asSequence()[0] = kRemoteAs1;
 
@@ -2507,10 +2609,12 @@ TEST_F(AdjRibInboundFixture, EnforceFirstAsUsesRemoteAsTest) {
   evb_.loop();
 }
 
-// Verify enforce-first-as behavior for confed eBGP peer
-// Create 2 updates, 1 with the correct AS number at the left most position and
-// one without. The invalid one should be discarded, and ribInQ_ should have
-// only the prefix from the valid update
+/*
+ * Verify enforce-first-as behavior for confed eBGP peer
+ * Create 2 updates, 1 with the correct AS number at the left most position and
+ * one without. The invalid one should be discarded, and ribInQ_ should have
+ * only the prefix from the valid update
+ */
 TEST_F(AdjRibInboundFixture, EnforceFirstAsConfedTest) {
   // make current adjRib not in same confed
   setupAdjRib(
@@ -2544,8 +2648,10 @@ TEST_F(AdjRibInboundFixture, EnforceFirstAsConfedTest) {
 
   fm_->addTask([&] {
     {
-      // enforce-first-as validation should fail as left most AS of this update
-      // does not match peer AS
+      /*
+       * enforce-first-as validation should fail as left most AS of this update
+       * does not match peer AS
+       */
       auto update = createV4BgpUpdateSingleAnnounce(
           kV4Prefix1,
           kV4Nexthop1,
@@ -2658,10 +2764,12 @@ TEST_F(AdjRibInboundFixture, SessionGoingDown) {
   evb_.loop();
 }
 
-// Verify that counters are proper if BGP session flaps
-// Send 2 v6 prefixes, verify count is fine, terminate session, send 3 v6
-// prefixes verify that count is now 3, terminate session, send 1 v4 prefix
-// verify count is 1. (Verify clean up after every termination)
+/*
+ * Verify that counters are proper if BGP session flaps
+ * Send 2 v6 prefixes, verify count is fine, terminate session, send 3 v6
+ * prefixes verify that count is now 3, terminate session, send 1 v4 prefix
+ * verify count is 1. (Verify clean up after every termination)
+ */
 TEST_F(AdjRibInboundFixture, VerifyCounterWithSessionFlap) {
   setupAdjRib();
 
@@ -2737,24 +2845,26 @@ TEST_F(AdjRibInboundFixture, VerifyCounterWithSessionFlap) {
  *      START   -   Graceful restart related tests.                           *
  ******************************************************************************/
 
-// Verify that routes are kept till stale path timer expiry after session
-// flaps.
-//
-// 1) Peer with long restart time sends 2 v6 prefixes. Verify count is fine,
-// terminate session, and verify that routes are kept.
-//
-// 2) Peer comes up with long restart time and sends 3 v6 prefixes. Verify
-// count is now 3, terminate session, and verify that the 3 routes are kept.
-//
-// 3) Peer comes up with 1 sec restart time and sends 1 v4 prefix. Verify that
-// count is now 4, terminate session, and verify that only latest 1 route is
-// kept. Here we are doing successive flaps before stale path timer expiry
-// All routes marked stale will be deleted at terminate. Wait 1 sec see that
-// single prefix is also cleaned up after stale path timer expiry.
-//
-// 4) Peer comes up with 0 sec restart time and sends 1 v4 prefix. Verify that
-// count is 1 initially, terminate session, and verify that no routes are
-// kept.
+/*
+ * Verify that routes are kept till stale path timer expiry after session
+ * flaps.
+ *
+ * 1) Peer with long restart time sends 2 v6 prefixes. Verify count is fine,
+ * terminate session, and verify that routes are kept.
+ *
+ * 2) Peer comes up with long restart time and sends 3 v6 prefixes. Verify
+ * count is now 3, terminate session, and verify that the 3 routes are kept.
+ *
+ * 3) Peer comes up with 1 sec restart time and sends 1 v4 prefix. Verify that
+ * count is now 4, terminate session, and verify that only latest 1 route is
+ * kept. Here we are doing successive flaps before stale path timer expiry
+ * All routes marked stale will be deleted at terminate. Wait 1 sec see that
+ * single prefix is also cleaned up after stale path timer expiry.
+ *
+ * 4) Peer comes up with 0 sec restart time and sends 1 v4 prefix. Verify that
+ * count is 1 initially, terminate session, and verify that no routes are
+ * kept.
+ */
 TEST_F(AdjRibInboundFixture, VerifyStalePathTimerWithSessionFlap) {
   setupAdjRib(
       kShortGrRestartTime, // local
@@ -2800,9 +2910,11 @@ TEST_F(AdjRibInboundFixture, VerifyStalePathTimerWithSessionFlap) {
       // wait for sometime
       fiberSleepFor(10ms);
 
-      // Verify AdjRibStaleTree size is non-zero since we are in GR
-      // Note that size here is for num prefixes because only prefix
-      // is used as key to radix tree.
+      /*
+       * Verify AdjRibStaleTree size is non-zero since we are in GR
+       * Note that size here is for num prefixes because only prefix
+       * is used as key to radix tree.
+       */
       EXPECT_EQ(prefixSet1.size(), adjRib_->getRibInStaleTreeSize());
       // Verify AdjRibLiteTree size has gone to zero
       EXPECT_EQ(
@@ -2940,20 +3052,22 @@ TEST_F(AdjRibInboundFixture, VerifyStalePathTimerWithSessionFlap) {
   evb_.loop();
 }
 
-// Test to verify we handle correctly if we receive a withdrawal for
-// a prefix which is learnt from other peers, before EOR after a session flap.
-// Steps are:
-// Establish a session,
-// Send update with two prefixes p1, p2
-// Terminate the session
-// Establish the session back
-// Send p1 from Rib (simulating learnt prefix from another peer)
-// Send prefix p1 withdrawal, p2 update
-// Validate that p1 adjRibEntry is gone in AdjRibIn because the prefix learned
-// from another peer is in AdjRibOut.
-// Verify that received count is reduced to 1 (even with 2 adjRibEntry)
-// Send EOR
-// Validate counters and routes. Received count is still 1.
+/*
+ * Test to verify we handle correctly if we receive a withdrawal for
+ * a prefix which is learnt from other peers, before EOR after a session flap.
+ * Steps are:
+ * Establish a session,
+ * Send update with two prefixes p1, p2
+ * Terminate the session
+ * Establish the session back
+ * Send p1 from Rib (simulating learnt prefix from another peer)
+ * Send prefix p1 withdrawal, p2 update
+ * Validate that p1 adjRibEntry is gone in AdjRibIn because the prefix learned
+ * from another peer is in AdjRibOut.
+ * Verify that received count is reduced to 1 (even with 2 adjRibEntry)
+ * Send EOR
+ * Validate counters and routes. Received count is still 1.
+ */
 TEST_F(AdjRibInboundFixture, VerifyWithdrawalBeforeStalePathExpiry) {
   setupAdjRib(
       kShortGrRestartTime, // local
@@ -2984,8 +3098,10 @@ TEST_F(AdjRibInboundFixture, VerifyWithdrawalBeforeStalePathExpiry) {
 
   fm_->addTask([&] {
     {
-      // sessionEstablished already called inside setup method.
-      // Trigger sending of Update message from fiber-bgp-peer.
+      /*
+       * sessionEstablished already called inside setup method.
+       * Trigger sending of Update message from fiber-bgp-peer.
+       */
       sendFirstUpdate.post();
       facebook::bgp::test::boundedBlockingPop(fromAdjRibQ_, "fromAdjRibQ_");
       // wait till RibInAnnouncement route message is sent
@@ -3069,8 +3185,10 @@ TEST_F(AdjRibInboundFixture, VerifyWithdrawalBeforeStalePathExpiry) {
           adjRib_->getRibTreeSize(
               /*ingress=*/true, /*isAddPathEnabled=*/false));
 
-      // NOTE: Even though two entries are present, as one entry preIn is
-      // nullptr we will see that count is only 1 and not 2
+      /*
+       * NOTE: Even though two entries are present, as one entry preIn is
+       * nullptr we will see that count is only 1 and not 2
+       */
       EXPECT_EQ(1, adjRib_->getStats().getPreInPrefixCount());
       EXPECT_EQ(1, adjRib_->getStats().getPostInPrefixCount());
       EXPECT_EQ(2, adjRib_->getStats().getRecvUpdateMsgs());
@@ -3111,9 +3229,11 @@ TEST_F(AdjRibInboundFixture, VerifyWithdrawalBeforeStalePathExpiry) {
   evb_.loop();
 }
 
-// (1) have path X in stale adj rib tree
-// (2) receive withdrawal for X
-// (3) verify stale tree empty, adjRibIn empty, withdrawal goes to RibIn
+/*
+ * (1) have path X in stale adj rib tree
+ * (2) receive withdrawal for X
+ * (3) verify stale tree empty, adjRibIn empty, withdrawal goes to RibIn
+ */
 TEST_F(AdjRibInboundFixture, VerifyWithdrawalBeforeStalePathExpiryAddPath) {
   setupAdjRib(kShortGrRestartTime, kShortGrRestartTime);
 
@@ -3139,8 +3259,10 @@ TEST_F(AdjRibInboundFixture, VerifyWithdrawalBeforeStalePathExpiryAddPath) {
   });
 
   fm_->addTask([&] {
-    // (3) wait until withdrawal is processed and announced to Rib. Verify
-    // adjRibIn and adjRibInStale empty
+    /*
+     * (3) wait until withdrawal is processed and announced to Rib. Verify
+     * adjRibIn and adjRibInStale empty
+     */
     facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
     EXPECT_EQ(adjRib_->adjRibInStale_.size(), 0);
     EXPECT_EQ(adjRib_->adjRibInPathTree_.size(), 0);
@@ -3151,8 +3273,10 @@ TEST_F(AdjRibInboundFixture, VerifyWithdrawalBeforeStalePathExpiryAddPath) {
   evb_.loop();
 }
 
-// Test to verify that stale routes are cleaned up as soon as EoR is
-// received.
+/*
+ * Test to verify that stale routes are cleaned up as soon as EoR is
+ * received.
+ */
 TEST_F(AdjRibInboundFixture, VerifyStalePathCleanupWithEoR) {
   setupAdjRib(
       kShortGrRestartTime, // local
@@ -3178,16 +3302,20 @@ TEST_F(AdjRibInboundFixture, VerifyStalePathCleanupWithEoR) {
 
   fm_->addTask([&] {
     {
-      // sessionEstablished already called inside setup method.
-      // Trigger sending of Update message from fiber-bgp-peer.
+      /*
+       * sessionEstablished already called inside setup method.
+       * Trigger sending of Update message from fiber-bgp-peer.
+       */
       sendFirstUpdate.post();
       facebook::bgp::test::boundedBlockingPop(fromAdjRibQ_, "fromAdjRibQ_");
       // wait till RibInAnnouncement route message is sent
       facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
       EXPECT_EQ(prefixSet1.size(), adjRib_->getStats().getPreInPrefixCount());
       EXPECT_EQ(prefixSet1.size(), adjRib_->getStats().getPostInPrefixCount());
-      // Both received EoR PDUs (v4 + v6) are counted at the control plane; this
-      // converges with the socket-layer socket_rx_eor_msgs.
+      /*
+       * Both received EoR PDUs (v4 + v6) are counted at the control plane; this
+       * converges with the socket-layer socket_rx_eor_msgs.
+       */
       EXPECT_EQ(2, adjRib_->getStats().getRecvEndOfRibMsgs());
       // wait for sometime
       fiberSleepFor(10ms);
@@ -3256,9 +3384,11 @@ TEST_F(AdjRibInboundFixture, VerifyGRRestartStalePathRestore) {
   });
 
   fm_->addTask([&] {
-    // Verify that priviously announced paths are cleared of stale,
-    // after session restablishment and receipt of updates before stale path
-    // timer expiry.
+    /*
+     * Verify that priviously announced paths are cleared of stale,
+     * after session restablishment and receipt of updates before stale path
+     * timer expiry.
+     */
     {
       syncBaton[0].post();
       // wait till RibInAnnouncement route message is sent
@@ -3271,8 +3401,10 @@ TEST_F(AdjRibInboundFixture, VerifyGRRestartStalePathRestore) {
       EXPECT_EQ(prefixSet1.size(), adjRib_->getStats().getPreInPrefixCount());
       // Restablish session
       reEstablishSession(std::chrono::seconds(1));
-      // Delay sending updates check that in between routes are marked as
-      // stale.
+      /*
+       * Delay sending updates check that in between routes are marked as
+       * stale.
+       */
       fiberSleepFor(50ms);
       EXPECT_EQ(prefixSet1.size(), adjRib_->getStats().getPreInPrefixCount());
       EXPECT_EQ(nullptr, adjRib_->getRibEntry(/*ingress=*/true, kV6Prefix1));
@@ -3345,9 +3477,11 @@ TEST_F(AdjRibInboundFixture, VerifyGRRestartStalePathRestoreAddPath) {
   });
 
   fm_->addTask([&] {
-    // Verify that priviously announced paths are cleared of stale,
-    // after session restablishment and receipt of updates before stale path
-    // timer expiry.
+    /*
+     * Verify that priviously announced paths are cleared of stale,
+     * after session restablishment and receipt of updates before stale path
+     * timer expiry.
+     */
     {
       syncBaton[0].post();
       // wait till RibInAnnouncement route message is sent
@@ -3362,8 +3496,10 @@ TEST_F(AdjRibInboundFixture, VerifyGRRestartStalePathRestoreAddPath) {
       // Restablish session
       reEstablishSession(std::chrono::seconds(1));
       adjRib_->recAddPath_ = true;
-      // Delay sending updates check that in between routes are marked as
-      // stale.
+      /*
+       * Delay sending updates check that in between routes are marked as
+       * stale.
+       */
       fiberSleepFor(50ms);
       EXPECT_EQ(4, adjRib_->getStats().getPreInPrefixCount());
 
@@ -3467,14 +3603,16 @@ TEST_F(AdjRibInboundFixture, VerifyGRRestartStalePathRestoreAddPath) {
   evb_.loop();
 }
 
-// When acting as a GR helper with receive ADD-PATH enabled,
-// from the helper's perspective, pathIDs are not guaranteed to be the same
-// after GR. Say we have adjRibInStale of {pathID x -> path A, pathID y -> path
-// B}. There are a few interesting announcement cases to consider:
-// 1. Pre-restart path with yet-to-be-seen pathID - {pathID z -> path A}
-// 2. Pre-restart path with seen but different pathID - {pathID x -> path B}
-// This test covers these cases, mostly verifying AdjRibIn and AdjRibInStale
-// state, but also checking RibIn messages sent along the way
+/*
+ * When acting as a GR helper with receive ADD-PATH enabled,
+ * from the helper's perspective, pathIDs are not guaranteed to be the same
+ * after GR. Say we have adjRibInStale of {pathID x -> path A, pathID y -> path
+ * B}. There are a few interesting announcement cases to consider:
+ * 1. Pre-restart path with yet-to-be-seen pathID - {pathID z -> path A}
+ * 2. Pre-restart path with seen but different pathID - {pathID x -> path B}
+ * This test covers these cases, mostly verifying AdjRibIn and AdjRibInStale
+ * state, but also checking RibIn messages sent along the way
+ */
 TEST_F(AdjRibInboundFixture, VerifyGRRestartStalePathShuffleAddPath) {
   setupAdjRib(
       kShortGrRestartTime, // local
@@ -3529,16 +3667,20 @@ TEST_F(AdjRibInboundFixture, VerifyGRRestartStalePathShuffleAddPath) {
     // Wait for verification
     facebook::bgp::test::boundedBatonWait(syncBaton[3], "syncBaton[3]");
 
-    // Step 3: Announce EOR. Other task should verify stale routes are moved as
-    // expected
+    /*
+     * Step 3: Announce EOR. Other task should verify stale routes are moved as
+     * expected
+     */
     adjRibInQ_->fiberPush(buildEndOfRib(BgpUpdateAfi::AFI_IPv4));
     adjRibInQ_->fiberPush(buildEndOfRib(BgpUpdateAfi::AFI_IPv6));
   });
 
   fm_->addTask([&] {
     {
-      // Step 0: Wait for initial announcements {pathID x -> path A, pathID y ->
-      // path B}. Check they reach Rib...
+      /*
+       * Step 0: Wait for initial announcements {pathID x -> path A, pathID y ->
+       * path B}. Check they reach Rib...
+       */
       auto ribInMsg1 =
           facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
       ASSERT_TRUE(std::holds_alternative<RibInAnnouncement>(ribInMsg1));
@@ -3574,8 +3716,10 @@ TEST_F(AdjRibInboundFixture, VerifyGRRestartStalePathShuffleAddPath) {
 
       adjRib_->recAddPath_ = true;
       fiberSleepFor(50ms);
-      // ...verify nothing sent to Rib yet, and both paths (IDs x and y) are
-      // moved from path tree to stale tree ...
+      /*
+       * ...verify nothing sent to Rib yet, and both paths (IDs x and y) are
+       * moved from path tree to stale tree ...
+       */
       EXPECT_TRUE(ribInQ_.empty());
       EXPECT_EQ(0, adjRib_->getRibTreePeerEntriesCount(true, true));
       EXPECT_EQ(2, adjRib_->getRibInStaleTreePaths());
@@ -3591,8 +3735,10 @@ TEST_F(AdjRibInboundFixture, VerifyGRRestartStalePathShuffleAddPath) {
       // ...finally, signal that paths are marked as stale
       syncBaton[1].post();
 
-      // Step 1: Wait for first announce, {pathID z -> path A}. Verify it
-      // reaches Rib...
+      /*
+       * Step 1: Wait for first announce, {pathID z -> path A}. Verify it
+       * reaches Rib...
+       */
       auto ribInMsg3 =
           facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
       ASSERT_TRUE(std::holds_alternative<RibInAnnouncement>(ribInMsg3));
@@ -3619,8 +3765,10 @@ TEST_F(AdjRibInboundFixture, VerifyGRRestartStalePathShuffleAddPath) {
       // ...finally, signal first announcement is verified
       syncBaton[2].post();
 
-      // Step 2: Wait for second announce, {pathID x -> path B}. Verify it
-      // reaches Rib...
+      /*
+       * Step 2: Wait for second announce, {pathID x -> path B}. Verify it
+       * reaches Rib...
+       */
       auto ribInMsg4 =
           facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
       ASSERT_TRUE(std::holds_alternative<RibInAnnouncement>(ribInMsg4));
@@ -3629,8 +3777,10 @@ TEST_F(AdjRibInboundFixture, VerifyGRRestartStalePathShuffleAddPath) {
       EXPECT_EQ(get<0>(announcement4.pfxPathIds[0]), kV4Prefix1);
       EXPECT_EQ(get<1>(announcement4.pfxPathIds[0]), x);
       EXPECT_EQ(announcement4.attrs->getLocalPref(), B);
-      // ...verify x is removed from stale tree, but the stale entry for y is
-      // untouched...
+      /*
+       * ...verify x is removed from stale tree, but the stale entry for y is
+       * untouched...
+       */
       EXPECT_EQ(1, adjRib_->getRibInStaleTreePaths());
       stalePfxMatch = adjRib_->adjRibInStale_.exactMatch(
           kV4Prefix1.first, kV4Prefix1.second);
@@ -3640,8 +3790,10 @@ TEST_F(AdjRibInboundFixture, VerifyGRRestartStalePathShuffleAddPath) {
       stalePath_y = stalePfxMatch.value().find(y);
       ASSERT_TRUE(stalePath_y != stalePfxMatch.value().end());
       EXPECT_EQ(stalePath_y->second->getPreIn()->getLocalPref(), B);
-      // ...verify there are two live entries, one for x->B and still one for
-      // z->A...
+      /*
+       * ...verify there are two live entries, one for x->B and still one for
+       * z->A...
+       */
       EXPECT_EQ(2, adjRib_->getRibTreePeerEntriesCount(true, true));
       adjRibEntry_x = adjRib_->getRibEntry(true, kV4Prefix1, x);
       ASSERT_NE(nullptr, adjRibEntry_x);
@@ -3649,8 +3801,10 @@ TEST_F(AdjRibInboundFixture, VerifyGRRestartStalePathShuffleAddPath) {
       adjRibEntry_z = adjRib_->getRibEntry(true, kV4Prefix1, z);
       ASSERT_NE(nullptr, adjRibEntry_z);
       EXPECT_EQ(adjRibEntry_z->getPreIn()->getLocalPref(), A);
-      // ...finally, signal second announcement is verified. Cleanup will occur
-      // next.
+      /*
+       * ...finally, signal second announcement is verified. Cleanup will occur
+       * next.
+       */
       syncBaton[3].post();
 
       /*
@@ -3661,8 +3815,10 @@ TEST_F(AdjRibInboundFixture, VerifyGRRestartStalePathShuffleAddPath) {
        * pathID y -> path B
        */
 
-      // Step 3: Wait for ribInWithdrawal of stale route. Verify it reaches
-      // Rib...
+      /*
+       * Step 3: Wait for ribInWithdrawal of stale route. Verify it reaches
+       * Rib...
+       */
       auto ribInMsg5 =
           facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
       ASSERT_TRUE(std::holds_alternative<RibInWithdrawal>(ribInMsg5));
@@ -3670,8 +3826,10 @@ TEST_F(AdjRibInboundFixture, VerifyGRRestartStalePathShuffleAddPath) {
       ASSERT_EQ(withdrawal1.pfxPathIds.size(), 1);
       EXPECT_EQ(get<0>(withdrawal1.pfxPathIds[0]), kV4Prefix1);
       EXPECT_EQ(get<1>(withdrawal1.pfxPathIds[0]), y);
-      // ...and verify adjRibInStale empty and adjRibIn untouched with x->B and
-      // z->A
+      /*
+       * ...and verify adjRibInStale empty and adjRibIn untouched with x->B and
+       * z->A
+       */
       EXPECT_EQ(0, adjRib_->getRibInStaleTreePaths());
       EXPECT_EQ(2, adjRib_->getRibTreePeerEntriesCount(true, true));
       adjRibEntry_x = adjRib_->getRibEntry(true, kV4Prefix1, x);
@@ -3706,9 +3864,11 @@ TEST_F(AdjRibInboundFixture, VerifyGRRestartStalePathCleanup) {
   });
 
   fm_->addTask([&] {
-    // Verify that priviously announced paths are cleaned up as stale
-    // after session restablishment and expiry of stale timer without
-    // receipt of updates.
+    /*
+     * Verify that priviously announced paths are cleaned up as stale
+     * after session restablishment and expiry of stale timer without
+     * receipt of updates.
+     */
     {
       syncBaton.post();
       // wait till RibInAnnouncement route message is sent
@@ -3833,8 +3993,10 @@ TEST_F(AdjRibInboundFixture, EndOfRibTest) {
   }
 }
 
-// checks that PromoteStaleRibEntryIfExists is a no-op if there is no matching
-// stale entry for the given prefix/pathID
+/*
+ * checks that PromoteStaleRibEntryIfExists is a no-op if there is no matching
+ * stale entry for the given prefix/pathID
+ */
 TEST_F(AdjRibInboundFixture, PromoteStaleRibInEntryIfExistsTest_NoMatch) {
   setupAdjRib(kShortGrRestartTime, kShortGrRestartTime, false);
   EXPECT_EQ(adjRib_->adjRibInLiteTree_.size(), 0);
@@ -3866,9 +4028,11 @@ TEST_F(AdjRibInboundFixture, PromoteStaleRibInEntryIfExistsTest_NoMatch) {
   EXPECT_TRUE(pfx1AdjRibStaleTreeEntry.value().contains(dummyPathId));
 }
 
-// checks that stale entry promotion properly removes stale entries from the
-// stale tree, whether they are the only entry for the corresponding prefix or
-// not
+/*
+ * checks that stale entry promotion properly removes stale entries from the
+ * stale tree, whether they are the only entry for the corresponding prefix or
+ * not
+ */
 TEST_F(
     AdjRibInboundFixture,
     PromoteStaleRibInEntryIfExistsTest_AddPathStaleRemoval) {
@@ -3880,9 +4044,11 @@ TEST_F(
   RibStats::initCounters();
   auto tcData = facebook::fb303::ThreadCachedServiceData::get();
 
-  // set up stale tree with entries for two prefixes: one with only a single
-  // stale path, and one with multiple stale paths, to verify correct removal of
-  // individual paths from the stale tree on match
+  /*
+   * set up stale tree with entries for two prefixes: one with only a single
+   * stale path, and one with multiple stale paths, to verify correct removal of
+   * individual paths from the stale tree on match
+   */
   auto dummyPathId1 = 0;
   auto dummyPathId2 = 1;
 
@@ -3902,8 +4068,10 @@ TEST_F(
       kV4Prefix1.first, kV4Prefix1.second, std::move(pfx1AdjRibStaleTreeEntry));
   adjRib_->adjRibInStale_.insert(
       kV4Prefix2.first, kV4Prefix2.second, std::move(pfx2AdjRibStaleTreeEntry));
-  // 3 stale entries manually inserted (pfx1/pathId1, pfx2/pathId1,
-  // pfx2/pathId2)
+  /*
+   * 3 stale entries manually inserted (pfx1/pathId1, pfx2/pathId1,
+   * pfx2/pathId2)
+   */
   adjRib_->adjRibInStaleSize_ = 3;
   RibStats::incrAdjRibInStaleCount();
   RibStats::incrAdjRibInStaleCount();
@@ -3935,8 +4103,10 @@ TEST_F(
 
   // call for the prefix with multiple stale paths
   adjRib_->promoteStaleRibInEntryIfExists(kV4Prefix2, dummyPathId1);
-  // path tree should now have kV4Prefix2 -> {dummyPathId1} (and still
-  // kV4Prefix1 -> {dummyPathId1})
+  /*
+   * path tree should now have kV4Prefix2 -> {dummyPathId1} (and still
+   * kV4Prefix1 -> {dummyPathId1})
+   */
   EXPECT_EQ(adjRib_->adjRibInPathTree_.size(), 2);
   tcData->publishStats();
   EXPECT_EQ(2, tcData->getCounter(RibStats::kAdjRibInCount));
@@ -3963,10 +4133,12 @@ TEST_F(
       pfx2StalePathEntries.at(dummyPathId2).get()->getPathId(), dummyPathId2);
 }
 
-// checks whether stale entry promotion works for pfx X pathID A when there are
-// already non-stale entries for X (so we need to move the promoted path into
-// X's entry) and/or A (we need to overwrite the non-stale path for A with the
-// promoted path)
+/*
+ * checks whether stale entry promotion works for pfx X pathID A when there are
+ * already non-stale entries for X (so we need to move the promoted path into
+ * X's entry) and/or A (we need to overwrite the non-stale path for A with the
+ * promoted path)
+ */
 TEST_F(
     AdjRibInboundFixture,
     PromoteStaleRibInEntryIfExistsTest_AddPathUpdates) {
@@ -3976,10 +4148,12 @@ TEST_F(
   EXPECT_EQ(adjRib_->adjRibInPathTree_.size(), 0);
   EXPECT_EQ(adjRib_->adjRibInStale_.size(), 0);
 
-  // put one stale entry for kV4Prefix1 -> {dummyPathId1} and one stale entry
-  // for kV4Prefix2 -> {dummyPathId1}. These will be promoted for testing.
-  // explicitly set nexthop on the prefix2 path so that we can tell exactly
-  // which entry ends up in the path tree later
+  /*
+   * put one stale entry for kV4Prefix1 -> {dummyPathId1} and one stale entry
+   * for kV4Prefix2 -> {dummyPathId1}. These will be promoted for testing.
+   * explicitly set nexthop on the prefix2 path so that we can tell exactly
+   * which entry ends up in the path tree later
+   */
   auto dummyPathId1 = 0;
 
   folly::F14ValueMap<uint32_t, std::unique_ptr<AdjRibEntry>>
@@ -4001,11 +4175,13 @@ TEST_F(
   adjRib_->adjRibInStale_.insert(
       kV4Prefix2.first, kV4Prefix2.second, std::move(pfx2AdjRibStaleTreeEntry));
 
-  // put a non-stale entry for kV4Prefix1 -> {dummyPathId2} (same prefix,
-  // different path) and one non-stale entry for kV4Prefix2 -> {dummyPathId1}
-  // (same prefix, same path)
-  // for the non-stale entry with exact path match in stale tree, set nexthop
-  // explicitly so that we can tell which entry ends up in the path tree later
+  /*
+   * put a non-stale entry for kV4Prefix1 -> {dummyPathId2} (same prefix,
+   * different path) and one non-stale entry for kV4Prefix2 -> {dummyPathId1}
+   * (same prefix, same path)
+   * for the non-stale entry with exact path match in stale tree, set nexthop
+   * explicitly so that we can tell which entry ends up in the path tree later
+   */
   auto dummyPathId2 = 1;
 
   folly::F14ValueMap<uint32_t, std::unique_ptr<AdjRibEntry>>
@@ -4055,8 +4231,10 @@ TEST_F(
   ASSERT_TRUE(pfx1PathEntries.contains(dummyPathId2));
   EXPECT_EQ(pfx1PathEntries.at(dummyPathId2).get()->getPathId(), dummyPathId2);
 
-  // promote the stale path w/ existing non-stale entry for same exact path,
-  // which would be considered an update
+  /*
+   * promote the stale path w/ existing non-stale entry for same exact path,
+   * which would be considered an update
+   */
   adjRib_->promoteStaleRibInEntryIfExists(kV4Prefix2, dummyPathId1);
   // stale entry should be gone from stale tree
   EXPECT_TRUE(
@@ -4067,8 +4245,10 @@ TEST_F(
   EXPECT_EQ(1, tcData->getCounter(RibStats::kAdjRibInCount));
   // Stale counter decremented to 0 (pfx2/pathId1 promoted out of stale)
   EXPECT_EQ(0, tcData->getCounter(RibStats::kAdjRibInStaleCount));
-  // path tree should now have just the updated entry (so, kV4Nexthop2, not
-  // kV4Nexthop1) for pathID 1
+  /*
+   * path tree should now have just the updated entry (so, kV4Nexthop2, not
+   * kV4Nexthop1) for pathID 1
+   */
   auto pfx2Entry = adjRib_->adjRibInPathTree_.exactMatch(
       kV4Prefix2.first, kV4Prefix2.second);
   ASSERT_FALSE(pfx2Entry.atEnd());
@@ -4079,19 +4259,23 @@ TEST_F(
   EXPECT_EQ(pfx2Path1EntryFinal->getPreIn()->getNexthop(), kV4Nexthop2);
 }
 
-// checks whether both new and existing paths from stale entry promotion work in
-// the non-ADD-PATH case
+/*
+ * checks whether both new and existing paths from stale entry promotion work in
+ * the non-ADD-PATH case
+ */
 TEST_F(AdjRibInboundFixture, PromoteStaleRibInEntryIfExistsTest_NonAddPath) {
   setupAdjRib(kShortGrRestartTime, kShortGrRestartTime, false);
   EXPECT_EQ(adjRib_->adjRibInLiteTree_.size(), 0);
   EXPECT_EQ(adjRib_->adjRibInPathTree_.size(), 0);
   EXPECT_EQ(adjRib_->adjRibInStale_.size(), 0);
 
-  // put one stale entry for kV4Prefix1 -> {dummyPathId1} and one stale entry
-  // for kV4Prefix2 -> {dummyPathId1}. One will have no corresponding non-stale
-  // entry (new path case), and one will (update case). Explicitly set the
-  // nexthop of the stale entry for prefix2 to distinguish it from the non-stale
-  // one later
+  /*
+   * put one stale entry for kV4Prefix1 -> {dummyPathId1} and one stale entry
+   * for kV4Prefix2 -> {dummyPathId1}. One will have no corresponding non-stale
+   * entry (new path case), and one will (update case). Explicitly set the
+   * nexthop of the stale entry for prefix2 to distinguish it from the non-stale
+   * one later
+   */
   auto dummyPathId1 = 0;
 
   folly::F14ValueMap<uint32_t, std::unique_ptr<AdjRibEntry>>
@@ -4112,8 +4296,10 @@ TEST_F(AdjRibInboundFixture, PromoteStaleRibInEntryIfExistsTest_NonAddPath) {
   adjRib_->adjRibInStale_.insert(
       kV4Prefix2.first, kV4Prefix2.second, std::move(pfx2AdjRibStaleTreeEntry));
 
-  // put the corresponding non-stale entry for kV4Prefix2. Mark the nexthop to
-  // distinguish it with the corresponding stale one
+  /*
+   * put the corresponding non-stale entry for kV4Prefix2. Mark the nexthop to
+   * distinguish it with the corresponding stale one
+   */
   auto pfx2Entry = std::make_unique<AdjRibEntry>(dummyPathId1);
   auto pfx2Path = std::make_shared<BgpPath>();
   pfx2Path->setNexthop(kV4Nexthop1);
@@ -4156,9 +4342,11 @@ TEST_F(AdjRibInboundFixture, PromoteStaleRibInEntryIfExistsTest_NonAddPath) {
   EXPECT_EQ(1, tcData->getCounter(RibStats::kAdjRibInCount));
   // Stale counter decremented to 0 (pfx2/pathId1 promoted, stale discarded)
   EXPECT_EQ(0, tcData->getCounter(RibStats::kAdjRibInStaleCount));
-  // Lite tree entry exists with pathID 1, and we see
-  // the stale path was discarded and the extant path in liteTree was preserved
-  // (w/ nexthop1)
+  /*
+   * Lite tree entry exists with pathID 1, and we see
+   * the stale path was discarded and the extant path in liteTree was preserved
+   * (w/ nexthop1)
+   */
   liteEntry = adjRib_->adjRibInLiteTree_.exactMatch(
       kV4Prefix2.first, kV4Prefix2.second);
   ASSERT_FALSE(liteEntry.atEnd());
@@ -4166,9 +4354,11 @@ TEST_F(AdjRibInboundFixture, PromoteStaleRibInEntryIfExistsTest_NonAddPath) {
   EXPECT_EQ(liteEntry.value()->getPreIn()->getNexthop(), kV4Nexthop1);
 }
 
-// Tests for promoteStaleRibInEntryIfExistsInPlace (optimized GR)
-// Verifies that when there's no stale entry for the given prefix/pathID,
-// the method is a no-op
+/*
+ * Tests for promoteStaleRibInEntryIfExistsInPlace (optimized GR)
+ * Verifies that when there's no stale entry for the given prefix/pathID,
+ * the method is a no-op
+ */
 TEST_F(
     AdjRibInboundFixture,
     PromoteStaleRibInEntryIfExistsInPlaceTest_NoMatch) {
@@ -4202,8 +4392,10 @@ TEST_F(
   EXPECT_FALSE(liteEntry.value()->isStale());
 }
 
-// Verifies that promoteStaleRibInEntryIfExistsInPlace clears stale bit and
-// decrements counter in ADD-PATH case
+/*
+ * Verifies that promoteStaleRibInEntryIfExistsInPlace clears stale bit and
+ * decrements counter in ADD-PATH case
+ */
 TEST_F(
     AdjRibInboundFixture,
     PromoteStaleRibInEntryIfExistsInPlaceTest_AddPathClears) {
@@ -4267,8 +4459,10 @@ TEST_F(
   EXPECT_FALSE(path2Entry->second->isStale());
 }
 
-// Verifies that promoteStaleRibInEntryIfExistsInPlace clears stale bit and
-// decrements counter in non-ADD-PATH case
+/*
+ * Verifies that promoteStaleRibInEntryIfExistsInPlace clears stale bit and
+ * decrements counter in non-ADD-PATH case
+ */
 TEST_F(
     AdjRibInboundFixture,
     PromoteStaleRibInEntryIfExistsInPlaceTest_NonAddPath) {
@@ -4297,8 +4491,10 @@ TEST_F(
   EXPECT_FALSE(liteEntry.value()->isStale());
 }
 
-// Tests for markLearntRoutesStaleInPlace
-// Verifies marking routes stale in ADD-PATH case
+/*
+ * Tests for markLearntRoutesStaleInPlace
+ * Verifies marking routes stale in ADD-PATH case
+ */
 TEST_F(AdjRibInboundFixture, MarkLearntRoutesStaleInPlaceTest) {
   setupAdjRib(kShortGrRestartTime, kShortGrRestartTime, false);
   adjRib_->enableOptimizedGR_ = true;
@@ -4411,8 +4607,10 @@ TEST_F(AdjRibInboundFixture, MarkLearntRoutesStaleInPlaceTest_NonAddPath) {
   EXPECT_FALSE(liteEntry3.value()->isStale());
 }
 
-// Tests for cleanupStaleRoutesInPlace (optimized GR)
-// Verifies early exit when no stale entries exist
+/*
+ * Tests for cleanupStaleRoutesInPlace (optimized GR)
+ * Verifies early exit when no stale entries exist
+ */
 TEST_F(AdjRibInboundFixture, CleanupStaleRoutesInPlaceTest_NoStaleEntries) {
   setupAdjRib(kShortGrRestartTime, kShortGrRestartTime, false);
   adjRib_->enableOptimizedGR_ = true;
@@ -4611,18 +4809,22 @@ TEST_F(AdjRibInboundFixture, CleanupStaleRoutes_NoPostAttrCounterUnderflow) {
  *      START   -   Update processing correctness tests.                      *
  ******************************************************************************/
 
-// Verify that a policy with both V4 and V6 terms is processed properly when
-// a BGPUpdate2 with both V4 and V6 prefixes is received.
-// Send a BGPUpdate2 with 2 V4 and 2 V6 prefixes.
-// Verify a V6 prefix is accepted. (kV6Prefix1)
-// Verify a V4 prefix is accepted. (kV4Prefix1)
-// Verify a V6 prefix is denied. (kV6Prefix2)
-// Verify a V4 prefix is denied. (kV4Prefix2)
+/*
+ * Verify that a policy with both V4 and V6 terms is processed properly when
+ * a BGPUpdate2 with both V4 and V6 prefixes is received.
+ * Send a BGPUpdate2 with 2 V4 and 2 V6 prefixes.
+ * Verify a V6 prefix is accepted. (kV6Prefix1)
+ * Verify a V4 prefix is accepted. (kV4Prefix1)
+ * Verify a V6 prefix is denied. (kV6Prefix2)
+ * Verify a V4 prefix is denied. (kV4Prefix2)
+ */
 TEST_F(AdjRibInboundFixture, V4AndV6Policy) {
-  // Create a policy with two terms
-  // Term1 match kV4Prefix1 and apply origin action (EGP)
-  // Term2 match kV6Prefix1 and apply origin action (INCOMPLETE)
-  // Prefixes not matched by any term will be denied by default
+  /*
+   * Create a policy with two terms
+   * Term1 match kV4Prefix1 and apply origin action (EGP)
+   * Term2 match kV6Prefix1 and apply origin action (INCOMPLETE)
+   * Prefixes not matched by any term will be denied by default
+   */
 
   // Creating TERM1 (match kV4Prefix1 and apply origin action (EGP))
   routing_policy::CompareNumericValue compareStructEQ;
@@ -4663,10 +4865,12 @@ TEST_F(AdjRibInboundFixture, V4AndV6Policy) {
   });
 
   fm_->addTask([&] {
-    // Verify ribIn messages (2 messages)
-    // V4 and V6 policies are applied separately.
-    // NOTE: Here order of messages is hardcoded.
-    //       If we change order of processing we need to modify testcase.
+    /*
+     * Verify ribIn messages (2 messages)
+     * V4 and V6 policies are applied separately.
+     * NOTE: Here order of messages is hardcoded.
+     *       If we change order of processing we need to modify testcase.
+     */
     auto msg1 = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
     ASSERT_TRUE(std::holds_alternative<RibInAnnouncement>(msg1));
     const auto announcement1 = std::get<RibInAnnouncement>(msg1);
@@ -4731,9 +4935,11 @@ TEST_F(AdjRibInboundFixture, V4AndV6Policy) {
 }
 
 TEST_F(AdjRibInboundFixture, VerifyUpdateAttributesIn) {
-  // IBGP peer
-  // Verify preIn attributes are same as in the update
-  // i.e. local preference, originator id, cluster list are unmodified
+  /*
+   * IBGP peer
+   * Verify preIn attributes are same as in the update
+   * i.e. local preference, originator id, cluster list are unmodified
+   */
   {
     setupAdjRib(
         kShortGrRestartTime,
@@ -4759,9 +4965,11 @@ TEST_F(AdjRibInboundFixture, VerifyUpdateAttributesIn) {
     auto outputAttrs = adjRib_->updateAttributesIn(inputAttrs);
     EXPECT_EQ(*inputAttrs, *outputAttrs);
   }
-  // Confed EBGP peer
-  // Verify preIn is same as in the update when local preference is presented
-  // i.e. local preference, originator id, cluster list are unmodified
+  /*
+   * Confed EBGP peer
+   * Verify preIn is same as in the update when local preference is presented
+   * i.e. local preference, originator id, cluster list are unmodified
+   */
   {
     setupAdjRib(
         kShortGrRestartTime,
@@ -4778,8 +4986,10 @@ TEST_F(AdjRibInboundFixture, VerifyUpdateAttributesIn) {
         static_cast<uint32_t>(kLocalAs1), // local confed as
         static_cast<uint32_t>(kLocalAs2)); // as confed id
 
-    // Case 1: Verify localPref is preserved (not set to default)
-    // Case 2: Verify originator id and cluster list are retained
+    /*
+     * Case 1: Verify localPref is preserved (not set to default)
+     * Case 2: Verify originator id and cluster list are retained
+     */
     auto inputUpdate = createV4BgpUpdateSingleAnnounce(kV4Prefix1, kV4Nexthop1);
     // Overwrite default value in update to non-default local preferencee
     inputUpdate->attrs()->localPref() = kLocalPref2;
@@ -4795,8 +5005,10 @@ TEST_F(AdjRibInboundFixture, VerifyUpdateAttributesIn) {
     // Deep compare of BgpPath
     EXPECT_EQ(*inputAttrs, *outputAttrs);
   }
-  // Confed EBGP peer
-  // Verify preIn is updated to default when local preference is not presented
+  /*
+   * Confed EBGP peer
+   * Verify preIn is updated to default when local preference is not presented
+   */
   {
     setupAdjRib(
         kShortGrRestartTime,
@@ -4824,9 +5036,11 @@ TEST_F(AdjRibInboundFixture, VerifyUpdateAttributesIn) {
     auto outputAttrs = adjRib_->updateAttributesIn(inputAttrs);
     EXPECT_EQ(facebook::bgp::kDefaultLocalPref, outputAttrs->getLocalPref());
   }
-  // Verify that for Ebgp peer, preIn attributes are updated
-  // Local preference is set to default.
-  // Orginator id and cluster list stripped.
+  /*
+   * Verify that for Ebgp peer, preIn attributes are updated
+   * Local preference is set to default.
+   * Orginator id and cluster list stripped.
+   */
   {
     setupAdjRib(
         kShortGrRestartTime,
@@ -4839,9 +5053,11 @@ TEST_F(AdjRibInboundFixture, VerifyUpdateAttributesIn) {
     auto inputUpdate = createV4BgpUpdateSingleAnnounce(kV4Prefix1, kV4Nexthop1);
     // Case 1: Verify localPref is set to default (100)
     inputUpdate->attrs()->localPref().reset();
-    // Case 2: Verify originatorId and clusterList are stripped
-    // originator id and cluster list shoule be in network byte order in
-    // BgpUpdate2
+    /*
+     * Case 2: Verify originatorId and clusterList are stripped
+     * originator id and cluster list shoule be in network byte order in
+     * BgpUpdate2
+     */
     const auto originatorId = kPeerAddr1.asV4().toLong();
     *inputUpdate->attrs()->originatorId() = originatorId;
     inputUpdate->attrs()->clusterList()->clear();
@@ -5044,8 +5260,10 @@ TEST_F(AdjRibInboundFixture, VerifyTinyPeerInfoInRibInMessages) {
  *      START   -   Route change tests caused by incremental BGP update       *
  ******************************************************************************/
 
-// Verify that a learnt route is deleted if we get update
-// with our own AS in the path attributes
+/*
+ * Verify that a learnt route is deleted if we get update
+ * with our own AS in the path attributes
+ */
 TEST_F(AdjRibInboundFixture, AsLoopRouteProcessingAfterLearning) {
   setupAdjRib();
 
@@ -5137,12 +5355,14 @@ TEST_F(AdjRibInboundFixture, NexthopChangeHandling) {
  *  2) Update prefix1 with IGP type. Policy rejects it and is withdrawn from Rib
  */
 TEST_F(AdjRibInboundFixture, V4PolicyAcceptReject) {
-  // Create a policy with three terms
-  // Term1 match kV4Prefix1, kV4Prefix2 and apply origin action (EGP) & as
-  // path overwrite action as_path_overwrite_list set to {0, 0}, AdjRib will
-  // override 0 asns based on ingress or egress routes; Term2 match kV4Prefix3
-  // and discard Term3 match kV4Prefix4 and PERMIT (do not modify any
-  // attributes)
+  /*
+   * Create a policy with three terms
+   * Term1 match kV4Prefix1, kV4Prefix2 and apply origin action (EGP) & as
+   * path overwrite action as_path_overwrite_list set to {0, 0}, AdjRib will
+   * override 0 asns based on ingress or egress routes; Term2 match kV4Prefix3
+   * and discard Term3 match kV4Prefix4 and PERMIT (do not modify any
+   * attributes)
+   */
   const std::string policyName = kIngressPolicyName;
   auto policyManager = setupDenyIgpOriginAcceptAllPolicy(policyName);
 
@@ -5200,20 +5420,24 @@ TEST_F(AdjRibInboundFixture, V4PolicyAcceptReject) {
   evb_.loop();
 }
 
-// Ensure that a BGPupdate2 with multiple v4 prefix when policy applied is
-// properly processed.
-// Verify the following:
-// Prefix discarded is processed properly
-// Accepted prefixes with policy modified attributes are processed properly
-// Accepted prefix without changes to attributes is processed properly
-// Multiple prefixes sharing same attributes are notified to Rib together
+/*
+ * Ensure that a BGPupdate2 with multiple v4 prefix when policy applied is
+ * properly processed.
+ * Verify the following:
+ * Prefix discarded is processed properly
+ * Accepted prefixes with policy modified attributes are processed properly
+ * Accepted prefix without changes to attributes is processed properly
+ * Multiple prefixes sharing same attributes are notified to Rib together
+ */
 TEST_F(AdjRibInboundFixture, V4UpdatePolicyProcessing) {
-  // Create a policy with three terms
-  // Term1 match kV4Prefix1, kV4Prefix2 and apply origin action (EGP) & as
-  // path overwrite action as_path_overwrite_list set to {0, 0}, AdjRib will
-  // override 0 asns based on ingress or egress routes; Term2 match kV4Prefix3
-  // and discard Term3 match kV4Prefix4 and PERMIT (do not modify any
-  // attributes)
+  /*
+   * Create a policy with three terms
+   * Term1 match kV4Prefix1, kV4Prefix2 and apply origin action (EGP) & as
+   * path overwrite action as_path_overwrite_list set to {0, 0}, AdjRib will
+   * override 0 asns based on ingress or egress routes; Term2 match kV4Prefix3
+   * and discard Term3 match kV4Prefix4 and PERMIT (do not modify any
+   * attributes)
+   */
   const std::string policyName = kIngressPolicyName;
   auto policyManager = setup3TermPolicy(policyName);
 
@@ -5228,11 +5452,13 @@ TEST_F(AdjRibInboundFixture, V4UpdatePolicyProcessing) {
   });
 
   fm_->addTask([&] {
-    // Verify ribIn messages (2 messages)
-    // 1st message with 1 prefix
-    // 2nd message with 2 prefixes sharing attributes
-    // NOTE: Here order of messages is hardcoded.
-    //       If we change order of processing we need to modify testcase.
+    /*
+     * Verify ribIn messages (2 messages)
+     * 1st message with 1 prefix
+     * 2nd message with 2 prefixes sharing attributes
+     * NOTE: Here order of messages is hardcoded.
+     *       If we change order of processing we need to modify testcase.
+     */
     auto msg1 = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
     ASSERT_TRUE(std::holds_alternative<RibInAnnouncement>(msg1));
     const auto announcement1 = std::get<RibInAnnouncement>(msg1);
@@ -5276,8 +5502,10 @@ TEST_F(AdjRibInboundFixture, V4UpdatePolicyProcessing) {
     auto adjRibEntry3 = adjRib_->getRibEntry(/*ingress=*/true, kV4Prefix3);
     auto adjRibEntry4 = adjRib_->getRibEntry(/*ingress=*/true, kV4Prefix4);
 
-    // Verify policy permitted and modified attribute prefixes
-    // (kV4Prefix1, kV4Prefix2) share postIn. Shallow compare
+    /*
+     * Verify policy permitted and modified attribute prefixes
+     * (kV4Prefix1, kV4Prefix2) share postIn. Shallow compare
+     */
     EXPECT_EQ(adjRibEntry1->getPostAttr(), adjRibEntry2->getPostAttr());
     EXPECT_NE(adjRibEntry1->getPostAttr(), adjRibEntry4->getPostAttr());
     EXPECT_NE(adjRibEntry1->getPreIn(), adjRibEntry1->getPostAttr());
@@ -5290,20 +5518,26 @@ TEST_F(AdjRibInboundFixture, V4UpdatePolicyProcessing) {
     // Check postIn is properly notified to rib
     EXPECT_EQ(announcement2.attrs, adjRibEntry1->getPostAttr());
 
-    // Verify DENIED prefix (kV4Prefix3) adjrib entry
-    // There will be an rib entry corresponding to kV4Prefix3.
+    /*
+     * Verify DENIED prefix (kV4Prefix3) adjrib entry
+     * There will be an rib entry corresponding to kV4Prefix3.
+     */
     EXPECT_EQ(nullptr, adjRibEntry3->getPostAttr());
     EXPECT_EQ(adjRibEntry3->getPreIn(), adjRibEntry1->getPreIn());
 
-    // Verify policy unmodified PERMITED prefix (kV4Prefix4) fields.
-    // PreIn == PostIn (comparing deep copy), PostIn and rib notified
-    // attributes are same
+    /*
+     * Verify policy unmodified PERMITED prefix (kV4Prefix4) fields.
+     * PreIn == PostIn (comparing deep copy), PostIn and rib notified
+     * attributes are same
+     */
     EXPECT_EQ(*adjRibEntry4->getPreIn(), *adjRibEntry4->getPostAttr());
     EXPECT_EQ(adjRibEntry4->getPreIn(), adjRibEntry1->getPreIn());
     EXPECT_EQ(announcement1.attrs, adjRibEntry4->getPostAttr());
 
-    // Verify as path in attributes (was {0, 0} after policy action)
-    // has been replace to two remoteAs of peer
+    /*
+     * Verify as path in attributes (was {0, 0} after policy action)
+     * has been replace to two remoteAs of peer
+     */
     auto asPath = adjRibEntry1->getPostAttr()->getAsPath();
     EXPECT_EQ(1, asPath->size());
     auto expectedAsns = std::vector<uint32_t>{
@@ -5370,13 +5604,17 @@ TEST_F(AdjRibInboundFixture, IngressPolicyAsPathUsesAcceptedRemoteAs) {
   evb_.loop();
 }
 
-// Verify that a prefix which is denied due to policy and later changes it's
-// attributes and is permitted by policy due to attribute changes is processed
-// properly and notified to Rib
+/*
+ * Verify that a prefix which is denied due to policy and later changes it's
+ * attributes and is permitted by policy due to attribute changes is processed
+ * properly and notified to Rib
+ */
 TEST_F(AdjRibInboundFixture, VerifyPermitAfterDeny) {
-  // Create a policy with two terms
-  // Term1 match origin IGP and deny
-  // Term2 permit all
+  /*
+   * Create a policy with two terms
+   * Term1 match origin IGP and deny
+   * Term2 permit all
+   */
   const std::string policyName = kIngressPolicyName;
   auto policyManager = setupDenyIgpOriginAcceptAllPolicy(policyName);
 
@@ -5406,8 +5644,10 @@ TEST_F(AdjRibInboundFixture, VerifyPermitAfterDeny) {
   });
 
   fm_->addTask([&] {
-    // Update 1 will not lead to any Rib notification
-    // Verifying only after Update 2 is sent
+    /*
+     * Update 1 will not lead to any Rib notification
+     * Verifying only after Update 2 is sent
+     */
     auto msg = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
     ASSERT_TRUE(std::holds_alternative<RibInAnnouncement>(msg));
     const auto announcement = std::get<RibInAnnouncement>(msg);
@@ -5443,14 +5683,18 @@ TEST_F(AdjRibInboundFixture, VerifyPermitAfterDeny) {
   evb_.loop();
 }
 
-// Verify that a prefix which is permitted due to policy and later changes
-// it's attributes and is denied by policy due to attribute changes is
-// processed properly and notified to Rib. i.e. 2nd BgpUpdate Announcement
-// leads to AdjRib sending RibInWithdrawal
+/*
+ * Verify that a prefix which is permitted due to policy and later changes
+ * it's attributes and is denied by policy due to attribute changes is
+ * processed properly and notified to Rib. i.e. 2nd BgpUpdate Announcement
+ * leads to AdjRib sending RibInWithdrawal
+ */
 TEST_F(AdjRibInboundFixture, VerifyDenyAfterPermit) {
-  // Create a policy with two terms
-  // Term1 match origin IGP and deny
-  // Term2 permit all
+  /*
+   * Create a policy with two terms
+   * Term1 match origin IGP and deny
+   * Term2 permit all
+   */
   const std::string policyName = kIngressPolicyName;
   auto policyManager = setupDenyIgpOriginAcceptAllPolicy(policyName);
 
@@ -5501,8 +5745,10 @@ TEST_F(AdjRibInboundFixture, VerifyDenyAfterPermit) {
           BgpAttrOrigin::BGP_ORIGIN_EGP, adjRibEntry->getPreIn()->getOrigin());
     }
     {
-      // Verifying withdrawal due to policy denying kV4Prefix1
-      // after attribute change
+      /*
+       * Verifying withdrawal due to policy denying kV4Prefix1
+       * after attribute change
+       */
       auto msg = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
       ASSERT_TRUE(std::holds_alternative<RibInWithdrawal>(msg));
       const auto withdrawal = std::get<RibInWithdrawal>(msg);
@@ -5523,24 +5769,30 @@ TEST_F(AdjRibInboundFixture, VerifyDenyAfterPermit) {
   evb_.loop();
 }
 
-// Verify that an add-path prefix, which is initially permitted due to policy
-// is denied by policy, when an update with changed attributes is received.
-// Check that attribute changes are processed properly and prefix notified as
-// withdrawn to Rib.
+/*
+ * Verify that an add-path prefix, which is initially permitted due to policy
+ * is denied by policy, when an update with changed attributes is received.
+ * Check that attribute changes are processed properly and prefix notified as
+ * withdrawn to Rib.
+ */
 TEST_F(AdjRibInboundFixture, VerifyDenyAfterPermitAddpath) {
-  // Create a policy with two terms
-  // Term1 match origin IGP and deny
-  // Term2 permit all
+  /*
+   * Create a policy with two terms
+   * Term1 match origin IGP and deny
+   * Term2 permit all
+   */
   const std::string policyName = kIngressPolicyName;
   auto policyManager = setupDenyIgpOriginAcceptAllPolicy(policyName);
 
   setupAdjRib(policyManager, policyName);
 
   fm_->addTask([&] {
-    // recAddPath_ must be overwritten in a task, to allow
-    // AdjRibInboundFixture::establishSession() created task
-    // to run adjRib->sessionEstablished() and initialize recAddPath_,
-    // before this overwrite gets to run.
+    /*
+     * recAddPath_ must be overwritten in a task, to allow
+     * AdjRibInboundFixture::establishSession() created task
+     * to run adjRib->sessionEstablished() and initialize recAddPath_,
+     * before this overwrite gets to run.
+     */
     adjRib_->recAddPath_ = true;
     {
       // Update 1 which will be permitted by policy
@@ -5598,8 +5850,10 @@ TEST_F(AdjRibInboundFixture, VerifyDenyAfterPermitAddpath) {
       EXPECT_EQ(1, adjRib_->getStats().getPostInPrefixCount());
     }
     {
-      // Verifying withdrawal due to policy denying kV4Prefix1
-      // after attribute change
+      /*
+       * Verifying withdrawal due to policy denying kV4Prefix1
+       * after attribute change
+       */
       auto msg = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
       ASSERT_TRUE(std::holds_alternative<RibInWithdrawal>(msg));
       const auto withdrawal = std::get<RibInWithdrawal>(msg);
@@ -5627,8 +5881,10 @@ TEST_F(AdjRibInboundFixture, VerifyDenyAfterPermitAddpath) {
   evb_.loop();
 }
 
-// Verify that we change local preference to default value
-// for ebgp-learned routes
+/*
+ * Verify that we change local preference to default value
+ * for ebgp-learned routes
+ */
 TEST_F(AdjRibInboundFixture, LocalPrefPrePolicyProcessing) {
   setupAdjRib(
       kShortGrRestartTime,
@@ -5710,14 +5966,18 @@ TEST_F(AdjRibInboundFixture, AttributeChangeHandling) {
   evb_.loop();
 }
 
-// Verify that a withdraw message is notified to Rib only if it was previously
-// announced to Rib. (i.e. If a prefix is never announced to Rib due to policy
-// denying it, we will not send withdrawal as well)
+/*
+ * Verify that a withdraw message is notified to Rib only if it was previously
+ * announced to Rib. (i.e. If a prefix is never announced to Rib due to policy
+ * denying it, we will not send withdrawal as well)
+ */
 TEST_F(
     AdjRibInboundFixture,
     WithdrawNotNotifiedToRibIfPolicyBlockedAnnouncement) {
-  // Create a policy with one term
-  // Term1 deny all
+  /*
+   * Create a policy with one term
+   * Term1 deny all
+   */
 
   // Creating TERM1 (match all and DENY)
   auto actionDeny = createBgpPolicyAction(BgpPolicyActionType::DENY);
@@ -5762,15 +6022,19 @@ TEST_F(
   evb_.loop();
 }
 
-// Verify that RibInAnnouncement of a prefix is done only if postInAttrs
-// contents have changed and not because of shared_ptr changed.
-// This can happen for cases like
-// - Bgp update received with same values as policy modified attributes from
-// prior update
-// - Policy created attributes which are exactly same as received attributes
+/*
+ * Verify that RibInAnnouncement of a prefix is done only if postInAttrs
+ * contents have changed and not because of shared_ptr changed.
+ * This can happen for cases like
+ * - Bgp update received with same values as policy modified attributes from
+ * prior update
+ * - Policy created attributes which are exactly same as received attributes
+ */
 TEST_F(AdjRibInboundFixture, DeepComparePostInAttributesBeforeNotifying) {
-  // Create a policy with one term
-  // Term1 match all, set action origin IGP
+  /*
+   * Create a policy with one term
+   * Term1 match all, set action origin IGP
+   */
   const std::string policyName = kIngressPolicyName;
   auto policyManager = setupMatchAllSetOriginIgpPolicy(policyName);
 
@@ -5778,8 +6042,10 @@ TEST_F(AdjRibInboundFixture, DeepComparePostInAttributesBeforeNotifying) {
 
   fm_->addTask([&] {
     {
-      // Update 1 which will be permitted by policy
-      // Policy will modify origin attribute to IGP
+      /*
+       * Update 1 which will be permitted by policy
+       * Policy will modify origin attribute to IGP
+       */
       auto update = createV4BgpUpdateSingleAnnounce(
           kV4Prefix1,
           kV4Nexthop1,
@@ -5790,9 +6056,11 @@ TEST_F(AdjRibInboundFixture, DeepComparePostInAttributesBeforeNotifying) {
     }
     fiberSleepFor(20ms);
     {
-      // Update 2 for same prefix with IGP origin
-      // This update will not lead to any RibInAnnouncement as postInAttrs
-      // have not changed from previous update (even though preIn changed)
+      /*
+       * Update 2 for same prefix with IGP origin
+       * This update will not lead to any RibInAnnouncement as postInAttrs
+       * have not changed from previous update (even though preIn changed)
+       */
       auto update = createV4BgpUpdateSingleAnnounce(
           kV4Prefix1,
           kV4Nexthop1,
@@ -5824,8 +6092,10 @@ TEST_F(AdjRibInboundFixture, DeepComparePostInAttributesBeforeNotifying) {
     EXPECT_EQ(
         BgpAttrOrigin::BGP_ORIGIN_IGP, adjRibEntry->getPostAttr()->getOrigin());
 
-    // No new RibInAnnouncement for the Update 2
-    // even though preIn updated (origin changed from EGP to IGP)
+    /*
+     * No new RibInAnnouncement for the Update 2
+     * even though preIn updated (origin changed from EGP to IGP)
+     */
     fiberSleepFor(40ms);
     EXPECT_TRUE(ribInQ_.empty());
 
@@ -5945,8 +6215,10 @@ TEST_F(AdjRibInboundFixture, IngressUcmpPolicyTestDecodeAll) {
     EXPECT_NE(nullptr, adjRibEntry);
     auto topoInfo = adjRibEntry->getPostAttr()->getTopologyInfo();
     EXPECT_TRUE(topoInfo.has_value());
-    // kExtCommLbwTypeSecondWord10G is
-    // (01010000)(00010101)(00000010)(1111)(1001)b
+    /*
+     * kExtCommLbwTypeSecondWord10G is
+     * (01010000)(00010101)(00000010)(1111)(1001)b
+     */
     EXPECT_EQ(topoInfo->at("rack_id"), 9);
     EXPECT_EQ(topoInfo->at("plane_id"), 15);
     EXPECT_EQ(topoInfo->at("remote_rack_capacity"), 2);
@@ -6024,8 +6296,10 @@ TEST_F(AdjRibInboundFixture, IngressUcmpPolicyTestAccept) {
 TEST_F(
     AdjRibProcessPeerAnnouncedFixture,
     GetPostInPolicyAttributesTest_RejectedByInvalidGarWeights) {
-  // Create a DECODE_ALL UCMP policy that will trigger isLbwRejected
-  // when the route has no LBW extended community.
+  /*
+   * Create a DECODE_ALL UCMP policy that will trigger isLbwRejected
+   * when the route has no LBW extended community.
+   */
   auto policyManager = createPolicyManagerForIngressUcmpPolicy(
       bgp_policy::LbwExtCommunityActionType::DECODE_ALL);
   // Set up adjRib with policy manager.
@@ -6041,8 +6315,10 @@ TEST_F(
       policyManager,
       kIngressPolicyName);
 
-  // Create attrs WITHOUT any LBW extended community.
-  // DECODE_ALL will set isLbwRejected = true when LBW is missing.
+  /*
+   * Create attrs WITHOUT any LBW extended community.
+   * DECODE_ALL will set isLbwRejected = true when LBW is missing.
+   */
   auto prePolicyAttrs =
       std::make_shared<BgpPath>(*buildBgpPathFields(1, 1, 0, 0));
   prePolicyAttrs->setOrigin(BgpAttrOrigin::BGP_ORIGIN_IGP);
@@ -6222,9 +6498,11 @@ TEST_F(AdjRibInboundFixture, SetRouteFilterStatementNewlyInitializedPeerTest) {
           {}, false /* permissive */, false /* egress */));
   auto policy = std::make_unique<RouteFilterPolicy>(tPolicy);
 
-  // Test with newly initialized adjRib (no learned routes yet)
-  // nullptr -> stmt1 (should return (true, false), statement set for ingress
-  // only)
+  /*
+   * Test with newly initialized adjRib (no learned routes yet)
+   * nullptr -> stmt1 (should return (true, false), statement set for ingress
+   * only)
+   */
   auto [ingressChanged1, egressChanged1] = adjRib_->setRouteFilterStatement(
       policy->getStatements().at("stmt1"), nullptr);
   EXPECT_TRUE(ingressChanged1);
@@ -6235,9 +6513,11 @@ TEST_F(AdjRibInboundFixture, SetRouteFilterStatementNewlyInitializedPeerTest) {
       {}, false /* permissive */); // default value for egress (true)
   policy = std::make_unique<RouteFilterPolicy>(tPolicy);
 
-  // Test egress policy change with newly initialized adjRib
-  // stmt1 -> stmt1' (should return (true, true), statement changed removed
-  // ingress and added egress)
+  /*
+   * Test egress policy change with newly initialized adjRib
+   * stmt1 -> stmt1' (should return (true, true), statement changed removed
+   * ingress and added egress)
+   */
   auto [ingressChanged2, egressChanged2] = adjRib_->setRouteFilterStatement(
       policy->getStatements().at("stmt1"), nullptr);
   EXPECT_TRUE(ingressChanged2);
@@ -6249,9 +6529,11 @@ TEST_F(AdjRibInboundFixture, SetRouteFilterStatementNewlyInitializedPeerTest) {
           {}, {}, false /* ingressPermissive */, false /* egressPermissive */);
   policy = std::make_unique<RouteFilterPolicy>(tPolicy);
 
-  // Test ingress and egress policy change with newly initialized adjRib
-  // stmt1' -> stmt1'' (should return (false, true), statement changed for
-  // egress only
+  /*
+   * Test ingress and egress policy change with newly initialized adjRib
+   * stmt1' -> stmt1'' (should return (false, true), statement changed for
+   * egress only
+   */
   auto [ingressChanged3, egressChanged3] = adjRib_->setRouteFilterStatement(
       policy->getStatements().at("stmt1"), nullptr);
   EXPECT_FALSE(ingressChanged3);
@@ -6301,8 +6583,10 @@ TEST_F(AdjRibInboundFixture, VerifyRouteFilterPolicyDeny) {
       "rsw001", "rsw.*", "fsw001", mockScuba);
 
   fm_->addTask([&] {
-    // Set route filter statement to block all prefixes (empty list in blocking
-    // mode)
+    /*
+     * Set route filter statement to block all prefixes (empty list in blocking
+     * mode)
+     */
     auto tStmt = createTRouteFilterStatement(
         {}, false /* permissive */, false /* egress */);
 
@@ -6311,8 +6595,10 @@ TEST_F(AdjRibInboundFixture, VerifyRouteFilterPolicyDeny) {
     EXPECT_TRUE(ingressChanged2);
     EXPECT_FALSE(egressChanged2);
 
-    // Announce 2 prefixes and expect both to be blocked by Ingress route filter
-    // policy
+    /*
+     * Announce 2 prefixes and expect both to be blocked by Ingress route filter
+     * policy
+     */
     auto update1 = createV4BgpUpdateSingleAnnounce(
         kV4Prefix1,
         kV4Nexthop1,
@@ -6332,8 +6618,10 @@ TEST_F(AdjRibInboundFixture, VerifyRouteFilterPolicyDeny) {
 
   fm_->addTask([&] {
     fiberSleepFor(50ms);
-    // Ensure no RibInAnnouncements or RibInWithdrawals are generated for the
-    // blocked prefixes
+    /*
+     * Ensure no RibInAnnouncements or RibInWithdrawals are generated for the
+     * blocked prefixes
+     */
     WITH_RETRIES_N(5, { EXPECT_TRUE(ribInQ_.empty()); });
 
     // Verify adjrib entries are correct
@@ -6847,8 +7135,10 @@ TEST_F(
 
     facebook::bgp::test::boundedBatonWait(syncBaton[1], "syncBaton[1]");
 
-    // Step 3: Announce 3 prefixes, 2 of them will be rejected by route filter
-    // policy (kV4Prefix3 and kV4Prefix4) and 1 allowed (kV4Prefix2)
+    /*
+     * Step 3: Announce 3 prefixes, 2 of them will be rejected by route filter
+     * policy (kV4Prefix3 and kV4Prefix4) and 1 allowed (kV4Prefix2)
+     */
     auto update = createV4BgpUpdateMultipleAnnounce(prefixSet1);
     adjRibInQ_->fiberPush(std::move(update));
 
@@ -6871,9 +7161,11 @@ TEST_F(
   fm_->addTask([&] {
     syncBaton[0].post();
 
-    // -------------Step 1-2 verifications------------------
-    // Wait for and verify RibInAnnouncements for the initially allowed
-    // prefixes
+    /*
+     * -------------Step 1-2 verifications------------------
+     * Wait for and verify RibInAnnouncements for the initially allowed
+     * prefixes
+     */
     auto ribUpdate1 =
         facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
     ASSERT_TRUE(std::holds_alternative<RibInAnnouncement>(ribUpdate1));
@@ -6894,9 +7186,11 @@ TEST_F(
 
     syncBaton[1].post();
 
-    // -------------Step 3 verifications------------------
-    // Wait for and verify RibInAnnouncements for the
-    // allowed prefix (kV4Prefix2)
+    /*
+     * -------------Step 3 verifications------------------
+     * Wait for and verify RibInAnnouncements for the
+     * allowed prefix (kV4Prefix2)
+     */
     auto ribUpdate2 =
         facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
     ASSERT_TRUE(std::holds_alternative<RibInAnnouncement>(ribUpdate2));
@@ -6933,16 +7227,20 @@ TEST_F(
     EXPECT_EQ(
         "Denied by Route Filter Policy", *adjRibEntry4->getPostInPolicy());
 
-    // Verify stats - should be 2 postIn (only allowed prefixes) but 4 preIn
-    // (all prefixes)
+    /*
+     * Verify stats - should be 2 postIn (only allowed prefixes) but 4 preIn
+     * (all prefixes)
+     */
     EXPECT_EQ(4, adjRib_->getStats().getPreInPrefixCount());
     EXPECT_EQ(2, adjRib_->getStats().getPostInPrefixCount());
 
     syncBaton[2].post();
 
-    //  -------------Step 4-5 verifications------------------
-    // Verify RibInWithdrawal is received for Prefix1 and Prefix2 in
-    // batch
+    /*
+     *  -------------Step 4-5 verifications------------------
+     * Verify RibInWithdrawal is received for Prefix1 and Prefix2 in
+     * batch
+     */
     auto ribUpdateBatch1 =
         facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
     ASSERT_TRUE(std::holds_alternative<RibInWithdrawal>(ribUpdateBatch1));
@@ -6957,8 +7255,10 @@ TEST_F(
     EXPECT_EQ(1, withdrawnPrefixes.count(kV4Prefix1));
     EXPECT_EQ(1, withdrawnPrefixes.count(kV4Prefix2));
 
-    // Verify adjrib entries are correctly updated for previously allowed
-    // prefixes
+    /*
+     * Verify adjrib entries are correctly updated for previously allowed
+     * prefixes
+     */
     adjRibEntry1 = adjRib_->getRibEntry(/*ingress=*/true, kV4Prefix1);
     EXPECT_NE(nullptr, adjRibEntry1);
     EXPECT_NE(nullptr, adjRibEntry1->getPreIn());
@@ -6975,8 +7275,10 @@ TEST_F(
     EXPECT_EQ(
         "Denied by Route Filter Policy", *adjRibEntry2->getPostInPolicy());
 
-    // Verify RibInAnnouncement is received for Prefix3 and Prefix4 in
-    // batch
+    /*
+     * Verify RibInAnnouncement is received for Prefix3 and Prefix4 in
+     * batch
+     */
     auto ribUpdateBatch2 =
         facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
     ASSERT_TRUE(std::holds_alternative<RibInAnnouncement>(ribUpdateBatch2));
@@ -7006,8 +7308,10 @@ TEST_F(
     EXPECT_TRUE(adjRibEntry4->getPostInPolicy());
     EXPECT_NE(nullptr, adjRibEntry4->getPostInPolicy());
 
-    // Verify final stats - still 4 preIn prefixes, but now 2 different postIn
-    // prefixes
+    /*
+     * Verify final stats - still 4 preIn prefixes, but now 2 different postIn
+     * prefixes
+     */
     EXPECT_EQ(4, adjRib_->getStats().getPreInPrefixCount());
     EXPECT_EQ(2, adjRib_->getStats().getPostInPrefixCount());
 
@@ -7062,8 +7366,10 @@ TEST_F(
     EXPECT_TRUE(ingressChanged1);
     EXPECT_FALSE(egressChanged1);
 
-    // Step 2: Announce 2 prefixes that should be allowed (kV4Prefix1 and
-    // kV4Prefix2)
+    /*
+     * Step 2: Announce 2 prefixes that should be allowed (kV4Prefix1 and
+     * kV4Prefix2)
+     */
     auto update1 = createV4BgpUpdateSingleAnnounce(
         kV4Prefix1,
         kV4Nexthop1,
@@ -7082,8 +7388,10 @@ TEST_F(
 
     facebook::bgp::test::boundedBatonWait(syncBaton[1], "syncBaton[1]");
 
-    // Step 3: Update the policy to deny all prefixes (empty list in blocking
-    // mode)
+    /*
+     * Step 3: Update the policy to deny all prefixes (empty list in blocking
+     * mode)
+     */
     tStmt = createTRouteFilterStatement(
         {}, false /* permissive */, false /* egress */);
 
@@ -7098,8 +7406,10 @@ TEST_F(
 
     facebook::bgp::test::boundedBatonWait(syncBaton[2], "syncBaton[2]");
 
-    // Step 5: Issue policy re-evaluation after session termination is complete
-    // This should be a no-op since the session is terminated
+    /*
+     * Step 5: Issue policy re-evaluation after session termination is complete
+     * This should be a no-op since the session is terminated
+     */
     folly::coro::blockingWait(adjRib_->processAdjRibReEvaluation(
         RibPauseResumeCause::ROUTE_FILTER_POLICY_UPDATE));
   });
@@ -7107,8 +7417,10 @@ TEST_F(
   fm_->addTask([&] {
     syncBaton[0].post();
 
-    // -------------Step 1-2 verifications------------------
-    // Verify RibInAnnouncements are received for the allowed prefixes
+    /*
+     * -------------Step 1-2 verifications------------------
+     * Verify RibInAnnouncements are received for the allowed prefixes
+     */
     auto ribUpdate1 =
         facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
     ASSERT_TRUE(std::holds_alternative<RibInAnnouncement>(ribUpdate1));
@@ -7167,9 +7479,11 @@ TEST_F(
     // Signal that session termination is complete
     syncBaton[2].post();
 
-    // -------------Step 5 verifications------------------
-    // Verify no more messages are generated from policy re-eval(should be a
-    // no-op)
+    /*
+     * -------------Step 5 verifications------------------
+     * Verify no more messages are generated from policy re-eval(should be a
+     * no-op)
+     */
     WITH_RETRIES_N(5, { EXPECT_TRUE(ribInQ_.empty()); });
   });
 
@@ -7393,12 +7707,16 @@ TEST_F(AdjRibInboundFixture, VerifyRouteFilterPolicyReEvaluationWithGR) {
     // Expect RibInQ to be empty
     WITH_RETRIES_N(5, { EXPECT_TRUE(ribInQ_.empty()); });
 
-    // Step 8 verification: After session re-establishment and re-announcement
-    // Verify adjRibInStale is cleared
+    /*
+     * Step 8 verification: After session re-establishment and re-announcement
+     * Verify adjRibInStale is cleared
+     */
     EXPECT_EQ(0, adjRib_->getRibInStaleTreePaths());
 
-    // Verify adjRibInEntry with denied by Ingress Route Filter policy is
-    // updated in adjRibIn
+    /*
+     * Verify adjRibInEntry with denied by Ingress Route Filter policy is
+     * updated in adjRibIn
+     */
     adjRibEntry1 = adjRib_->getRibEntry(/*ingress=*/true, kV4Prefix1);
     EXPECT_NE(nullptr, adjRibEntry1);
     EXPECT_NE(nullptr, adjRibEntry1->getPreIn());
@@ -7586,8 +7904,10 @@ TEST_F(
     folly::coro::blockingWait(adjRib_->processAdjRibReEvaluation(
         RibPauseResumeCause::ROUTE_FILTER_POLICY_UPDATE));
 
-    // Step 7: Verify withdrawals are sent for all prefixes
-    // Expect withdrawal for kV4Prefix1 (from adjRibIn)
+    /*
+     * Step 7: Verify withdrawals are sent for all prefixes
+     * Expect withdrawal for kV4Prefix1 (from adjRibIn)
+     */
 
     auto ribInMsg1 =
         facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
@@ -7611,8 +7931,10 @@ TEST_F(
     EXPECT_EQ(
         "Denied by Route Filter Policy", *adjRibEntry1->getPostInPolicy());
 
-    // Verify no entry in adjRibIn tree after policy re-evaluation for stale
-    // prefixes
+    /*
+     * Verify no entry in adjRibIn tree after policy re-evaluation for stale
+     * prefixes
+     */
     adjRibEntry2 = adjRib_->getRibEntry(/*ingress=*/true, kV4Prefix2);
     EXPECT_EQ(nullptr, adjRibEntry2);
     adjRibEntry3 = adjRib_->getRibEntry(/*ingress=*/true, kV4Prefix3);
@@ -7903,8 +8225,10 @@ TEST_F(AdjRibInboundFixture, UpdateIngressEgressPolicyNames_UnknownDirection) {
         policyMap;
     policyMap[facebook::bgp::bgp_policy::DIRECTION::IN] = "ingress_policy_v1";
     policyMap[facebook::bgp::bgp_policy::DIRECTION::OUT] = "egress_policy_v1";
-    // Add a valid direction but then modify the map to simulate unknown
-    // direction handling
+    /*
+     * Add a valid direction but then modify the map to simulate unknown
+     * direction handling
+     */
 
     auto [ingressChanged, egressChanged] =
         adjRib_->updateIngressEgressPolicyNames(policyMap);
@@ -7985,17 +8309,21 @@ TEST_F(AdjRibInboundFixture, AdjRibInQueueBackpressureTest) {
     // Create updates to fill the queue
     auto update = createV4BgpUpdateSingleAnnounce(kV4Prefix1, kV4Nexthop1);
 
-    // Send enough messages to fill the queue to capacity
-    // Note: We haven't started the AdjRib processing loop yet, so messages
-    // will accumulate in adjRibInQueue_
+    /*
+     * Send enough messages to fill the queue to capacity
+     * Note: We haven't started the AdjRib processing loop yet, so messages
+     * will accumulate in adjRibInQueue_
+     */
     fm_->addTask([&] {
       for (size_t i = 0; i < maxIngressQueueSize + 2; ++i) {
         adjRibInQ_->fiberPush(update);
       }
     });
 
-    // Wait for queue to fill to capacity by polling the queue size
-    // Use fiberSleepFor(0ms) to allow event loop to run
+    /*
+     * Wait for queue to fill to capacity by polling the queue size
+     * Use fiberSleepFor(0ms) to allow event loop to run
+     */
     while (adjRibInQ_->size() < maxIngressQueueSize) {
       folly::fibers::yield();
     }
@@ -8005,12 +8333,16 @@ TEST_F(AdjRibInboundFixture, AdjRibInQueueBackpressureTest) {
     XLOGF(INFO, "adjRibInQueue_ size after filling: {}", queueSize);
     EXPECT_EQ(maxIngressQueueSize, queueSize);
 
-    // Create a fiber task to try pushing additional messages
-    // This should block because the queue is full
+    /*
+     * Create a fiber task to try pushing additional messages
+     * This should block because the queue is full
+     */
     std::atomic<bool> pushBlocked{true};
     fm_->addTask([&] {
-      // Now try to send additional messages and verify producer is blocked
-      // (messages won't be consumed because queue is full)
+      /*
+       * Now try to send additional messages and verify producer is blocked
+       * (messages won't be consumed because queue is full)
+       */
       const size_t additionalMessages = 3;
       for (size_t i = 0; i < additionalMessages; ++i) {
         // This should block on the first push
@@ -8019,8 +8351,10 @@ TEST_F(AdjRibInboundFixture, AdjRibInQueueBackpressureTest) {
       pushBlocked = false;
     });
 
-    // Yield multiple times and verify queue size stays at capacity
-    // The push fiber should be blocked and not complete
+    /*
+     * Yield multiple times and verify queue size stays at capacity
+     * The push fiber should be blocked and not complete
+     */
     for (int i = 0; i < 10; ++i) {
       folly::fibers::yield();
       queueSize = adjRibInQ_->size();
@@ -8041,8 +8375,10 @@ TEST_F(AdjRibInboundFixture, AdjRibInQueueBackpressureTest) {
 
     // Wait for queue to start draining (unblocks the producer)
     while (adjRibInQ_->size() >= maxIngressQueueSize) {
-      // Use fiberSleepFor(0ms) instead of folly::fibers::yield() to get
-      // coroutines scheduled and run
+      /*
+       * Use fiberSleepFor(0ms) instead of folly::fibers::yield() to get
+       * coroutines scheduled and run
+       */
       fiberSleepFor(0ms);
     }
 
@@ -8090,8 +8426,10 @@ TEST_F(AdjRibInboundFixture, VerifyPolicyReEvaluationSynchronization) {
   EXPECT_TRUE(adjRib_->isStateEstablished());
 
   fm_->addTask([&] {
-    // Step 1: Send initial prefix announcements and wait for them to be
-    // processed
+    /*
+     * Step 1: Send initial prefix announcements and wait for them to be
+     * processed
+     */
     auto update1 = createV4BgpUpdateSingleAnnounce(kV4Prefix1, kV4Nexthop1);
     auto update2 = createV4BgpUpdateSingleAnnounce(kV4Prefix2, kV4Nexthop1);
     auto update3 = createV4BgpUpdateSingleAnnounce(kV4Prefix3, kV4Nexthop1);
@@ -8111,20 +8449,26 @@ TEST_F(AdjRibInboundFixture, VerifyPolicyReEvaluationSynchronization) {
     EXPECT_NE(nullptr, adjRib_->getRibEntry(/*ingress=*/true, kV4Prefix2));
     EXPECT_NE(nullptr, adjRib_->getRibEntry(/*ingress=*/true, kV4Prefix3));
 
-    // Step 2: Trigger policy re-evaluation in background task
-    // We need to test that while this is running, peer messages are blocked
+    /*
+     * Step 2: Trigger policy re-evaluation in background task
+     * We need to test that while this is running, peer messages are blocked
+     */
     auto reEvalTask = fm_->addTaskFuture([this] {
       return adjRib_->processAdjRibReEvaluation(
           RibPauseResumeCause::ROUTING_POLICY_UPDATE);
     });
 
-    // Step 3: Give re-evaluation a moment to start and acquire the semaphore
-    // Use fiberSleepFor to allow the re-evaluation task to start without
-    // blocking fibers
+    /*
+     * Step 3: Give re-evaluation a moment to start and acquire the semaphore
+     * Use fiberSleepFor to allow the re-evaluation task to start without
+     * blocking fibers
+     */
     fiberSleepFor(50ms);
 
-    // Step 4: Queue a new peer update while re-evaluation is in progress
-    // The processing of this update should be blocked by the semaphore
+    /*
+     * Step 4: Queue a new peer update while re-evaluation is in progress
+     * The processing of this update should be blocked by the semaphore
+     */
     auto update4 = createV4BgpUpdateSingleAnnounce(kV4Prefix4, kV4Nexthop1);
     adjRibInQ_->fiberPush(std::move(update4));
 
@@ -8180,13 +8524,17 @@ TEST_F(AdjRibInboundFixture, VerifyPolicyReEvaluationWithSessionTermination) {
           RibPauseResumeCause::ROUTING_POLICY_UPDATE);
     });
 
-    // Step 3: Give re-evaluation time to start and acquire semaphore
-    // Use fiberSleepFor to allow the re-evaluation task to start without
-    // blocking fibers
+    /*
+     * Step 3: Give re-evaluation time to start and acquire semaphore
+     * Use fiberSleepFor to allow the re-evaluation task to start without
+     * blocking fibers
+     */
     fiberSleepFor(50ms);
 
-    // Step 4: Try to terminate session while policy re-evaluation is running
-    // This should be blocked until policy re-evaluation completes
+    /*
+     * Step 4: Try to terminate session while policy re-evaluation is running
+     * This should be blocked until policy re-evaluation completes
+     */
     adjRibInQ_->fiberPush(
         FiberBgpPeer::BgpSessionStop{GracefulRestartFlag{false}});
 
@@ -8194,8 +8542,10 @@ TEST_F(AdjRibInboundFixture, VerifyPolicyReEvaluationWithSessionTermination) {
     auto reEvalResult = folly::coro::blockingWait(std::move(reEvalTask));
     (void)reEvalResult; // Explicitly ignore the result
 
-    // Step 6: Now session termination should process and send withdrawals
-    // Wait for withdrawals from session termination
+    /*
+     * Step 6: Now session termination should process and send withdrawals
+     * Wait for withdrawals from session termination
+     */
     auto msg = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
     // Could be announcement or withdrawal depending on what re-evaluation did
 
@@ -8252,8 +8602,10 @@ TEST_F(AdjRibInboundFixture, AdjRibInQueueConsumerScopeTest) {
     adjRibInQ_->fiberPush(update2);
     EXPECT_EQ(1, adjRibInQ_->size()); // Push was dropped
 
-    // Step 3: Setup session state and start processPeerMessageLoop directly
-    // This creates a ConsumerScope which should open the queue
+    /*
+     * Step 3: Setup session state and start processPeerMessageLoop directly
+     * This creates a ConsumerScope which should open the queue
+     */
     adjRib_->sessionEstablished(
         kLongGrRestartTime.count(),
         adjRibInQ_,
@@ -8265,8 +8617,10 @@ TEST_F(AdjRibInboundFixture, AdjRibInQueueConsumerScopeTest) {
         folly::coro::co_withExecutor(
             &evb_, adjRib_->processPeerMessageLoop(terminateBaton)));
 
-    // Step 4: Verify pushes work now that queue is open (ConsumerScope opened
-    // it)
+    /*
+     * Step 4: Verify pushes work now that queue is open (ConsumerScope opened
+     * it)
+     */
     for (int i = 0; i < 10; ++i) {
       auto update = createV4BgpUpdateSingleAnnounce(kV4Prefix1, kV4Nexthop1);
       adjRibInQ_->fiberPush(update);
@@ -8318,8 +8672,10 @@ TEST_F(AdjRibInboundFixture, AdjRibInQueueConsumerScopeExceptionPathTest) {
   auto terminateBaton = std::make_shared<folly::coro::Baton>();
 
   fm_->addTask([&] {
-    // Step 1: Setup session state and start processPeerMessageLoop directly
-    // This creates a ConsumerScope which opens the queue
+    /*
+     * Step 1: Setup session state and start processPeerMessageLoop directly
+     * This creates a ConsumerScope which opens the queue
+     */
     adjRib_->sessionEstablished(
         kLongGrRestartTime.count(),
         adjRibInQ_,
@@ -8354,8 +8710,10 @@ TEST_F(AdjRibInboundFixture, AdjRibInQueueConsumerScopeExceptionPathTest) {
     folly::coro::blockingWait(loopAsyncScope.cancelAndJoinAsync());
     adjRib_.reset();
 
-    // Step 4: Verify queue is closed by ConsumerScope destructor
-    // (RAII guarantee - queue closed even on cancellation exit path)
+    /*
+     * Step 4: Verify queue is closed by ConsumerScope destructor
+     * (RAII guarantee - queue closed even on cancellation exit path)
+     */
     size_t sizeBeforePush = adjRibInQ_->size();
     for (int i = 0; i < 10; ++i) {
       auto update = createV4BgpUpdateSingleAnnounce(kV4Prefix1, kV4Nexthop1);
@@ -8434,8 +8792,10 @@ TEST_F(AdjRibInboundFixture, IngressPolicyLinkBandwidthPropagationTest) {
     auto postAttrs = adjRibEntry->getPostAttr();
     EXPECT_NE(nullptr, postAttrs);
 
-    // Both extended communities should be present (ingress allows both)
-    // The policy adds 2 communities to the existing 3 from the update = 5 total
+    /*
+     * Both extended communities should be present (ingress allows both)
+     * The policy adds 2 communities to the existing 3 from the update = 5 total
+     */
     auto extCommunities = postAttrs->getExtCommunities();
     EXPECT_FALSE(extCommunities.nullOrEmpty());
     EXPECT_EQ(5, extCommunities->size());
@@ -8464,8 +8824,10 @@ TEST_F(AdjRibInboundFixture, CollectStaleRoutes_EmptyReturnsNullopt) {
   evb_.loop();
 }
 
-// collectStaleRoutes returns a withdrawal containing the stale prefixes and
-// clears adjRibInStale_ as a side effect.
+/*
+ * collectStaleRoutes returns a withdrawal containing the stale prefixes and
+ * clears adjRibInStale_ as a side effect.
+ */
 TEST_F(
     AdjRibInboundFixture,
     CollectStaleRoutes_ReturnsWithdrawalAndClearsState) {
@@ -8502,14 +8864,18 @@ TEST_F(
   evb_.loop();
 }
 
-// AdjRib::stop() drains pendingRibInPushes_ — verifies the load-bearing
-// invariant that prevents UAF on this->ribInQ_ when AdjRib is destroyed
-// while pushes from timer callbacks are still suspended on back-pressure.
+/*
+ * AdjRib::stop() drains pendingRibInPushes_ — verifies the load-bearing
+ * invariant that prevents UAF on this->ribInQ_ when AdjRib is destroyed
+ * while pushes from timer callbacks are still suspended on back-pressure.
+ */
 TEST_F(AdjRibInboundFixture, StopDrainsPendingRibInPushes) {
   setupAdjRib();
   fm_->addTask([&] {
-    // Seed the vector with two ready SemiFutures — drain should consume
-    // them and leave the vector empty.
+    /*
+     * Seed the vector with two ready SemiFutures — drain should consume
+     * them and leave the vector empty.
+     */
     adjRib_->pendingRibInPushes_.push_back(folly::makeSemiFuture(folly::unit));
     adjRib_->pendingRibInPushes_.push_back(folly::makeSemiFuture(folly::unit));
     EXPECT_EQ(2, adjRib_->pendingRibInPushes_.size());
@@ -8523,29 +8889,35 @@ TEST_F(AdjRibInboundFixture, StopDrainsPendingRibInPushes) {
   evb_.loop();
 }
 
-// stop() must block on in-flight pushes — not just clear the vector. Seeds
-// pendingRibInPushes_ with an UNRESOLVED Promise/SemiFuture pair so
-// collectAllRange has something real to wait on. Without the drain in
-// stop(), the AdjRib could be destroyed while a push is still suspended on
-// ribInQ_'s nonCancellablePush(), causing UAF on resume.
+/*
+ * stop() must block on in-flight pushes — not just clear the vector. Seeds
+ * pendingRibInPushes_ with an UNRESOLVED Promise/SemiFuture pair so
+ * collectAllRange has something real to wait on. Without the drain in
+ * stop(), the AdjRib could be destroyed while a push is still suspended on
+ * ribInQ_'s nonCancellablePush(), causing UAF on resume.
+ */
 TEST_F(AdjRibInboundFixture, StopBlocksUntilPendingPushCompletes) {
   setupAdjRib();
   fm_->addTask([&] {
     folly::Promise<folly::Unit> promise;
     adjRib_->pendingRibInPushes_.push_back(promise.getSemiFuture());
 
-    // Launch stop() without awaiting it — it should suspend on
-    // collectAllRange waiting for our promise.
+    /*
+     * Launch stop() without awaiting it — it should suspend on
+     * collectAllRange waiting for our promise.
+     */
     auto stopFuture =
         folly::coro::co_invoke(
             [this]() -> folly::coro::Task<void> { co_await adjRib_->stop(); })
             .scheduleOn(&evb_)
             .start();
 
-    // The baton is never posted, so try_wait_for always times out —
-    // but while the fiber sleeps the evb runs the stop() task to its first
-    // co_await. 100ms is many orders of magnitude more than the few
-    // microseconds stop() needs to reach collectAllRange.
+    /*
+     * The baton is never posted, so try_wait_for always times out —
+     * but while the fiber sleeps the evb runs the stop() task to its first
+     * co_await. 100ms is many orders of magnitude more than the few
+     * microseconds stop() needs to reach collectAllRange.
+     */
     folly::fibers::Baton parkBaton;
     parkBaton.try_wait_for(std::chrono::milliseconds(100));
     EXPECT_FALSE(stopFuture.isReady())
@@ -8562,20 +8934,26 @@ TEST_F(AdjRibInboundFixture, StopBlocksUntilPendingPushCompletes) {
   evb_.loop();
 }
 
-// schedulePendingRibInPush trims completed SemiFutures before adding a new
-// entry
+/*
+ * schedulePendingRibInPush trims completed SemiFutures before adding a new
+ * entry
+ */
 TEST_F(AdjRibInboundFixture, SchedulePendingRibInPushTrimsReady) {
   setupAdjRib();
   fm_->addTask([&] {
-    // Seed three completed entries to simulate prior GR cycles whose
-    // pushes have landed.
+    /*
+     * Seed three completed entries to simulate prior GR cycles whose
+     * pushes have landed.
+     */
     adjRib_->pendingRibInPushes_.push_back(folly::makeSemiFuture(folly::unit));
     adjRib_->pendingRibInPushes_.push_back(folly::makeSemiFuture(folly::unit));
     adjRib_->pendingRibInPushes_.push_back(folly::makeSemiFuture(folly::unit));
     EXPECT_EQ(3, adjRib_->pendingRibInPushes_.size());
 
-    // Build a withdrawal and schedule it. Trim should drop the 3 ready
-    // entries before the new one is added.
+    /*
+     * Build a withdrawal and schedule it. Trim should drop the 3 ready
+     * entries before the new one is added.
+     */
     PrefixPathIds pfxPathIds{{kV4Prefix1, 1}};
     RibInWithdrawal w(
         TinyPeerInfo(
@@ -8593,8 +8971,10 @@ TEST_F(AdjRibInboundFixture, SchedulePendingRibInPushTrimsReady) {
     // After trim + add, only the new in-flight entry remains.
     EXPECT_EQ(1, adjRib_->pendingRibInPushes_.size());
 
-    // Drain the new push so stop()'s drain doesn't hang on the real
-    // ribInQ_ — pop the message that was just pushed.
+    /*
+     * Drain the new push so stop()'s drain doesn't hang on the real
+     * ribInQ_ — pop the message that was just pushed.
+     */
     facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
     folly::coro::blockingWait(adjRib_->stop());
     EXPECT_EQ(0, adjRib_->pendingRibInPushes_.size());
@@ -8604,8 +8984,10 @@ TEST_F(AdjRibInboundFixture, SchedulePendingRibInPushTrimsReady) {
   evb_.loop();
 }
 
-// the prepared withdrawal lands in ribInQ_ as a RibInWithdrawal message with
-// the expected payload.
+/*
+ * the prepared withdrawal lands in ribInQ_ as a RibInWithdrawal message with
+ * the expected payload.
+ */
 TEST_F(AdjRibInboundFixture, PushStaleWithdrawalPushesToRibInQ) {
   setupAdjRib();
   fm_->addTask([&] {

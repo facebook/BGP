@@ -26,8 +26,10 @@
 namespace facebook::bgp {
 using namespace facebook::nettools::bgplib;
 
-// This function get a list of BgpPathFields with
-// different optional field unset to test all possiible scenarios
+/*
+ * This function get a list of BgpPathFields with
+ * different optional field unset to test all possiible scenarios
+ */
 std::vector<std::shared_ptr<facebook::bgp::BgpPathFields>>
 getDifferentAttrsFields() {
   std::vector<std::shared_ptr<facebook::bgp::BgpPathFields>> list;
@@ -251,8 +253,10 @@ TEST(BgpPath, VerifyBgpPathCompareTopologyInfoTest) {
   facebook::bgp::BgpPath::Compare(compare);
   EXPECT_TRUE(compare(attrs1, attrs2));
 
-  // Verify std::nullopt is the default value of topologyInfo field in
-  // BgpPath
+  /*
+   * Verify std::nullopt is the default value of topologyInfo field in
+   * BgpPath
+   */
   attrs2->setTopologyInfo(std::nullopt);
   EXPECT_EQ(*attrs1, *attrs2);
   EXPECT_TRUE(compare(attrs1, attrs2));
@@ -309,8 +313,10 @@ TEST(BgpPath, setLbwComm) {
       EXPECT_EQ(kLbw10G, lbw->second);
     }
 
-    // Set a different LBW community.  This should result in replacing the
-    // previous one with the new one
+    /*
+     * Set a different LBW community.  This should result in replacing the
+     * previous one with the new one
+     */
     attrs->setNonTransitiveLbwExtCommunity(uint16_t(kLocalAs2), kLbw100G);
     EXPECT_EQ(1, attrs->getExtCommunities()->size());
     EXPECT_TRUE(attrs->hasNonTransitiveLbwExtCommunity());
@@ -323,8 +329,10 @@ TEST(BgpPath, setLbwComm) {
       EXPECT_EQ(kLbw100G, lbw->second);
     }
 
-    // Prune the LBW community and make sure we are back with no ext
-    // communities
+    /*
+     * Prune the LBW community and make sure we are back with no ext
+     * communities
+     */
     attrs->pruneNonTransitiveLbwExtCommunity();
     EXPECT_TRUE(attrs->getExtCommunities().nullOrEmpty());
     EXPECT_FALSE(attrs->hasNonTransitiveLbwExtCommunity());
@@ -354,8 +362,10 @@ TEST(BgpPath, setRawLbwComm) {
       EXPECT_EQ(kEncodedLbw, encodedLbw->second);
     }
 
-    // Set a different encoded LBW community.  This should result in replacing
-    // the previous one with the new one
+    /*
+     * Set a different encoded LBW community.  This should result in replacing
+     * the previous one with the new one
+     */
     attrs->setNonTransitiveRawLbwExtCommunity(uint16_t(kLocalAs2), UINT32_MAX);
     EXPECT_EQ(1, attrs->getExtCommunities()->size());
     EXPECT_TRUE(attrs->hasNonTransitiveLbwExtCommunity());
@@ -368,8 +378,10 @@ TEST(BgpPath, setRawLbwComm) {
       EXPECT_EQ(UINT32_MAX, encodedLbw->second);
     }
 
-    // Prune the LBW community and make sure we are back with no ext
-    // communities
+    /*
+     * Prune the LBW community and make sure we are back with no ext
+     * communities
+     */
     attrs->pruneNonTransitiveLbwExtCommunity();
     EXPECT_TRUE(attrs->getExtCommunities().nullOrEmpty());
     EXPECT_FALSE(attrs->hasNonTransitiveLbwExtCommunity());
@@ -377,15 +389,19 @@ TEST(BgpPath, setRawLbwComm) {
   }
 }
 
-// We wanna verify if we can convert encoded lbw (uint32_t) to regular lbw and
-// vice versa without data corruption
-// Reason we want to test this is to find out whether we can reuse the existing
-// ACCEPT action for regular lbw for encoded lbw
+/*
+ * We wanna verify if we can convert encoded lbw (uint32_t) to regular lbw and
+ * vice versa without data corruption
+ * Reason we want to test this is to find out whether we can reuse the existing
+ * ACCEPT action for regular lbw for encoded lbw
+ */
 TEST(BgpPath, lbwCommTypeConversionTest) {
   // getNonTransitiveRawLbwValue() has no conversion, so it's the SoT
 
-  // confirm union trick is reversible
-  // also confirm float -> uint32_t with static_cast doesn't work
+  /*
+   * confirm union trick is reversible
+   * also confirm float -> uint32_t with static_cast doesn't work
+   */
   {
     auto attrsFields = buildBgpPathFields(1, 1, 0, 0);
     auto attrs = std::make_shared<facebook::bgp::BgpPath>(*attrsFields);
@@ -402,8 +418,10 @@ TEST(BgpPath, lbwCommTypeConversionTest) {
      'unsigned int'
     */
 
-    // but if we write this float lbw back to ext community using
-    // union trick, the value is correct
+    /*
+     * but if we write this float lbw back to ext community using
+     * union trick, the value is correct
+     */
     attrs->setNonTransitiveLbwExtCommunity(uint16_t(kLocalAs1), lbw.value());
     EXPECT_EQ(UINT32_MAX, attrs->getNonTransitiveRawLbwValue().value());
   }
@@ -464,8 +482,10 @@ TEST(BgpPath, pruneUnnecessaryComm) {
       EXPECT_TRUE(attrs->hasNonTransitiveLbwExtCommunity());
     }
 
-    // Prune the LBW community would only prune the correct lbw
-    // and leave "transitive" lbw community untouched
+    /*
+     * Prune the LBW community would only prune the correct lbw
+     * and leave "transitive" lbw community untouched
+     */
     attrs->pruneNonTransitiveLbwExtCommunity();
     EXPECT_EQ(1, attrs->getExtCommunities()->size());
     EXPECT_FALSE(attrs->hasNonTransitiveLbwExtCommunity());
@@ -479,8 +499,10 @@ TEST(BgpPath, pruneUnnecessaryComm) {
   }
 }
 
-// Verify getNonTransitiveLbwExtCommunity returns the lowest LBW value
-// when multiple LBW ext communities are present
+/*
+ * Verify getNonTransitiveLbwExtCommunity returns the lowest LBW value
+ * when multiple LBW ext communities are present
+ */
 TEST(BgpPath, getLowestLbwExtCommunity) {
   auto attrsFields = buildBgpPathFields(1, 1, 0, 0);
   auto attrs = std::make_shared<facebook::bgp::BgpPath>(*attrsFields);
@@ -489,8 +511,10 @@ TEST(BgpPath, getLowestLbwExtCommunity) {
   EXPECT_TRUE(attrs->getExtCommunities().nullOrEmpty());
   EXPECT_FALSE(attrs->hasNonTransitiveLbwExtCommunity());
 
-  // Manually add multiple LBW ext communities with different bandwidth values
-  // We can't use setNonTransitiveLbwExtCommunity since it prunes existing ones
+  /*
+   * Manually add multiple LBW ext communities with different bandwidth values
+   * We can't use setNonTransitiveLbwExtCommunity since it prunes existing ones
+   */
   BgpAttrExtCommunitiesC extCommunities;
 
   // Add LBW with 100G bandwidth (higher value)

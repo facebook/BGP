@@ -151,13 +151,17 @@ TEST_F(
   std::pair<folly::CIDRNetwork, uint32_t> prefixPathId2 =
       std::make_pair(kV4Prefix2, 0);
 
-  // announcementAttrs only has prefixPathId_.
-  // Announce prefixPathId2, oldPath = announcementAttrs_ and newPath = attrs2.
-  // This should succeed.
+  /*
+   * announcementAttrs only has prefixPathId_.
+   * Announce prefixPathId2, oldPath = announcementAttrs_ and newPath = attrs2.
+   * This should succeed.
+   */
   adjRib_->tryUpdateAttrToPrefixMap(prefixPathId2, announcementAttrs_, attrs2);
 
-  // Verify the map is now {announcementAttrs_, prefixPathId_} and
-  // {attrs2, prefixPathId2}.
+  /*
+   * Verify the map is now {announcementAttrs_, prefixPathId_} and
+   * {attrs2, prefixPathId2}.
+   */
   EXPECT_EQ(2, attrToPrefixMap.size());
   auto attrsWithAfi1 =
       BgpPathWithAfi{announcementAttrs_, BgpUpdateAfi::AFI_IPv4};
@@ -179,12 +183,14 @@ TEST_F(
   EXPECT_TRUE(attrToPrefixMap.empty());
 
   {
-    // Case 1: Withdrawing a never-announced prefix.
-    // tryUpdateAttrToPrefixMap applies the requested mutation unconditionally
-    // and does NOT dedup: suppressing withdrawals for prefixes that were never
-    // advertised is the caller's responsibility (tryInsertWithdrawal only fires
-    // when postAttr is non-null). So the helper stages the withdrawal entry
-    // here rather than treating it as a no-op.
+    /*
+     * Case 1: Withdrawing a never-announced prefix.
+     * tryUpdateAttrToPrefixMap applies the requested mutation unconditionally
+     * and does NOT dedup: suppressing withdrawals for prefixes that were never
+     * advertised is the caller's responsibility (tryInsertWithdrawal only fires
+     * when postAttr is non-null). So the helper stages the withdrawal entry
+     * here rather than treating it as a no-op.
+     */
     adjRib_->tryUpdateAttrToPrefixMap(
         prefixPathId_, withdrawalAttrs_, withdrawalAttrs_);
     EXPECT_EQ(1, attrToPrefixMap.size());
@@ -216,8 +222,10 @@ TEST_F(
   auto& attrToPrefixMap = adjRib_->attrToPrefixMap_;
   EXPECT_TRUE(attrToPrefixMap.empty());
 
-  // Set the initial state as kV4Prefix1,0 being announced with
-  // announcementAttrs_.
+  /*
+   * Set the initial state as kV4Prefix1,0 being announced with
+   * announcementAttrs_.
+   */
   adjRib_->tryUpdateAttrToPrefixMap(
       prefixPathId_, withdrawalAttrs_, announcementAttrs_);
   {
@@ -281,8 +289,10 @@ TEST_F(
   auto& attrToPrefixMap = adjRib_->attrToPrefixMap_;
   EXPECT_TRUE(attrToPrefixMap.empty());
 
-  // Set the initial state as kV4Prefix1,0 being announced with
-  // announcementAttrs_.
+  /*
+   * Set the initial state as kV4Prefix1,0 being announced with
+   * announcementAttrs_.
+   */
   adjRib_->tryUpdateAttrToPrefixMap(
       prefixPathId_, withdrawalAttrs_, announcementAttrs_);
   {
@@ -366,8 +376,10 @@ TEST_F(
   auto& attrToPrefixMap = adjRib_->attrToPrefixMap_;
   EXPECT_TRUE(attrToPrefixMap.empty());
 
-  // Stage an announcement whose nexthop was set by policy (flag = true). This
-  // keys the prefix under {announcementAttrs_, AFI_IPv4, true}.
+  /*
+   * Stage an announcement whose nexthop was set by policy (flag = true). This
+   * keys the prefix under {announcementAttrs_, AFI_IPv4, true}.
+   */
   adjRib_->tryUpdateAttrToPrefixMap(
       prefixPathId_,
       withdrawalAttrs_,
@@ -376,16 +388,20 @@ TEST_F(
   EXPECT_EQ(1, attrToPrefixMap.size());
   EXPECT_TRUE(attrToPrefixMap.begin()->first.isNexthopSetByPolicy);
 
-  // Withdraw the prefix with the default flag (false), mirroring the prod
-  // withdraw call sites.
+  /*
+   * Withdraw the prefix with the default flag (false), mirroring the prod
+   * withdraw call sites.
+   */
   adjRib_->tryUpdateAttrToPrefixMap(
       prefixPathId_,
       announcementAttrs_,
       withdrawalAttrs_,
       /*isNexthopSetByPolicy=*/false);
 
-  // The prefix must be associated to exactly one path, and that path must be
-  // the withdrawal (nullptr attrs), not the leaked announcement.
+  /*
+   * The prefix must be associated to exactly one path, and that path must be
+   * the withdrawal (nullptr attrs), not the leaked announcement.
+   */
   EXPECT_EQ(1, countBucketsContaining(attrToPrefixMap, prefixPathId_));
   EXPECT_EQ(1, attrToPrefixMap.size());
   EXPECT_EQ(withdrawalAttrs_, attrToPrefixMap.begin()->first.attrs);
@@ -414,8 +430,10 @@ TEST_F(
   EXPECT_EQ(1, attrToPrefixMap.size());
   EXPECT_FALSE(attrToPrefixMap.begin()->first.isNexthopSetByPolicy);
 
-  // Re-announce with a different path, now flagged as policy-set nexthop
-  // (flag = true). oldPath (attrs1) is keyed under flag = false.
+  /*
+   * Re-announce with a different path, now flagged as policy-set nexthop
+   * (flag = true). oldPath (attrs1) is keyed under flag = false.
+   */
   adjRib_->tryUpdateAttrToPrefixMap(
       prefixPathId_, attrs1, attrs2, /*isNexthopSetByPolicy=*/true);
 

@@ -39,8 +39,10 @@ TEST_F(RibFixture, GetRibPolicyReplaceFutureTest) {
   }
 
   {
-    // getting a new future without settling the previous one would lead to
-    // crash
+    /*
+     * getting a new future without settling the previous one would lead to
+     * crash
+     */
     EXPECT_DEATH(rib_->getRibPolicyReplaceFuture(), "");
   }
 }

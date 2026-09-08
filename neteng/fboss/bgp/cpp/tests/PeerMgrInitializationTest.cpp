@@ -98,8 +98,10 @@ TEST_F(PeerManagerInitializationTestFixture, DuplicateRibEoRNotificationTest) {
       std::make_shared<SessionManager>(*config->getBgpGlobalConfig(), false);
   peerMgr->setSessionManager(sessionMgr);
 
-  // create peer manager thread
-  // Attention: this will internally pump evb_
+  /*
+   * create peer manager thread
+   * Attention: this will internally pump evb_
+   */
   auto peerMgrThread = peerMgr->runInThread();
   auto sessionMgrThread = sessionMgr->runInThread();
 
@@ -113,8 +115,10 @@ TEST_F(PeerManagerInitializationTestFixture, DuplicateRibEoRNotificationTest) {
         EXPECT_TRUE(counters.contains(BgpStats::kEorTimerExpired));
         EXPECT_EQ(1, counters.at(BgpStats::kEorTimerExpired));
 
-        // explicitly issue duplicate notifyEoR with no expiration. Make sure
-        // it is a no-op.
+        /*
+         * explicitly issue duplicate notifyEoR with no expiration. Make sure
+         * it is a no-op.
+         */
         peerMgr->notifyRibInitialPathComputation(/*timerFired=*/false);
 
         // dump counters to check
@@ -164,8 +168,10 @@ TEST_F(PeerManagerInitializationTestFixture, InitializedSignalTimeoutTest) {
       std::make_shared<SessionManager>(*config->getBgpGlobalConfig(), false);
   peerMgr->setSessionManager(sessionMgr);
 
-  // create peer manager thread
-  // Attention: this will internally pump evb_
+  /*
+   * create peer manager thread
+   * Attention: this will internally pump evb_
+   */
   auto peerMgrThread = peerMgr->runInThread();
   auto sessionMgrThread = sessionMgr->runInThread();
 
@@ -428,10 +434,12 @@ TEST_F(PeerManagerInitializationTestFixture, InitializedSignalPublicationTest) {
     folly::coro::blockingWait(
         mockPeerMgr->processAdjRibEvent(std::move(EoRFromStaticPeer2)));
 
-    // make sure EoR will be sent finally without waiting for eorTimer
-    // (120sec) expiration. PM is constructed with the default
-    // requireNexthopResolution=false, so RIB computes immediately; the
-    // nexthop-resolution gating (when opted in) is covered in RibTest.
+    /*
+     * make sure EoR will be sent finally without waiting for eorTimer
+     * (120sec) expiration. PM is constructed with the default
+     * requireNexthopResolution=false, so RIB computes immediately; the
+     * nexthop-resolution gating (when opted in) is covered in RibTest.
+     */
     facebook::fb303::ThreadCachedServiceData::getShared()->getCounters(
         counters);
     EXPECT_TRUE(mockPeerMgr->ribInitPathComputationNotified_);

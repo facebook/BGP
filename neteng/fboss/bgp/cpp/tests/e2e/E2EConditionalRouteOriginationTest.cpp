@@ -149,8 +149,10 @@ TEST_F(E2EConditionalRouteOriginationTest, WithdrawnWhenNexthopUnresolved) {
       kPeerAddr5,
       kNextHopV4_5.str()));
 
-  // Port down: neighbor lost. Route must leave the RIB and be withdrawn to
-  // peer.
+  /*
+   * Port down: neighbor lost. Route must leave the RIB and be withdrawn to
+   * peer.
+   */
   sendNexthopResolution({}, {conditionalNexthop()});
   ASSERT_TRUE(waitForRouteWithdrawnFromRib(kConditionalPrefixStr));
   EXPECT_TRUE(verifyRouteWithdraw(

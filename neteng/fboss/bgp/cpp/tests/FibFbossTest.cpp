@@ -166,14 +166,18 @@ TEST(FibFbossTest, CreateNetworkTopoInfo) {
 }
 
 TEST_F(FibFixture, TestStopFib) {
-  // Step1: MockFib is running in a separate thread. Coro tasks are scheduled
-  // with SetUp() call.
+  /*
+   * Step1: MockFib is running in a separate thread. Coro tasks are scheduled
+   * with SetUp() call.
+   */
 
   // Verify FibFboss::keepAlive() coro task has been scheduled.
   EXPECT_EQ(asyncScope_.remaining(), 1);
 
-  // Step2: Delay 2 seconds to let coro task run. Cancel coro tasks to make sure
-  // no task access the ptr/object inside Fib.
+  /*
+   * Step2: Delay 2 seconds to let coro task run. Cancel coro tasks to make sure
+   * no task access the ptr/object inside Fib.
+   */
   fib_->evb_->runInEventBaseThreadAndWait(
       [&]() { folly::futures::sleep(std::chrono::seconds(2)).get(); });
   folly::coro::blockingWait(asyncScope_.cancelAndJoinAsync());
@@ -184,9 +188,11 @@ TEST_F(FibFixture, TestStopFib) {
   // Step3: Let TearDown() call to handle Fib::stop() to reset client_.
 }
 
-// This test verifies updateUnicastRoute()'s behavior for various inputs.
-// The output of this function is batch_->toAdd and batch_->toDelete. The
-// elements of these vectors will be converted to thrift calls to agent.
+/*
+ * This test verifies updateUnicastRoute()'s behavior for various inputs.
+ * The output of this function is batch_->toAdd and batch_->toDelete. The
+ * elements of these vectors will be converted to thrift calls to agent.
+ */
 TEST_F(FibFixture, updateUnicastRoute) {
   auto lambdaCreateExpectedToAdd =
       [](const CIDRNetwork& prefix,
@@ -279,8 +285,10 @@ TEST_F(FibFixture, updateUnicastRoute) {
       clearTestSetup();
     }
     {
-      // input: add prefix with local route as bestpath, installToFib =
-      // false
+      /*
+       * input: add prefix with local route as bestpath, installToFib =
+       * false
+       */
       auto nhWts = std::make_shared<WeightedNexthopMap>();
       nhWts->emplace(nexthop, 0);
       fib_->updateUnicastRoute(
@@ -294,8 +302,10 @@ TEST_F(FibFixture, updateUnicastRoute) {
       clearTestSetup();
     }
     {
-      // input: add prefix with peer route (redistribute peer) as bestpath,
-      // installToFib = false
+      /*
+       * input: add prefix with peer route (redistribute peer) as bestpath,
+       * installToFib = false
+       */
       auto nhWts = std::make_shared<WeightedNexthopMap>();
       nhWts->emplace(nexthop, 0);
       fib_->updateUnicastRoute(
@@ -455,9 +465,9 @@ TEST_F(FibFixture, updateUnicastRouteWithBackup) {
 }
 
 TEST(FibFbossTest, toString) {
-  //
-  // Positive test for: toString() for fboss::IpPrefix
-  //
+  /*
+   * Positive test for: toString() for fboss::IpPrefix
+   */
   {
     folly::IPAddress v4{"10.1.1.1"};
     folly::IPAddress v6{"2620::1"};
@@ -479,9 +489,9 @@ TEST(FibFbossTest, toString) {
         FibFboss::toString(prefixV6));
   }
 
-  //
-  // Negative test for: toString() for fboss::IpPrefix
-  //
+  /*
+   * Negative test for: toString() for fboss::IpPrefix
+   */
   {
     fboss::IpPrefix prefix;
     EXPECT_EQ("", FibFboss::toString(prefix));
@@ -625,8 +635,10 @@ TEST_F(FibFbossUtilFixture, addDel) {
   EXPECT_CALL(*agentServiceHandler_, co_syncFib(testing::_, testing::_))
       .Times(0);
 
-  // Set up expectations for markProgrammingSuccess() method, one for add and
-  // one for delete.
+  /*
+   * Set up expectations for markProgrammingSuccess() method, one for add and
+   * one for delete.
+   */
   EXPECT_CALL(
       *static_cast<MockProgrammingHistory*>(fib_->programmingHistory_.get()),
       markProgrammingSuccess())
@@ -765,8 +777,10 @@ TEST_F(FibFbossUtilFixture, delFail) {
   EXPECT_CALL(*agentServiceHandler_, co_syncFib(testing::_, testing::_))
       .Times(0);
 
-  // Set up expectations for markProgrammingSuccess() method, one for add and
-  // one for delete.
+  /*
+   * Set up expectations for markProgrammingSuccess() method, one for add and
+   * one for delete.
+   */
   EXPECT_CALL(
       *static_cast<MockProgrammingHistory*>(fib_->programmingHistory_.get()),
       markProgrammingSuccess())

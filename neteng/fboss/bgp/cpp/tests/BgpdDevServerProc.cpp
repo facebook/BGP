@@ -179,9 +179,11 @@ bool BgpdDevServerProc::run() {
             });
       });
 
-  // It would take some time to load bgpd into memory, which could take a long
-  // time when the server stress-runs the experiments. To make fair comparison,
-  // we should consider the two timeouts separately
+  /*
+   * It would take some time to load bgpd into memory, which could take a long
+   * time when the server stress-runs the experiments. To make fair comparison,
+   * we should consider the two timeouts separately
+   */
   if (!bgpdStartInitializationBaton.try_wait_for(
           std::chrono::seconds(FLAGS_bgpd_waiting_timeout_s))) {
     XLOGF(
@@ -193,10 +195,12 @@ bool BgpdDevServerProc::run() {
   }
   XLOG(INFO, "BGP Dev Server is loaded and starts initialization.");
 
-  // We just use one baton for thrift port, bgp protocol port ready and bgpd
-  // is ready, since the bgpd ready message would be printed out after thrift
-  // and bgp protocol ports are ready. All three signals are indicated by
-  // variable isStarted_.
+  /*
+   * We just use one baton for thrift port, bgp protocol port ready and bgpd
+   * is ready, since the bgpd ready message would be printed out after thrift
+   * and bgp protocol ports are ready. All three signals are indicated by
+   * variable isStarted_.
+   */
   if (!bgpdReadyBaton.try_wait_for(
           std::chrono::seconds(FLAGS_bgpd_initializing_timeout_s))) {
     XLOGF(
@@ -231,8 +235,10 @@ bool BgpdDevServerProc::run() {
   bool hasPolicy = (policy_ != "");
   bool policySymlinkMatched = (hasPolicy == hasPolicySymlink);
   if (hasPolicy) {
-    // Negative test: validating a policy-bearing config against an empty
-    // policy must be rejected.
+    /*
+     * Negative test: validating a policy-bearing config against an empty
+     * policy must be rejected.
+     */
     thriftClient->sync_validateConfigAndPolicy(result, config_, "");
     if (*result.success()) {
       XLOG(ERR, "validateConfigAndPolicy accepted an empty policy.");
@@ -389,9 +395,11 @@ void BgpdDevServerProc::stop() {
   stopFlag_.store(true, std::memory_order_relaxed);
   if (bgpdProc_) {
     bgpdProc_->sendSignal(SIGTERM);
-    // To avoid data race, don't wait in thread.
-    // bgpdProc_ will terminate when SIGTERM is called, then the stop will go
-    // through.
+    /*
+     * To avoid data race, don't wait in thread.
+     * bgpdProc_ will terminate when SIGTERM is called, then the stop will go
+     * through.
+     */
     bgpdProc_->wait();
   }
   if (bgpdThread_) {

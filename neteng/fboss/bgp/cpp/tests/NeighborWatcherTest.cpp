@@ -356,8 +356,10 @@ class NeighborWatcherTestFixture : public ::testing::Test {
         fsdbNbrWatcher_->processInterfaceMapChanges(interfaceMap));
   }
 
-  // To trigger FSDB nbr_down, send two states.  The first with the address
-  // resolved to a port, the second with portId set to 0
+  /*
+   * To trigger FSDB nbr_down, send two states.  The first with the address
+   * resolved to a port, the second with portId set to 0
+   */
   void triggerFsdbNbrDown(std::string ipaddr, int port, int interfaceId) {
     auto isV6Addr = folly::IPAddress(ipaddr).version() == 6;
 
@@ -517,8 +519,10 @@ class NeighborWatcherTestFixture : public ::testing::Test {
 
 TYPED_TEST_SUITE(NeighborWatcherTestFixture, NeighborWatcherTestTypes);
 
-// Verify that we get expected results of "peer subnet to lbw" mapping via
-// results from FSDB switch config subscription
+/*
+ * Verify that we get expected results of "peer subnet to lbw" mapping via
+ * results from FSDB switch config subscription
+ */
 TYPED_TEST(NeighborWatcherTestFixture, fsdbCfgWatcherTrigger) {
   FLAGS_fsdb_config_timeout_s = 1;
 
@@ -531,8 +535,10 @@ TYPED_TEST(NeighborWatcherTestFixture, fsdbCfgWatcherTrigger) {
     XLOG(INFO, "nbrWatcherThread got stopped");
   });
 
-  // Create an EventBase for test job, and in it, wait till we get
-  // peerSubnetLbwMap
+  /*
+   * Create an EventBase for test job, and in it, wait till we get
+   * peerSubnetLbwMap
+   */
   folly::EventBase testEvb;
   testEvb.runInEventBaseThread([&] {
     while (!peerSubnetLbwMap) {
@@ -540,8 +546,10 @@ TYPED_TEST(NeighborWatcherTestFixture, fsdbCfgWatcherTrigger) {
     }
   });
 
-  // Trigger FSDB Cfg publish after a short sleep in order to ensure that
-  // getFsdbPeerSubnetLbwMap times out at least once
+  /*
+   * Trigger FSDB Cfg publish after a short sleep in order to ensure that
+   * getFsdbPeerSubnetLbwMap times out at least once
+   */
   folly::futures::sleep(std::chrono::seconds(FLAGS_fsdb_config_timeout_s * 2))
       .get();
   this->nbrWatcher_->evb_.runInEventBaseThread([&] {
@@ -563,8 +571,10 @@ TYPED_TEST(NeighborWatcherTestFixture, fsdbCfgWatcherTrigger) {
   nbrWatcherThread.join();
 }
 
-// Negative test of fsdbCfgWatcherTrigger test -- verify that we return from
-// getPeerSubnetLbwMap after timeout even if there was not FSDB config trigger
+/*
+ * Negative test of fsdbCfgWatcherTrigger test -- verify that we return from
+ * getPeerSubnetLbwMap after timeout even if there was not FSDB config trigger
+ */
 TYPED_TEST(NeighborWatcherTestFixture, fsdbCfgWatcherNoTrigger) {
   FLAGS_fsdb_config_timeout_s = 1;
 
@@ -621,9 +631,11 @@ TYPED_TEST(NeighborWatcherTestFixture, nbrWatcherUseFsdb) {
   }
 }
 
-// Verify fsdb dsfSwitchReachability subscription doesn't exist
-// if NeighborWatcher does not have enableDsfFastTearDown as true, and
-// neighborWatcher should still run correctly.
+/*
+ * Verify fsdb dsfSwitchReachability subscription doesn't exist
+ * if NeighborWatcher does not have enableDsfFastTearDown as true, and
+ * neighborWatcher should still run correctly.
+ */
 CO_TYPED_TEST(NeighborWatcherTestFixture, DsfFastTearDownFlagDisabledTest) {
   auto flagDisabledWatcher = std::make_shared<NeighborWatcher>(
       this->neighborEventQ_,
@@ -649,8 +661,10 @@ CO_TYPED_TEST(NeighborWatcherTestFixture, DsfFastTearDownFlagDisabledTest) {
   neighborWatcherThread.join();
 }
 
-// Verify NeighborReachabilityMsg sent when self switchId is not
-// populated in switchIdToFabricPortGroupMap.
+/*
+ * Verify NeighborReachabilityMsg sent when self switchId is not
+ * populated in switchIdToFabricPortGroupMap.
+ */
 CO_TYPED_TEST(NeighborWatcherTestFixture, SwitchImplicitlyNotReachableTest) {
   EXPECT_TRUE(this->nbrWatcher_->fsdbReachabilityWatcher_);
 
@@ -680,8 +694,10 @@ CO_TYPED_TEST(NeighborWatcherTestFixture, SwitchImplicitlyNotReachableTest) {
 
   co_await folly::coro::sleepReturnEarlyOnCancel(3s);
 
-  // Verify contents of the message. There is nothing
-  // inside, so we just get the type of the variant.
+  /*
+   * Verify contents of the message. There is nothing
+   * inside, so we just get the type of the variant.
+   */
   EXPECT_EQ(this->neighborEventQ_.size(), 1);
   auto msg = facebook::bgp::test::boundedBlockingPop(
       this->neighborEventQ_, "neighborEventQ_");
@@ -692,8 +708,10 @@ CO_TYPED_TEST(NeighborWatcherTestFixture, SwitchImplicitlyNotReachableTest) {
   neighborWatcherThread.join();
 }
 
-// Verify NeighborReachabilityMsg sent when self switchId has
-// invalid port group in switchIdToPortGroupMap.
+/*
+ * Verify NeighborReachabilityMsg sent when self switchId has
+ * invalid port group in switchIdToPortGroupMap.
+ */
 CO_TYPED_TEST(NeighborWatcherTestFixture, SwitchExplicitlyNotReachableTest) {
   EXPECT_TRUE(this->nbrWatcher_->fsdbReachabilityWatcher_);
 
@@ -724,8 +742,10 @@ CO_TYPED_TEST(NeighborWatcherTestFixture, SwitchExplicitlyNotReachableTest) {
 
   co_await folly::coro::sleepReturnEarlyOnCancel(3s);
 
-  // Verify contents of the message. There is nothing
-  // inside, so we just get the type of the variant.
+  /*
+   * Verify contents of the message. There is nothing
+   * inside, so we just get the type of the variant.
+   */
   EXPECT_EQ(this->neighborEventQ_.size(), 1);
   auto msg = facebook::bgp::test::boundedBlockingPop(
       this->neighborEventQ_, "neighborEventQ_");
@@ -736,8 +756,10 @@ CO_TYPED_TEST(NeighborWatcherTestFixture, SwitchExplicitlyNotReachableTest) {
   neighborWatcherThread.join();
 }
 
-// Verify NeighborReachabilityMsg not sent when self switchId is
-// reachable.
+/*
+ * Verify NeighborReachabilityMsg not sent when self switchId is
+ * reachable.
+ */
 CO_TYPED_TEST(NeighborWatcherTestFixture, SwitchReachableTest) {
   EXPECT_TRUE(this->nbrWatcher_->fsdbReachabilityWatcher_);
 
@@ -775,8 +797,10 @@ CO_TYPED_TEST(NeighborWatcherTestFixture, SwitchReachableTest) {
   neighborWatcherThread.join();
 }
 
-// Check that queue is not populated with NeighborReachability msg
-// when there is no dsfSwitchReachability table, or the table is empty.
+/*
+ * Check that queue is not populated with NeighborReachability msg
+ * when there is no dsfSwitchReachability table, or the table is empty.
+ */
 CO_TYPED_TEST(NeighborWatcherTestFixture, EmptyDsfSwitchReachabilityTable) {
   EXPECT_TRUE(this->nbrWatcher_->fsdbReachabilityWatcher_);
 
@@ -828,8 +852,10 @@ CO_TYPED_TEST(NeighborWatcherTestFixture, fsdbCfgWatcherSub) {
 
   co_await folly::coro::sleepReturnEarlyOnCancel(3s);
 
-  // Verify results
-  // We should see 2 entries (kCidrV4/6) in peerSubnetLbwMap
+  /*
+   * Verify results
+   * We should see 2 entries (kCidrV4/6) in peerSubnetLbwMap
+   */
   auto peerSubnetLbwMap = this->nbrWatcher_->getFsdbPeerSubnetLbwMap();
   XLOG(INFO, "Verify fsdbCfgWatcher results");
   CO_ASSERT_TRUE(peerSubnetLbwMap);
@@ -838,8 +864,10 @@ CO_TYPED_TEST(NeighborWatcherTestFixture, fsdbCfgWatcherSub) {
   EXPECT_EQ(static_cast<int>(kSpeedMbps), peerSubnetLbwMap->at(kCidrV6));
   XLOG(INFO, "Verify fsdbCfgWatcher done");
 
-  // Cleanup existing FSDB State Publisher and create a Delta Publisher
-  // FsdbPubSubManager only allow on Publisher exist.
+  /*
+   * Cleanup existing FSDB State Publisher and create a Delta Publisher
+   * FsdbPubSubManager only allow on Publisher exist.
+   */
   this->cleanUpFsdbPubSub();
   co_await this->createFsdbDeltaPublisher();
 
@@ -872,8 +900,10 @@ CO_TYPED_TEST(NeighborWatcherTestFixture, fsdbCfgWatcherSub) {
   neighborWatcherThread.join();
 }
 
-// Unit tests for getNbrEntryChanges() function
-// Test: Entry deleted (present in old with non-zero port, missing in new)
+/*
+ * Unit tests for getNbrEntryChanges() function
+ * Test: Entry deleted (present in old with non-zero port, missing in new)
+ */
 TYPED_TEST(NeighborWatcherTestFixture, GetNbrEntryChanges_EntryDeleted) {
   std::map<std::string, fboss::state::NeighborEntryFields> oldNbrEntry;
   std::map<std::string, fboss::state::NeighborEntryFields> newNbrEntry;
@@ -931,8 +961,10 @@ TYPED_TEST(NeighborWatcherTestFixture, GetNbrEntryChanges_EntryAdded) {
   std::vector<folly::IPAddress> deletedAddrs;
   std::vector<folly::IPAddress> addedAddrs;
 
-  // Old state is empty
-  // Add an entry to new state with non-zero port
+  /*
+   * Old state is empty
+   * Add an entry to new state with non-zero port
+   */
   fboss::state::NeighborEntryFields newEntry;
   newEntry.ipaddress() = "10.0.0.1";
   newEntry.portId()->portId() = 100;
@@ -1002,8 +1034,10 @@ TYPED_TEST(NeighborWatcherTestFixture, GetNbrEntryChanges_LinkLocalIgnored) {
   EXPECT_TRUE(addedAddrs.empty());
 }
 
-// Test: Entry with port=0 in old that gets removed should NOT be in
-// deletedAddrs
+/*
+ * Test: Entry with port=0 in old that gets removed should NOT be in
+ * deletedAddrs
+ */
 TYPED_TEST(
     NeighborWatcherTestFixture,
     GetNbrEntryChanges_UnresolvedEntryRemoved) {
@@ -1266,8 +1300,10 @@ TYPED_TEST(
   EXPECT_EQ(expectedAdded, addedAddrs);
 }
 
-// Only entries with both portId != 0 AND state == Reachable count as resolved;
-// mismatched entries bump the bgpd.neighbor.portid_state_mismatch counter.
+/*
+ * Only entries with both portId != 0 AND state == Reachable count as resolved;
+ * mismatched entries bump the bgpd.neighbor.portid_state_mismatch counter.
+ */
 TYPED_TEST(
     NeighborWatcherTestFixture,
     CollectResolvedIpsFromTable_FiltersPendingEntries) {
@@ -1304,8 +1340,10 @@ TYPED_TEST(
       folly::IPAddress("10.0.0.3")};
   EXPECT_EQ(expected, resolvedIps);
 
-  // Two of the three entries above have portId/state mismatch (10.0.0.1 and
-  // 10.0.0.2), so the counter should bump by exactly 2.
+  /*
+   * Two of the three entries above have portId/state mismatch (10.0.0.1 and
+   * 10.0.0.2), so the counter should bump by exactly 2.
+   */
   tcData->publishStats();
   EXPECT_EQ(
       initialCount + 2,
@@ -1313,9 +1351,11 @@ TYPED_TEST(
           facebook::bgp::BgpStats::kNeighborPortIdStateMismatch));
 }
 
-// Unit tests for processInterfaceMapChanges() function
-// Test: InterfaceId present in old map but missing in new map - entries should
-// be deleted
+/*
+ * Unit tests for processInterfaceMapChanges() function
+ * Test: InterfaceId present in old map but missing in new map - entries should
+ * be deleted
+ */
 TYPED_TEST(
     NeighborWatcherTestFixture,
     ProcessInterfaceMapChanges_InterfaceIdRemovedFromNewMap) {
@@ -1344,8 +1384,10 @@ TYPED_TEST(
     facebook::bgp::test::boundedBlockingPop(this->ribInQ_, "ribInQ_");
   }
 
-  // Now create new interfaceMap with only kInterfaceId1 (kInterfaceId2 is
-  // removed)
+  /*
+   * Now create new interfaceMap with only kInterfaceId1 (kInterfaceId2 is
+   * removed)
+   */
   auto newInterfaceMap =
       this->createInterfaceMap(ipaddr, kPortNum, kInterfaceId1, false);
 
@@ -1369,8 +1411,10 @@ TYPED_TEST(
       "10.0.0.2");
 }
 
-// Test: InterfaceId present in new map but missing in old map - entries should
-// be added
+/*
+ * Test: InterfaceId present in new map but missing in old map - entries should
+ * be added
+ */
 TYPED_TEST(
     NeighborWatcherTestFixture,
     ProcessInterfaceMapChanges_InterfaceIdAddedInNewMap) {
@@ -1417,15 +1461,19 @@ TYPED_TEST(
       std::get<NexthopResolutionUpdate>(ribMsg).resolved[0].str(), "10.0.0.2");
 }
 
-// Test: First interfaceMap update (interfaceMap_ is null) - all resolved
-// entries should be added
+/*
+ * Test: First interfaceMap update (interfaceMap_ is null) - all resolved
+ * entries should be added
+ */
 TYPED_TEST(
     NeighborWatcherTestFixture,
     ProcessInterfaceMapChanges_FirstInterfaceMapUpdate) {
   std::string ipaddr = "10.0.0.1";
 
-  // Ensure interfaceMap_ is null (fresh FsdbNeighborWatcher)
-  // The fsdbNbrWatcher_ is already initialized with interfaceMap_ = nullptr
+  /*
+   * Ensure interfaceMap_ is null (fresh FsdbNeighborWatcher)
+   * The fsdbNbrWatcher_ is already initialized with interfaceMap_ = nullptr
+   */
 
   // Create interfaceMap with a resolved entry
   auto interfaceMap =
@@ -1445,8 +1493,10 @@ TYPED_TEST(
       std::get<NexthopResolutionUpdate>(ribMsg).resolved[0].str(), "10.0.0.1");
 }
 
-// Test: Verify NexthopResolutionUpdate is pushed to ribInQ when interface map
-// changes
+/*
+ * Test: Verify NexthopResolutionUpdate is pushed to ribInQ when interface map
+ * changes
+ */
 TYPED_TEST(
     NeighborWatcherTestFixture,
     ProcessInterfaceMapChanges_NexthopResolutionUpdatePushedToRibInQ) {
@@ -1469,17 +1519,21 @@ TYPED_TEST(
     facebook::bgp::test::boundedBlockingPop(this->ribInQ_, "ribInQ_");
   }
 
-  // Now create new interfaceMap:
-  // - kInterfaceId1 removed (ipaddr1 becomes unresolved - goes to deletedAddrs)
-  // - kInterfaceId2 added with ipaddr2 resolved (goes to addedAddrs)
+  /*
+   * Now create new interfaceMap:
+   * - kInterfaceId1 removed (ipaddr1 becomes unresolved - goes to deletedAddrs)
+   * - kInterfaceId2 added with ipaddr2 resolved (goes to addedAddrs)
+   */
   auto newInterfaceMap =
       this->createInterfaceMap(ipaddr2, kPortNum, kInterfaceId2, false);
 
   // Process the change
   this->callFsdbInterfaceStateCbAndDrain(newInterfaceMap);
 
-  // Verify NexthopResolutionUpdate is pushed to ribInQ_
-  // The queue should have one message: NexthopResolutionUpdate
+  /*
+   * Verify NexthopResolutionUpdate is pushed to ribInQ_
+   * The queue should have one message: NexthopResolutionUpdate
+   */
   ASSERT_FALSE(this->ribInQ_.empty());
   auto ribMsg =
       facebook::bgp::test::boundedBlockingPop(this->ribInQ_, "ribInQ_");
@@ -1497,8 +1551,10 @@ TYPED_TEST(
   EXPECT_EQ(nexthopUpdate->unresolved[0].str(), ipaddr1);
 }
 
-// Test: Verify NexthopResolutionUpdate is NOT pushed to ribInQ when there are
-// no changes (both addedAddrs and deletedAddrs are empty)
+/*
+ * Test: Verify NexthopResolutionUpdate is NOT pushed to ribInQ when there are
+ * no changes (both addedAddrs and deletedAddrs are empty)
+ */
 TYPED_TEST(
     NeighborWatcherTestFixture,
     ProcessInterfaceMapChanges_NoUpdateSkipsRibInQPush) {
@@ -1526,8 +1582,10 @@ TYPED_TEST(
   // Verify that no messages were pushed to neighborEventQ_
   EXPECT_TRUE(this->neighborEventQ_.empty());
 
-  // Verify that no NexthopResolutionUpdate is pushed to ribInQ_
-  // since there are no changes (addedAddrs and deletedAddrs are both empty)
+  /*
+   * Verify that no NexthopResolutionUpdate is pushed to ribInQ_
+   * since there are no changes (addedAddrs and deletedAddrs are both empty)
+   */
   EXPECT_TRUE(this->ribInQ_.empty());
 }
 

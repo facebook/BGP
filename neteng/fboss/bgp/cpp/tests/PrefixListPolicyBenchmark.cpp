@@ -51,8 +51,10 @@ const std::string basePrefix = "13";
 // First octets of prefixes to be evaluated.
 const std::string nonMatchingbasePrefix = "14";
 
-// We'll add two routes that will always match, to ensure correctness
-// of policy evaluation.
+/*
+ * We'll add two routes that will always match, to ensure correctness
+ * of policy evaluation.
+ */
 const auto matchingPrefix1 =
     folly::CIDRNetwork(folly::IPAddress(basePrefix + ".0.0.1"), 32);
 const auto matchingPrefix2 =
@@ -183,8 +185,10 @@ void prefix_list_scale_test(uint32_t prefixListSize, uint32_t numPrefixes) {
   const std::vector<routing_policy::PrefixListEntry>& prefixList =
       createPrefixList(prefixListSize);
 
-  // Creating a term that matches against prefix-list and PERMITs. No attribute
-  // modification.
+  /*
+   * Creating a term that matches against prefix-list and PERMITs. No attribute
+   * modification.
+   */
   const bgp_policy::BgpPolicyAtomicMatch& match1 =
       createPrefixListMatch(prefixList);
   bgp_policy::BgpPolicyAction actionPermit =

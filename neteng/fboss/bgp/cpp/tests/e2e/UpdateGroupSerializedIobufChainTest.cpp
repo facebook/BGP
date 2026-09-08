@@ -248,8 +248,10 @@ void verifyAggregateMaxPacking(
   ASSERT_FALSE(descriptors.empty())
       << "No UpdateDescriptors collected for the announcement";
 
-  // Flatten every chain element of every descriptor, keeping the per-descriptor
-  // grouping so each flush can be validated as its own packing run.
+  /*
+   * Flatten every chain element of every descriptor, keeping the per-descriptor
+   * grouping so each flush can be validated as its own packing run.
+   */
   std::vector<std::vector<size_t>> perFlushLengths;
   size_t totalElementCount = 0;
   int64_t sumAllLengths = 0;
@@ -375,8 +377,10 @@ void verifyAggregateMaxPacking(
       }
       flushPrefixes += nPrefixes;
     }
-    // Invariant 8: each flush uses the minimum number of UPDATEs for its own
-    // prefixes.
+    /*
+     * Invariant 8: each flush uses the minimum number of UPDATEs for its own
+     * prefixes.
+     */
     const size_t minFlushElements = (flushPrefixes + nFull - 1) / nFull;
     EXPECT_EQ(flushElements, minFlushElements)
         << "Flush has " << flushElements << " elements but its "
@@ -385,8 +389,10 @@ void verifyAggregateMaxPacking(
     accumulatedPrefixes += flushPrefixes;
   }
 
-  // Invariant 5: exactly `totalPrefixes` serialized across the whole flush
-  // sequence — no loss, no duplication.
+  /*
+   * Invariant 5: exactly `totalPrefixes` serialized across the whole flush
+   * sequence — no loss, no duplication.
+   */
   EXPECT_EQ(totalPrefixes, accumulatedPrefixes)
       << "Aggregate prefix count mismatch across " << descriptors.size()
       << " descriptors";
@@ -617,8 +623,10 @@ TEST_F(
       kMpV6BasedPackerReserve,
       "V4 /24 x 4000 prefixes");
 
-  // The cloning path through BgpSerializer must preserve every byte of every
-  // descriptor end-to-end.
+  /*
+   * The cloning path through BgpSerializer must preserve every byte of every
+   * descriptor end-to-end.
+   */
   BgpSerializer serializer(makeDefaultCaps());
   for (auto& descriptor : descriptors) {
     ASSERT_NE(nullptr, descriptor.serializedGroupPDU);
@@ -680,8 +688,10 @@ TEST_F(
       kMpV6BasedPackerReserve,
       "V4 /32 x 3000 prefixes");
 
-  // The cloning path through BgpSerializer must preserve every byte of every
-  // descriptor end-to-end.
+  /*
+   * The cloning path through BgpSerializer must preserve every byte of every
+   * descriptor end-to-end.
+   */
   BgpSerializer serializer(makeDefaultCaps());
   for (auto& descriptor : descriptors) {
     ASSERT_NE(nullptr, descriptor.serializedGroupPDU);
@@ -744,8 +754,10 @@ TEST_F(
       kMpV6BasedPackerReserve,
       "V4 /24 x 1010 prefixes (small-tail boundary)");
 
-  // The cloning path through BgpSerializer must preserve every byte of every
-  // descriptor end-to-end.
+  /*
+   * The cloning path through BgpSerializer must preserve every byte of every
+   * descriptor end-to-end.
+   */
   BgpSerializer serializer(makeDefaultCaps());
   for (auto& descriptor : descriptors) {
     ASSERT_NE(nullptr, descriptor.serializedGroupPDU);

@@ -64,9 +64,11 @@ class UpdateGroupBitPositionTest : public AdjRibOutboundFixture {
   std::shared_ptr<AdjRibOutGroup> group_;
 };
 
-// =============================================================================
-// CONNECTION TEST - Verifies AdjRibGroup uses ConsumerBitManager
-// =============================================================================
+/*
+ * =============================================================================
+ * CONNECTION TEST - Verifies AdjRibGroup uses ConsumerBitManager
+ * =============================================================================
+ */
 
 /**
  * Test: AdjRibOutGroup creation initializes with empty member count.
@@ -79,9 +81,11 @@ TEST_F(UpdateGroupBitPositionTest, GroupCreation) {
   EXPECT_EQ(group_->getAdjRibGroupName(), "test_group");
 }
 
-// =============================================================================
-// CORE BIT REUSE TEST - Verifies the bug fix works
-// =============================================================================
+/*
+ * =============================================================================
+ * CORE BIT REUSE TEST - Verifies the bug fix works
+ * =============================================================================
+ */
 
 /**
  * Test: ConsumerBitManager bit reuse after free.
@@ -145,9 +149,11 @@ TEST_F(UpdateGroupBitPositionTest, AlternateAllocateAndFree) {
   EXPECT_NE(bit3, bit2);
 }
 
-// =============================================================================
-// ERROR HANDLING - Basic error cases for robustness
-// =============================================================================
+/*
+ * =============================================================================
+ * ERROR HANDLING - Basic error cases for robustness
+ * =============================================================================
+ */
 
 /**
  * Test: Error handling - double free returns error.

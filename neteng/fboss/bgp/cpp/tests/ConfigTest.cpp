@@ -84,8 +84,10 @@ std::optional<std::string> validateConfigGetError(
 }
 
 TEST_F(ConfigTestFixture, setConfigFromFileOldAsnTest) {
-  // Test to ensure we will still use old asn field properly
-  // TODO: deprecate i32 asns fields T113736668
+  /*
+   * Test to ensure we will still use old asn field properly
+   * TODO: deprecate i32 asns fields T113736668
+   */
   string configFile =
       "neteng/fboss/bgp/cpp/tests/sample_configs/bgpd_old_asn_field.conf";
   auto configFilePath = getAbsoluteFilePath(configFile);
@@ -184,11 +186,15 @@ TEST_F(ConfigTestFixture, globalConfigTest) {
   {
     Config config(thriftConfig);
     auto globalConfig = config.getBgpGlobalConfig();
-    // compute_ucmp_from_link_bandwidth_community is not set
-    // verify computeUcmpFromLbwComm defaults to FALSE
+    /*
+     * compute_ucmp_from_link_bandwidth_community is not set
+     * verify computeUcmpFromLbwComm defaults to FALSE
+     */
     EXPECT_FALSE(globalConfig->computeUcmpFromLbwComm);
-    // count_confeds_in_as_path_len is not set
-    // verify countConfedsInAsPathLen defaults to FALSE
+    /*
+     * count_confeds_in_as_path_len is not set
+     * verify countConfedsInAsPathLen defaults to FALSE
+     */
     EXPECT_FALSE(globalConfig->countConfedsInAsPathLen);
   }
 
@@ -319,8 +325,10 @@ TEST_F(ConfigTestFixture, enableStreamSubscriberBackpressureTest) {
                      ->enableStreamSubscriberBackpressure.has_value());
   }
 
-  // bgp_setting_config is present but the field is unset. The value stays
-  // unset.
+  /*
+   * bgp_setting_config is present but the field is unset. The value stays
+   * unset.
+   */
   {
     thriftConfig.bgp_setting_config() = thrift::BgpSettingConfig();
     Config config(thriftConfig);
@@ -340,8 +348,10 @@ TEST_F(ConfigTestFixture, enableStreamSubscriberBackpressureTest) {
     EXPECT_TRUE(*backpressure);
   }
 
-  // The config sets false. The value is set and it is false. This state is
-  // different from the unset state above.
+  /*
+   * The config sets false. The value is set and it is false. This state is
+   * different from the unset state above.
+   */
   {
     thriftConfig.bgp_setting_config() = thrift::BgpSettingConfig();
     thriftConfig.bgp_setting_config()->enable_stream_subscriber_backpressure() =
@@ -370,8 +380,10 @@ TEST_F(ConfigTestFixture, ThriftServerConfigTest) {
     EXPECT_EQ(nullptr, config.getThriftServerConfig());
     EXPECT_FALSE(config.isThriftServerTlsEnabled());
 
-    // These should return empty strings since ThriftServerConfig is not
-    // configured
+    /*
+     * These should return empty strings since ThriftServerConfig is not
+     * configured
+     */
     EXPECT_EQ("", config.getThriftServerCaPath());
     EXPECT_EQ("", config.getThriftServerCertPath());
     EXPECT_EQ("", config.getThriftServerKeyPath());
@@ -415,8 +427,10 @@ TEST_F(ConfigTestFixture, ThriftServerConfigTest) {
         getThriftServerSSLPolicy(*config.getBgpGlobalConfig()));
   }
   {
-    // test 3: thrift server config specified with TLS enabled and all required
-    // fields
+    /*
+     * test 3: thrift server config specified with TLS enabled and all required
+     * fields
+     */
     thrift::ThriftServerConfig thriftServerConfig;
     thriftServerConfig.enable_tls() = true;
     thriftServerConfig.x509_ca_path() = "/path/to/ca.pem";
@@ -824,8 +838,10 @@ TEST_F(ConfigTestFixture, GetThriftServerSSLPolicyTest) {
   }
 
   {
-    // test 4: thrift server config with TLS enabled and IF_PRESENTED
-    // verification
+    /*
+     * test 4: thrift server config with TLS enabled and IF_PRESENTED
+     * verification
+     */
     thrift::ThriftServerConfig thriftServerConfig;
     thriftServerConfig.enable_tls() = true;
     thriftServerConfig.verify_client_type() =
@@ -853,8 +869,10 @@ TEST_F(ConfigTestFixture, GetThriftServerSSLPolicyTest) {
   }
 
   {
-    // test 6: thrift server config with TLS enabled but no client verification
-    // set
+    /*
+     * test 6: thrift server config with TLS enabled but no client verification
+     * set
+     */
     thrift::ThriftServerConfig thriftServerConfig;
     thriftServerConfig.enable_tls() = true;
     bgpConfig.thrift_server_config() = thriftServerConfig;
@@ -915,8 +933,10 @@ TEST_F(ConfigTestFixture, SwitchLimitConfigTest) {
             "bgpd.total_path_limit"));
   }
   {
-    // test 3: switch limit config specified. Ingress path limit is configured
-    // and unique prefix limit is not configured.
+    /*
+     * test 3: switch limit config specified. Ingress path limit is configured
+     * and unique prefix limit is not configured.
+     */
     thrift::BgpSwitchLimitConfig switchLimitConfig;
     switchLimitConfig.ingress_path_limit() = ingressPathLimit;
     bgpConfig.switch_limit_config() = switchLimitConfig;
@@ -930,8 +950,10 @@ TEST_F(ConfigTestFixture, SwitchLimitConfigTest) {
     EXPECT_EQ(ingressPathLimit, *bgpSwitchLimitConfig->ingress_path_limit());
   }
   {
-    // test 4: switch limit config specified. Ingress path limit is configured
-    // and unique prefix limit is configured.
+    /*
+     * test 4: switch limit config specified. Ingress path limit is configured
+     * and unique prefix limit is configured.
+     */
     thrift::BgpSwitchLimitConfig switchLimitConfig;
     switchLimitConfig.ingress_path_limit() = ingressPathLimit;
     switchLimitConfig.prefix_limit() = uniquePrefixLimit;
@@ -1318,8 +1340,10 @@ TEST_F(ConfigTestFixture, tunables) {
 TEST_F(ConfigTestFixture, localASTest) {
   auto testConfig = defaultConfig_;
 
-  // create Peer Group, used by peer with peerAddr kPeerAddr8 and kPeerAddr9
-  // the port-group has local-as configured
+  /*
+   * create Peer Group, used by peer with peerAddr kPeerAddr8 and kPeerAddr9
+   * the port-group has local-as configured
+   */
   thrift::PeerGroup peergroup;
   peergroup.name() = "PEERGROUP_SSW_FAUU";
   peergroup.next_hop_self() = true;
@@ -1331,9 +1355,11 @@ TEST_F(ConfigTestFixture, localASTest) {
   testConfig.peer_groups().from_optional(peerGroups);
   testConfig.peers()->clear();
   {
-    // Add a static peer without peer-group but with local-as configured.
-    // Check that local-as takes precedence over global-as
-    // (globalconfig.local_as)
+    /*
+     * Add a static peer without peer-group but with local-as configured.
+     * Check that local-as takes precedence over global-as
+     * (globalconfig.local_as)
+     */
     thrift::BgpPeer staticPeer;
     staticPeer.remote_as_4_byte() = kPeerAsn7;
     staticPeer.local_as_4_byte() = kAsn6;
@@ -1344,9 +1370,11 @@ TEST_F(ConfigTestFixture, localASTest) {
     testConfig.peers()->emplace_back(staticPeer);
   }
   {
-    // Add a static peer with no local-as but with a peer-group that has
-    // local-as Check that peer group's local-as overrides the global-as
-    // (globalconfig.local_as)
+    /*
+     * Add a static peer with no local-as but with a peer-group that has
+     * local-as Check that peer group's local-as overrides the global-as
+     * (globalconfig.local_as)
+     */
     thrift::BgpPeer staticPeer;
     staticPeer.remote_as_4_byte() = kPeerAsn8;
     staticPeer.local_addr() = kLocalAddr8.str();
@@ -1357,9 +1385,11 @@ TEST_F(ConfigTestFixture, localASTest) {
     testConfig.peers()->emplace_back(staticPeer);
   }
   {
-    // Add a static peer with local-as with a peer-group that also has local-as
-    // Check that peer's local-as config overrides the peer-group local-as
-    // config.
+    /*
+     * Add a static peer with local-as with a peer-group that also has local-as
+     * Check that peer's local-as config overrides the peer-group local-as
+     * config.
+     */
     thrift::BgpPeer staticPeer;
     staticPeer.remote_as_4_byte() = kPeerAsn9;
     staticPeer.local_addr() = kLocalAddr9.str();
@@ -1501,8 +1531,10 @@ TEST_F(ConfigTestFixture, localASCascadeTest) {
     p.peer_group_name() = *pg4Byte.name();
     testConfig.peers()->emplace_back(p);
   }
-  // peer12: per-peer legacy i32 Local-AS overrides peer-group's 4-byte (peer
-  // wins).
+  /*
+   * peer12: per-peer legacy i32 Local-AS overrides peer-group's 4-byte (peer
+   * wins).
+   */
   {
     thrift::BgpPeer p;
     p.remote_as_4_byte() = kPeerAsn9;
@@ -1852,15 +1884,17 @@ TEST_F(ConfigTestFixture, PeeringParamsPeerGroupName) {
   }
 }
 
-// Verify the peer > peer-group resolution hierarchy for both
-// route_refresh (RFC 2918) and enhanced_route_refresh (RFC 7313).
-//
-// 4 peers cover the matrix per flag:
-//   peer7  — neither peer nor peer-group sets it -> default false
-//   peer8  — peer-group sets true, peer doesn't override -> inherited true
-//   peer9  — peer overrides peer-group's true with false -> peer wins
-//   peer10 — per-peer sets true with no peer-group -> peer wins (default
-//            cascade through to params)
+/*
+ * Verify the peer > peer-group resolution hierarchy for both
+ * route_refresh (RFC 2918) and enhanced_route_refresh (RFC 7313).
+ *
+ * 4 peers cover the matrix per flag:
+ *   peer7  — neither peer nor peer-group sets it -> default false
+ *   peer8  — peer-group sets true, peer doesn't override -> inherited true
+ *   peer9  — peer overrides peer-group's true with false -> peer wins
+ *   peer10 — per-peer sets true with no peer-group -> peer wins (default
+ *            cascade through to params)
+ */
 TEST_F(ConfigTestFixture, RouteRefreshConfigHierarchy) {
   // Local constants for peer10 (Utils.h only defines through index 9).
   const auto kLocalAddr10 = folly::IPAddress("127.1.0.9");
@@ -1993,9 +2027,11 @@ TEST_F(ConfigTestFixture, localASNegativeTest) {
 
 TEST_F(ConfigTestFixture, lbwConfigTest) {
   {
-    // Negative test.  Advertise_link_bandwidth is SET_LINK_BPS
-    // but we don't have LBW in peer config and we don't have any peer group
-    // configured.
+    /*
+     * Negative test.  Advertise_link_bandwidth is SET_LINK_BPS
+     * but we don't have LBW in peer config and we don't have any peer group
+     * configured.
+     */
     XLOG(
         INFO,
         "Negative test1 to ensure that LBW is configured if "
@@ -2012,9 +2048,11 @@ TEST_F(ConfigTestFixture, lbwConfigTest) {
     EXPECT_ANY_THROW(Config config(myNewConfig));
   }
   {
-    // Another negative test.  Advertise_link_bandwidth is SET_LINK_BPS
-    // but we don't have LBW in peer config. We do have some peer group
-    // configured, but no LBW in that either.
+    /*
+     * Another negative test.  Advertise_link_bandwidth is SET_LINK_BPS
+     * but we don't have LBW in peer config. We do have some peer group
+     * configured, but no LBW in that either.
+     */
     XLOG(
         INFO,
         "Negative test2 to ensure that LBW is configured if "
@@ -2665,8 +2703,10 @@ TEST_F(ConfigTestFixture, verifyPolicyConfigValidation) {
       };
 
   {
-    // Verify we do not accept peers with policy if no policies are configured
-    // Test for ingress policy
+    /*
+     * Verify we do not accept peers with policy if no policies are configured
+     * Test for ingress policy
+     */
     std::string expectedStr(
         "Missing ingress policy (Ingress) needed for peer (127.3.0.1)");
     // nullptr indicates no policies i.e no PolicyManager created
@@ -2686,8 +2726,10 @@ TEST_F(ConfigTestFixture, verifyPolicyConfigValidation) {
 
   auto policyManager =
       std::make_shared<PolicyManager>(policies, createTestBgpGlobalConfig());
-  // Verify we do not accept peers if policy config doesn't have matching
-  // policy.
+  /*
+   * Verify we do not accept peers if policy config doesn't have matching
+   * policy.
+   */
   {
     // CASE: Test for egress policy missing
     std::string expectedStr(
@@ -2889,8 +2931,10 @@ TEST(Config, GetLinkBandwidthBytesPerSecTest) {
   }
 
   {
-    // test lambda function only invoked once even though map fetch
-    // failed(std::nullopt)
+    /*
+     * test lambda function only invoked once even though map fetch
+     * failed(std::nullopt)
+     */
     auto invoked = 0;
     folly::F14NodeMap<folly::CIDRNetwork, int64_t> peerSubnetLbwMap;
     peerSubnetLbwMap.emplace(
@@ -2944,8 +2988,10 @@ TEST(Config, GetLinkBandwidthBytesPerSecTest) {
     Config configWithLbwMap(configFilePath, peerSubnetLbwMap);
     auto linkBytesPerSec =
         configWithLbwMap.getLinkBandwidthBytesPerSec("AUTO", peer);
-    // "AUTO" should not be treated as "auto", so it should try to parse and
-    // fail
+    /*
+     * "AUTO" should not be treated as "auto", so it should try to parse and
+     * fail
+     */
     EXPECT_FALSE(linkBytesPerSec.has_value());
   }
   {
@@ -2968,8 +3014,10 @@ TEST(Config, GetLinkBandwidthBytesPerSecTest) {
     EXPECT_EQ(linkBytesPerSec.value(), 0.0f);
   }
   {
-    // Test "auto" when peer has multiple matching subnets (should use first
-    // match)
+    /*
+     * Test "auto" when peer has multiple matching subnets (should use first
+     * match)
+     */
     folly::F14NodeMap<folly::CIDRNetwork, int64_t> peerSubnetLbwMap;
     // Add overlapping subnets
     peerSubnetLbwMap.emplace(
@@ -2980,8 +3028,10 @@ TEST(Config, GetLinkBandwidthBytesPerSecTest) {
     auto linkBytesPerSec =
         configWithOverlap.getLinkBandwidthBytesPerSec("auto", peer);
     EXPECT_TRUE(linkBytesPerSec.has_value());
-    // Should match one of them (implementation dependent on map iteration
-    // order)
+    /*
+     * Should match one of them (implementation dependent on map iteration
+     * order)
+     */
     float expected50G = 50.0f * 1000 * 1000 * 1000 / 8;
     float expected100G = 100.0f * 1000 * 1000 * 1000 / 8;
     EXPECT_TRUE(
@@ -3037,9 +3087,11 @@ TEST_P(BgpUcmpQuantizerFixture, BgpUcmpQuantizerTest) {
   EXPECT_EQ(quantizer.fixedQuantizedBpsList.at(0), 2400e9);
   EXPECT_EQ(quantizer.fixedQuantizedBpsList.at(1), 3600e9);
 
-  // due to precision loss between float <-> uint64_t cast, give it 5% error
-  // margin
-  // ensure all input/output pair yield error < thrshold * kErrorMargin
+  /*
+   * due to precision loss between float <-> uint64_t cast, give it 5% error
+   * margin
+   * ensure all input/output pair yield error < thrshold * kErrorMargin
+   */
   const float kErrorMargin = 1.05f;
 
   for (uint64_t inputBps = 3600e9; inputBps > 0; inputBps -= 100e9) {
@@ -3079,8 +3131,10 @@ TEST_P(BgpUcmpQuantizerFixture, BgpUcmpQuantizerTest) {
   EXPECT_EQ(output2400, output2399);
   EXPECT_EQ(output2400, output2200);
 
-  // Verify that last few failures will yield the same value. 1/10e6 of error
-  // margin because of float rounding.
+  /*
+   * Verify that last few failures will yield the same value. 1/10e6 of error
+   * margin because of float rounding.
+   */
   EXPECT_NEAR(quantizer.quantize(100e9 / 8), 100e9 / 8, 1000);
   EXPECT_NEAR(quantizer.quantize(200e9 / 8), 200e9 / 8, 2000);
   EXPECT_NEAR(quantizer.quantize(300e9 / 8), 300e9 / 8, 3000);
@@ -3267,8 +3321,10 @@ TEST_F(ConfigTestFixture, IncludeInterfaceRegexesTest) {
     EXPECT_EQ("fboss.*", globalConfig->includeInterfaceRegexes[2]);
   }
 
-  // Test case 4: include_interface_regexes combined with
-  // enable_next_hop_tracking
+  /*
+   * Test case 4: include_interface_regexes combined with
+   * enable_next_hop_tracking
+   */
   {
     std::vector<std::string> interfaceRegexes = {"loopback0", "ethernet.*"};
     thriftConfig.bgp_setting_config()->include_interface_regexes() =
@@ -3374,8 +3430,10 @@ TEST_F(ConfigTestFixture, ValidatePeerExistsInvalidFormatTest) {
 TEST_F(ConfigTestFixture, ValidatePeerExistsEdgeCasesTest) {
   Config config(defaultConfig_);
 
-  // Test with IPv4-mapped IPv6 addresses if applicable
-  // Test with loopback addresses
+  /*
+   * Test with IPv4-mapped IPv6 addresses if applicable
+   * Test with loopback addresses
+   */
   EXPECT_FALSE(config.validatePeerExists("127.0.0.1"));
   EXPECT_FALSE(config.validatePeerExists("::1"));
 }
@@ -3554,8 +3612,10 @@ TEST_F(ConfigTestFixture, ValidatePeerExistsSubnetMatchingTest) {
   // Test subnet validation - should match the exact subnet configured
   EXPECT_TRUE(config.validatePeerExists("192.168.1.0/24"));
 
-  // Test individual IPs within the subnet - this should not match
-  // as validatePeerExists is looking for exact peer/prefix matches
+  /*
+   * Test individual IPs within the subnet - this should not match
+   * as validatePeerExists is looking for exact peer/prefix matches
+   */
   EXPECT_FALSE(config.validatePeerExists("192.168.1.1"));
   EXPECT_FALSE(config.validatePeerExists("192.168.1.100"));
 

@@ -250,32 +250,34 @@ void AdjRibOutboundFixture::setupOutDelayAdjs(
   });
 }
 
-// Out Delay Feature Test:
-//  create one incoming adjrib
-//  create 4 outgoing adjrib:
-//    * 1st with out-delay set to 1sec
-//    * 2nd with out-delay set to 2sec
-//    * 3rd with out-delay set to 0sec
-//    * 4th with out-delay set to 1sec <This peer joins ~2.5sec after others>
-//
-//  Simulate sending RIB In update from RIB carrying 2 prefixes pfx1, pfx2
-//  After .5sec send an update on pfx1 and an update of pfx2
-//  After 1.5sec send an update on pfx1 and a withdraw of pfx2
-//
-//  [Deferral] verify that peer1 gets pfx1 twice and pfx2 update followed by
-//  withdraw [Update Coalescing] verify that peer2 gets pfx1 once and no pfx2
-//  verify that peer3 gets pfx1 update three times, 2 pfx2 updates followed by
-//  withdrawal
-//
-//  Redeferral Test:: [Update->Withdraw->Update]
-//  After 2sec send a new update pfx2 [With NewTimeStamp] to peer1,2,3
-//  verify that peer3 get pfx2 update right away,
-//  verify that peer1 gets pfx2 after 1 sec and peer3 gets after 2 sec
-//
-//  Peer join after prefix installed in Local-RIB.
-//  After 2.5sec send update to peer4 <peer4 has just joined>
-//  Verify that peer4 defers the pfx2 update but receives pfx1 rightaway
-//  After 3.5sec verify that peer4 gets pfx2 also.
+/*
+ * Out Delay Feature Test:
+ *  create one incoming adjrib
+ *  create 4 outgoing adjrib:
+ *    * 1st with out-delay set to 1sec
+ *    * 2nd with out-delay set to 2sec
+ *    * 3rd with out-delay set to 0sec
+ *    * 4th with out-delay set to 1sec <This peer joins ~2.5sec after others>
+ *
+ *  Simulate sending RIB In update from RIB carrying 2 prefixes pfx1, pfx2
+ *  After .5sec send an update on pfx1 and an update of pfx2
+ *  After 1.5sec send an update on pfx1 and a withdraw of pfx2
+ *
+ *  [Deferral] verify that peer1 gets pfx1 twice and pfx2 update followed by
+ *  withdraw [Update Coalescing] verify that peer2 gets pfx1 once and no pfx2
+ *  verify that peer3 gets pfx1 update three times, 2 pfx2 updates followed by
+ *  withdrawal
+ *
+ *  Redeferral Test:: [Update->Withdraw->Update]
+ *  After 2sec send a new update pfx2 [With NewTimeStamp] to peer1,2,3
+ *  verify that peer3 get pfx2 update right away,
+ *  verify that peer1 gets pfx2 after 1 sec and peer3 gets after 2 sec
+ *
+ *  Peer join after prefix installed in Local-RIB.
+ *  After 2.5sec send update to peer4 <peer4 has just joined>
+ *  Verify that peer4 defers the pfx2 update but receives pfx1 rightaway
+ *  After 3.5sec verify that peer4 gets pfx2 also.
+ */
 TEST_F(AdjRibOutboundFixture, OutDelayTest) {
   auto adjRibPeer1InQ = std::make_shared<AdjRib::AdjRibInQueueT>();
   auto adjRibPeer1OutQ = std::make_shared<AdjRib::AdjRibOutQueueT>();
@@ -409,10 +411,12 @@ TEST_F(AdjRibOutboundFixture, OutDelayTest) {
     EXPECT_EQ(true, matched);
   };
 
-  // Send an update to all adjs.
-  // if withdrawPfx2 is false - we send prefix1 and prefix2 in the update with
-  // appropriate nh else we send prefix1 in the update and send another
-  // withdrawal for prefix2
+  /*
+   * Send an update to all adjs.
+   * if withdrawPfx2 is false - we send prefix1 and prefix2 in the update with
+   * appropriate nh else we send prefix1 in the update and send another
+   * withdrawal for prefix2
+   */
   auto sendUpdates =
       [&](const folly::IPAddress& nh,
           std::chrono::time_point<std::chrono::system_clock> timeStamp,
@@ -478,8 +482,10 @@ TEST_F(AdjRibOutboundFixture, OutDelayTest) {
     // Send an update from RIB side.
     sendUpdates(kV4Nexthop1, installTimeStamp1, true, true);
     fiberSleepFor(50ms);
-    // check both peer1 and peer2 have not sent anything yet
-    // check peer3 has pfx1 and pfx2 sent out
+    /*
+     * check both peer1 and peer2 have not sent anything yet
+     * check peer3 has pfx1 and pfx2 sent out
+     */
     {
       EXPECT_EQ(adjRibOutPeer1->adjRibOutQueue_->empty(), true);
       EXPECT_EQ(adjRibOutPeer2->adjRibOutQueue_->empty(), true);
@@ -492,8 +498,10 @@ TEST_F(AdjRibOutboundFixture, OutDelayTest) {
     // Send an update from RIB side.
     sendUpdates(kV4Nexthop2, installTimeStamp1, true);
     fiberSleepFor(50ms);
-    // check both peer1 and peer2 has not sent anything yet
-    // check peer3 has pfx1 and pfx2 sent out
+    /*
+     * check both peer1 and peer2 has not sent anything yet
+     * check peer3 has pfx1 and pfx2 sent out
+     */
     {
       EXPECT_EQ(adjRibOutPeer1->adjRibOutQueue_->empty(), true);
       EXPECT_EQ(adjRibOutPeer2->adjRibOutQueue_->empty(), true);
@@ -504,9 +512,11 @@ TEST_F(AdjRibOutboundFixture, OutDelayTest) {
 
     // wait for peer1's out-delay timer to expire
     fiberSleepFor(550ms);
-    // Verify that peer1 has a consolidated update sent out for pfx1 and pfx2
-    // pointing to nexthop2. Also verify that peer2 still has no updates sent
-    // out and peer3 has no new updates sent out.
+    /*
+     * Verify that peer1 has a consolidated update sent out for pfx1 and pfx2
+     * pointing to nexthop2. Also verify that peer2 still has no updates sent
+     * out and peer3 has no new updates sent out.
+     */
     {
       EXPECT_EQ(adjRibOutPeer3->adjRibOutQueue_->empty(), true);
       EXPECT_EQ(adjRibOutPeer2->adjRibOutQueue_->empty(), true);
@@ -520,9 +530,11 @@ TEST_F(AdjRibOutboundFixture, OutDelayTest) {
     sendUpdates(kV4Nexthop3, installTimeStamp1, true, false, true);
     fiberSleepFor(50ms);
 
-    // verify that peer1 gets update of pfx1 and withdraw without any delay
-    // same goes for peer3
-    // for peer2 we still doesn't get anything.
+    /*
+     * verify that peer1 gets update of pfx1 and withdraw without any delay
+     * same goes for peer3
+     * for peer2 we still doesn't get anything.
+     */
     {
       EXPECT_EQ(adjRibOutPeer2->adjRibOutQueue_->empty(), true);
       EXPECT_EQ(adjRibPeer1OutQ->size(), 2);
@@ -538,10 +550,12 @@ TEST_F(AdjRibOutboundFixture, OutDelayTest) {
       verifyWithdrawal(*msg);
     }
 
-    // wait another 0.5sec for peer2's out-delay to expire
-    // we should see only peer2 has pfx1 send out with updates nexthop and
-    // pfx2 should never be sent out from peer2.
-    // also peer1 and peer3 should have no new udpates/withdrawals.
+    /*
+     * wait another 0.5sec for peer2's out-delay to expire
+     * we should see only peer2 has pfx1 send out with updates nexthop and
+     * pfx2 should never be sent out from peer2.
+     * also peer1 and peer3 should have no new udpates/withdrawals.
+     */
     fiberSleepFor(550ms);
     {
       EXPECT_EQ(adjRibOutPeer1->adjRibOutQueue_->empty(), true);
@@ -550,8 +564,10 @@ TEST_F(AdjRibOutboundFixture, OutDelayTest) {
       auto msg = folly::coro::blockingWait(adjRibPeer2OutQ->pop());
       verifyUpdates(*msg, kV4Nexthop3, true, false);
     }
-    //  After 2sec send a new update pfx2 [With NewTimeStamp] to peer1,2,3
-    //  verify that peer1 gets pfx2 after 1 sec and peer3 gets after 2 sec
+    /*
+     *  After 2sec send a new update pfx2 [With NewTimeStamp] to peer1,2,3
+     *  verify that peer1 gets pfx2 after 1 sec and peer3 gets after 2 sec
+     */
     fiberSleepFor(500ms);
     auto installTimeStamp2 = std::chrono::system_clock::now();
     sendUpdates(kV4Nexthop3, installTimeStamp2, false, true, false);
@@ -699,11 +715,13 @@ TEST_F(AdjRibOutboundFixture, OutDelayTimerTest) {
       adjRibOutPeer1->outDelayPQ_.push(entry);
     }
 
-    // Each programOutDelayTimer() call handles up to
-    // 8 deferred items in the queue
-    // If there is any item left in the PQ,
-    // it sets up a timer that calls
-    // the same function after 25 ms
+    /*
+     * Each programOutDelayTimer() call handles up to
+     * 8 deferred items in the queue
+     * If there is any item left in the PQ,
+     * it sets up a timer that calls
+     * the same function after 25 ms
+     */
     adjRibOutPeer1->programOutDelayTimer();
     EXPECT_TRUE(adjRibOutPeer1->outDelayPQ_.size() > 0);
     EXPECT_TRUE(adjRibOutPeer1->outDelayTimer_->isScheduled());
@@ -741,8 +759,10 @@ TEST_F(AdjRibOutboundFixture, ImplicitWithdrawOutDelayTest) {
       folly::IPAddress("90.1.1.1").asV4().toLong(),
       BgpSessionType::EBGP,
       false};
-  // Peer from where we received the 2nd route. This is also the
-  // peer to which the first route is being advertised.
+  /*
+   * Peer from where we received the 2nd route. This is also the
+   * peer to which the first route is being advertised.
+   */
   TinyPeerInfo outPeer{
       folly::IPAddress("10.1.1.1"),
       1001,
@@ -757,8 +777,10 @@ TEST_F(AdjRibOutboundFixture, ImplicitWithdrawOutDelayTest) {
       std::ref(adjRibBoundedPeer1OutQ),
       std::ref(adjRibOutPeer1))});
 
-  // Peer-1 has out-delay of 1 sec.
-  // Send a RIB update to AdjRib of peer1/outPeer.
+  /*
+   * Peer-1 has out-delay of 1 sec.
+   * Send a RIB update to AdjRib of peer1/outPeer.
+   */
   auto sendUpdates = [&](const folly::IPAddress& nh,
                          bool newRibEntry = false,
                          bool recvFromInPeer = true) mutable {
@@ -796,8 +818,10 @@ TEST_F(AdjRibOutboundFixture, ImplicitWithdrawOutDelayTest) {
     {
       // Due to out-delay of 1 sec, peer hasn't computed an update.
       EXPECT_EQ(0, adjRibPeer1OutQ->size());
-      // Send a RIB update to outPeer, triggered by a route received from
-      // outPeer. This should lead to implicit withdraw.
+      /*
+       * Send a RIB update to outPeer, triggered by a route received from
+       * outPeer. This should lead to implicit withdraw.
+       */
       sendUpdates(kV4Nexthop1, false, false);
       // Wait for out-delay to expire.
       fiberSleepFor(1000ms);
@@ -815,9 +839,11 @@ TEST_F(AdjRibOutboundFixture, ImplicitWithdrawOutDelayTest) {
   evb_.loop();
 }
 
-// Out-delay feature : Staggered Update Test
-// Ensure that we do not delay initial dump.  Ensure that if we learn a new
-// prefix shortly after sending the initial dump, this prefix is delayed.
+/*
+ * Out-delay feature : Staggered Update Test
+ * Ensure that we do not delay initial dump.  Ensure that if we learn a new
+ * prefix shortly after sending the initial dump, this prefix is delayed.
+ */
 TEST_F(AdjRibOutboundFixture, OutDelayStaggeredTest) {
   auto adjRibPeer1InQ = std::make_shared<AdjRib::AdjRibInQueueT>();
   auto adjRibPeer1OutQ = std::make_shared<AdjRib::AdjRibOutQueueT>();
@@ -836,9 +862,11 @@ TEST_F(AdjRibOutboundFixture, OutDelayStaggeredTest) {
       std::ref(adjRibPeer1OutQ),
       std::ref(adjRibBoundedPeer1OutQ),
       std::ref(adjRibOutPeer1))});
-  // Peer-1 has out-delay 1sec
-  // Send an update to all adjs.
-  // sendWithEoR: set the EoR flag in the announcement
+  /*
+   * Peer-1 has out-delay 1sec
+   * Send an update to all adjs.
+   * sendWithEoR: set the EoR flag in the announcement
+   */
   auto sendUpdates =
       [&](const folly::IPAddress& nh,
           const std::vector<
@@ -884,8 +912,10 @@ TEST_F(AdjRibOutboundFixture, OutDelayStaggeredTest) {
         false /*eor*/,
         false /*initialDump*/);
 
-    // Make sure we did not delay initial dump (pfx1), but we did delay
-    // the second update (pfx2).
+    /*
+     * Make sure we did not delay initial dump (pfx1), but we did delay
+     * the second update (pfx2).
+     */
     {
       auto msg = folly::coro::blockingWait(adjRibPeer1OutQ->pop());
       EXPECT_TRUE(

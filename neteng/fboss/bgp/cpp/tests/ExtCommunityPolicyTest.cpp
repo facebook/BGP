@@ -1004,8 +1004,10 @@ TEST_F(ExtCommunityPolicyTest, ExtCommunityActionAddToEmpty) {
 }
 
 TEST_F(ExtCommunityPolicyTest, ExtCommunityActionAddToExisting) {
-  // Test adding ext communities to a path with existing ext communities
-  // Also tests that duplicates are not added
+  /*
+   * Test adding ext communities to a path with existing ext communities
+   * Also tests that duplicates are not added
+   */
   auto config = createConfigWithAsn(65000);
 
   bgp_policy::ExtCommunity ext1 = createExtCommunity(
@@ -1038,8 +1040,10 @@ TEST_F(ExtCommunityPolicyTest, ExtCommunityActionAddToExisting) {
   // Apply ADD action
   action->applyAction(path, std::nullopt);
 
-  // Verify: ext2 already exists (no duplicate), ext3 was added
-  // So we should have 3 total: ext1, ext2, ext3
+  /*
+   * Verify: ext2 already exists (no duplicate), ext3 was added
+   * So we should have 3 total: ext1, ext2, ext3
+   */
   EXPECT_EQ(3, path->getExtCommunities()->size());
 }
 
@@ -1285,8 +1289,10 @@ TEST_F(ExtCommunityPolicyTest, ExtCommunityActionRemoveFromEmpty) {
 }
 
 TEST_F(ExtCommunityPolicyTest, ExtCommunityActionInvalidActionType) {
-  // Test that ExtCommunityAction constructor throws error for invalid
-  // action types (must be EXT_COMMUNITY_LIST_ADD/SET/REMOVE)
+  /*
+   * Test that ExtCommunityAction constructor throws error for invalid
+   * action types (must be EXT_COMMUNITY_LIST_ADD/SET/REMOVE)
+   */
   auto config = createConfigWithAsn(65000);
 
   bgp_policy::ExtCommunity ext1 = createExtCommunity(
@@ -1330,8 +1336,10 @@ TEST_F(ExtCommunityPolicyTest, ExtCommunityActionInvalidActionType) {
         BgpError);
   }
 
-  // Test with COMMUNITY_LIST_REMOVE (invalid, should be
-  // EXT_COMMUNITY_LIST_REMOVE)
+  /*
+   * Test with COMMUNITY_LIST_REMOVE (invalid, should be
+   * EXT_COMMUNITY_LIST_REMOVE)
+   */
   {
     auto invalidAction = createBgpPolicyExtCommunityAction(
         bgp_policy::BgpAttrChangeActionType::COMMUNITY_LIST_REMOVE, {ext1});
@@ -1351,8 +1359,10 @@ TEST_F(ExtCommunityPolicyTest, ExtCommunityActionInvalidActionType) {
 }
 
 TEST_F(ExtCommunityPolicyTest, ExtCommunityActionUnsupportedType) {
-  // Test that ExtCommunityAction constructor throws error for unsupported
-  // ExtCommunity types (only Link Bandwidth is supported)
+  /*
+   * Test that ExtCommunityAction constructor throws error for unsupported
+   * ExtCommunity types (only Link Bandwidth is supported)
+   */
   auto config = createConfigWithAsn(65000);
 
   // Create a Route Target ExtCommunity (not Link Bandwidth)

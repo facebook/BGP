@@ -164,8 +164,10 @@ using namespace std::chrono;
 namespace facebook::bgp {
 
 class RibPolicyRestoreTestFixture : public RibFixture {
-  // Delete routing policy state file (if it exists) before and after each test
-  // to ensure idempotency.
+  /*
+   * Delete routing policy state file (if it exists) before and after each test
+   * to ensure idempotency.
+   */
   void SetUp() override {
     RibFixture::SetUp();
     boost::filesystem::remove(FLAGS_rp_state_file);
@@ -336,9 +338,11 @@ TEST_F(RibPolicyRestoreTestFixture, RibPolicyRestoreTestMissingFile) {
   EXPECT_EQ(nullptr, policy);
 }
 
-// backward combatibility test for read/savePathSelectionPolicyState
-// test the case when bgpd save RibPolicy by saveRibPolicyState, and we
-// retrieve PathSelectionPolicy by readPathSelectionPolicyState
+/*
+ * backward combatibility test for read/savePathSelectionPolicyState
+ * test the case when bgpd save RibPolicy by saveRibPolicyState, and we
+ * retrieve PathSelectionPolicy by readPathSelectionPolicyState
+ */
 TEST_F(RibPolicyRestoreTestFixture, RibPolicyRestoreTestBackwardCompatibility) {
   {
     // Create the tPathSelectionPolicy and tRibPolicy for testing
@@ -791,8 +795,10 @@ TEST_F(RibPolicyRestoreTestFixture, ReadRibPolicyStateCrfDryrunFalse) {
       RibDC::resolveCrfPolicy(rib_->readRibPolicyState(), tCrfArtifact);
   EXPECT_NE(nullptr, ribPolicy);
 
-  // Route filter policy should come from artifact (version 999), not cache
-  // (100)
+  /*
+   * Route filter policy should come from artifact (version 999), not cache
+   * (100)
+   */
   EXPECT_EQ(999, ribPolicy->getRouteFilterPolicy()->getVersion());
 
   rib_->setCrfFileModeEnabled(crfFileMode);
@@ -847,9 +853,11 @@ TEST_F(RibPolicyRestoreTestFixture, ReadRibPolicyStateCrfDryrunTrue) {
   boost::filesystem::remove(tmpFile);
 }
 
-// CRF artifact exists with dryrun=false but no rib policy store file.
-// readRibPolicyState should return nullptr, and crfFileModeEnabled should
-// remain false (not FILE_MODE with no active policy).
+/*
+ * CRF artifact exists with dryrun=false but no rib policy store file.
+ * readRibPolicyState should return nullptr, and crfFileModeEnabled should
+ * remain false (not FILE_MODE with no active policy).
+ */
 TEST_F(
     RibPolicyRestoreTestFixture,
     ReadRibPolicyStateCrfArtifactNoPolicyStore) {
@@ -928,8 +936,10 @@ TEST_F(RibPolicyRestoreTestFixture, ReadCrfPolicyFromArtifactDryrunTrue) {
   boost::filesystem::remove(tmpFile);
 }
 
-// readRibPolicyState with CRF artifact dryrun=false but policy store has no
-// route_filter_policy. The artifact's CRF should be injected into the policy.
+/*
+ * readRibPolicyState with CRF artifact dryrun=false but policy store has no
+ * route_filter_policy. The artifact's CRF should be injected into the policy.
+ */
 TEST_F(RibPolicyRestoreTestFixture, ReadRibPolicyStateCrfNoCachedPolicy) {
   // Write a valid RibPolicyStore with only path_selection_policy (no CRF)
   auto tPathSelectionPolicy =
@@ -963,8 +973,10 @@ TEST_F(RibPolicyRestoreTestFixture, ReadRibPolicyStateCrfNoCachedPolicy) {
   auto [ribPolicy, crfFileMode] =
       RibDC::resolveCrfPolicy(rib_->readRibPolicyState(), tCrfArtifact);
 
-  // CRF should be injected from artifact (version 500) even though store
-  // had no route_filter_policy
+  /*
+   * CRF should be injected from artifact (version 500) even though store
+   * had no route_filter_policy
+   */
   EXPECT_TRUE(ribPolicy->hasRouteFilterPolicy());
   EXPECT_EQ(500, ribPolicy->getRouteFilterPolicy()->getVersion());
   // Path selection policy from store should still be present
@@ -976,8 +988,10 @@ TEST_F(RibPolicyRestoreTestFixture, ReadRibPolicyStateCrfNoCachedPolicy) {
   boost::filesystem::remove(tmpFile);
 }
 
-// Full integration test replicating the Rib constructor's CRF startup sequence:
-// readCrfPolicyFromArtifact -> readRibPolicyState -> setCrfFileModeEnabled
+/*
+ * Full integration test replicating the Rib constructor's CRF startup sequence:
+ * readCrfPolicyFromArtifact -> readRibPolicyState -> setCrfFileModeEnabled
+ */
 TEST_F(RibPolicyRestoreTestFixture, ReadRibPolicyStateCrfFullIntegration) {
   // Set up policy store with a CRF (version 100)
   auto prefix = folly::IPAddress::createNetwork("::/0");
@@ -1054,10 +1068,12 @@ TEST_F(RibPolicyRestoreTestFixture, ReadCrfPolicyFromArtifactUnreadableFile) {
 }
 
 namespace {
-// Build a CPS policy for one prefix with the given version. The shared
-// createTPathSelectionPolicyWithPathSelector helper hardcodes version 1, so we
-// override the version field to drive the artifact-vs-cache selection in the
-// resolveCpsPolicy tests.
+/*
+ * Build a CPS policy for one prefix with the given version. The shared
+ * createTPathSelectionPolicyWithPathSelector helper hardcodes version 1, so we
+ * override the version field to drive the artifact-vs-cache selection in the
+ * resolveCpsPolicy tests.
+ */
 rib_policy::TPathSelectionPolicy makeCpsPolicy(
     const folly::CIDRNetwork& prefix,
     int64_t version) {
@@ -1204,8 +1220,10 @@ TEST_F(RibPolicyRestoreTestFixture, ReadCpsPolicyFromArtifactEmptyPath) {
   EXPECT_EQ(ArtifactReadError::kAbsent, result.error());
 }
 
-// resolveCpsPolicy with CPS artifact dryrun=false -> FILE_MODE: the artifact
-// policy replaces the cached one.
+/*
+ * resolveCpsPolicy with CPS artifact dryrun=false -> FILE_MODE: the artifact
+ * policy replaces the cached one.
+ */
 TEST_F(RibPolicyRestoreTestFixture, ReadRibPolicyStateCpsDryrunFalse) {
   // Write a valid RibPolicyStore with path_selection_policy (version 100)
   auto tPathSelectionPolicy = makeCpsPolicy(kV4Prefix1, 100);
@@ -1237,8 +1255,10 @@ TEST_F(RibPolicyRestoreTestFixture, ReadRibPolicyStateCpsDryrunFalse) {
       RibDC::resolveCpsPolicy(rib_->readRibPolicyState(), tCpsArtifact);
   EXPECT_NE(nullptr, ribPolicy);
 
-  // Path selection policy should come from artifact (version 999), not cache
-  // (100)
+  /*
+   * Path selection policy should come from artifact (version 999), not cache
+   * (100)
+   */
   EXPECT_EQ(999, ribPolicy->getPathSelectionPolicy()->getVersion());
 
   rib_->setCpsFileModeEnabled(cpsFileMode);
@@ -1247,8 +1267,10 @@ TEST_F(RibPolicyRestoreTestFixture, ReadRibPolicyStateCpsDryrunFalse) {
   boost::filesystem::remove(tmpFile);
 }
 
-// resolveCpsPolicy with CPS artifact dryrun=true -> THRIFT_MODE: the cached
-// policy is kept unchanged.
+/*
+ * resolveCpsPolicy with CPS artifact dryrun=true -> THRIFT_MODE: the cached
+ * policy is kept unchanged.
+ */
 TEST_F(RibPolicyRestoreTestFixture, ReadRibPolicyStateCpsDryrunTrue) {
   // Write a valid RibPolicyStore with path_selection_policy (version 200)
   auto tPathSelectionPolicy = makeCpsPolicy(kV4Prefix1, 200);
@@ -1290,9 +1312,11 @@ TEST_F(RibPolicyRestoreTestFixture, ReadRibPolicyStateCpsDryrunTrue) {
   boost::filesystem::remove(tmpFile);
 }
 
-// CPS artifact exists with dryrun=false but no rib policy store file.
-// readRibPolicyState returns nullptr; resolveCpsPolicy should create a fresh
-// policy holding only the artifact CPS and enable FILE_MODE.
+/*
+ * CPS artifact exists with dryrun=false but no rib policy store file.
+ * readRibPolicyState returns nullptr; resolveCpsPolicy should create a fresh
+ * policy holding only the artifact CPS and enable FILE_MODE.
+ */
 TEST_F(
     RibPolicyRestoreTestFixture,
     ReadRibPolicyStateCpsArtifactNoPolicyStore) {
@@ -1332,9 +1356,11 @@ TEST_F(
   boost::filesystem::remove(tmpFile);
 }
 
-// resolveCpsPolicy with CPS artifact dryrun=false but policy store has no
-// path_selection_policy (only route_filter_policy). The artifact's CPS should
-// be injected while the cached CRF is preserved.
+/*
+ * resolveCpsPolicy with CPS artifact dryrun=false but policy store has no
+ * path_selection_policy (only route_filter_policy). The artifact's CPS should
+ * be injected while the cached CRF is preserved.
+ */
 TEST_F(RibPolicyRestoreTestFixture, ReadRibPolicyStateCpsNoCachedPolicy) {
   // Write a valid RibPolicyStore with only route_filter_policy (no CPS)
   auto prefix = folly::IPAddress::createNetwork("::/0");
@@ -1367,8 +1393,10 @@ TEST_F(RibPolicyRestoreTestFixture, ReadRibPolicyStateCpsNoCachedPolicy) {
   auto [ribPolicy, cpsFileMode] =
       RibDC::resolveCpsPolicy(rib_->readRibPolicyState(), tCpsArtifact);
 
-  // CPS should be injected from artifact (version 500) even though store had no
-  // path_selection_policy
+  /*
+   * CPS should be injected from artifact (version 500) even though store had no
+   * path_selection_policy
+   */
   EXPECT_TRUE(ribPolicy->hasPathSelectionPolicy());
   EXPECT_EQ(500, ribPolicy->getPathSelectionPolicy()->getVersion());
   // Route filter policy from store should still be present
@@ -1380,9 +1408,11 @@ TEST_F(RibPolicyRestoreTestFixture, ReadRibPolicyStateCpsNoCachedPolicy) {
   boost::filesystem::remove(tmpFile);
 }
 
-// Full integration test replicating the Rib constructor's CPS startup sequence:
-// read artifact -> readRibPolicyState -> resolveCpsPolicy ->
-// setCpsFileModeEnabled
+/*
+ * Full integration test replicating the Rib constructor's CPS startup sequence:
+ * read artifact -> readRibPolicyState -> resolveCpsPolicy ->
+ * setCpsFileModeEnabled
+ */
 TEST_F(RibPolicyRestoreTestFixture, ReadRibPolicyStateCpsFullIntegration) {
   // Set up policy store with a CPS (version 100)
   auto tPathSelectionPolicy = makeCpsPolicy(kV4Prefix1, 100);

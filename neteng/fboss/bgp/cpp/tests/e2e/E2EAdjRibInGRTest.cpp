@@ -314,9 +314,11 @@ class E2EAdjRibInGrTimerCleanupTest : public E2ETestFixture {
                       /*enableEgressBackpressure=*/true);
   }
 
-  // Read isPeerGracefulRestarting on PeerManagerBase's evb_ thread to avoid
-  // a TSAN data race against remoteGrRestartTimer_.reset() inside the
-  // GR-restart timer callback (also on evb_).
+  /*
+   * Read isPeerGracefulRestarting on PeerManagerBase's evb_ thread to avoid
+   * a TSAN data race against remoteGrRestartTimer_.reset() inside the
+   * GR-restart timer callback (also on evb_).
+   */
   bool isPeerGrOnEvb(const std::shared_ptr<AdjRib>& adjRib) {
     bool result = false;
     peerManager_->getEventBase().runInEventBaseThreadAndWait(
@@ -350,27 +352,35 @@ TEST_F(E2EAdjRibInGrTimerCleanupTest, RemoteGrRestartTimerExpiryDrainsCleanly) {
   ASSERT_TRUE(waitForRouteInShadowRib(prefix));
   ASSERT_TRUE(verifyRouteAdd("v4", "10.0.0.0", 8, kPeerAddr5, "127.5.0.4"));
 
-  // Drop session with GR — peer enters GR helper mode and schedules
-  // remoteGrRestartTimer_ for ~1s.
+  /*
+   * Drop session with GR — peer enters GR helper mode and schedules
+   * remoteGrRestartTimer_ for ~1s.
+   */
   bringDownPeerWithGr(kPeerAddr3);
   auto adjRib3 = getAdjRibByAddr(kPeerAddr3);
   ASSERT_NE(adjRib3, nullptr);
   EXPECT_TRUE(isPeerGrOnEvb(adjRib3));
 
-  // Wait for the GR timer to fire. After expiry the timer callback runs
-  // schedulePendingRibInPush(), which appends a SemiFuture to
-  // pendingRibInPushes_, and resets remoteGrRestartTimer_.
+  /*
+   * Wait for the GR timer to fire. After expiry the timer callback runs
+   * schedulePendingRibInPush(), which appends a SemiFuture to
+   * pendingRibInPushes_, and resets remoteGrRestartTimer_.
+   */
   WITH_RETRIES_N_TIMED(50, std::chrono::milliseconds(100), {
     EXPECT_EVENTUALLY_FALSE(isPeerGrOnEvb(adjRib3));
   });
 
-  // Force AdjRib::stop() while the detached push may still be in flight.
-  // stop()'s collectAllRange must drain pendingRibInPushes_ before any
-  // teardown can race the suspended push.
+  /*
+   * Force AdjRib::stop() while the detached push may still be in flight.
+   * stop()'s collectAllRange must drain pendingRibInPushes_ before any
+   * teardown can race the suspended push.
+   */
   runAdjRibStop(adjRib3);
 
-  // Stale route was withdrawn from RIB and re-advertised as a withdraw to
-  // peer5.
+  /*
+   * Stale route was withdrawn from RIB and re-advertised as a withdraw to
+   * peer5.
+   */
   EXPECT_TRUE(waitForRouteWithdrawnFromRib("10.0.0.0/8"));
   EXPECT_TRUE(verifyRouteWithdraw("v4", "10.0.0.0", 8, kPeerAddr5));
 }
@@ -420,8 +430,10 @@ TEST_F(E2EAdjRibInGrTimerCleanupTest, ConcurrentTimerExpiry_BothPeersDrained) {
     EXPECT_EVENTUALLY_FALSE(isPeerGrOnEvb(adjRib4));
   });
 
-  // Stop both AdjRibs. Each must independently drain its own
-  // pendingRibInPushes_ vector.
+  /*
+   * Stop both AdjRibs. Each must independently drain its own
+   * pendingRibInPushes_ vector.
+   */
   runAdjRibStop(adjRib3);
   runAdjRibStop(adjRib4);
 

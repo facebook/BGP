@@ -67,9 +67,11 @@ folly::coro::Task<void> negativeTestLoop(
       break;
     }
 
-    // Simulate processing that can be cancelled
-    // This co_await will throw OperationCancelled when cancellation is
-    // requested while we're sleeping
+    /*
+     * Simulate processing that can be cancelled
+     * This co_await will throw OperationCancelled when cancellation is
+     * requested while we're sleeping
+     */
     co_await folly::coro::sleep(10ms);
 
     // Check for safe point cancellation
@@ -191,8 +193,10 @@ TEST_F(CoroScopeCancellationTest, NegativeTest_SemaphoreNotSignaled) {
   // Wait for the task to complete - verifies loop exited
   folly::coro::blockingWait(asyncScope.joinAsync());
 
-  // BUG: The semaphore was NOT signaled because the exception
-  // bypassed the signal() call
+  /*
+   * BUG: The semaphore was NOT signaled because the exception
+   * bypassed the signal() call
+   */
   bool signaled = semaphore_->try_wait(1);
   EXPECT_FALSE(signaled)
       << "BUG DEMONSTRATED: Semaphore should NOT be signaled "

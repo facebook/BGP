@@ -222,13 +222,17 @@ TEST_F(
       evb_->now() + std::chrono::milliseconds(50));
   evb_->loopForever();
 
-  // The timer should have fired and called detachSlowPeer.
-  // Since this is a single-peer group, detachment is skipped.
-  // Verify that the peer is still marked as blocked.
+  /*
+   * The timer should have fired and called detachSlowPeer.
+   * Since this is a single-peer group, detachment is skipped.
+   * Verify that the peer is still marked as blocked.
+   */
   EXPECT_TRUE(BitmapUtils::isBitSet(group_->getBlockedBitmap(), 0));
 
-  // Counter should increment — slow peer was detected (even though
-  // detachment was skipped because it's the only synced peer)
+  /*
+   * Counter should increment — slow peer was detected (even though
+   * detachment was skipped because it's the only synced peer)
+   */
   EXPECT_EQ(slowPeersBefore + 1, getNumSlowPeersCounter());
 }
 
@@ -256,12 +260,16 @@ TEST_F(
   group_->markPeerUnblocked(adjRib);
   group_->markPeerBlocked(adjRib);
 
-  // The 3rd block should have triggered detachSlowPeer.
-  // Verify peer is still tracked as blocked.
+  /*
+   * The 3rd block should have triggered detachSlowPeer.
+   * Verify peer is still tracked as blocked.
+   */
   EXPECT_TRUE(BitmapUtils::isBitSet(group_->getBlockedBitmap(), 0));
 
-  // Counter should increment — slow peer was detected (even though
-  // detachment was skipped because it's the only synced peer)
+  /*
+   * Counter should increment — slow peer was detected (even though
+   * detachment was skipped because it's the only synced peer)
+   */
   EXPECT_EQ(slowPeersBefore + 1, getNumSlowPeersCounter());
 }
 
@@ -319,9 +327,11 @@ TEST_F(
 
   auto& messages = subscribeToLogMessages("", folly::LogLevel::INFO);
 
-  // Testable thresholds:
-  // - Duration: 100ms continuous block to trigger
-  // - Frequency: 4 blocks within a 200ms window
+  /*
+   * Testable thresholds:
+   * - Duration: 100ms continuous block to trigger
+   * - Frequency: 4 blocks within a 200ms window
+   */
   {
     UpdateGroupConfig cfg;
     cfg.allowSlowPeerDetach = true;
@@ -331,15 +341,19 @@ TEST_F(
     group_->setUpdateGroupConfigForTesting(cfg);
   }
 
-  // --- Phase 1: Duration near-miss ---
-  // Block and immediately unblock before the 100ms duration timer fires.
+  /*
+   * --- Phase 1: Duration near-miss ---
+   * Block and immediately unblock before the 100ms duration timer fires.
+   */
   auto messagesBeforePhase1 = messages.size();
   group_->markPeerBlocked(adjRib);
   EXPECT_TRUE(BitmapUtils::isBitSet(group_->getBlockedBitmap(), 0));
   group_->markPeerUnblocked(adjRib);
 
-  // Run the event base past the duration threshold to confirm the cancelled
-  // timer does not fire.
+  /*
+   * Run the event base past the duration threshold to confirm the cancelled
+   * timer does not fire.
+   */
   evb_->scheduleAt(
       [this]() { evb_->terminateLoopSoon(); },
       evb_->now() + std::chrono::milliseconds(150));
@@ -350,9 +364,11 @@ TEST_F(
   // Verify slow peer detection was not triggered.
   EXPECT_EQ(messages.size(), messagesBeforePhase1);
 
-  // --- Phase 2: Frequency window expiry resets counter ---
-  // Phase 1's block count carries over (count is now 1).
-  // Block/unblock twice more to reach count=3, just under threshold of 4.
+  /*
+   * --- Phase 2: Frequency window expiry resets counter ---
+   * Phase 1's block count carries over (count is now 1).
+   * Block/unblock twice more to reach count=3, just under threshold of 4.
+   */
   auto messagesBeforePhase2 = messages.size();
   group_->markPeerBlocked(adjRib);
   group_->markPeerUnblocked(adjRib);
@@ -370,9 +386,11 @@ TEST_F(
   // Verify slow peer detection was not triggered.
   EXPECT_EQ(messages.size(), messagesBeforePhase2);
 
-  // --- Phase 3: Cycle within threshold ---
-  // Two more block/unblock cycles in the same window (counts 2 and 3),
-  // staying under the threshold of 4.
+  /*
+   * --- Phase 3: Cycle within threshold ---
+   * Two more block/unblock cycles in the same window (counts 2 and 3),
+   * staying under the threshold of 4.
+   */
   auto messagesBeforePhase3 = messages.size();
   group_->markPeerBlocked(adjRib);
   group_->markPeerUnblocked(adjRib);
@@ -382,9 +400,11 @@ TEST_F(
   // Verify slow peer detection was not triggered.
   EXPECT_EQ(messages.size(), messagesBeforePhase3);
 
-  // --- Phase 4: Eventual frequency trigger ---
-  // One more block pushes the count to 4, hitting the threshold.
-  // detachSlowPeer is called, which clears the blocked bit.
+  /*
+   * --- Phase 4: Eventual frequency trigger ---
+   * One more block pushes the count to 4, hitting the threshold.
+   * detachSlowPeer is called, which clears the blocked bit.
+   */
   auto messagesBeforePhase4 = messages.size();
   group_->markPeerBlocked(adjRib);
   EXPECT_FALSE(BitmapUtils::isBitSet(group_->getBlockedBitmap(), 0));
@@ -567,9 +587,11 @@ TEST_F(
   EXPECT_TRUE(group_->isPeerInSync(0));
   group_->markPeerUnblocked(adjRib0);
 
-  // Re-enable detach and trigger detection again.
-  // Block count carried over (2), so the next block (count=3 >= 2)
-  // triggers detachSlowPeer which now succeeds.
+  /*
+   * Re-enable detach and trigger detection again.
+   * Block count carried over (2), so the next block (count=3 >= 2)
+   * triggers detachSlowPeer which now succeeds.
+   */
   {
     UpdateGroupConfig cfg;
     cfg.allowSlowPeerDetach = true;

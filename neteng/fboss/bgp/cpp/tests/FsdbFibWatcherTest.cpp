@@ -16,10 +16,12 @@
 
 #include <gtest/gtest.h>
 
-// Friend declarations must precede NeighborWatcher.h include so the
-// NeighborWatcher_TEST_FRIENDS macro expands inside the class definition.
-// FRIEND_TEST expands to friend class TestFixture_TestName_Test, so names
-// must be unqualified (NeighborWatcher is in namespace facebook::bgp).
+/*
+ * Friend declarations must precede NeighborWatcher.h include so the
+ * NeighborWatcher_TEST_FRIENDS macro expands inside the class definition.
+ * FRIEND_TEST expands to friend class TestFixture_TestName_Test, so names
+ * must be unqualified (NeighborWatcher is in namespace facebook::bgp).
+ */
 #define NeighborWatcher_TEST_FRIENDS                                        \
   friend class NeighborWatcherFibTest;                                      \
   FRIEND_TEST(NeighborWatcherFibTest, FibWatcherNotCreatedWhenNhtDisabled); \
@@ -151,9 +153,11 @@ std::shared_ptr<fboss::fsdb::FsdbCowStateSubManager> makeTestSubMgr() {
 }
 } // namespace
 
-// ---------------------------------------------------------------------------
-// FsdbFibWatcherTest: unit tests for FsdbFibWatcher in isolation
-// ---------------------------------------------------------------------------
+/*
+ * ---------------------------------------------------------------------------
+ * FsdbFibWatcherTest: unit tests for FsdbFibWatcher in isolation
+ * ---------------------------------------------------------------------------
+ */
 
 class FsdbFibWatcherTest : public ::testing::Test {
  protected:
@@ -167,9 +171,11 @@ class FsdbFibWatcherTest : public ::testing::Test {
   folly::EventBase evb_;
 };
 
-// ---------------------------------------------------------------------------
-// Peer address management tests
-// ---------------------------------------------------------------------------
+/*
+ * ---------------------------------------------------------------------------
+ * Peer address management tests
+ * ---------------------------------------------------------------------------
+ */
 
 TEST_F(FsdbFibWatcherTest, AddPeerAddress) {
   /**
@@ -187,8 +193,10 @@ TEST_F(FsdbFibWatcherTest, AddPeerAddress) {
   // Duplicate add — should be idempotent
   watcher->addPeerAddress(kPeerV4);
 
-  // No crash, no exception. Peer set should contain both addresses.
-  // (subscribedPeers_ is private, so we verify indirectly via registerPeers)
+  /*
+   * No crash, no exception. Peer set should contain both addresses.
+   * (subscribedPeers_ is private, so we verify indirectly via registerPeers)
+   */
 }
 
 TEST_F(FsdbFibWatcherTest, RemovePeerAddress) {
@@ -254,9 +262,11 @@ TEST_F(FsdbFibWatcherTest, RegisterPeersV4AndV6) {
   // No crash; paths registered with default switch ID
 }
 
-// ---------------------------------------------------------------------------
-// RIB-IN-driven runtime subscription tests
-// ---------------------------------------------------------------------------
+/*
+ * ---------------------------------------------------------------------------
+ * RIB-IN-driven runtime subscription tests
+ * ---------------------------------------------------------------------------
+ */
 
 TEST_F(FsdbFibWatcherTest, FilterNewNexthopsDeDupesAndSkipsTracked) {
   /**
@@ -344,9 +354,11 @@ TEST_F(FsdbFibWatcherTest, RegisterPeersUsesNonLiveAddPath) {
   EXPECT_EQ(expected, watcher->calls);
 }
 
-// ---------------------------------------------------------------------------
-// markNeedsReconcile tests
-// ---------------------------------------------------------------------------
+/*
+ * ---------------------------------------------------------------------------
+ * markNeedsReconcile tests
+ * ---------------------------------------------------------------------------
+ */
 
 CO_TEST_F(FsdbFibWatcherTest, MarkNeedsReconcileEmptyIsNoop) {
   /**
@@ -389,9 +401,11 @@ CO_TEST_F(FsdbFibWatcherTest, ReconcileKeepsStillReachableNexthopWithoutChurn) {
   EXPECT_TRUE(
       nexthopCache_->registerAndGetNexthopStatus(kPeerV4).isReachable());
 
-  // Reconnect: arming the reconcile must not touch reachability (the old
-  // clear-then-rebuild marked it unreachable here, causing a transient
-  // withdrawal).
+  /*
+   * Reconnect: arming the reconcile must not touch reachability (the old
+   * clear-then-rebuild marked it unreachable here, causing a transient
+   * withdrawal).
+   */
   co_await watcher->co_markNeedsReconcile();
   EXPECT_TRUE(
       nexthopCache_->registerAndGetNexthopStatus(kPeerV4).isReachable());
@@ -445,8 +459,10 @@ CO_TEST_F(FsdbFibWatcherTest, ReconcileWithdrawsNexthopGoneWhileDisconnected) {
   EXPECT_TRUE(
       nexthopCache_->registerAndGetNexthopStatus(kPeerV6).isReachable());
 
-  // Reconnect; the fresh snapshot has only the V4 route (V6 route removed while
-  // disconnected). Reconcile keeps V4 and withdraws V6.
+  /*
+   * Reconnect; the fresh snapshot has only the V4 route (V6 route removed while
+   * disconnected). Reconcile keeps V4 and withdraws V6.
+   */
   co_await watcher->co_markNeedsReconcile();
   co_await watcher->co_processFibUpdate(
       fboss::fsdb::FsdbCowStateSubManager::SubUpdate{
@@ -478,9 +494,11 @@ TEST_F(FsdbFibWatcherTest, StopIsIdempotent) {
   watcher->stop(); // idempotent
 }
 
-// ---------------------------------------------------------------------------
-// NexthopCache source-priority tests
-// ---------------------------------------------------------------------------
+/*
+ * ---------------------------------------------------------------------------
+ * NexthopCache source-priority tests
+ * ---------------------------------------------------------------------------
+ */
 
 TEST_F(FsdbFibWatcherTest, SourcePriorityConnectedBlocksNonConnected) {
   /**
@@ -562,9 +580,11 @@ TEST_F(FsdbFibWatcherTest, NonConnectedSourceCanUpdateNonConnected) {
   EXPECT_FALSE(status.isReachable());
 }
 
-// ---------------------------------------------------------------------------
-// IGP cost extraction tests (co_processFibUpdate + COW tree)
-// ---------------------------------------------------------------------------
+/*
+ * ---------------------------------------------------------------------------
+ * IGP cost extraction tests (co_processFibUpdate + COW tree)
+ * ---------------------------------------------------------------------------
+ */
 
 CO_TEST_F(FsdbFibWatcherTest, ProcessFibUpdateSingleNexthopWithCost) {
   /**
@@ -851,13 +871,17 @@ CO_TEST_F(FsdbFibWatcherTest, ProcessFibUpdateUnreachableCostIsNullopt) {
   EXPECT_EQ(std::nullopt, status2.getIgpCost());
 }
 
-// ---------------------------------------------------------------------------
-// addNexthopPaths: failure handling (no crash, rollback, retry)
-// ---------------------------------------------------------------------------
+/*
+ * ---------------------------------------------------------------------------
+ * addNexthopPaths: failure handling (no crash, rollback, retry)
+ * ---------------------------------------------------------------------------
+ */
 
-// A throw while registering paths must not escape addNexthopPaths (no crash),
-// must NOT mark the nexthop as tracked, and the nexthop must be retried (and
-// succeed) on a subsequent request.
+/*
+ * A throw while registering paths must not escape addNexthopPaths (no crash),
+ * must NOT mark the nexthop as tracked, and the nexthop must be retried (and
+ * succeed) on a subsequent request.
+ */
 TEST_F(FsdbFibWatcherTest, AddNexthopPathsThrowIsCaughtRolledBackAndRetried) {
   auto watcher = std::make_shared<ThrowingFsdbFibWatcher>(
       nexthopCache_, ribInQ_, &evb_, makeTestSubMgr());
@@ -865,8 +889,10 @@ TEST_F(FsdbFibWatcherTest, AddNexthopPathsThrowIsCaughtRolledBackAndRetried) {
   watcher->pendingFailures = 1; // fail the first registration
   EXPECT_NO_THROW(watcher->addNexthopPaths({kPeerV4}, /*liveAdd=*/true));
 
-  // Failed nexthop was rolled back -> still considered new (retry-able), not
-  // silently skipped.
+  /*
+   * Failed nexthop was rolled back -> still considered new (retry-able), not
+   * silently skipped.
+   */
   EXPECT_EQ(
       (std::vector<folly::IPAddress>{kPeerV4}),
       watcher->filterNewNexthops({kPeerV4}));
@@ -891,9 +917,11 @@ TEST_F(FsdbFibWatcherTest, AddNexthopPathsFailureDoesNotBlockOtherNexthops) {
       watcher->filterNewNexthops({kPeerV4, kPeerV6}));
 }
 
-// ---------------------------------------------------------------------------
-// lookupIgpCostFromRoute: protocol/client-aware IGP cost extraction
-// ---------------------------------------------------------------------------
+/*
+ * ---------------------------------------------------------------------------
+ * lookupIgpCostFromRoute: protocol/client-aware IGP cost extraction
+ * ---------------------------------------------------------------------------
+ */
 
 namespace {
 fboss::NextHopThrift makeNexthop(char addrByte, std::optional<int64_t> cost) {
@@ -906,8 +934,10 @@ fboss::NextHopThrift makeNexthop(char addrByte, std::optional<int64_t> cost) {
 }
 } // namespace
 
-// With no client configured, cost is the minimum over the resolved fwd
-// nexthops (current behavior).
+/*
+ * With no client configured, cost is the minimum over the resolved fwd
+ * nexthops (current behavior).
+ */
 TEST(FsdbFibWatcherCostTest, NoClientUsesFwdMinCost) {
   fboss::state::RouteFields route;
   route.fwd()->nexthops() = {makeNexthop(1, 20), makeNexthop(2, 10)};
@@ -915,9 +945,11 @@ TEST(FsdbFibWatcherCostTest, NoClientUsesFwdMinCost) {
   EXPECT_EQ(10u, FsdbFibWatcher::lookupIgpCostFromRoute(route, std::nullopt));
 }
 
-// With a client configured, cost comes solely from that client's nexthops
-// (minimized). There is NO intersection with fwd: every one of the client's
-// nexthops counts, and the fwd-side costs are not consulted.
+/*
+ * With a client configured, cost comes solely from that client's nexthops
+ * (minimized). There is NO intersection with fwd: every one of the client's
+ * nexthops counts, and the fwd-side costs are not consulted.
+ */
 TEST(FsdbFibWatcherCostTest, ClientCostIgnoresFwdNoIntersection) {
   fboss::state::RouteFields route;
   // fwd has addr 1 and 2; its costs (99) must be ignored on the client path.
@@ -926,8 +958,10 @@ TEST(FsdbFibWatcherCostTest, ClientCostIgnoresFwdNoIntersection) {
   (*route.nexthopsmulti()->client2NextHopEntry())[fboss::ClientID::OPENR]
       .nexthops() = {makeNexthop(1, 5), makeNexthop(3, 3)};
 
-  // Min over ALL OPENR nexthops -> 3. addr 3 is counted even though it is not
-  // in fwd (no intersection), and fwd's own cost 99 is ignored.
+  /*
+   * Min over ALL OPENR nexthops -> 3. addr 3 is counted even though it is not
+   * in fwd (no intersection), and fwd's own cost 99 is ignored.
+   */
   EXPECT_EQ(
       3u,
       FsdbFibWatcher::lookupIgpCostFromRoute(route, fboss::ClientID::OPENR));
@@ -945,8 +979,10 @@ TEST(FsdbFibWatcherCostTest, MissingClientEntryReturnsNullopt) {
       FsdbFibWatcher::lookupIgpCostFromRoute(route, fboss::ClientID::OPENR));
 }
 
-// Even when none of the client's nexthops overlap fwd, the cost is still taken
-// from the client's nexthops: we do not check whether the two sets intersect.
+/*
+ * Even when none of the client's nexthops overlap fwd, the cost is still taken
+ * from the client's nexthops: we do not check whether the two sets intersect.
+ */
 TEST(FsdbFibWatcherCostTest, ClientCostTakenEvenWithoutFwdOverlap) {
   fboss::state::RouteFields route;
   route.fwd()->nexthops() = {makeNexthop(2, 99)};
@@ -959,8 +995,10 @@ TEST(FsdbFibWatcherCostTest, ClientCostTakenEvenWithoutFwdOverlap) {
       FsdbFibWatcher::lookupIgpCostFromRoute(route, fboss::ClientID::OPENR));
 }
 
-// If the configured client's entry exists but none of its nexthops carry a
-// cost, the cost is unset (route stays reachable, cost N/A).
+/*
+ * If the configured client's entry exists but none of its nexthops carry a
+ * cost, the cost is unset (route stays reachable, cost N/A).
+ */
 TEST(FsdbFibWatcherCostTest, ClientWithoutCostReturnsNullopt) {
   fboss::state::RouteFields route;
   route.fwd()->nexthops() = {makeNexthop(1, 99)};
@@ -972,9 +1010,11 @@ TEST(FsdbFibWatcherCostTest, ClientWithoutCostReturnsNullopt) {
       FsdbFibWatcher::lookupIgpCostFromRoute(route, fboss::ClientID::OPENR));
 }
 
-// ---------------------------------------------------------------------------
-// NeighborWatcher + FsdbFibWatcher integration tests
-// ---------------------------------------------------------------------------
+/*
+ * ---------------------------------------------------------------------------
+ * NeighborWatcher + FsdbFibWatcher integration tests
+ * ---------------------------------------------------------------------------
+ */
 
 class NeighborWatcherFibTest : public ::testing::Test {
  protected:
@@ -1146,9 +1186,11 @@ TEST_F(
   nbrWatcherThread.join();
 }
 
-// ---------------------------------------------------------------------------
-// Cleanup / exit sequence tests
-// ---------------------------------------------------------------------------
+/*
+ * ---------------------------------------------------------------------------
+ * Cleanup / exit sequence tests
+ * ---------------------------------------------------------------------------
+ */
 
 TEST_F(NeighborWatcherFibTest, CleanShutdownWithFibWatcher) {
   /**
@@ -1176,8 +1218,10 @@ TEST_F(NeighborWatcherFibTest, CleanShutdownWithFibWatcher) {
   nbrWatcher->stop();
   nbrWatcherThread.join();
 
-  // After stop, the watcher pointers are still valid (shared_ptr) but
-  // the evb loop has exited and subscriptions are torn down
+  /*
+   * After stop, the watcher pointers are still valid (shared_ptr) but
+   * the evb loop has exited and subscriptions are torn down
+   */
   nbrWatcher.reset();
 }
 

@@ -134,8 +134,10 @@ TEST_F(PeerManagerE2ETest, PeerFlappingUnderIngressBackPressureTest) {
     co_return;
   };
 
-  // Consumer coroutine: pops items from ribInQ_
-  // Uses co_awaitTry with timeout to gracefully handle cancellation or timeout
+  /*
+   * Consumer coroutine: pops items from ribInQ_
+   * Uses co_awaitTry with timeout to gracefully handle cancellation or timeout
+   */
   auto queueDrainer = [this]() -> folly::coro::Task<void> {
     XLOG(INFO, "=== Queue drainer start ===");
     while (true) {
@@ -158,8 +160,10 @@ TEST_F(PeerManagerE2ETest, PeerFlappingUnderIngressBackPressureTest) {
           INFO,
           "=== Popped message from ribInQ_, size = {} ===",
           ribInQ_.size());
-      // wait for 10 ms to simulate the consumer being slow
-      // no cancellation should be triggered here
+      /*
+       * wait for 10 ms to simulate the consumer being slow
+       * no cancellation should be triggered here
+       */
       co_await folly::coro::co_withCancellation(
           folly::CancellationToken{},
           folly::coro::sleep(std::chrono::milliseconds(10)));

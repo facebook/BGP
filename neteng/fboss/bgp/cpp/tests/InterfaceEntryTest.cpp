@@ -391,8 +391,10 @@ TEST(InterfaceEntryTest, LadderDoublesOnRepeatFlapAndStopsAtMax) {
   InterfaceEntry ifEntry{"po245"};
   ifEntry.setUp(true);
 
-  // Each link-down is 1ms after the last one, so none of them decays.
-  // 200ms doubles to the 1000ms ceiling, then stays there.
+  /*
+   * Each link-down is 1ms after the last one, so none of them decays.
+   * 200ms doubles to the 1000ms ceiling, then stays there.
+   */
   const std::vector<int64_t> expectedMs{200, 400, 800, 1000, 1000};
   std::vector<int64_t> actualMs;
   auto now = kT0;

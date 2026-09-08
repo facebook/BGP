@@ -174,8 +174,10 @@ TEST_F(
         peerMgr_->updateGroupManager_->findOrCreateGroup(updateGroupKey);
     ASSERT_NE(group, nullptr);
 
-    // Inject known group-level counts directly (the send path would set these;
-    // here we set them to keep the test focused on getUpdateGroupInfo wiring).
+    /*
+     * Inject known group-level counts directly (the send path would set these;
+     * here we set them to keep the test focused on getUpdateGroupInfo wiring).
+     */
     constexpr uint64_t kAnnV4 = 11;
     constexpr uint64_t kAnnV6 = 12;
     constexpr uint64_t kWithdrawals = 13;

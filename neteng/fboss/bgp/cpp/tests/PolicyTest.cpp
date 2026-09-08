@@ -312,8 +312,10 @@ TEST_F(PolicyTest, setPolicyFromFileExceptionTest) {
   }
 }
 
-// This test guards against changing the definition of
-// PolicyAttributesMask to unintended behavior.
+/*
+ * This test guards against changing the definition of
+ * PolicyAttributesMask to unintended behavior.
+ */
 TEST_F(PolicyTest, InitializePolicyAttributesMaskTest) {
   PolicyAttributesMask mask;
   // All fields should be initialized to false.
@@ -325,8 +327,10 @@ TEST_F(PolicyTest, InitializePolicyAttributesMaskTest) {
   }
 }
 
-// Verify that the policy attributes mask sets the flag correctly
-// from the policy action atom.
+/*
+ * Verify that the policy attributes mask sets the flag correctly
+ * from the policy action atom.
+ */
 TEST_F(PolicyTest, SetPolicyAttributesMaskFromActionTest) {
   bgp_policy::BgpPolicyAction action;
   bgp_policy::BgpPolicyTerm term;
@@ -600,13 +604,17 @@ TEST_F(PolicyTest, SetPolicyAttributesMaskFromActionTest) {
   }
 }
 
-// Verify that the policy attributes mask sets the flag correctly
-// from the policy match atom.
+/*
+ * Verify that the policy attributes mask sets the flag correctly
+ * from the policy match atom.
+ */
 TEST_F(PolicyTest, SetPolicyAttributesMaskFromMatchTest) {
   bgp_policy::BgpPolicyTerm term;
   bgp_policy::BgpPolicyMatch match;
-  // Matches:
-  // AS_PATH_LEN
+  /*
+   * Matches:
+   * AS_PATH_LEN
+   */
   {
     match.match_entries() = {
         createBgpPolicyAtomicMatch(BgpPolicyAtomicMatchType::AS_PATH_LEN)};
@@ -707,8 +715,10 @@ TEST_F(PolicyTest, PopulatePolicyAttributesMaskTest) {
   {
     // setupAcceptAllPolicy
     auto policyManager = setupAcceptAllPolicy(policyName);
-    // All flags should be set to true as there is no criteria for permitting
-    // and no mutation action.
+    /*
+     * All flags should be set to true as there is no criteria for permitting
+     * and no mutation action.
+     */
     const PolicyAttributesMask expected;
     auto observedMask = policyManager->getPolicyAttributesMask(policyName);
     EXPECT_TRUE(observedMask);
@@ -745,19 +755,21 @@ TEST_F(PolicyTest, PopulatePolicyAttributesMaskTest) {
   {
     // bgp_policy.materialized_JSON
     policyName = "FA-ESW-IN-20170531";
-    //   { policy_match_entries: communities_filter,
-    //     policy_action_entries: deny },
-    //   { policy_match_entries: communities_filter,
-    //     policy_action_entries:
-    //         set_as_path_prepend,
-    //         remove community 65520:491,
-    //         as_path_overwrite_list },
-    //   { policy_match_entries: communities_filter,
-    //     policy_action_entries:
-    //         set_as_path_prepend,
-    //         remove community 65520:492,
-    //         explicit deny all
-    //   }
+    /*
+     *   { policy_match_entries: communities_filter,
+     *     policy_action_entries: deny },
+     *   { policy_match_entries: communities_filter,
+     *     policy_action_entries:
+     *         set_as_path_prepend,
+     *         remove community 65520:491,
+     *         as_path_overwrite_list },
+     *   { policy_match_entries: communities_filter,
+     *     policy_action_entries:
+     *         set_as_path_prepend,
+     *         remove community 65520:492,
+     *         explicit deny all
+     *   }
+     */
     PolicyManager policyManager(
         kMaterializedPolicyFileName, createTestBgpGlobalConfig());
     const PolicyAttributesMask expected = {
@@ -771,12 +783,14 @@ TEST_F(PolicyTest, PopulatePolicyAttributesMaskTest) {
 }
 
 TEST_F(PolicyTest, CommunityMatchStringTest) {
-  // set three communityMatch struct, including different communities and
-  // logic operator (AND/OR), with exact strings.
-  // bgpMatch3 is created to test the matching of sorted community string vector
-  // Test three cases: update contains only one of the
-  // communities in an AND match; update contrains exact set of communities;
-  // update contains one of the communities in an OR match
+  /*
+   * set three communityMatch struct, including different communities and
+   * logic operator (AND/OR), with exact strings.
+   * bgpMatch3 is created to test the matching of sorted community string vector
+   * Test three cases: update contains only one of the
+   * communities in an AND match; update contrains exact set of communities;
+   * update contains one of the communities in an OR match
+   */
   const auto& bgpMatch1 = createBgpPolicyAtomicMatch(
       BgpPolicyAtomicMatchType::COMMUNITY_LIST,
       {kCommunity1, kCommunity2},
@@ -832,8 +846,10 @@ TEST_F(PolicyTest, CommunityMatchStringTest) {
   EXPECT_FALSE(andMatch->Match(attributes3));
   EXPECT_TRUE(sequenceOrMatch->Match(attributes3));
   EXPECT_FALSE(sequenceAndMatch->Match(attributes3));
-  // test positive cases for all four matches
-  // attributes has a different order of communities than the order in match
+  /*
+   * test positive cases for all four matches
+   * attributes has a different order of communities than the order in match
+   */
   communities = {kCommunity3, kCommunity1, kCommunity2};
   const auto& attributes4 = createBgpPath(communities);
   EXPECT_TRUE(orMatch->Match(attributes4));
@@ -843,12 +859,14 @@ TEST_F(PolicyTest, CommunityMatchStringTest) {
 }
 
 TEST_F(PolicyTest, CommunityMatchStringExactTest) {
-  // set three communityMatch struct, including different communities and
-  // logic operator (AND/OR), with exact strings.
-  // bgpMatch3 is created to test the matching of sorted community string vector
-  // Test three cases: update contains only one of the
-  // communities in an AND match; update contrains exact set of communities;
-  // update contains one of the communities in an OR match
+  /*
+   * set three communityMatch struct, including different communities and
+   * logic operator (AND/OR), with exact strings.
+   * bgpMatch3 is created to test the matching of sorted community string vector
+   * Test three cases: update contains only one of the
+   * communities in an AND match; update contrains exact set of communities;
+   * update contains one of the communities in an OR match
+   */
   auto bgpMatch1 = createBgpPolicyAtomicMatch(
       BgpPolicyAtomicMatchType::COMMUNITY_LIST,
       {kCommunity1, kCommunity2},
@@ -923,10 +941,12 @@ TEST_F(PolicyTest, CommunityMatchStringExactTest) {
 }
 
 TEST_F(PolicyTest, CommunityMatchRegexTest) {
-  // set two communities match struct, including different communities and
-  // logic operator (AND/OR) with regex match.
-  // Test update communities matches AND/OR regex;
-  // update communities do not match AND/OR regex
+  /*
+   * set two communities match struct, including different communities and
+   * logic operator (AND/OR) with regex match.
+   * Test update communities matches AND/OR regex;
+   * update communities do not match AND/OR regex
+   */
   const auto& bgpMatch1 = createBgpPolicyAtomicMatch(
       BgpPolicyAtomicMatchType::COMMUNITY_LIST,
       {kCommunityRegex1, kCommunityRegex2},
@@ -961,10 +981,12 @@ TEST_F(PolicyTest, CommunityMatchRegexTest) {
 }
 
 TEST_F(PolicyTest, CommunityMatchRegexExactTest) {
-  // set two communities match struct, including different communities and
-  // logic operator (AND/OR) with regex match.
-  // Test update communities matches AND/OR regex;
-  // update communities do not match AND/OR regex
+  /*
+   * set two communities match struct, including different communities and
+   * logic operator (AND/OR) with regex match.
+   * Test update communities matches AND/OR regex;
+   * update communities do not match AND/OR regex
+   */
   return;
   auto bgpMatch1 = createBgpPolicyAtomicMatch(
       BgpPolicyAtomicMatchType::COMMUNITY_LIST,
@@ -1012,9 +1034,11 @@ TEST_F(PolicyTest, CommunityMatchRegexExactTest) {
 }
 
 TEST_F(PolicyTest, CommunityMatchNegativeTest) {
-  // test two negative cases:
-  // 1: empty community list, should throw BgpError;
-  // 2: malformed community match, should throw BgpError
+  /*
+   * test two negative cases:
+   * 1: empty community list, should throw BgpError;
+   * 2: malformed community match, should throw BgpError
+   */
   {
     // empty clause for update with and without community attributes
     const auto& bgpMatch1 = createBgpPolicyAtomicMatch(
@@ -1036,8 +1060,10 @@ TEST_F(PolicyTest, CommunityMatchNegativeTest) {
         PolicyManager(bgpPolicies, createTestBgpGlobalConfig()), BgpError);
   }
   {
-    // update with no community attributes for a match with community attributes
-    // and a match with empty community list
+    /*
+     * update with no community attributes for a match with community attributes
+     * and a match with empty community list
+     */
     const auto& bgpMatch1 = createBgpPolicyAtomicMatch(
         BgpPolicyAtomicMatchType::COMMUNITY_LIST,
         {kCommunity1},
@@ -1075,11 +1101,13 @@ TEST_F(PolicyTest, CommunityMatchNegativeTest) {
 }
 
 TEST_F(PolicyTest, CommunityCountMatchTest) {
-  // set six CommunityCountMatch match struct, with same count but different
-  // comparison metrics: EQ, GT, GE, LE, LT, NE.
-  // Test update with the same value of community count, it will pass EQ, LE, GE
-  // fail GT, LE, NE test
-  // test update with no community attributes
+  /*
+   * set six CommunityCountMatch match struct, with same count but different
+   * comparison metrics: EQ, GT, GE, LE, LT, NE.
+   * Test update with the same value of community count, it will pass EQ, LE, GE
+   * fail GT, LE, NE test
+   * test update with no community attributes
+   */
   auto bgpMatch1 =
       createBgpPolicyAtomicMatch(BgpPolicyAtomicMatchType::COMMUNITY_COUNT);
   *bgpMatch1.community_count()->compare_numeric_value()->compare_operator() =
@@ -1194,11 +1222,13 @@ TEST_F(PolicyTest, AsPathLenMatchNegativeTest) {
 }
 
 TEST_F(PolicyTest, AsPathLenMatchTest) {
-  // set three AsPathLenMatch match struct, with same count but different
-  // comparison metrics: EQ, GT, GE, LT, LE, NE.
-  // Test update with the same aspath length, it will pass EQ, LE, GE,
-  // fail GT, LT, NE test
-  // test update with no aspath attribute
+  /*
+   * set three AsPathLenMatch match struct, with same count but different
+   * comparison metrics: EQ, GT, GE, LT, LE, NE.
+   * Test update with the same aspath length, it will pass EQ, LE, GE,
+   * fail GT, LT, NE test
+   * test update with no aspath attribute
+   */
   auto bgpMatch1 =
       createBgpPolicyAtomicMatch(BgpPolicyAtomicMatchType::AS_PATH_LEN);
   *bgpMatch1.as_path_len_filter()->at(0).compare_operator() =
@@ -1276,11 +1306,13 @@ TEST_F(PolicyTest, AsPathLenMatchTest) {
 }
 
 TEST_F(PolicyTest, AsPathLenWithConfedMatchTest) {
-  // set three AsConfedPathLenMatch match struct, with same count but different
-  // comparison metrics: EQ, GT, GE, LT, LE, NE.
-  // Test update with the same aspath length, it will pass EQ, LE, GE,
-  // fail GT, LT, NE test
-  // test update with no aspath attribute
+  /*
+   * set three AsConfedPathLenMatch match struct, with same count but different
+   * comparison metrics: EQ, GT, GE, LT, LE, NE.
+   * Test update with the same aspath length, it will pass EQ, LE, GE,
+   * fail GT, LT, NE test
+   * test update with no aspath attribute
+   */
   auto bgpMatch1 = createBgpPolicyAtomicMatch(
       BgpPolicyAtomicMatchType::AS_PATH_LEN_WITH_CONFED);
   *(*bgpMatch1.as_path_len_with_confed_filter())[0].compare_operator() =
@@ -1395,10 +1427,12 @@ TEST_F(PolicyTest, AlwaysMatchTest) {
 }
 
 TEST_F(PolicyTest, OriginMatchTest) {
-  // set three OriginMatch match struct, with IGP, EGP, INCOMPLETE.
-  // Test update with the EGP, it will fail IGP, INCOMPLETE matches,
-  // pass EGP match
-  // In createBgpPolicyAtomicMatch, default value is IGP
+  /*
+   * set three OriginMatch match struct, with IGP, EGP, INCOMPLETE.
+   * Test update with the EGP, it will fail IGP, INCOMPLETE matches,
+   * pass EGP match
+   * In createBgpPolicyAtomicMatch, default value is IGP
+   */
 
   // For each of 3 origin types
   for (int i = 0; i < 3; i++) {
@@ -1912,17 +1946,19 @@ TEST_F(PolicyTest, WeightNegativeTest) {
 }
 
 TEST_F(PolicyTest, PrefixListMatchTest) {
-  // test the implementation of prefixlist match:
-  // prefixlist with EQ compare_operator: match and not match
-  // prefixlist with LT compare_operator: match and not match
-  // prefixlist with GT compare_operator: match and not match
-  // prefixlist with LE compare_operator: match and not match
-  // prefixlist with GE compare_operator: match and not match
-  // prefixlist with NE compare_operator: match and not match
-  // prefixlist with GT and LT compare_operator, i.e. p1<p0<p2
-  // prefixlist with GE and LE compare_operator, i.e. p1<=p0<=p2
-  // prefixlist with short form regex, match and not match
-  // prefixlist with full form regex, match and not match
+  /*
+   * test the implementation of prefixlist match:
+   * prefixlist with EQ compare_operator: match and not match
+   * prefixlist with LT compare_operator: match and not match
+   * prefixlist with GT compare_operator: match and not match
+   * prefixlist with LE compare_operator: match and not match
+   * prefixlist with GE compare_operator: match and not match
+   * prefixlist with NE compare_operator: match and not match
+   * prefixlist with GT and LT compare_operator, i.e. p1<p0<p2
+   * prefixlist with GE and LE compare_operator, i.e. p1<=p0<=p2
+   * prefixlist with short form regex, match and not match
+   * prefixlist with full form regex, match and not match
+   */
   struct CompareStruct {
     explicit CompareStruct(
         int32_t compValue,
@@ -2051,8 +2087,10 @@ TEST_F(PolicyTest, PrefixListMatchTest) {
        kV4PrefixZero,
        kV4Prefix1Slash23,
        false},
-      // Verify that IPv4 prefix length (0.0.0.0/0) filter will not match ipv6
-      // addresses
+      /*
+       * Verify that IPv4 prefix length (0.0.0.0/0) filter will not match ipv6
+       * addresses
+       */
       {{CompareStruct(24, routing_policy::ComparisonOperator::GT)},
        kV4PrefixZero,
        kV6Prefix1Slash63,
@@ -2162,8 +2200,10 @@ TEST_F(PolicyTest, PrefixListMatchTest) {
        kV6PrefixZero,
        kV6Prefix1Slash63,
        false},
-      // Verify that IPv6 prefix length (::/0) filter will not match ipv4
-      // addresses
+      /*
+       * Verify that IPv6 prefix length (::/0) filter will not match ipv4
+       * addresses
+       */
       {{CompareStruct(64, routing_policy::ComparisonOperator::LE)},
        kV6PrefixZero,
        kV4Prefix1Slash23,
@@ -2278,17 +2318,21 @@ TEST_F(PolicyTest, PrefixListEntryWithBothRegexAndLenRanges) {
   const auto policy = policyManager.getPolicyFromName(policyName);
   const auto bgpTerms = policy->getPolicyTerms();
   const auto bgpEQPrefixMatch = bgpTerms[0]->getPolicyPrefixMatches()[0];
-  // we expect 8.0.0.0/17 to match because of prefix len ranges
-  // because prefix len ranges supercededs regex
-  // and this prefix wouldn't match the regex
+  /*
+   * we expect 8.0.0.0/17 to match because of prefix len ranges
+   * because prefix len ranges supercededs regex
+   * and this prefix wouldn't match the regex
+   */
   EXPECT_TRUE(bgpEQPrefixMatch->Match(folly::CIDRNetwork("8.0.0.0", 17)));
 }
 
 TEST_F(PolicyTest, MultiplePrefixListMatchTest) {
-  // Create a term with two matches
-  // Each match has a prefix list
-  // Verify cases where prefix matches
-  // none, first match, second match, matches both
+  /*
+   * Create a term with two matches
+   * Each match has a prefix list
+   * Verify cases where prefix matches
+   * none, first match, second match, matches both
+   */
 
   // Create a prefix list entry of 8.0.0.0/16 GT 24, LT 27
   routing_policy::CompareNumericValue comparer1;
@@ -2342,8 +2386,10 @@ TEST_F(PolicyTest, MultiplePrefixListMatchTest) {
   PolicyInMessage policyIn(prefixSetIn, attrs);
   auto policyOut = policyManager.applyPolicy(policyName, policyIn);
 
-  // Verify that only prefix which matches both prefix lists
-  // (kV4Prefix1Slash26) is permitted
+  /*
+   * Verify that only prefix which matches both prefix lists
+   * (kV4Prefix1Slash26) is permitted
+   */
   EXPECT_EQ(5, policyOut.result.size());
   EXPECT_NE(policyOut.result.find(kV4Prefix1Slash26), policyOut.result.end());
   EXPECT_NE(policyOut.result.find(kV4Prefix1Slash23), policyOut.result.end());
@@ -2459,8 +2505,10 @@ TEST_F(PolicyTest, PrefixListNegativeTest) {
         bgpMatch, "Unsupported PrefixList configuration: compare_operator");
   }
   {
-    // test unsupported feature:  operators other than BooleanOperator.OR in
-    // PrefixList
+    /*
+     * test unsupported feature:  operators other than BooleanOperator.OR in
+     * PrefixList
+     */
     const auto& prefixListEntry = createDefaultPrefixListEntry();
     auto bgpMatch = createPrefixListMatch({prefixListEntry});
     *bgpMatch.prefix_filters()->boolean_operator() =
@@ -2491,10 +2539,12 @@ TEST_F(PolicyTest, PrefixListNegativeTest) {
 TEST_F(PolicyTest, AsPathMatchTest) {
   BgpStats::initCounters();
   {
-    // Set two match struct, with different logic operator (AND/OR)
-    // Test update communities matches regex;
-    // Test update communities do not match regex
-    // kASPathRegex1 = "^65000.*", kASPathRegex2 = ".*65001$"
+    /*
+     * Set two match struct, with different logic operator (AND/OR)
+     * Test update communities matches regex;
+     * Test update communities do not match regex
+     * kASPathRegex1 = "^65000.*", kASPathRegex2 = ".*65001$"
+     */
     const auto& bgpMatch1 = createBgpPolicyAtomicMatch(
         BgpPolicyAtomicMatchType::AS_PATH,
         {kASPathRegex1, kASPathRegex2},
@@ -2576,8 +2626,10 @@ TEST_F(PolicyTest, AsPathMatchTest) {
     EXPECT_FALSE(asPathANDMatch->Match(attributes3));
   }
   {
-    // test with multiple as Segment
-    // kASPathRegexMultiSeq = "^\\(2[0-9][0-9][0-9]\\)_65000_65000_65000$";
+    /*
+     * test with multiple as Segment
+     * kASPathRegexMultiSeq = "^\\(2[0-9][0-9][0-9]\\)_65000_65000_65000$";
+     */
     const auto& bgpMatch1 = createBgpPolicyAtomicMatch(
         BgpPolicyAtomicMatchType::AS_PATH,
         {kASPathRegexMultiSeq},
@@ -2651,9 +2703,11 @@ TEST_F(PolicyTest, AsPathMatchTest) {
 
 TEST_F(PolicyTest, AsPathMatchNegativeTest) {
   BgpStats::initCounters();
-  // test three corner cases: empty aspath match
-  // malformed aspath regex
-  // attributes without aspath attributes
+  /*
+   * test three corner cases: empty aspath match
+   * malformed aspath regex
+   * attributes without aspath attributes
+   */
   {
     // test AsPathMatch with empty regex, return false
     const auto& bgpMatch1 = createBgpPolicyAtomicMatch(
@@ -2691,13 +2745,15 @@ TEST_F(PolicyTest, AsPathMatchNegativeTest) {
     }
   }
   {
-    // testing attributes without aspath attribute,
-    // kASPathRegex3 = ".*"
-    // return false if no regex under OR
-    // return false if no regex under AND
-    // return false if any ".*" regex and one is not ".*" under AND
-    // return true if any ".*" regex  and one is not ".*" under OR
-    // return true if only one ".*" regex under AND
+    /*
+     * testing attributes without aspath attribute,
+     * kASPathRegex3 = ".*"
+     * return false if no regex under OR
+     * return false if no regex under AND
+     * return false if any ".*" regex and one is not ".*" under AND
+     * return true if any ".*" regex  and one is not ".*" under OR
+     * return true if only one ".*" regex under AND
+     */
 
     const auto& bgpMatch1 = createBgpPolicyAtomicMatch(
         BgpPolicyAtomicMatchType::AS_PATH, {}, BooleanOperator::OR);
@@ -2750,8 +2806,10 @@ TEST_F(PolicyTest, AsPathMatchNegativeTest) {
     EXPECT_FALSE(asPathNoneORMatch->Match(attributes1));
   }
   {
-    // test other regex
-    // kASPathRegexDot = "6.000"
+    /*
+     * test other regex
+     * kASPathRegexDot = "6.000"
+     */
     const auto& bgpMatch1 = createBgpPolicyAtomicMatch(
         BgpPolicyAtomicMatchType::AS_PATH,
         {kASPathRegexDot},
@@ -2775,8 +2833,10 @@ TEST_F(PolicyTest, AsPathMatchNegativeTest) {
     EXPECT_FALSE(asPathORMatch->Match(attributes2));
   }
   {
-    // test other regex
-    // kASPathRegexNum = "\\d{5}"
+    /*
+     * test other regex
+     * kASPathRegexNum = "\\d{5}"
+     */
     const auto& bgpMatch1 = createBgpPolicyAtomicMatch(
         BgpPolicyAtomicMatchType::AS_PATH,
         {kASPathRegexNum},
@@ -2873,11 +2933,15 @@ TEST_F(PolicyTest, SetLocalPreferenceActionNegativeTest) {
   }
 }
 
-// Test if a term has no match condition, it will match all prefixes
-// and do actions for all prefixes
+/*
+ * Test if a term has no match condition, it will match all prefixes
+ * and do actions for all prefixes
+ */
 TEST_F(PolicyTest, applyPolicyTermHasNoMatches) {
-  // Create a policy with one term no matches and
-  // set action to a type (Modify origin)
+  /*
+   * Create a policy with one term no matches and
+   * set action to a type (Modify origin)
+   */
   auto action = createBgpPolicyAction(
       BgpPolicyActionType::ORIGIN, {}, "", bgp_policy::Origin::IGP);
 
@@ -2912,9 +2976,11 @@ TEST_F(PolicyTest, applyPolicyTermHasNoMatches) {
   EXPECT_FALSE(attrsOut->attrs->isPublished());
 }
 
-// Test if a term has match condition (matching all prefixes)
-// without any action, it will be permitted without any changes in attributes
-// Verify same shared_ptr<BgpPath> will be returned. (Save memory)
+/*
+ * Test if a term has match condition (matching all prefixes)
+ * without any action, it will be permitted without any changes in attributes
+ * Verify same shared_ptr<BgpPath> will be returned. (Save memory)
+ */
 TEST_F(PolicyTest, applyPolicyTermHasNoActions) {
   // Create a policy with one term, match (origin IGP) and has no actions
   auto matchIgp = createBgpPolicyAtomicMatch(BgpPolicyAtomicMatchType::ORIGIN);
@@ -2951,8 +3017,10 @@ TEST_F(PolicyTest, applyPolicyTermHasNoActions) {
 
 // Test if none of the terms match, we drop the prefixes
 TEST_F(PolicyTest, applyPolicyNoneOfTheTermsMatch) {
-  // Create a policy with one term (one origin match, one origin action)
-  // Input attributes does not match the term
+  /*
+   * Create a policy with one term (one origin match, one origin action)
+   * Input attributes does not match the term
+   */
   auto matchEgp = createBgpPolicyAtomicMatch(BgpPolicyAtomicMatchType::ORIGIN);
   matchEgp.origin() = bgp_policy::Origin::EGP;
 
@@ -2973,8 +3041,10 @@ TEST_F(PolicyTest, applyPolicyNoneOfTheTermsMatch) {
   PolicyInMessage policyIn(prefixSetIn, attrsIn);
   auto policyOut = policyManager.applyPolicy(policyName, policyIn);
 
-  // Verify both the prefixes are not permitted
-  // But we keep track of those prefixes as well.
+  /*
+   * Verify both the prefixes are not permitted
+   * But we keep track of those prefixes as well.
+   */
   ASSERT_EQ(2, policyOut.result.size());
 }
 
@@ -2996,9 +3066,11 @@ TEST_F(PolicyTest, applyPolicyTermMissActionDeny) {
   auto actionEgp = createBgpPolicyAction(
       BgpPolicyActionType::ORIGIN, {}, "", bgp_policy::Origin::EGP);
 
-  // Case 1: Policy with TERM1 (termMissAction DENY), TERM2
-  // Input prefix match TERM2, attributes does not match community in TERM1.
-  // Prefix is denied in TERM1
+  /*
+   * Case 1: Policy with TERM1 (termMissAction DENY), TERM2
+   * Input prefix match TERM2, attributes does not match community in TERM1.
+   * Prefix is denied in TERM1
+   */
   {
     // Create TERM1 with termMissAction DENY
     auto term1MissActionDeny = createBgpPolicyTerm(
@@ -3031,9 +3103,11 @@ TEST_F(PolicyTest, applyPolicyTermMissActionDeny) {
     EXPECT_EQ(nullptr, policyOut.result.at(kV6Prefix1)->attrs);
   }
 
-  // Case 2: Policy with TERM2 (termMissAction DENY), TERM1
-  // Input attributes matches community in TERM1, prefix does not match TERM1,
-  // Prefix is denied in TERM1
+  /*
+   * Case 2: Policy with TERM2 (termMissAction DENY), TERM1
+   * Input attributes matches community in TERM1, prefix does not match TERM1,
+   * Prefix is denied in TERM1
+   */
   {
     // Create TERM1 with termMissAction DENY
     auto term1 = createBgpPolicyTerm("Term1", "", {match1}, {actionIgp});
@@ -3069,9 +3143,11 @@ TEST_F(PolicyTest, applyPolicyTermMissActionDeny) {
 
 // test term miss action LOG_AND_NEXT_TERM
 TEST_F(PolicyTest, applyPolicyTermMissActionLogAndNextTerm) {
-  // kV4Prefix1 will be denied and kV4Prefix2 will log and go to next term
-  // - Term1 matches kV4Prefix1 (match = next, miss = LogAndNextTerm)
-  // (Default deny)
+  /*
+   * kV4Prefix1 will be denied and kV4Prefix2 will log and go to next term
+   * - Term1 matches kV4Prefix1 (match = next, miss = LogAndNextTerm)
+   * (Default deny)
+   */
   routing_policy::CompareNumericValue compareStructEQ;
   *compareStructEQ.compare_operator() = routing_policy::ComparisonOperator::EQ;
   *compareStructEQ.value() = kV4Prefix1.second;
@@ -3107,12 +3183,16 @@ TEST_F(PolicyTest, applyPolicyTermMissActionLogAndNextTerm) {
       policyOut.result[kV4Prefix2]->attrs, nullptr); // log and next term deny
 }
 
-// Test all match-conditions in a term must match for action to be applied
-// Case 1: Both match-conditions matched, actions applied
-// Case 2, 3: Only one match-condition matches, so actions are not applied
+/*
+ * Test all match-conditions in a term must match for action to be applied
+ * Case 1: Both match-conditions matched, actions applied
+ * Case 2, 3: Only one match-condition matches, so actions are not applied
+ */
 TEST_F(PolicyTest, applyPolicyMultipleMatchesInATermAllMustMatch) {
-  // Create a policy with one term
-  // (origin match, community match, origin action)
+  /*
+   * Create a policy with one term
+   * (origin match, community match, origin action)
+   */
   auto match1 = createBgpPolicyAtomicMatch(BgpPolicyAtomicMatchType::ORIGIN);
   match1.origin() = bgp_policy::Origin::EGP;
   const auto& match2 = createBgpPolicyAtomicMatch(
@@ -3128,8 +3208,10 @@ TEST_F(PolicyTest, applyPolicyMultipleMatchesInATermAllMustMatch) {
 
   std::vector<folly::CIDRNetwork> prefixSetIn{kV6Prefix1, kV6Prefix2};
 
-  // Case 1: Input attributes matches both community and Origin
-  //         Prefixes are permitted
+  /*
+   * Case 1: Input attributes matches both community and Origin
+   *         Prefixes are permitted
+   */
   {
     auto attrsMatchAll = createBgpPathWithOrigin(BgpAttrOrigin::BGP_ORIGIN_EGP);
     attrsMatchAll->setCommunities(createBgpAttrCommunitiesC({kCommunity1}));
@@ -3157,8 +3239,10 @@ TEST_F(PolicyTest, applyPolicyMultipleMatchesInATermAllMustMatch) {
     EXPECT_EQ(attrsOut->attrs->getOrigin(), BgpAttrOrigin::BGP_ORIGIN_IGP);
   }
 
-  // Case 2: Input matches only origin (community does not match).
-  //         So, prefixes are dropped.
+  /*
+   * Case 2: Input matches only origin (community does not match).
+   *         So, prefixes are dropped.
+   */
   {
     auto attrsMatchOrigin =
         createBgpPathWithOrigin(BgpAttrOrigin::BGP_ORIGIN_EGP);
@@ -3173,8 +3257,10 @@ TEST_F(PolicyTest, applyPolicyMultipleMatchesInATermAllMustMatch) {
     ASSERT_EQ(2, policyOut.result.size());
   }
 
-  // Case 3: Input matches only community (Origin does not match).
-  //         So, prefixes are dropped.
+  /*
+   * Case 3: Input matches only community (Origin does not match).
+   *         So, prefixes are dropped.
+   */
   {
     auto attrsMatchCommunity =
         createBgpPathWithOrigin(BgpAttrOrigin::BGP_ORIGIN_IGP);
@@ -3192,9 +3278,11 @@ TEST_F(PolicyTest, applyPolicyMultipleMatchesInATermAllMustMatch) {
 
 // Test that we skip first term and match 2nd term properly
 TEST_F(PolicyTest, applyPolicyMultipleTermsMatch2ndTerm) {
-  // Create a policy with two terms
-  // Term1 match kCommunity1 action origin IGP
-  // Term2 match kCommunity2 action origin EGP
+  /*
+   * Create a policy with two terms
+   * Term1 match kCommunity1 action origin IGP
+   * Term2 match kCommunity2 action origin EGP
+   */
   const auto& match1 = createBgpPolicyAtomicMatch(
       BgpPolicyAtomicMatchType::COMMUNITY_LIST, {kCommunity1});
   auto actionIgp = createBgpPolicyAction(
@@ -3241,12 +3329,16 @@ TEST_F(PolicyTest, applyPolicyMultipleTermsMatch2ndTerm) {
   EXPECT_EQ(attrsOut->attrs->getOrigin(), BgpAttrOrigin::BGP_ORIGIN_EGP);
 }
 
-// Test policy stats are proper.
-// Verify stats when we skip first term and match 2nd term.
+/*
+ * Test policy stats are proper.
+ * Verify stats when we skip first term and match 2nd term.
+ */
 TEST_F(PolicyTest, verifyPolicyStats) {
-  // Create a policy with two terms
-  // Term1 match kCommunity1 action origin IGP
-  // Term2 match kCommunity2 action origin EGP
+  /*
+   * Create a policy with two terms
+   * Term1 match kCommunity1 action origin IGP
+   * Term2 match kCommunity2 action origin EGP
+   */
   const auto& match1 = createBgpPolicyAtomicMatch(
       BgpPolicyAtomicMatchType::COMMUNITY_LIST, {kCommunity1});
   auto actionIgp = createBgpPolicyAction(
@@ -3340,9 +3432,11 @@ TEST_F(PolicyTest, SetMedGenuineActionTest) {
 }
 
 TEST_F(PolicyTest, SetMedSkippedActionTest) {
-  // Create a policy with two terms
-  // Term1 match origin IGP and set med to kMed2
-  // Term2 match all and set localpref to kLocalPref2
+  /*
+   * Create a policy with two terms
+   * Term1 match origin IGP and set med to kMed2
+   * Term2 match all and set localpref to kLocalPref2
+   */
   const auto& match1 = createOriginMatch(bgp_policy::Origin::IGP);
   auto actionSetMed = createBgpPolicyMedAction(kMed2);
   auto term1 = createBgpPolicyTerm("Term1", "", {match1}, {actionSetMed});
@@ -3372,12 +3466,16 @@ TEST_F(PolicyTest, SetMedSkippedActionTest) {
   EXPECT_FALSE(actionData->isMedSetByPolicy);
 }
 
-// Test that prefix won't fall through terms
-// We only match each prefix once without CONTINUE
+/*
+ * Test that prefix won't fall through terms
+ * We only match each prefix once without CONTINUE
+ */
 TEST_F(PolicyTest, applyPolicyMultipleTermsPrefixOnlyMatchedOnce) {
-  // Create a policy with two terms
-  // Term1 match origin IGP and set med to kMed2
-  // Term2 match all and set localpref to kLocalPref2
+  /*
+   * Create a policy with two terms
+   * Term1 match origin IGP and set med to kMed2
+   * Term2 match all and set localpref to kLocalPref2
+   */
   const auto& match1 = createOriginMatch(bgp_policy::Origin::IGP);
   auto actionSetMed = createBgpPolicyMedAction(kMed2);
   auto term1 = createBgpPolicyTerm("Term1", "", {match1}, {actionSetMed});
@@ -3420,14 +3518,18 @@ TEST_F(PolicyTest, applyPolicyMultipleTermsPrefixOnlyMatchedOnce) {
 
 // Test that prefix can fall through multiple terms with MatchAction = CONTINUE
 TEST_F(PolicyTest, applyPolicyMultipleTermsWithContinue) {
-  // helper lambda to verify multiple terms with continue
-  // @param continueAsFirstAction: where CONTINUE is placed in a term
-  //  true - term1:[CONTINUE, action1], term2:[action2]
-  // false - term1:[action1, CONTINUE], term2:[action2]
+  /*
+   * helper lambda to verify multiple terms with continue
+   * @param continueAsFirstAction: where CONTINUE is placed in a term
+   *  true - term1:[CONTINUE, action1], term2:[action2]
+   * false - term1:[action1, CONTINUE], term2:[action2]
+   */
   auto verifyTermsWithContinue = [&](bool continueAsFirstAction) {
-    // Create a policy with two terms
-    // Term1 match origin IGP, set med to kMed2 and CONTINUE
-    // Term2 match all and set localpref to kLocalPref2
+    /*
+     * Create a policy with two terms
+     * Term1 match origin IGP, set med to kMed2 and CONTINUE
+     * Term2 match all and set localpref to kLocalPref2
+     */
     const auto& match1 = createOriginMatch(bgp_policy::Origin::IGP);
     auto actionSetMed = createBgpPolicyMedAction(kMed2);
     auto actionContinue = createBgpPolicyAction(BgpPolicyActionType::CONTINUE);
@@ -3448,8 +3550,10 @@ TEST_F(PolicyTest, applyPolicyMultipleTermsWithContinue) {
 
     std::vector<folly::CIDRNetwork> prefixSetIn{kV4Prefix1};
 
-    // Attributes before applying policy:
-    // origin = IGP, med = kMed, local_pref = kLocalPref
+    /*
+     * Attributes before applying policy:
+     * origin = IGP, med = kMed, local_pref = kLocalPref
+     */
     auto attrsIn = createBgpPathWithOrigin(BgpAttrOrigin::BGP_ORIGIN_IGP);
     attrsIn->setMed(kMed);
     attrsIn->setLocalPref(kLocalPref);
@@ -3460,8 +3564,10 @@ TEST_F(PolicyTest, applyPolicyMultipleTermsWithContinue) {
     PolicyInMessage policyIn(prefixSetIn, attrsIn, actionData);
     auto policyOut = policyManager.applyPolicy(policyName, policyIn);
 
-    // Verify prefix is permitted (Explicit PERMIT)
-    // Both med action and localpref action are applied
+    /*
+     * Verify prefix is permitted (Explicit PERMIT)
+     * Both med action and localpref action are applied
+     */
     ASSERT_EQ(prefixSetIn.size(), policyOut.result.size());
     ASSERT_NE(policyOut.result.find(prefixSetIn[0]), policyOut.result.end());
 
@@ -3482,12 +3588,16 @@ TEST_F(PolicyTest, applyPolicyMultipleTermsWithContinue) {
   verifyTermsWithContinue(false);
 }
 
-// Test multiple actions are applied
-// Test explicit PERMIT, DENY actions
+/*
+ * Test multiple actions are applied
+ * Test explicit PERMIT, DENY actions
+ */
 TEST_F(PolicyTest, applyPolicyMultipleActionsInATerm) {
-  // Create a policy with two terms
-  // Term1 match kCommunity1 action origin IGP, action PERMIT
-  // Term2 match kCommunity2 action DENY
+  /*
+   * Create a policy with two terms
+   * Term1 match kCommunity1 action origin IGP, action PERMIT
+   * Term2 match kCommunity2 action DENY
+   */
   const auto& match1 = createBgpPolicyAtomicMatch(
       BgpPolicyAtomicMatchType::COMMUNITY_LIST, {kCommunity1});
   auto actionIgp = createBgpPolicyAction(
@@ -3552,9 +3662,11 @@ TEST_F(PolicyTest, applyPolicyMultipleActionsInATerm) {
 }
 
 TEST_F(PolicyTest, CommunityListActionTest) {
-  // Create a catch all term and ADD/SET/REMOVE communities
-  // Input attributes with some communities
-  // Result should have modified attributes according to community action type
+  /*
+   * Create a catch all term and ADD/SET/REMOVE communities
+   * Input attributes with some communities
+   * Result should have modified attributes according to community action type
+   */
   auto lambdaVerifyCommunityAction =
       [&](const bgp_policy::CommunityActionType type,
           const vector<string>& actionCommunities,
@@ -3575,8 +3687,10 @@ TEST_F(PolicyTest, CommunityListActionTest) {
         auto attrs = std::make_shared<BgpPath>(*attrFields);
         attrs->setCommunities(createBgpAttrCommunitiesC(attrCommunities));
         action->applyAction(attrs);
-        // Verify that after applying, communities are appended to existing
-        // values. Verify the order of communities is also as expected.
+        /*
+         * Verify that after applying, communities are appended to existing
+         * values. Verify the order of communities is also as expected.
+         */
 
         const auto testCommunities = attrs->getCommunities().get();
 
@@ -3585,9 +3699,11 @@ TEST_F(PolicyTest, CommunityListActionTest) {
             testing::ElementsAreArray(expectedCommunities));
       };
 
-  // Verify that Add action adds missing communities to existing communities
-  // Ignores common communities (Does not repeat)
-  // Ensure that new communities are added to END of existing communities
+  /*
+   * Verify that Add action adds missing communities to existing communities
+   * Ignores common communities (Does not repeat)
+   * Ensure that new communities are added to END of existing communities
+   */
   lambdaVerifyCommunityAction(
       bgp_policy::CommunityActionType::ADD,
       {kCommunity1, kCommunity2}, // Communities in action
@@ -3601,8 +3717,10 @@ TEST_F(PolicyTest, CommunityListActionTest) {
       {kCommunity3, kCommunity4}, // Communities in attributes
       {kCommunity1, kCommunity2}); // Expected communities
 
-  // Verify that remove action removes communities matching from input,
-  // ignores any action communities that did not match any in attributes
+  /*
+   * Verify that remove action removes communities matching from input,
+   * ignores any action communities that did not match any in attributes
+   */
   lambdaVerifyCommunityAction(
       bgp_policy::CommunityActionType::REMOVE,
       {kCommunity1, kCommunity2}, // Communities in action
@@ -3616,9 +3734,11 @@ TEST_F(PolicyTest, CommunityListActionTest) {
       {kCommunity1, kCommunity2}, // Communities in attributes
       {}); // Expected communities
 
-  // Verify that remove action with regEx removes communities matching from
-  // input, this verifies multiple regExs in a action, mix of regEx and
-  // non-regEx
+  /*
+   * Verify that remove action with regEx removes communities matching from
+   * input, this verifies multiple regExs in a action, mix of regEx and
+   * non-regEx
+   */
   lambdaVerifyCommunityAction(
       bgp_policy::CommunityActionType::REMOVE,
       {kCommunityRegex1,
@@ -3709,8 +3829,10 @@ TEST_F(PolicyTest, LbwExtCommunityActionTest) {
         }
       };
 
-  // action: DISABLE (apply to both receive and advertise)
-  // lbw should be pruned from attr regardless input-lbw is set or not
+  /*
+   * action: DISABLE (apply to both receive and advertise)
+   * lbw should be pruned from attr regardless input-lbw is set or not
+   */
   verifyLbwAction(
       createLbwActionData(std::make_pair(65530, 100), 65530),
       bgp_policy::LbwExtCommunityActionType::DISABLE,
@@ -3721,8 +3843,10 @@ TEST_F(PolicyTest, LbwExtCommunityActionTest) {
       bgp_policy::LbwExtCommunityActionType::DISABLE,
       std::nullopt);
 
-  // action: SET_LINK_BPS (apply to both receive and advertise)
-  // lbw shall be overwritten as lbw from config
+  /*
+   * action: SET_LINK_BPS (apply to both receive and advertise)
+   * lbw shall be overwritten as lbw from config
+   */
   verifyLbwAction(
       createLbwActionData(
           std::make_pair(65530, 100), 65530, std::nullopt, std::nullopt, 200),
@@ -3734,8 +3858,10 @@ TEST_F(PolicyTest, LbwExtCommunityActionTest) {
       bgp_policy::LbwExtCommunityActionType::SET_LINK_BPS,
       std::make_pair(65530, 300));
 
-  // action: ACCEPT (receive-only)
-  // action does nothing, keep as is
+  /*
+   * action: ACCEPT (receive-only)
+   * action does nothing, keep as is
+   */
   verifyLbwAction(
       createLbwActionData(std::make_pair(65530, 100), 65530),
       bgp_policy::LbwExtCommunityActionType::ACCEPT,
@@ -3746,9 +3872,11 @@ TEST_F(PolicyTest, LbwExtCommunityActionTest) {
       bgp_policy::LbwExtCommunityActionType::ACCEPT,
       std::nullopt);
 
-  // action: BEST_PATH (advertise-only)
-  // keep best-path lbw as is if received lbw from all peers
-  // (aggregate-received-lbw), otherwise, prune lbw
+  /*
+   * action: BEST_PATH (advertise-only)
+   * keep best-path lbw as is if received lbw from all peers
+   * (aggregate-received-lbw), otherwise, prune lbw
+   */
   verifyLbwAction(
       createLbwActionData(
           std::make_pair(65530, 100),
@@ -3793,9 +3921,11 @@ TEST_F(PolicyTest, LbwExtCommunityActionTest) {
       bgp_policy::LbwExtCommunityActionType::BEST_PATH,
       std::nullopt);
 
-  // action: AGGREGATE_LOCAL (advertise-only)
-  // set lbw from aggregate-local-lbw if all peers has link-bps set,
-  // otherwise prune lbw
+  /*
+   * action: AGGREGATE_LOCAL (advertise-only)
+   * set lbw from aggregate-local-lbw if all peers has link-bps set,
+   * otherwise prune lbw
+   */
   verifyLbwAction(
       createLbwActionData(
           std::make_pair(65530, 100),
@@ -3838,9 +3968,11 @@ TEST_F(PolicyTest, LbwExtCommunityActionTest) {
       bgp_policy::LbwExtCommunityActionType::AGGREGATE_LOCAL,
       std::nullopt);
 
-  // action: AGGREGATE_RECEIVED (advertise-only)
-  // set lbw from aggregate-received-lbw if received lbw from all peers
-  // otherwise prune lbw
+  /*
+   * action: AGGREGATE_RECEIVED (advertise-only)
+   * set lbw from aggregate-received-lbw if received lbw from all peers
+   * otherwise prune lbw
+   */
   verifyLbwAction(
       createLbwActionData(
           std::make_pair(65530, 100),
@@ -3928,9 +4060,11 @@ TEST_F(PolicyTest, LbwExtCommunityActionTest) {
         }
       };
 
-  // action: ENCODE_AGGREGATE_RECEIVED_OVERWRITE (advertise-only)
-  // encode aggregate-received standard lbw and overwrite lbw if received lbw
-  // from all peers otherwise prune lbw
+  /*
+   * action: ENCODE_AGGREGATE_RECEIVED_OVERWRITE (advertise-only)
+   * encode aggregate-received standard lbw and overwrite lbw if received lbw
+   * from all peers otherwise prune lbw
+   */
   verifyLbwEncodeAction(
       createLbwActionData(
           std::make_pair(65530, 100),
@@ -3973,8 +4107,10 @@ TEST_F(PolicyTest, LbwExtCommunityActionTest) {
       2,
       std::nullopt);
 
-  // action: ENCODE_MULTIPATH (advertise-only)
-  // encode size of multipath and modify encoded lbw
+  /*
+   * action: ENCODE_MULTIPATH (advertise-only)
+   * encode size of multipath and modify encoded lbw
+   */
   verifyLbwEncodeAction(
       createLbwActionData(std::nullopt, 65530, std::nullopt, 8),
       bgp_policy::LbwExtCommunityActionType::ENCODE_MULTIPATH,
@@ -3989,8 +4125,10 @@ TEST_F(PolicyTest, LbwExtCommunityActionTest) {
           std::make_pair(65530, 8 << 8)),
       "multiPathSize unset for ENCODE_MULTIPATH");
 
-  // action: ENCODE_SWITCH_ID (advertise-only)
-  // encode switch_id and modify encoded lbw
+  /*
+   * action: ENCODE_SWITCH_ID (advertise-only)
+   * encode switch_id and modify encoded lbw
+   */
   verifyLbwEncodeAction(
       createLbwActionData(std::nullopt, 65530, 8),
       bgp_policy::LbwExtCommunityActionType::ENCODE_SWITCH_ID,
@@ -4005,8 +4143,10 @@ TEST_F(PolicyTest, LbwExtCommunityActionTest) {
           std::make_pair(65530, 8 << 8)),
       "switchId unset for ENCODE_SWITCH_ID");
 
-  // action: DECODE_AGGREGATE_CAPACITY_OVERWRITE (advertise-only)
-  // decode all capacity values and overwrite agg capacity as standard lbw
+  /*
+   * action: DECODE_AGGREGATE_CAPACITY_OVERWRITE (advertise-only)
+   * decode all capacity values and overwrite agg capacity as standard lbw
+   */
   union {
     uint32_t intVal;
     float floatVal;
@@ -4040,12 +4180,14 @@ TEST_F(PolicyTest, LbwExtCommunityActionTest) {
 }
 
 TEST_F(PolicyTest, CommunityListAddAndRemoveTest) {
-  // Verify that in one term we can add and remove communities
-  // Create a catch all term with
-  //    ADD kCommunity2 and
-  //    REMOVE kCommunity3
-  // Input attributes with (kCommunity1, kCommunity3)
-  // Result should have (kCommunity1, kCommunity2)
+  /*
+   * Verify that in one term we can add and remove communities
+   * Create a catch all term with
+   *    ADD kCommunity2 and
+   *    REMOVE kCommunity3
+   * Input attributes with (kCommunity1, kCommunity3)
+   * Result should have (kCommunity1, kCommunity2)
+   */
   auto bgpAction1 = createBgpPolicyCommunityAction(
       bgp_policy::CommunityActionType::ADD, {kCommunity2});
   auto bgpAction2 = createBgpPolicyCommunityAction(
@@ -4075,8 +4217,10 @@ TEST_F(PolicyTest, CommunityListAddAndRemoveTest) {
   auto attrsOut = policyOut.result[prefixSetIn[0]];
   EXPECT_EQ(attrs, attrsOut->attrs);
 
-  // Verify that after applying actions
-  // kCommunity1 is retained, kCommunity2 is added, kCommunity3 is removed
+  /*
+   * Verify that after applying actions
+   * kCommunity1 is retained, kCommunity2 is added, kCommunity3 is removed
+   */
   EXPECT_THAT(
       ConvertAttrCommunitiesToStrings(attrsOut->attrs->getCommunities().get()),
       testing::UnorderedElementsAreArray({kCommunity1, kCommunity2}));
@@ -4091,8 +4235,10 @@ TEST_F(PolicyTest, CommunityListNegativeTest) {
   commAction.communities() = std::vector<std::string>{kCommunity1};
   correctAction.community_action() = commAction;
   {
-    // Verify we do not accept community list action type
-    // if community list is not set
+    /*
+     * Verify we do not accept community list action type
+     * if community list is not set
+     */
     auto incorrectAction = correctAction;
     incorrectAction.community_action().reset();
     const auto& expectedStr = "BgpPolicyAction Config input error for type: 2";
@@ -4101,10 +4247,12 @@ TEST_F(PolicyTest, CommunityListNegativeTest) {
     EXPECT_STREQ(expectedStr, receivedStr->c_str());
   }
   {
-    // Verify we do not accept invalid community input.
-    // As invalid community string could be a valid regEx, we cannot
-    // always differentiate between invalid regEx vs invalid community string,
-    // so expected error is regex not allowed.
+    /*
+     * Verify we do not accept invalid community input.
+     * As invalid community string could be a valid regEx, we cannot
+     * always differentiate between invalid regEx vs invalid community string,
+     * so expected error is regex not allowed.
+     */
     auto incorrectAction = correctAction;
     incorrectAction.community_action()->communities() =
         std::vector<std::string>{kCommunity1, "abcd"};
@@ -4280,15 +4428,17 @@ TEST_F(PolicyTest, ExtCommunityActionValidateActionTypeTest) {
 
 // Test apply policy with terms having prefix list
 TEST_F(PolicyTest, applyPolicyWithPrefixList) {
-  // Create a policy with five terms
-  // Term1 match kV4Prefix1, kV4Prefix2 and apply origin action(IGP)
-  // Term2 match kV4Prefix3 and discard
-  // Term3 match kV4Prefix4 and apply origin action(EGP)
-  // Term4 match kV4Prefix5 which doesn't match any of input prefix
-  //       and apply origin action(EGP). This will cover case where
-  //       a term with prefix list doesn't match any prefixes
-  // Term5 match kV4Prefix6 and PERMIT (no attribute modification)
-  // kV4Prefix7 Doesn't match any term and discard
+  /*
+   * Create a policy with five terms
+   * Term1 match kV4Prefix1, kV4Prefix2 and apply origin action(IGP)
+   * Term2 match kV4Prefix3 and discard
+   * Term3 match kV4Prefix4 and apply origin action(EGP)
+   * Term4 match kV4Prefix5 which doesn't match any of input prefix
+   *       and apply origin action(EGP). This will cover case where
+   *       a term with prefix list doesn't match any prefixes
+   * Term5 match kV4Prefix6 and PERMIT (no attribute modification)
+   * kV4Prefix7 Doesn't match any term and discard
+   */
 
   // Creating TERM1 (match kV4Prefix1, kV4Prefix2 and apply origin action(IGP))
   routing_policy::CompareNumericValue compareStructEQ;
@@ -4323,9 +4473,11 @@ TEST_F(PolicyTest, applyPolicyWithPrefixList) {
       BgpPolicyActionType::ORIGIN, {}, "", bgp_policy::Origin::EGP);
   auto term3 = createBgpPolicyTerm("Term3", "", {match3}, {actionEgp});
 
-  // Creating TERM4 (match kV4Prefix5 and apply origin action(EGP))
-  // This term doesn't match any input prefixes
-  // Verify it doesn't effect kV4Prefix6 in any way
+  /*
+   * Creating TERM4 (match kV4Prefix5 and apply origin action(EGP))
+   * This term doesn't match any input prefixes
+   * Verify it doesn't effect kV4Prefix6 in any way
+   */
   *compareStructEQ.value() = kV4Prefix5.second;
   const auto& prefixListEntry5 = createPrefixListEntry(
       IPAddress::networkToString(kV4Prefix5), {compareStructEQ});
@@ -4358,8 +4510,10 @@ TEST_F(PolicyTest, applyPolicyWithPrefixList) {
   PolicyInMessage policyIn(prefixSetIn, attrsIn);
   auto policyOut = policyManager.applyPolicy(policyName, policyIn);
 
-  // Verify that a total of 4 prefixes are permitted
-  // term2 discards kV4Prefix3, kV4Prefix6 will be discard due to catch all
+  /*
+   * Verify that a total of 4 prefixes are permitted
+   * term2 discards kV4Prefix3, kV4Prefix6 will be discard due to catch all
+   */
   int count = 0;
   for (auto& kv : policyOut.result) {
     const auto& str = kv.second->policyName;
@@ -4369,8 +4523,10 @@ TEST_F(PolicyTest, applyPolicyWithPrefixList) {
   }
   ASSERT_EQ(4, count);
 
-  // Verify TERM1 actions
-  // Verify kV4Prefix1, kV4Prefix2 are permitted and have IGP origin
+  /*
+   * Verify TERM1 actions
+   * Verify kV4Prefix1, kV4Prefix2 are permitted and have IGP origin
+   */
   ASSERT_NE(policyOut.result.find(kV4Prefix1), policyOut.result.end());
   ASSERT_NE(policyOut.result.find(kV4Prefix2), policyOut.result.end());
   // Verify new attributes are created (set action)
@@ -4385,12 +4541,16 @@ TEST_F(PolicyTest, applyPolicyWithPrefixList) {
   // Verify origin action is properly applied (1st Term's action)
   EXPECT_EQ(attrsOut->attrs->getOrigin(), BgpAttrOrigin::BGP_ORIGIN_IGP);
 
-  // Verify TERM2 actions
-  // Verify kV4Prefix3 is discarded
+  /*
+   * Verify TERM2 actions
+   * Verify kV4Prefix3 is discarded
+   */
   EXPECT_NE(policyOut.result.find(kV4Prefix3), policyOut.result.end());
 
-  // Verify TERM3 actions
-  // Verify kV4Prefix4 accepted and origin action(EGP) applied
+  /*
+   * Verify TERM3 actions
+   * Verify kV4Prefix4 accepted and origin action(EGP) applied
+   */
   ASSERT_NE(policyOut.result.find(kV4Prefix4), policyOut.result.end());
   EXPECT_NE(attrsIn, policyOut.result[kV4Prefix4]->attrs);
   attrsOut = policyOut.result[kV4Prefix4];
@@ -4399,24 +4559,32 @@ TEST_F(PolicyTest, applyPolicyWithPrefixList) {
   // Verify origin action is properly applied (3rd Term's action)
   EXPECT_EQ(attrsOut->attrs->getOrigin(), BgpAttrOrigin::BGP_ORIGIN_EGP);
 
-  // Verify TERM5 actions
-  // Verify kV4Prefix6 accepted and no attribute modification
+  /*
+   * Verify TERM5 actions
+   * Verify kV4Prefix6 accepted and no attribute modification
+   */
   ASSERT_NE(policyOut.result.find(kV4Prefix6), policyOut.result.end());
   EXPECT_EQ(attrsIn, policyOut.result[kV4Prefix6]->attrs);
   attrsOut = policyOut.result[kV4Prefix6];
   EXPECT_TRUE(attrsOut->attrs->isPublished());
 
-  // Verify catch all term (default)
-  // Verify kV4Prefix7 discarded
+  /*
+   * Verify catch all term (default)
+   * Verify kV4Prefix7 discarded
+   */
   EXPECT_NE(policyOut.result.find(kV4Prefix7), policyOut.result.end());
 }
 
-// Test policy with a LogAndAccept action as a miss
-// TODO: logging part will be tested in future diff
+/*
+ * Test policy with a LogAndAccept action as a miss
+ * TODO: logging part will be tested in future diff
+ */
 TEST_F(PolicyTest, applyPolicyLogAndAccept) {
-  // kV4Prefix1 will be denied and kV4Prefix2 will be accepted
-  // - Term1 matches kV4Prefix2 (match = next, miss = LogAndAccept)
-  // (Default deny)
+  /*
+   * kV4Prefix1 will be denied and kV4Prefix2 will be accepted
+   * - Term1 matches kV4Prefix2 (match = next, miss = LogAndAccept)
+   * (Default deny)
+   */
   routing_policy::CompareNumericValue compareStructEQ;
   *compareStructEQ.compare_operator() = routing_policy::ComparisonOperator::EQ;
   *compareStructEQ.value() = kV4Prefix1.second;
@@ -4451,12 +4619,16 @@ TEST_F(PolicyTest, applyPolicyLogAndAccept) {
   ASSERT_EQ(policyOut.result[kV4Prefix2]->attrs, attrsIn); // permit
 }
 
-// Test policy with a LogAndDeny action as a miss
-// TODO: logging part will be tested in future diff
+/*
+ * Test policy with a LogAndDeny action as a miss
+ * TODO: logging part will be tested in future diff
+ */
 TEST_F(PolicyTest, applyPolicyLogAndDeny) {
-  // kV4Prefix1 will be denied and kV4Prefix2 will be accepted
-  // - Term1 matches kV4Prefix2 (match = accept, miss = log and deny)
-  // - Term2 accepts kV4Prefix1
+  /*
+   * kV4Prefix1 will be denied and kV4Prefix2 will be accepted
+   * - Term1 matches kV4Prefix2 (match = accept, miss = log and deny)
+   * - Term2 accepts kV4Prefix1
+   */
 
   routing_policy::CompareNumericValue compareStructEQ;
   *compareStructEQ.compare_operator() = routing_policy::ComparisonOperator::EQ;
@@ -4503,28 +4675,34 @@ TEST_F(PolicyTest, applyPolicyLogAndDeny) {
   ASSERT_EQ(policyOut.result[kV4Prefix2]->attrs, attrsIn); // permit
 }
 
-// Test policy with terms having prefix-list based match, where each term's
-// miss acction is permissive - continue evaluating but log prefixes that
-// didn't match the term.
+/*
+ * Test policy with terms having prefix-list based match, where each term's
+ * miss acction is permissive - continue evaluating but log prefixes that
+ * didn't match the term.
+ */
 TEST_F(PolicyTest, applyPermissivePolicyWithPrefixList) {
-  // Evaluate kV4Prefix1 through kV4Prefix5 against test policy.
-  // Test policy has four terms, where each term's miss action is log and
-  // continue evaluating against next term.
-  // - Term1 matches kV4Prefix1 through kV4Prefix4 and continues evaluation
-  //   against term2 on match. Unmatched kV4Prefix5 will get logged, but all
-  //   5 will continue evaluation against term2
-  // - Term2 matches kV4Prefix1 and applies origin action (IGP). The
-  //   4 unmatched prefixes will get logged and continue evaluation against
-  //   term3.
-  // - Term3 matches kV4Prefix2 and kV4Prefix3 and applies discard action. The
-  //   remaining two prefixes will be logged and continue evaluation against
-  //   term4.
-  // - Term4 matches kV4Prefix4 and applies permit action (without any attribute
-  //   modification). The last remaing prefix will be logged and get discarded
-  //   (since no more terms).
+  /*
+   * Evaluate kV4Prefix1 through kV4Prefix5 against test policy.
+   * Test policy has four terms, where each term's miss action is log and
+   * continue evaluating against next term.
+   * - Term1 matches kV4Prefix1 through kV4Prefix4 and continues evaluation
+   *   against term2 on match. Unmatched kV4Prefix5 will get logged, but all
+   *   5 will continue evaluation against term2
+   * - Term2 matches kV4Prefix1 and applies origin action (IGP). The
+   *   4 unmatched prefixes will get logged and continue evaluation against
+   *   term3.
+   * - Term3 matches kV4Prefix2 and kV4Prefix3 and applies discard action. The
+   *   remaining two prefixes will be logged and continue evaluation against
+   *   term4.
+   * - Term4 matches kV4Prefix4 and applies permit action (without any attribute
+   *   modification). The last remaing prefix will be logged and get discarded
+   *   (since no more terms).
+   */
 
-  // Creating TERM1 - match kV4Prefix1 through kV4Prefix4 and continue
-  // evaluating to next term.
+  /*
+   * Creating TERM1 - match kV4Prefix1 through kV4Prefix4 and continue
+   * evaluating to next term.
+   */
   routing_policy::CompareNumericValue compareStructEQ;
   *compareStructEQ.compare_operator() = routing_policy::ComparisonOperator::EQ;
   *compareStructEQ.value() = kV4Prefix1.second;
@@ -4600,9 +4778,11 @@ TEST_F(PolicyTest, applyPermissivePolicyWithPrefixList) {
   PolicyInMessage policyIn(prefixSetIn, attrsIn);
   auto policyOut = policyManager.applyPolicy(policyName, policyIn);
 
-  // Verify that a total of 2 prefixes are permitted.
-  // - term3 discards kV4Prefix2 and kV4Prefix3,
-  // - kV4Prefix5 will be discard due to not matching any (non-Continue) term.
+  /*
+   * Verify that a total of 2 prefixes are permitted.
+   * - term3 discards kV4Prefix2 and kV4Prefix3,
+   * - kV4Prefix5 will be discard due to not matching any (non-Continue) term.
+   */
   int count = 0;
   for (auto& kv : policyOut.result) {
     const auto& str = kv.second->policyName;
@@ -4640,22 +4820,26 @@ TEST_F(PolicyTest, applyPermissivePolicyWithPrefixList) {
 
   // Verify default discard action.
 
-  // Verify kV4Prefix5 discarded due to not matchig any non-Continue action
-  // terms.
+  /*
+   * Verify kV4Prefix5 discarded due to not matchig any non-Continue action
+   * terms.
+   */
   EXPECT_NE(policyOut.result.find(kV4Prefix5), policyOut.result.end());
 }
 
-// Evaluate a prefix (9.0.0.0/26) against a prefix list with two entries, that
-// have the same base prefix (of 9.0.0.0/24). The prefix will match both entry's
-// base prefix. However, first entry's base prefix is 9.0.0.0/24 has a prefix
-// len range specicified as 24, while the second entry's base prefix
-// of 9.0.0.0/24 has prefix len range specified as 26. The expected policy
-// evaluation result is a match since there is matching prefix-list entry with
-// len 26. The actual results is that if the two entry's are in lexicographic
-// order (i.e. 9.0.0.0/24 with len 24 followed by 9.0.0.0/24 with len 26) in the
-// prefix-list, the match fails. However, if the entry's are in the reverse
-// order (9.0.0.0/24 with len 26 followed by 9.0.0.0/24 with len 24) match
-// succeeds.
+/*
+ * Evaluate a prefix (9.0.0.0/26) against a prefix list with two entries, that
+ * have the same base prefix (of 9.0.0.0/24). The prefix will match both entry's
+ * base prefix. However, first entry's base prefix is 9.0.0.0/24 has a prefix
+ * len range specicified as 24, while the second entry's base prefix
+ * of 9.0.0.0/24 has prefix len range specified as 26. The expected policy
+ * evaluation result is a match since there is matching prefix-list entry with
+ * len 26. The actual results is that if the two entry's are in lexicographic
+ * order (i.e. 9.0.0.0/24 with len 24 followed by 9.0.0.0/24 with len 26) in the
+ * prefix-list, the match fails. However, if the entry's are in the reverse
+ * order (9.0.0.0/24 with len 26 followed by 9.0.0.0/24 with len 24) match
+ * succeeds.
+ */
 TEST_F(PolicyTest, verifyMatchAnyOpForPrefixList) {
   routing_policy::CompareNumericValue compareStructEQ;
   *compareStructEQ.compare_operator() = routing_policy::ComparisonOperator::EQ;
@@ -4663,8 +4847,10 @@ TEST_F(PolicyTest, verifyMatchAnyOpForPrefixList) {
   const auto& prefixListEntry1 = createPrefixListEntry(
       IPAddress::networkToString(kV4Prefix8_0Slash24), {compareStructEQ});
   *compareStructEQ.value() = kV4Prefix8_0Slash26.second;
-  // This base prefix is purposefully /24, as the entry is simulating to permit
-  // all /26 prefixes within this /24.
+  /*
+   * This base prefix is purposefully /24, as the entry is simulating to permit
+   * all /26 prefixes within this /24.
+   */
   const auto& prefixListEntry2 = createPrefixListEntry(
       IPAddress::networkToString(kV4Prefix8_0Slash24), {compareStructEQ});
 
@@ -4730,11 +4916,15 @@ TEST_F(PolicyTest, verifyMatchAnyOpForPrefixList) {
   ASSERT_EQ(1, count);
 }
 
-// Test prefix list with additional match conditions
-// Verify that both match-conditions must match (matching one is not sufficient)
+/*
+ * Test prefix list with additional match conditions
+ * Verify that both match-conditions must match (matching one is not sufficient)
+ */
 TEST_F(PolicyTest, applyPolicyWithPrefixListAndCommunity) {
-  // Create a term with prefix-list and community matches
-  // Verify that only if both are matched, will action be taken
+  /*
+   * Create a term with prefix-list and community matches
+   * Verify that only if both are matched, will action be taken
+   */
   routing_policy::CompareNumericValue compareStructEQ;
   *compareStructEQ.compare_operator() = routing_policy::ComparisonOperator::EQ;
   *compareStructEQ.value() = kV4Prefix1.second;
@@ -4854,8 +5044,10 @@ TEST_F(PolicyTest, SetAsPathPrependActionTest) {
     EXPECT_THAT(*attrs->getAsPath(), testing::ElementsAreArray(expectedAsPath));
   }
   {
-    // test the AS is prepended to both first asSequence and a new asSequence
-    // kRepeatedTimes2 = 253
+    /*
+     * test the AS is prepended to both first asSequence and a new asSequence
+     * kRepeatedTimes2 = 253
+     */
     BgpAttrAsPathC asPath;
     BgpAttrAsPathSegmentC segment1;
     for (int insertTimes = 0; insertTimes < kRepeatedTimes2; insertTimes++) {
@@ -5026,16 +5218,18 @@ INSTANTIATE_TEST_SUITE_P(
                 BgpAttrAsPathSegmentC::fromConfedSet({2}),
                 BgpAttrAsPathSegmentC::fromAsSet({3})}}));
 
-// Test prefix match TERM1 (with GOTO action) will be evaluated by TERM3
-// TERM2 is skipped
-//
-// Test prefix: kV6Prefix1 with kCommunity1
-//
-// TERM1: match kCommunity1, goto TERM3
-// TERM2: match kV6Prefix1, set origin IGP
-// TERM3: match kV6Prefix1, set origin INCOMPLETE
-//
-// Verify attributes has origin EGP
+/*
+ * Test prefix match TERM1 (with GOTO action) will be evaluated by TERM3
+ * TERM2 is skipped
+ *
+ * Test prefix: kV6Prefix1 with kCommunity1
+ *
+ * TERM1: match kCommunity1, goto TERM3
+ * TERM2: match kV6Prefix1, set origin IGP
+ * TERM3: match kV6Prefix1, set origin INCOMPLETE
+ *
+ * Verify attributes has origin EGP
+ */
 TEST_F(PolicyTest, GotoTermTest) {
   // TERM1: match kCommunity1, goto TERM3
   const auto& match1 = createBgpPolicyAtomicMatch(
@@ -5065,8 +5259,10 @@ TEST_F(PolicyTest, GotoTermTest) {
       createBgpPolicies(policyName, {term1, term2, term3});
   PolicyManager policyManager(policyConfig, createTestBgpGlobalConfig());
 
-  // Test case: kV6Prefix1 with kCommunity1
-  // It matches TERM1, GOTO TERM3, change origin to INCOMPLETE
+  /*
+   * Test case: kV6Prefix1 with kCommunity1
+   * It matches TERM1, GOTO TERM3, change origin to INCOMPLETE
+   */
   std::vector<folly::CIDRNetwork> prefixSetMatch{kV6Prefix1};
   auto attrs = createBgpPathWithOrigin(BgpAttrOrigin::BGP_ORIGIN_INCOMPLETE);
   // community dies bit natch TERM1
@@ -5084,20 +5280,24 @@ TEST_F(PolicyTest, GotoTermTest) {
       policyOut.result.at(kV6Prefix1)->attrs->getOrigin());
 }
 
-// Test prefix that did not match TERM1 (with GOTO action) will continue to
-// be evaluated by remaining terms (TERM2), and will not be processed by
-// GOTO term
-//
-// prefix: kV6Prefix1, attributes: kCommunityNotMatchingRegex1
-//
-// TERM1: match community and community regex -> goto term3
-// TERM2: match kV6Prefix1, set origin IGP
-// TERM3: match kV6Prefix1, set origin INCOMPLETE
-//
-// prefix should not match term1, it should be processed by term2
+/*
+ * Test prefix that did not match TERM1 (with GOTO action) will continue to
+ * be evaluated by remaining terms (TERM2), and will not be processed by
+ * GOTO term
+ *
+ * prefix: kV6Prefix1, attributes: kCommunityNotMatchingRegex1
+ *
+ * TERM1: match community and community regex -> goto term3
+ * TERM2: match kV6Prefix1, set origin IGP
+ * TERM3: match kV6Prefix1, set origin INCOMPLETE
+ *
+ * prefix should not match term1, it should be processed by term2
+ */
 TEST_F(PolicyTest, GotoTermNegativeTest) {
-  // TERM1: match kCommunityRegex1 -> goto term3
-  // attributes should not match this term1
+  /*
+   * TERM1: match kCommunityRegex1 -> goto term3
+   * attributes should not match this term1
+   */
   auto match1 = createBgpPolicyAtomicMatch(
       BgpPolicyAtomicMatchType::COMMUNITY_LIST,
       {kCommunityRegex1},
@@ -5509,10 +5709,12 @@ TEST_F(PolicyTest, PopulateCommunitiesActionTest) {
   auto attrs = std::make_shared<BgpPath>(*attrFields);
   attrs->setCommunities(createBgpAttrCommunitiesC({kCommunity4}));
   action->applyAction(attrs);
-  // Verify that after applying, communities are appended to existing
-  // values. Verify the order of communities is also as expected.
-  // the order of communities from communitylist reference follows the order of
-  // the references
+  /*
+   * Verify that after applying, communities are appended to existing
+   * values. Verify the order of communities is also as expected.
+   * the order of communities from communitylist reference follows the order of
+   * the references
+   */
   EXPECT_THAT(
       ConvertAttrCommunitiesToStrings(attrs->getCommunities().get()),
       testing::ElementsAreArray(
@@ -5620,8 +5822,10 @@ TEST_F(PolicyTest, MatchLogicTypeUnsupportedTest) {
       BgpPolicyAtomicMatchType::AS_PATH, {kASPathRegex1}, BooleanOperator::OR);
   const string policyName = "Policy Statement";
 
-  // Case 1: test match_logic_type OR is ignored if there is only single match
-  // condition in the term
+  /*
+   * Case 1: test match_logic_type OR is ignored if there is only single match
+   * condition in the term
+   */
   try {
     auto bgpPolicies = createBgpPolicies(policyName, {bgpMatch1});
 
@@ -5640,8 +5844,10 @@ TEST_F(PolicyTest, MatchLogicTypeUnsupportedTest) {
 
   const auto& bgpMatch2 = createBgpPolicyAtomicMatch(
       BgpPolicyAtomicMatchType::AS_PATH, {kASPathRegex2}, BooleanOperator::OR);
-  // Case 2: test match_logic_type OR is unsupported when there are multiple
-  // match conditions
+  /*
+   * Case 2: test match_logic_type OR is unsupported when there are multiple
+   * match conditions
+   */
   try {
     auto bgpPolicies = createBgpPolicies(policyName, {bgpMatch1, bgpMatch2});
 
@@ -5672,8 +5878,10 @@ CommunityMatch createCommunityMatchFromList(
 }
 
 TEST_F(PolicyTest, TBgpPathMatcherCommunityListMatchTest) {
-  // Similar to CommunityMatchStringExactTest but using TBgpPathMatcher to
-  // generate the match
+  /*
+   * Similar to CommunityMatchStringExactTest but using TBgpPathMatcher to
+   * generate the match
+   */
   auto tCommunity1 = getTBgpCommunityMatch(kCommunity1);
   auto tCommunity2 = getTBgpCommunityMatch(kCommunity2);
   auto tCommunity3 = getTBgpCommunityMatch(kCommunity3);
@@ -5789,10 +5997,12 @@ TEST_F(PolicyTest, TBgpPathMatcherCommunityListMatchTest) {
 }
 
 TEST_F(PolicyTest, TBgpPathMatcherOriginMatchTest) {
-  // Similar to OriginMatchTest but using TBgpPathMatcher to set three
-  // OriginMatch match struct, with IGP, EGP, INCOMPLETE. Test update with the
-  // EGP, it will fail IGP, INCOMPLETE matches, pass EGP match In
-  // createBgpPolicyAtomicMatch, default value is IGP
+  /*
+   * Similar to OriginMatchTest but using TBgpPathMatcher to set three
+   * OriginMatch match struct, with IGP, EGP, INCOMPLETE. Test update with the
+   * EGP, it will fail IGP, INCOMPLETE matches, pass EGP match In
+   * createBgpPolicyAtomicMatch, default value is IGP
+   */
 
   // For each of 3 origin types
   for (int i = 0; i < 3; i++) {
@@ -5814,8 +6024,10 @@ TEST_F(PolicyTest, TBgpPathMatcherOriginMatchTest) {
 }
 
 TEST_F(PolicyTest, TBgpPathMatcherAsPathMatchTest) {
-  // Similar to AsPathMatchTest and AsPathMatchNegativeTest but using
-  // TBgpPathMatcher
+  /*
+   * Similar to AsPathMatchTest and AsPathMatchNegativeTest but using
+   * TBgpPathMatcher
+   */
   {
     // kASPathRegex1 = "^65000.*", kASPathRegex2 = ".*65001$"
     TBgpPathMatcher tMatcher;
@@ -5884,8 +6096,10 @@ TEST_F(PolicyTest, TBgpPathMatcherAsPathMatchTest) {
     EXPECT_FALSE(pathMatch2.Match(attributes3));
   }
   {
-    // test with multiple as Segment
-    // kASPathRegexMultiSeq = "^\\(2[0-9][0-9][0-9]\\)_65000_65000_65000$";
+    /*
+     * test with multiple as Segment
+     * kASPathRegexMultiSeq = "^\\(2[0-9][0-9][0-9]\\)_65000_65000_65000$";
+     */
     TBgpPathMatcher tMatcher;
     tMatcher.as_path_regex() = kASPathRegexMultiSeq;
     const auto& pathMatch = AsPathMatch(tMatcher);
@@ -5940,8 +6154,10 @@ TEST_F(PolicyTest, TBgpPathMatcherAsPathMatchTest) {
     EXPECT_TRUE(pathMatch2.Match(attributes2));
   }
   {
-    // test other regex
-    // kASPathRegexDot = "6.000"
+    /*
+     * test other regex
+     * kASPathRegexDot = "6.000"
+     */
     TBgpPathMatcher tMatcher;
     tMatcher.as_path_regex() = kASPathRegexDot;
     const auto& pathMatch = AsPathMatch(tMatcher);
@@ -5961,8 +6177,10 @@ TEST_F(PolicyTest, TBgpPathMatcherAsPathMatchTest) {
     EXPECT_FALSE(pathMatch.Match(attributes2));
   }
   {
-    // test other regex
-    // kASPathRegexNum = "\\d{5}"
+    /*
+     * test other regex
+     * kASPathRegexNum = "\\d{5}"
+     */
     TBgpPathMatcher tMatcher;
     tMatcher.as_path_regex() = kASPathRegexNum;
     const auto& pathMatch = AsPathMatch(tMatcher);
@@ -5980,10 +6198,12 @@ TEST_F(PolicyTest, TBgpPathMatcherAsPathMatchTest) {
     const auto& attributes2 = createBgpPath({}, asPath);
     EXPECT_FALSE(pathMatch.Match(attributes2));
   }
-  // test three corner cases:
-  // - empty aspath match
-  // - malformed aspath regex
-  // - attributes without aspath attributes
+  /*
+   * test three corner cases:
+   * - empty aspath match
+   * - malformed aspath regex
+   * - attributes without aspath attributes
+   */
   {
     // test AsPathMatch with empty as_path, throw BgpError
     TBgpPathMatcher tMatcher;
@@ -6002,8 +6222,10 @@ TEST_F(PolicyTest, TBgpPathMatcherAsPathMatchTest) {
     }
   }
   {
-    // testing attributes without aspath attribute,
-    // kASPathRegex3 = ".*"
+    /*
+     * testing attributes without aspath attribute,
+     * kASPathRegex3 = ".*"
+     */
     TBgpPathMatcher tMatcher;
     tMatcher.as_path_regex() = kASPathRegex3;
     const auto& pathMatch = AsPathMatch(tMatcher);
@@ -6014,8 +6236,10 @@ TEST_F(PolicyTest, TBgpPathMatcherAsPathMatchTest) {
 }
 
 TEST_F(PolicyTest, TBgpPathMatcherAsPathLenMatchTest) {
-  // Similar to AsPathLenMatchTest but using TBgpPathMatcher to test
-  // AsPathLenMatch
+  /*
+   * Similar to AsPathLenMatchTest but using TBgpPathMatcher to test
+   * AsPathLenMatch
+   */
   TBgpPathMatcher tMatcher;
 
   // as_path_length is not specified  -- throw BgpError
@@ -6180,40 +6404,50 @@ TEST_F(PolicyTest, NsfEncodeValueTest) {
   encoding.l2_encoding()->local_rack_capacity() = 8;
   auto lengths = encodingSchemeToVector(encoding);
   {
-    // try encoding rack_id
-    // 5 is 0xb101
+    /*
+     * try encoding rack_id
+     * 5 is 0xb101
+     */
     auto encodedLbw = encodeValue(0, 5, 0, lengths);
     EXPECT_EQ(5, encodedLbw);
   }
 
   {
-    // try encoding plane_id
-    // 7 is 0xb111
-    // 112 is 0xb1110000
+    /*
+     * try encoding plane_id
+     * 7 is 0xb111
+     * 112 is 0xb1110000
+     */
     auto encodedLbw = encodeValue(0, 7, 1, lengths);
     EXPECT_EQ(112, encodedLbw);
   }
 
   {
-    // try encoding remote_rack_capacity
-    // 36 is 0xb100100
-    // 9216 is 0xb10010000000000
+    /*
+     * try encoding remote_rack_capacity
+     * 36 is 0xb100100
+     * 9216 is 0xb10010000000000
+     */
     auto encodedLbw = encodeValue(0, 36, 2, lengths);
     EXPECT_EQ(9216, encodedLbw);
   }
 
   {
-    // try encoding spine_capacity
-    // 36 is 0xb100100
-    // 2359296 is 0xb1001000000000000000000
+    /*
+     * try encoding spine_capacity
+     * 36 is 0xb100100
+     * 2359296 is 0xb1001000000000000000000
+     */
     auto encodedLbw = encodeValue(0, 36, 3, lengths);
     EXPECT_EQ(2359296, encodedLbw);
   }
 
   {
-    // try encoding local_rack_capacity
-    // 6 is 0xb110
-    // 100663296 is 0xb110000000000000000000000000
+    /*
+     * try encoding local_rack_capacity
+     * 6 is 0xb110
+     * 100663296 is 0xb110000000000000000000000000
+     */
     auto encodedLbw = encodeValue(0, 6, 4, lengths);
     EXPECT_EQ(100663296, encodedLbw);
   }
@@ -6538,8 +6772,10 @@ TEST_F(PolicyTest, populatePolicyTermsTest) {
 TEST_F(PolicyTest, ValidateConflictingExtCommunityActions) {
   const std::string policyName = "TestPolicy";
 
-  // Test case 1: ExtCommunityAction and LbwExtCommunityAction in different
-  // terms should throw an error
+  /*
+   * Test case 1: ExtCommunityAction and LbwExtCommunityAction in different
+   * terms should throw an error
+   */
   {
     auto extCommunityAction = createBgpPolicyExtCommunityAction(
         bgp_policy::BgpAttrChangeActionType::EXT_COMMUNITY_LIST_SET,
@@ -6575,8 +6811,10 @@ TEST_F(PolicyTest, ValidateConflictingExtCommunityActions) {
         BgpError);
   }
 
-  // Test case 2: ExtCommunityAction and LbwExtCommunityAction in the same term
-  // should throw an error
+  /*
+   * Test case 2: ExtCommunityAction and LbwExtCommunityAction in the same term
+   * should throw an error
+   */
   {
     auto extCommunityAction = createBgpPolicyExtCommunityAction(
         bgp_policy::BgpAttrChangeActionType::EXT_COMMUNITY_LIST_SET,
@@ -6645,9 +6883,11 @@ TEST_F(PolicyTest, ValidateConflictingExtCommunityActions) {
   }
 }
 
-// ExtCommunity related tests (parseLinkBandwidth*,
-// handleLinkBandwidthExtCommunity*, getBgpAttrExtCommunityC*) have been moved
-// to ExtCommunityPolicyTest.cpp
+/*
+ * ExtCommunity related tests (parseLinkBandwidth*,
+ * handleLinkBandwidthExtCommunity*, getBgpAttrExtCommunityC*) have been moved
+ * to ExtCommunityPolicyTest.cpp
+ */
 
 /*
  * hasCommunity Tests
@@ -6834,8 +7074,10 @@ TEST_F(PolicyTest, RemoveCommunitiesEmptyToRemoveTest) {
   EXPECT_TRUE(hasCommunity(result, BgpAttrCommunityC{300, 400}));
 }
 
-// Verify routes with zero/missing LBW are rejected when a DECODE/ENCODE action
-// is applied.
+/*
+ * Verify routes with zero/missing LBW are rejected when a DECODE/ENCODE action
+ * is applied.
+ */
 
 struct LbwRejectionTestResult {
   bool accepted;
@@ -7189,11 +7431,15 @@ TEST_F(PolicyTest, CommunityMatchPopulateReferencesNullCommunities) {
       << "Should handle referenced CommunityList with no inline communities";
 }
 
-// Test policy default action with enablePolicyDefaultAction=true and
-// result=ACCEPT. Unmatched prefixes should be allowed (attrs != nullptr).
+/*
+ * Test policy default action with enablePolicyDefaultAction=true and
+ * result=ACCEPT. Unmatched prefixes should be allowed (attrs != nullptr).
+ */
 TEST_F(PolicyTest, PolicyDefaultActionAccept) {
-  // Create a policy with one term that matches EGP origin.
-  // Input will be IGP so it won't match — triggering the default action.
+  /*
+   * Create a policy with one term that matches EGP origin.
+   * Input will be IGP so it won't match — triggering the default action.
+   */
   auto matchEgp = createBgpPolicyAtomicMatch(BgpPolicyAtomicMatchType::ORIGIN);
   matchEgp.origin() = bgp_policy::Origin::EGP;
 
@@ -7225,12 +7471,16 @@ TEST_F(PolicyTest, PolicyDefaultActionAccept) {
   EXPECT_NE(nullptr, policyOut.result.at(kV6Prefix2)->attrs);
 }
 
-// Test policy default action with enablePolicyDefaultAction=true and
-// result=DENY (default). Unmatched prefixes should be denied (attrs ==
-// nullptr).
+/*
+ * Test policy default action with enablePolicyDefaultAction=true and
+ * result=DENY (default). Unmatched prefixes should be denied (attrs ==
+ * nullptr).
+ */
 TEST_F(PolicyTest, PolicyDefaultActionDeny) {
-  // Create a policy with one term that matches EGP origin.
-  // Input will be IGP so it won't match — triggering the default action.
+  /*
+   * Create a policy with one term that matches EGP origin.
+   * Input will be IGP so it won't match — triggering the default action.
+   */
   auto matchEgp = createBgpPolicyAtomicMatch(BgpPolicyAtomicMatchType::ORIGIN);
   matchEgp.origin() = bgp_policy::Origin::EGP;
 
@@ -7260,11 +7510,15 @@ TEST_F(PolicyTest, PolicyDefaultActionDeny) {
   EXPECT_EQ(nullptr, policyOut.result.at(kV6Prefix2)->attrs);
 }
 
-// Test that the feature flag gates the behavior. With result=ACCEPT but
-// enablePolicyDefaultAction=false, unmatched prefixes should still be denied.
+/*
+ * Test that the feature flag gates the behavior. With result=ACCEPT but
+ * enablePolicyDefaultAction=false, unmatched prefixes should still be denied.
+ */
 TEST_F(PolicyTest, PolicyDefaultActionFeatureFlagDisabled) {
-  // Create a policy with one term that matches EGP origin.
-  // Input will be IGP so it won't match — triggering the default action.
+  /*
+   * Create a policy with one term that matches EGP origin.
+   * Input will be IGP so it won't match — triggering the default action.
+   */
   auto matchEgp = createBgpPolicyAtomicMatch(BgpPolicyAtomicMatchType::ORIGIN);
   matchEgp.origin() = bgp_policy::Origin::EGP;
 
@@ -7291,8 +7545,10 @@ TEST_F(PolicyTest, PolicyDefaultActionFeatureFlagDisabled) {
 
   // Both prefixes should be in result
   ASSERT_EQ(prefixSetIn.size(), policyOut.result.size());
-  // Feature flag is disabled — even though result=ACCEPT, unmatched prefixes
-  // should be denied (backwards compatible behavior)
+  /*
+   * Feature flag is disabled — even though result=ACCEPT, unmatched prefixes
+   * should be denied (backwards compatible behavior)
+   */
   EXPECT_EQ(nullptr, policyOut.result.at(kV6Prefix1)->attrs);
   EXPECT_EQ(nullptr, policyOut.result.at(kV6Prefix2)->attrs);
 }

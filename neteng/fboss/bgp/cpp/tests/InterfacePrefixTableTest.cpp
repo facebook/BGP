@@ -68,9 +68,11 @@ TEST(InterfacePrefixTableTest, AddRemoveClassifies) {
 TEST(InterfacePrefixTableTest, SameSubnetSiblingsRefcount) {
   InterfacePrefixTable table;
 
-  // Build the prefixes the way the kernel/netlink path does: host address +
-  // prefix length, NOT masked to the network. createNetwork() masks by default,
-  // which would collapse two same-subnet addresses into one identical entry.
+  /*
+   * Build the prefixes the way the kernel/netlink path does: host address +
+   * prefix length, NOT masked to the network. createNetwork() masks by default,
+   * which would collapse two same-subnet addresses into one identical entry.
+   */
   folly::CIDRNetwork addr1{folly::IPAddress("10.0.0.1"), 16};
   folly::CIDRNetwork addr2{folly::IPAddress("10.0.0.2"), 16}; // same /16
   auto peer = folly::IPAddress("10.0.5.7"); // covered by the shared /16
@@ -83,16 +85,20 @@ TEST(InterfacePrefixTableTest, SameSubnetSiblingsRefcount) {
   EXPECT_FALSE(table.addPrefix(addr2, 2));
   EXPECT_TRUE(table.isDirectlyConnected(peer));
 
-  // A duplicate event for an address already recorded is also a no-op: the map
-  // of contributors dedups it rather than inflating a count.
+  /*
+   * A duplicate event for an address already recorded is also a no-op: the map
+   * of contributors dedups it rather than inflating a count.
+   */
   EXPECT_FALSE(table.addPrefix(addr1, 1));
 
   // Removing one sibling keeps the subnet directly connected via the other.
   EXPECT_FALSE(table.removePrefix(addr1));
   EXPECT_TRUE(table.isDirectlyConnected(peer));
 
-  // Removing addr1 again is a no-op (already gone) and, crucially, does NOT
-  // drop the node while addr2 still contributes it.
+  /*
+   * Removing addr1 again is a no-op (already gone) and, crucially, does NOT
+   * drop the node while addr2 still contributes it.
+   */
   EXPECT_FALSE(table.removePrefix(addr1));
   EXPECT_TRUE(table.isDirectlyConnected(peer));
 
@@ -126,9 +132,11 @@ TEST(InterfacePrefixTableTest, NestedPrefixRemovalKeepsMoreSpecific) {
   EXPECT_TRUE(table.isDirectlyConnected(peerWide));
   EXPECT_TRUE(table.isDirectlyConnected(peerV6));
 
-  // Remove the wide /16: peerSpecific stays covered by the /24, but peerWide
-  // (only in /16) is no longer directly connected. The /24's host must not keep
-  // the /16 alive.
+  /*
+   * Remove the wide /16: peerSpecific stays covered by the /24, but peerWide
+   * (only in /16) is no longer directly connected. The /24's host must not keep
+   * the /16 alive.
+   */
   EXPECT_TRUE(table.removePrefix(v4Wide));
   EXPECT_TRUE(table.isDirectlyConnected(peerSpecific)); // still covered by /24
   EXPECT_FALSE(table.isDirectlyConnected(peerWide)); // /16 gone
@@ -215,8 +223,10 @@ TEST(InterfacePrefixTableTest, CoveringIfIndexTargetsInterface) {
  */
 TEST(InterfacePrefixTableTest, CoveringIfIndexSameInterfaceSecondaries) {
   InterfacePrefixTable table;
-  // Primary and secondary addresses of interface 3 in the same /16 (host
-  // addresses kept unmasked so both are recorded as distinct contributors).
+  /*
+   * Primary and secondary addresses of interface 3 in the same /16 (host
+   * addresses kept unmasked so both are recorded as distinct contributors).
+   */
   folly::CIDRNetwork primary{folly::IPAddress("10.0.0.1"), 16};
   folly::CIDRNetwork secondary{folly::IPAddress("10.0.0.5"), 16};
   table.addPrefix(primary, 3);
@@ -227,8 +237,10 @@ TEST(InterfacePrefixTableTest, CoveringIfIndexSameInterfaceSecondaries) {
   ASSERT_TRUE(ifIndex.has_value());
   EXPECT_EQ(3, *ifIndex);
 
-  // Dropping the primary leaves the subnet covered by the secondary, still
-  // resolving to interface 3.
+  /*
+   * Dropping the primary leaves the subnet covered by the secondary, still
+   * resolving to interface 3.
+   */
   EXPECT_FALSE(table.removePrefix(primary));
   ifIndex = table.coveringIfIndex(peer);
   ASSERT_TRUE(ifIndex.has_value());

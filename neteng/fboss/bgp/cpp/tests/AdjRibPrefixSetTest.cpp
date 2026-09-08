@@ -78,8 +78,10 @@ TEST_F(AdjRibPrefixSetFixture, AdjRibPrefixSetBasicTest) {
     EXPECT_FALSE(res.second.isGoldenVip_);
   }
   {
-    // Test 2: add the same v4Network again along with the same prefix but a
-    // different mask length.
+    /*
+     * Test 2: add the same v4Network again along with the same prefix but a
+     * different mask length.
+     */
     uniquePrefixSet->addPrefix(v4Network1, false);
     uniquePrefixSet->addPrefix(v4Network2, true);
     EXPECT_EQ(2, uniquePrefixSet->size());

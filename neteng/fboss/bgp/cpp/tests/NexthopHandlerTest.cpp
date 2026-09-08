@@ -153,8 +153,10 @@ class MockFibAgentServiceHandler
   void resetPublisher() {
     std::lock_guard<std::mutex> lock(responsesMutex_);
     if (publisher_) {
-      // Complete the stream normally and then reset the publisher
-      // This will cause the stream to end and trigger reconnection
+      /*
+       * Complete the stream normally and then reset the publisher
+       * This will cause the stream to end and trigger reconnection
+       */
       std::move(*publisher_).complete();
       publisher_.reset();
     }
@@ -288,13 +290,17 @@ TEST_F(NexthopHandlerTestFixture, TestStreamNextHopStatusUpdate) {
   // Updated status: some nexthops become unreachable
   std::vector<bool> updatedReachability = {false, true, false};
 
-  // Note: costs are 0 for testing purposes, createNextHopStatusResponse() in
-  // the teseFixture will not set igpCost if reachable is false, this is same
-  // as FibAgentServiceHandler behavior
+  /*
+   * Note: costs are 0 for testing purposes, createNextHopStatusResponse() in
+   * the teseFixture will not set igpCost if reachable is false, this is same
+   * as FibAgentServiceHandler behavior
+   */
   std::vector<int32_t> updatedCosts = {0, 15, 0};
 
-  // Set up the mock to return a stream with multiple responses showing status
-  // changes
+  /*
+   * Set up the mock to return a stream with multiple responses showing status
+   * changes
+   */
   EXPECT_CALL(*mockFibAgentHandler_, co_streamNextHopStatus)
       .WillOnce(
           [this](std::unique_ptr<openr::thrift::StreamNextHopStatusRequest> req)
@@ -429,8 +435,10 @@ TEST_F(NexthopHandlerTestFixture, TestDuplicateResponses) {
     EXPECT_EVENTUALLY_EQ(status.getIgpCost().value(), igpCost);
   });
 
-  // Verify that sending duplicate entries doesn't create multiple entries
-  // by checking that the nexthop has the expected values
+  /*
+   * Verify that sending duplicate entries doesn't create multiple entries
+   * by checking that the nexthop has the expected values
+   */
 
   // Try to add a different value for the same nexthop
   int32_t newIgpCost = 15;
@@ -447,14 +455,18 @@ TEST_F(NexthopHandlerTestFixture, TestDuplicateResponses) {
     }
     EXPECT_EVENTUALLY_EQ(updatedStatus.getIgpCost().value(), newIgpCost);
   });
-  // Check that a different nexthop is created with default values when
-  // registered
+  /*
+   * Check that a different nexthop is created with default values when
+   * registered
+   */
   folly::IPAddress nonExistentNexhop("2620:0:1cff:dead:bef1:ffff:ffff:9999");
   WITH_RETRIES_N(5, {
     auto nonExistentStatus =
         nexthopCache_->registerAndGetNexthopStatus(nonExistentNexhop);
-    // Since registerAndGetNexthopStatus now creates a new entry with default
-    // values, we expect it to be unreachable with no IGP cost
+    /*
+     * Since registerAndGetNexthopStatus now creates a new entry with default
+     * values, we expect it to be unreachable with no IGP cost
+     */
     EXPECT_EVENTUALLY_FALSE(nonExistentStatus.isReachable());
     EXPECT_EVENTUALLY_FALSE(nonExistentStatus.getIgpCost().has_value());
   });
@@ -468,13 +480,17 @@ TEST_F(NexthopHandlerTestFixture, TestStreamErrorOrEmptyResponseRecovery) {
   bool isReachable = true;
   int32_t igpCost = 10;
 
-  // Counter to track number of stream calls (must be static to ensure it
-  // persists across lambda calls)
+  /*
+   * Counter to track number of stream calls (must be static to ensure it
+   * persists across lambda calls)
+   */
   static std::atomic<int> streamCallCount{0};
   streamCallCount.store(0); // Reset for this test
 
-  // Flag to track if we've simulated an error (must be static to ensure it
-  // persists across lambda calls)
+  /*
+   * Flag to track if we've simulated an error (must be static to ensure it
+   * persists across lambda calls)
+   */
   static std::atomic<bool> errorSimulated{false};
   errorSimulated.store(false); // Reset for this test
 
@@ -509,16 +525,20 @@ TEST_F(NexthopHandlerTestFixture, TestStreamErrorOrEmptyResponseRecovery) {
                   // Start sending responses immediately
                   mockFibAgentHandler_->startSendingResponses();
 
-                  // If this is the first call, throw an exception after a delay
-                  // to simulate a stream error
+                  /*
+                   * If this is the first call, throw an exception after a delay
+                   * to simulate a stream error
+                   */
                   if (currentCall == 1) {
                     mockFibAgentHandler_->getEventBaseThread()
                         .getEventBase()
                         ->runAfterDelay(
                             [this]() {
-                              // Simulate stream error by closing the publisher
-                              // This will cause the stream to end and trigger
-                              // the error handling in NexthopHandler
+                              /*
+                               * Simulate stream error by closing the publisher
+                               * This will cause the stream to end and trigger
+                               * the error handling in NexthopHandler
+                               */
                               XLOG(INFO, "Simulating stream error");
                               mockFibAgentHandler_->resetPublisher();
                               errorSimulated.store(true);
@@ -535,8 +555,10 @@ TEST_F(NexthopHandlerTestFixture, TestStreamErrorOrEmptyResponseRecovery) {
     mockFibAgentHandler_->sendNextHopStatusImpl(nexthop, isReachable, igpCost);
   }
 
-  // Wait for the initial updates to be processed and verify they're in the
-  // cache
+  /*
+   * Wait for the initial updates to be processed and verify they're in the
+   * cache
+   */
   WITH_RETRIES_N(10, {
     for (const auto& nexthop : nexthops) {
       auto status = nexthopCache_->registerAndGetNexthopStatus(nexthop);
@@ -544,8 +566,10 @@ TEST_F(NexthopHandlerTestFixture, TestStreamErrorOrEmptyResponseRecovery) {
     }
   });
 
-  // Wait for the stream error to occur and the client to reconnect
-  // The NexthopHandler should reconnect after kOpenrFibSubscribeTimeout (100ms)
+  /*
+   * Wait for the stream error to occur and the client to reconnect
+   * The NexthopHandler should reconnect after kOpenrFibSubscribeTimeout (100ms)
+   */
 
   // First wait for the error to be simulated
   WITH_RETRIES_N(20, { EXPECT_EVENTUALLY_TRUE(errorSimulated.load()); });
