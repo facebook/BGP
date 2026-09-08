@@ -125,9 +125,11 @@ class SendBgpMessagesFixture : public AdjRibOutboundFixture {
   }
 
   void TearDown() override {
-    // Since the changeTracker isn't on the base class, we need to
-    // clean up the changeListConsumer here before AdjRibOutboundFixture
-    // gets called.
+    /*
+     * Since the changeTracker isn't on the base class, we need to
+     * clean up the changeListConsumer here before AdjRibOutboundFixture
+     * gets called.
+     */
     adjRib_->resetChangeListConsumer();
   }
 
@@ -167,9 +169,11 @@ class SendBgpMessagesFixture : public AdjRibOutboundFixture {
   }
 
   void MockChangeListConsumer() {
-    // Passing in nullptr for adjRib since we don't need to do anything
-    // with the adjRib_ itself for this mock. Also because
-    // the signature needs shared_ptr but the test instance is a unique_ptr.
+    /*
+     * Passing in nullptr for adjRib since we don't need to do anything
+     * with the adjRib_ itself for this mock. Also because
+     * the signature needs shared_ptr but the test instance is a unique_ptr.
+     */
     static ConsumerBitmap dummyAddPathBitmap;
     static ConsumerBitmap dummyNonAddPathBitmap;
     auto changeListConsumer = std::make_shared<AdjRibOutConsumer>(
@@ -1095,8 +1099,10 @@ TEST_F(SendBgpMessagesFixture, PackPrefixesWithLimitTest) {
     adjRib_->sendAddPath_ = false;
     int packed = adjRib_->packPrefixesWithLimit(
         kApproxSerializedAttrLen, pfxSetV4, container);
-    // With new formula: (4077 - 300) * 10 / 5 = 7554
-    // Since we have 10000 prefixes, only 7554 should be packed (overflow)
+    /*
+     * With new formula: (4077 - 300) * 10 / 5 = 7554
+     * Since we have 10000 prefixes, only 7554 should be packed (overflow)
+     */
     EXPECT_EQ(7554, packed);
 
     EXPECT_EQ(kPrefixes - packed, pfxSetV4.size());
@@ -1112,9 +1118,11 @@ TEST_F(SendBgpMessagesFixture, PackPrefixesWithLimitTest) {
   {
     adjRib_->sendAddPath_ = false;
     int packed = adjRib_->packPrefixesWithLimit(0, pfxSetV4, container);
-    // With new formula: (4077 - 0) * 10 / 5 = 8154
-    // Since we have (10000 - 7554 = 2446) prefixes remaining, all should be
-    // packed (no overflow) Let's reset to 10000 for this test
+    /*
+     * With new formula: (4077 - 0) * 10 / 5 = 8154
+     * Since we have (10000 - 7554 = 2446) prefixes remaining, all should be
+     * packed (no overflow) Let's reset to 10000 for this test
+     */
     pfxSetV4.clear();
     for (int i = 0; i < kPrefixes; ++i) {
       pfxSetV4.emplace(kV4Prefix1Slash25, i);
@@ -1122,8 +1130,10 @@ TEST_F(SendBgpMessagesFixture, PackPrefixesWithLimitTest) {
     container.clear();
 
     packed = adjRib_->packPrefixesWithLimit(0, pfxSetV4, container);
-    // With new formula: (4077 - 0) * 10 / 5 = 8154
-    // Since we have 10000 prefixes, only 8154 should be packed (overflow)
+    /*
+     * With new formula: (4077 - 0) * 10 / 5 = 8154
+     * Since we have 10000 prefixes, only 8154 should be packed (overflow)
+     */
     EXPECT_EQ(8154, packed);
 
     EXPECT_EQ(kPrefixes - packed, pfxSetV4.size());
@@ -1139,8 +1149,10 @@ TEST_F(SendBgpMessagesFixture, PackPrefixesWithLimitTest) {
   {
     adjRib_->sendAddPath_ = true;
     int packed = adjRib_->packPrefixesWithLimit(0, pfxSetV6, container);
-    // With new formula: (4077 - 0) * 10 / 21 = 1941
-    // Since we have 10000 prefixes, only 1941 should be packed (overflow)
+    /*
+     * With new formula: (4077 - 0) * 10 / 21 = 1941
+     * Since we have 10000 prefixes, only 1941 should be packed (overflow)
+     */
     EXPECT_EQ(1941, packed);
 
     EXPECT_EQ(kPrefixes - packed, pfxSetV6.size());
@@ -1460,8 +1472,10 @@ CO_TEST_F(SendBgpMessagesFixtureWithBackpressure, QueueCloseTest) {
   // Run the event loop to let the cancelled tasks complete
   evb_.loopOnce();
 
-  // The queue is closed but not reset to nullptr (a new queue will be provided
-  // when a new session is established)
+  /*
+   * The queue is closed but not reset to nullptr (a new queue will be provided
+   * when a new session is established)
+   */
   EXPECT_NE(nullptr, adjRib_->boundedAdjRibOutQueue_);
   EXPECT_TRUE(adjRib_->boundedAdjRibOutQueue_->isClosed());
 
@@ -1522,8 +1536,10 @@ CO_TEST_F(
   // Start the event base loop in a separate thread
   std::thread evbThread([this]() { evb_.loopForever(); });
 
-  // Step 2: Schedule sendBgpUpdates which will call waitForQueueSpace() and
-  // block on waitToPush() because the queue is full (forcing it into waiting)
+  /*
+   * Step 2: Schedule sendBgpUpdates which will call waitForQueueSpace() and
+   * block on waitToPush() because the queue is full (forcing it into waiting)
+   */
   std::atomic<bool> sendBgpUpdatesStarted{false};
   auto sendTask = [&]() -> folly::coro::Task<void> {
     sendBgpUpdatesStarted = true;
@@ -1545,28 +1561,34 @@ CO_TEST_F(
   LOG(INFO) << "Before releasing fixture queue ref count: "
             << adjRib_->boundedAdjRibOutQueue_.use_count();
 
-  // Step 3: Release the fixture's ownership of the queue
-  // After this, only the AdjRib holds a reference (ref count = 1)
+  /*
+   * Step 3: Release the fixture's ownership of the queue
+   * After this, only the AdjRib holds a reference (ref count = 1)
+   */
   boundedAdjRibOutQ_.reset();
 
   LOG(INFO) << "After releasing fixture queue ref count: "
             << adjRib_->boundedAdjRibOutQueue_.use_count();
 
-  // Step 4: Call sessionTerminated() while the queue is still active
-  // This should:
-  // 1. Close the queue (wake up waiters)
-  // 2. Request cancellation on asyncScope
-  //
-  // If there is some kind of timing issue between close() and queue
-  // destruction, we would have seen the mutex assertion and crash in ASAN.
+  /*
+   * Step 4: Call sessionTerminated() while the queue is still active
+   * This should:
+   * 1. Close the queue (wake up waiters)
+   * 2. Request cancellation on asyncScope
+   *
+   * If there is some kind of timing issue between close() and queue
+   * destruction, we would have seen the mutex assertion and crash in ASAN.
+   */
   co_await folly::coro::co_withExecutor(
       &evb_, adjRib_->sessionTerminated(FiberBgpPeer::BgpSessionStop{}));
 
   LOG(INFO) << "After sessionTerminated - queue destroyed";
 
-  // Step 5: Verify that the boundedAdjRibOutQueue_ on the AdjRib is closed
-  // (not nullptr - a new queue will be provided when a new session is
-  // established)
+  /*
+   * Step 5: Verify that the boundedAdjRibOutQueue_ on the AdjRib is closed
+   * (not nullptr - a new queue will be provided when a new session is
+   * established)
+   */
   EXPECT_NE(nullptr, adjRib_->boundedAdjRibOutQueue_);
   EXPECT_TRUE(adjRib_->boundedAdjRibOutQueue_->isClosed());
 

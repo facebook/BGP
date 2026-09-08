@@ -163,8 +163,10 @@ class MockFib : public Fib {
 
   folly::coro::Task<void> program(bool isSync = false) override;
 
-  // Return a Future which will be satisfied when Fib finishes program() call.
-  // This is only required for unit test purpose.
+  /*
+   * Return a Future which will be satisfied when Fib finishes program() call.
+   * This is only required for unit test purpose.
+   */
   folly::Future<folly::Unit> getFibProgramFuture();
 
   void disconnect();
@@ -239,27 +241,33 @@ class MockRib : public RibDC {
   // get fib batch list snapshot
   folly::F14NodeMap<folly::CIDRNetwork, RibEntry> fibItems;
 
-  // Return a Future which will be satisfied when Rib finishes programFib()
-  // call. This is only required for unit test purpose.
-  // numRibEntriesToProgram could be specified which requires the nubmer of
-  // rib entires programmed before fulfilling the promise
-  // By default, we set it to 0, meaning that we will definitely set the
-  // promise next time if ribPrepareFibProgramming is called.
+  /*
+   * Return a Future which will be satisfied when Rib finishes programFib()
+   * call. This is only required for unit test purpose.
+   * numRibEntriesToProgram could be specified which requires the nubmer of
+   * rib entires programmed before fulfilling the promise
+   * By default, we set it to 0, meaning that we will definitely set the
+   * promise next time if ribPrepareFibProgramming is called.
+   */
   folly::Future<folly::Unit> getRibPrepareFibProgrammingFuture(
       int numRibEntriesToProgram = 0);
 
   // Set Rib pause timeout value
   void setRibPauseTime(std::chrono::milliseconds ribPauseTime);
 
-  // Set Route churn detection thresholds - high and low watermarks and
-  // route churn check interval
+  /*
+   * Set Route churn detection thresholds - high and low watermarks and
+   * route churn check interval
+   */
   void setRouteChurnDetectionThresholds(
       uint64_t highWatermarkForRouteChurn,
       uint64_t lowWatermarkForRouteChurn,
       std::chrono::seconds routeChurncheckInterval);
 
-  // These functions block until either the respective policy update is
-  // complete, or they time out.
+  /*
+   * These functions block until either the respective policy update is
+   * complete, or they time out.
+   */
   rib_policy::TPathSelectionPolicy waitForPathSelectionPolicyUpdate();
   rib_policy::TRouteAttributePolicy waitForRouteAttributePolicyUpdate();
   rib_policy::TRouteFilterPolicy waitForRouteFilterPolicyUpdate();
@@ -268,14 +276,18 @@ class MockRib : public RibDC {
   rib_policy::TRouteFilterPolicy waitForRouteFilterPolicyClear();
   void waitForRibPolicyClear();
 
-  // Return a Future which will be satisfied when any replaceRibPolicy
-  // variant, i.e. replaceRibPolicy, replaceRouteAttributePolicy,
-  // replacePathSelectionPolicy replaceRouteFilterPolicy, is called.
+  /*
+   * Return a Future which will be satisfied when any replaceRibPolicy
+   * variant, i.e. replaceRibPolicy, replaceRouteAttributePolicy,
+   * replacePathSelectionPolicy replaceRouteFilterPolicy, is called.
+   */
   folly::Future<folly::Unit> getRibPolicyReplaceFuture();
 
  private:
-  // numRibEntriesProgrammed is the number of rib entries that are
-  // programmed in this round.
+  /*
+   * numRibEntriesProgrammed is the number of rib entries that are
+   * programmed in this round.
+   */
   void fulfillRibPrepareFibProgrammingPromise(int numRibEntriesProgrammed);
 
   void replaceRibPolicy(
@@ -294,32 +306,42 @@ class MockRib : public RibDC {
 
   void fulfillRibPolicyReplacePromise();
 
-  // Waits for a predicate to become true, or until a timeout is reached.
-  // Policy updates are done asynchronously, so we need coro tasks to wait
-  // for updates to complete.
+  /*
+   * Waits for a predicate to become true, or until a timeout is reached.
+   * Policy updates are done asynchronously, so we need coro tasks to wait
+   * for updates to complete.
+   */
   folly::coro::Task<bool> co_waitForPredicate(
       const std::function<bool(void)>& pred);
   // Blocking wrapper for co_waitForPredicate.
   bool waitForPredicate(const std::function<bool(void)>& pred);
 
-  // Use folly::Synchronized to avoid race coditions between the test thread
-  // and the rib thread
+  /*
+   * Use folly::Synchronized to avoid race coditions between the test thread
+   * and the rib thread
+   */
   folly::Synchronized<std::unique_ptr<folly::Promise<folly::Unit>>>
       ribPrepareFibProgrammingPromise_;
-  // How many rib entires should be programmed before setting value to the
-  // promise
+  /*
+   * How many rib entires should be programmed before setting value to the
+   * promise
+   */
   int ribEntriesToProgram_{0};
 
-  // The promise is fulfilled when any variants of replaceRibPolicy is
-  // called
+  /*
+   * The promise is fulfilled when any variants of replaceRibPolicy is
+   * called
+   */
   folly::Synchronized<std::unique_ptr<folly::Promise<folly::Unit>>>
       ribPolicyReplacePromise_;
 
   friend class RibFixture;
   friend class RibFsdbFixture;
 
-// per class placeholder for test code injection
-// only need to be setup once here
+/*
+ * per class placeholder for test code injection
+ * only need to be setup once here
+ */
 #ifdef MockRib_TEST_FRIENDS
   MockRib_TEST_FRIENDS
 #endif
@@ -327,9 +349,9 @@ class MockRib : public RibDC {
 
 class RibFixture : public testing::Test {
  public:
-  //
-  // Methods
-  //
+  /*
+   * Methods
+   */
   RibFixture() = default;
   ~RibFixture() override = default;
 
@@ -421,8 +443,10 @@ class RibFixture : public testing::Test {
   bool isFsdbSyncerStarted() const;
   // True once Rib has run its initial path computation (initial full-sync).
   bool isRibEoRReceived() const;
-  // True while Rib has deferred its initial path computation waiting for all
-  // registered nexthops to resolve.
+  /*
+   * True while Rib has deferred its initial path computation waiting for all
+   * registered nexthops to resolve.
+   */
   bool isInitialPathComputationPending() const;
   void waitForFsdbPublisherConnected();
   // Check if best path computation and FIB programming is paused
@@ -432,9 +456,9 @@ class RibFixture : public testing::Test {
   folly::F14FastSet<uint32_t> getPathIdSetFromWithdrawal(
       const RibOutWithdrawal& with);
 
-  //
-  // Variables
-  //
+  /*
+   * Variables
+   */
   std::shared_ptr<facebook::bgp::BgpGlobalConfig> bgpGlobalConfig1_;
   std::unique_ptr<MockRib> rib_;
   MockFib* fib_;

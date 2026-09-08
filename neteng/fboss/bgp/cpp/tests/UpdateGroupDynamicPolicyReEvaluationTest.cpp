@@ -362,9 +362,11 @@ TEST_F(
     ctx.adjRib3->resetInInitialAnnouncement();
   });
 
-  // adjRib1: IN_SYNC (default)
-  // adjRib2: DETACHED_RUNNING without a rib dump scheduled
-  // adjRib3: DETACHED_INIT_DUMP with a rib dump scheduled
+  /*
+   * adjRib1: IN_SYNC (default)
+   * adjRib2: DETACHED_RUNNING without a rib dump scheduled
+   * adjRib3: DETACHED_INIT_DUMP with a rib dump scheduled
+   */
   ctx.adjRib2->setPeerState(PeerUpdateState::DETACHED_RUNNING);
   ctx.adjRib3->setPeerState(PeerUpdateState::DETACHED_INIT_DUMP);
   /*
@@ -402,8 +404,10 @@ TEST_F(
       // adjRib2 (DETACHED_RUNNING): pending flag cleared after async rib dump
       EXPECT_EVENTUALLY_FALSE(ctx.adjRib2->isEgressPolicyUpdateRequired());
 
-      // adjRib3 (DETACHED_INIT_DUMP + rib dump scheduled): scheduled dump
-      // cancelled and re-walked inline, pending flag cleared
+      /*
+       * adjRib3 (DETACHED_INIT_DUMP + rib dump scheduled): scheduled dump
+       * cancelled and re-walked inline, pending flag cleared
+       */
       EXPECT_EVENTUALLY_FALSE(ctx.adjRib3->isEgressPolicyUpdateRequired());
     });
   });
@@ -423,8 +427,10 @@ TEST_F(
   auto ctx = setUp(true /* enableUpdateGroup */);
   auto& evb = ctx.peerMgr->getEventBase();
 
-  // Equip adjRib1 with queues, backpressure, and AFI negotiation so the
-  // full send pipeline (processRibMessage -> sendBgpUpdates) works.
+  /*
+   * Equip adjRib1 with queues, backpressure, and AFI negotiation so the
+   * full send pipeline (processRibMessage -> sendBgpUpdates) works.
+   */
   evb.runInEventBaseThreadAndWait([&]() {
     auto& adjRib = ctx.adjRib1;
     adjRib->adjRibOutQueue_ = std::make_shared<AdjRib::AdjRibOutQueueT>();
@@ -435,13 +441,17 @@ TEST_F(
     adjRib->isAfiIpv4Negotiated_ = true;
   });
 
-  // Phase 1: Populate the ShadowRib with 5 prefixes via
-  // handleShadowRibEntryAnnouncement so processRibDumpReq has entries to walk.
+  /*
+   * Phase 1: Populate the ShadowRib with 5 prefixes via
+   * handleShadowRibEntryAnnouncement so processRibDumpReq has entries to walk.
+   */
   evb.runInEventBaseThreadAndWait([&]() {
     auto attrs = std::make_shared<BgpPath>(*buildBgpPathFields(1, 1, 0, 0));
     attrs->publish();
-    // Use kPeerAddr2 as originator — canAnnounce() rejects routes from the
-    // same peer (kPeerAddr1) that the AdjRib belongs to.
+    /*
+     * Use kPeerAddr2 as originator — canAnnounce() rejects routes from the
+     * same peer (kPeerAddr1) that the AdjRib belongs to.
+     */
     TinyPeerInfo peer(
         kPeerAddr2, kAsn1, kPeerRouterId2, BgpSessionType::EBGP, false);
 
@@ -458,9 +468,11 @@ TEST_F(
     ctx.peerMgr->handleShadowRibEntryAnnouncement(announcement);
   });
 
-  // Phase 2: Register the group consumer on adjRib1's group.
-  // Use PeerManagerBase's bitmaps so publishChange stamps consumer bits
-  // correctly.
+  /*
+   * Phase 2: Register the group consumer on adjRib1's group.
+   * Use PeerManagerBase's bitmaps so publishChange stamps consumer bits
+   * correctly.
+   */
   auto& addPathBitmap = ctx.peerMgr->addPathConsumerBitmap_;
   auto& nonAddPathBitmap = ctx.peerMgr->nonAddPathConsumerBitmap_;
   std::shared_ptr<AdjRibOutGroupConsumer> groupConsumer;
@@ -472,9 +484,11 @@ TEST_F(
     groupConsumer = group->getChangeListConsumer();
   });
 
-  // Phase 3: Publish one more prefix to ShadowRib. This item lands on
-  // the changelist after the group consumer is registered, so the
-  // per-peer consumer will have unconsumed items (isReady() == false).
+  /*
+   * Phase 3: Publish one more prefix to ShadowRib. This item lands on
+   * the changelist after the group consumer is registered, so the
+   * per-peer consumer will have unconsumed items (isReady() == false).
+   */
   evb.runInEventBaseThreadAndWait([&]() {
     auto attrs = std::make_shared<BgpPath>(*buildBgpPathFields(1, 1, 0, 0));
     attrs->publish();
@@ -492,20 +506,26 @@ TEST_F(
     ctx.peerMgr->handleShadowRibEntryAnnouncement(announcement);
   });
 
-  // Phase 4: Get the peer into DETACHED_READY_TO_JOIN via DFP path.
-  // Follows the ActivateDFPTransitionsViaIsDFPPath pattern.
+  /*
+   * Phase 4: Get the peer into DETACHED_READY_TO_JOIN via DFP path.
+   * Follows the ActivateDFPTransitionsViaIsDFPPath pattern.
+   */
   evb.runInEventBaseThreadAndWait([&]() {
     auto& adjRib = ctx.adjRib1;
     adjRib->setPeerState(PeerUpdateState::DETACHED_RUNNING);
 
-    // Clear the dummy consumer set by PeerManagerTestFixture::setupAdjRib
-    // so registerDetachedConsumer can create and register a proper one.
+    /*
+     * Clear the dummy consumer set by PeerManagerTestFixture::setupAdjRib
+     * so registerDetachedConsumer can create and register a proper one.
+     */
     adjRib->changeListConsumer_.reset();
 
-    // Register detached consumer at the group consumer's position.
-    // joinConsumer ensures the per-peer consumer inherits the group's
-    // position, so entries published before the group consumer (Phase 1)
-    // will NOT have the per-peer bit set.
+    /*
+     * Register detached consumer at the group consumer's position.
+     * joinConsumer ensures the per-peer consumer inherits the group's
+     * position, so entries published before the group consumer (Phase 1)
+     * will NOT have the per-peer bit set.
+     */
     adjRib->registerDetachedConsumerAtGroupPosition(
         ctx.peerMgr->changeListTracker_,
         groupConsumer,
@@ -513,10 +533,12 @@ TEST_F(
         nonAddPathBitmap);
     EXPECT_NE(adjRib->changeListConsumeTimer_, nullptr);
 
-    // Set up DFP conditions:
-    //   1. Peer PL empty (default)
-    //   2. Matching lastSeenRibVersion between group and peer (both 0)
-    //   3. Group PL non-empty
+    /*
+     * Set up DFP conditions:
+     *   1. Peer PL empty (default)
+     *   2. Matching lastSeenRibVersion between group and peer (both 0)
+     *   3. Group PL non-empty
+     */
     auto group = adjRib->getUpdateGroup();
     auto attrs = std::make_shared<BgpPath>(BgpPathFields());
     attrs->setLocalPref(100);
@@ -534,14 +556,16 @@ TEST_F(
     adjRib->activateDetachedModeProcessing();
   });
 
-  // Phase 5: Wait for sendBgpUpdates to run. isDFP() triggers transition to
-  // DETACHED_READY_TO_JOIN with cancelled packing timers.
-  //
-  // activateDetachedModeProcessing only enqueues sendBgpUpdates on the async
-  // scope, and that coroutine suspends (co_safe_point, waitForQueueSpace,
-  // sendPendingEoRs) before reaching transitionPeerUpdateState at the end. A
-  // single evb turn is therefore not enough to observe the transition -- retry
-  // until it lands.
+  /*
+   * Phase 5: Wait for sendBgpUpdates to run. isDFP() triggers transition to
+   * DETACHED_READY_TO_JOIN with cancelled packing timers.
+   *
+   * activateDetachedModeProcessing only enqueues sendBgpUpdates on the async
+   * scope, and that coroutine suspends (co_safe_point, waitForQueueSpace,
+   * sendPendingEoRs) before reaching transitionPeerUpdateState at the end. A
+   * single evb turn is therefore not enough to observe the transition -- retry
+   * until it lands.
+   */
   WITH_RETRIES({
     evb.runInEventBaseThreadAndWait([&]() {
       auto& adjRib = ctx.adjRib1;
@@ -553,18 +577,22 @@ TEST_F(
     });
   });
 
-  // Phase 6: Call processRibDumpReq — walks the ShadowRib, calls
-  // processRibMessage for each entry, then activateChangeListConsumer
-  // triggers scheduleSendBgpUpdates -> sendBgpUpdates ->
-  // reschedulePackingTimers.
+  /*
+   * Phase 6: Call processRibDumpReq — walks the ShadowRib, calls
+   * processRibMessage for each entry, then activateChangeListConsumer
+   * triggers scheduleSendBgpUpdates -> sendBgpUpdates ->
+   * reschedulePackingTimers.
+   */
   evb.runInEventBaseThreadAndWait([&]() {
     auto& adjRib = ctx.adjRib1;
     folly::coro::blockingWait(ctx.peerMgr->processRibDumpReqCoro(
         RibDumpReq(adjRib->getRemotePeerId(), false /* sendAddPath */)));
 
-    // Verify 5 entries from the RibDump were received into the PL.
-    // The 6th prefix (10.1.0.0/24) is on the changelist for this consumer
-    // and is skipped by processRibDumpReq.
+    /*
+     * Verify 5 entries from the RibDump were received into the PL.
+     * The 6th prefix (10.1.0.0/24) is on the changelist for this consumer
+     * and is skipped by processRibDumpReq.
+     */
     size_t totalPrefixes = 0;
     for (const auto& [key, prefixes] : adjRib->attrToPrefixMap_) {
       totalPrefixes += prefixes.size();
@@ -572,9 +600,11 @@ TEST_F(
     EXPECT_EQ(totalPrefixes, 5);
   });
 
-  // Phase 7: EventBase processes sendBgpUpdates which drains the PL.
-  // Peer's lastSeenRibVersion (from RIB dump) > group's (0), so the
-  // ahead-of-group branch fires and cancels packing timers.
+  /*
+   * Phase 7: EventBase processes sendBgpUpdates which drains the PL.
+   * Peer's lastSeenRibVersion (from RIB dump) > group's (0), so the
+   * ahead-of-group branch fires and cancels packing timers.
+   */
   evb.runInEventBaseThreadAndWait([&]() {
     EXPECT_FALSE(ctx.adjRib1->changeListConsumeTimer_->isScheduled());
   });
@@ -586,8 +616,10 @@ TEST_F(
     groupConsumer->terminate();
     groupConsumer->deregisterFromTracker();
     ctx.adjRib1->getUpdateGroup()->resetChangeListConsumer();
-    // Clear shadowRibEntries_ while changeListTracker_ is still alive,
-    // so ChangeItems properly unlink from the change list.
+    /*
+     * Clear shadowRibEntries_ while changeListTracker_ is still alive,
+     * so ChangeItems properly unlink from the change list.
+     */
     ctx.peerMgr->shadowRibEntries_.clear();
   });
   // Drain any async work triggered by cleanup
@@ -664,8 +696,10 @@ class SinglePeerPolicyReEvaluation : public ::testing::Test {
  * are not copied. An empty target stores them under the group owner key.
  */
 TEST_F(SinglePeerPolicyReEvaluation, MovePeerPathTreeMixedEntries) {
-  // movePeerPathTreeEntries is used for add-path peers, so the source/target
-  // groups must be add-path for copyEntryForOwner to write to the PathTree.
+  /*
+   * movePeerPathTreeEntries is used for add-path peers, so the source/target
+   * groups must be add-path for copyEntryForOwner to write to the PathTree.
+   */
   UpdateGroupKey addPathKey;
   addPathKey.sendAddPath = true;
   auto sourceGroup = std::make_shared<AdjRibOutGroup>(
@@ -958,8 +992,10 @@ TEST_F(SinglePeerPolicyReEvaluation, MovePeerTransfersPerPeerEntries) {
   adjRib_->setPeerState(PeerUpdateState::DETACHED_RUNNING);
   adjRib_->setDetachedRibVersion(10);
 
-  // The moved peer keeps its change list consumer: it runs in detached mode
-  // in the new group and still needs the consumer to drain the change list.
+  /*
+   * The moved peer keeps its change list consumer: it runs in detached mode
+   * in the new group and still needs the consumer to drain the change list.
+   */
   auto clConsumer = setupChangeListConsumer(adjRib_);
 
   folly::CIDRNetwork prefix1{folly::IPAddress("10.0.0.0"), 24};
@@ -1108,8 +1144,10 @@ TEST_F(SinglePeerPolicyReEvaluation, MovePeerPrefersPerPeerOverShared) {
           sourceGroup_->LiteTree_, prefix, groupOwnerKey),
       nullptr);
 
-  // Target should have one entry (from per-peer, not from shared), under the
-  // peer's own owner key.
+  /*
+   * Target should have one entry (from per-peer, not from shared), under the
+   * peer's own owner key.
+   */
   EXPECT_NE(
       targetGroup_->getFromLiteTree(
           targetGroup_->LiteTree_, prefix, peerOwnerKey),
@@ -1138,8 +1176,10 @@ TEST_F(SinglePeerPolicyReEvaluation, MovePeerCleansUpGroupState) {
 TEST_F(
     SinglePeerPolicyReEvaluation,
     MovePeerTransfersPerPeerEntriesToNonEmptyGroup) {
-  // Register an existing peer in the target so bitToAdjRibs_ is non-empty
-  // and copyEntryForPeer stores entries as peer-owned.
+  /*
+   * Register an existing peer in the target so bitToAdjRibs_ is non-empty
+   * and copyEntryForPeer stores entries as peer-owned.
+   */
   auto existingPeerId = nettools::bgplib::BgpPeerId(
       folly::IPAddress("10.0.0.2"),
       folly::IPAddressV4("255.0.0.2").toLongHBO());
@@ -1401,8 +1441,10 @@ CO_TEST_F(
     }
     EXPECT_TRUE(boundedQueue->isBlocked());
 
-    // tryPushToPeer sees blocked queue, marks peer blocked, launches
-    // deferredPushToPeer coroutine on asyncScope_
+    /*
+     * tryPushToPeer sees blocked queue, marks peer blocked, launches
+     * deferredPushToPeer coroutine on asyncScope_
+     */
     originalBit = adjRib_->getGroupBitPosition();
     auto result = sourceGroup_->tryPushToPeer(dummyMsg, adjRib_, originalBit);
     EXPECT_EQ(result, AdjRibOutGroup::PushResult::PUSH_PENDING);
@@ -1442,10 +1484,12 @@ CO_TEST_F(
     EXPECT_EQ(adjRib2->getPeerState(), PeerUpdateState::JOINED_BLOCKED);
   });
 
-  // Phase 3: Pop all messages including the deferred push, then verify state.
-  // Queue has 2 initial messages + 1 from deferredPushToPeer.
-  // Popping unblocks waitToPush(), which lets deferredPushToPeer push
-  // its message and run its RAII guard (markPeerUnblocked).
+  /*
+   * Phase 3: Pop all messages including the deferred push, then verify state.
+   * Queue has 2 initial messages + 1 from deferredPushToPeer.
+   * Popping unblocks waitToPush(), which lets deferredPushToPeer push
+   * its message and run its RAII guard (markPeerUnblocked).
+   */
   co_await co_withExecutor(evb_.get(), [&]() -> folly::coro::Task<void> {
     co_await boundedQueue->pop(); // initial msg 1
     co_await boundedQueue->pop(); // initial msg 2
@@ -1456,12 +1500,16 @@ CO_TEST_F(
         std::holds_alternative<nettools::bgplib::BgpEndOfRib>(*deferredMsg));
     // Yield to let deferredPushToPeer's RAII guard (markPeerUnblocked) run
     co_await folly::coro::co_reschedule_on_current_executor;
-    // The moved peer was registered as JOINED_BLOCKED but the deferred push
-    // coroutine's RAII guard called markPeerUnblocked, transitioning to
-    // JOINED_RUNNING.
+    /*
+     * The moved peer was registered as JOINED_BLOCKED but the deferred push
+     * coroutine's RAII guard called markPeerUnblocked, transitioning to
+     * JOINED_RUNNING.
+     */
     EXPECT_EQ(adjRib_->getPeerState(), PeerUpdateState::DETACHED_RUNNING);
-    // The new peer's blocked bit must still be set — isPeerInGroup prevented
-    // the moved peer's markPeerUnblocked from clearing it.
+    /*
+     * The new peer's blocked bit must still be set — isPeerInGroup prevented
+     * the moved peer's markPeerUnblocked from clearing it.
+     */
     EXPECT_TRUE(
         BitmapUtils::isBitSet(sourceGroup_->getBlockedBitmap(), originalBit));
     // The new peer should still be JOINED_BLOCKED
@@ -1749,8 +1797,10 @@ TEST_F(SinglePeerPolicyReEvaluation, MovePeersSharedRibOutLiteTree) {
   for (int i = 0; i < kNumPrefixes; i++) {
     const auto& prefix = prefixes[i];
 
-    // Old group: shared entry copied (kept), staying peer4 untouched, moved
-    // peer3's per-peer entry erased.
+    /*
+     * Old group: shared entry copied (kept), staying peer4 untouched, moved
+     * peer3's per-peer entry erased.
+     */
     EXPECT_NE(
         sourceGroup->getFromLiteTree(
             sourceGroup->LiteTree_, prefix, sourceGroupOwnerKey),
@@ -1762,9 +1812,11 @@ TEST_F(SinglePeerPolicyReEvaluation, MovePeersSharedRibOutLiteTree) {
         sourceGroup->getFromLiteTree(sourceGroup->LiteTree_, prefix, key3),
         nullptr);
 
-    // New group: shared entry copied under the NEW group's owner key (not the
-    // old group's key, not a peer key). peer1 (all shared) has nothing of its
-    // own and relies on the copied group entry.
+    /*
+     * New group: shared entry copied under the NEW group's owner key (not the
+     * old group's key, not a peer key). peer1 (all shared) has nothing of its
+     * own and relies on the copied group entry.
+     */
     EXPECT_NE(
         targetGroup->getFromLiteTree(
             targetGroup->LiteTree_, prefix, targetGroupOwnerKey),
@@ -1785,8 +1837,10 @@ TEST_F(SinglePeerPolicyReEvaluation, MovePeersSharedRibOutLiteTree) {
         targetGroup->getFromLiteTree(targetGroup->LiteTree_, prefix, key4),
         nullptr);
 
-    // peer2 (some shared) only diverged on the first half: moved there, absent
-    // (and shared via the group) on the second half.
+    /*
+     * peer2 (some shared) only diverged on the first half: moved there, absent
+     * (and shared via the group) on the second half.
+     */
     if (i < kNumPrefixes / 2) {
       EXPECT_EQ(
           sourceGroup->getFromLiteTree(sourceGroup->LiteTree_, prefix, key2),
@@ -1878,8 +1932,10 @@ TEST_F(SinglePeerPolicyReEvaluation, MovePeersSharedRibOutPathTree) {
   for (int i = 0; i < kNumPrefixes; i++) {
     const auto& prefix = prefixes[i];
 
-    // Old group: shared entry copied (kept), staying peer4 untouched, moved
-    // peer3's per-peer entry erased.
+    /*
+     * Old group: shared entry copied (kept), staying peer4 untouched, moved
+     * peer3's per-peer entry erased.
+     */
     EXPECT_NE(
         sourceGroup->getFromPathTree(
             sourceGroup->PathTree_, prefix, sourceGroupOwnerKey, 0),
@@ -1891,9 +1947,11 @@ TEST_F(SinglePeerPolicyReEvaluation, MovePeersSharedRibOutPathTree) {
         sourceGroup->getFromPathTree(sourceGroup->PathTree_, prefix, key3, 0),
         nullptr);
 
-    // New group: shared entry copied under the NEW group's owner key (not the
-    // old group's key, not a peer key). peer1 (all shared) has nothing of its
-    // own and relies on the copied group entry.
+    /*
+     * New group: shared entry copied under the NEW group's owner key (not the
+     * old group's key, not a peer key). peer1 (all shared) has nothing of its
+     * own and relies on the copied group entry.
+     */
     EXPECT_NE(
         targetGroup->getFromPathTree(
             targetGroup->PathTree_, prefix, targetGroupOwnerKey, 0),
@@ -1914,8 +1972,10 @@ TEST_F(SinglePeerPolicyReEvaluation, MovePeersSharedRibOutPathTree) {
         targetGroup->getFromPathTree(targetGroup->PathTree_, prefix, key4, 0),
         nullptr);
 
-    // peer2 (some shared) only diverged on the first half: moved there, absent
-    // (and shared via the group) on the second half.
+    /*
+     * peer2 (some shared) only diverged on the first half: moved there, absent
+     * (and shared via the group) on the second half.
+     */
     if (i < kNumPrefixes / 2) {
       EXPECT_EQ(
           sourceGroup->getFromPathTree(sourceGroup->PathTree_, prefix, key2, 0),

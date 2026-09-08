@@ -57,8 +57,10 @@ using namespace facebook::neteng::fboss::bgp_attr;
 namespace facebook::bgp {
 
 namespace {
-// Helper to replicate getBgpSummary() via the split sessionMgr +
-// PeerManagerBase pattern
+/*
+ * Helper to replicate getBgpSummary() via the split sessionMgr +
+ * PeerManagerBase pattern
+ */
 std::vector<TBgpSession> getSessionsViaSessionMgr(PeerManagerBase& peerMgr) {
   auto allPeers = folly::coro::blockingWait(
       peerMgr.getSessionManager()->co_getAllPeerDisplayInfos());
@@ -359,9 +361,9 @@ TEST_P(
   std::map<std::string, int64_t> counters;
   counters.clear();
 
-  //
-  // Set up
-  //
+  /*
+   * Set up
+   */
   auto mockPeerMgr = setupMockPeerManager(true, true, false);
   auto& evb = mockPeerMgr->getEventBase();
 
@@ -394,9 +396,9 @@ TEST_P(
         .sessionInfo = sessionInfo};
 
     {
-      //
-      // Establish BGP session
-      //
+      /*
+       * Establish BGP session
+       */
       folly::coro::blockingWait(mockPeerMgr->sessionEstablished(stateEvent));
 
       auto adjRib3 = mockPeerMgr->findAdjRib(kPeerId3);
@@ -410,34 +412,38 @@ TEST_P(
       facebook::fb303::ThreadCachedServiceData::getShared()->getCounters(
           counters);
 
-      // The peeringParams for this adjRib3 peer is {kDescription1}:v4:1 which
-      // will be the ODS key
+      /*
+       * The peeringParams for this adjRib3 peer is {kDescription1}:v4:1 which
+       * will be the ODS key
+       */
       EXPECT_EQ(
           fmt::format("{}:v4:1", kDescription1),
           adjRib3->getStats().peerIdOdsStr);
 
       if (FLAGS_enable_peer_status_logging) {
-        //
-        // FLAGS_enable_peer_status_logging = true;
-        // Verify that the fb303 counter is published
-        //
+        /*
+         * FLAGS_enable_peer_status_logging = true;
+         * Verify that the fb303 counter is published
+         */
         EXPECT_EQ(
             1,
             counters.count(
                 fmt::format(
                     PeerStats::kPeerStatus, adjRib3->getStats().peerIdOdsStr)));
-        // Verify that the fb303 counter is published with value 1 (session goes
-        // up)
+        /*
+         * Verify that the fb303 counter is published with value 1 (session goes
+         * up)
+         */
         EXPECT_EQ(
             1,
             counters.at(
                 fmt::format(
                     PeerStats::kPeerStatus, adjRib3->getStats().peerIdOdsStr)));
       } else {
-        //
-        // FLAGS_enable_peer_status_logging = false;
-        // Verify that the fb303 counter is NOT published
-        //
+        /*
+         * FLAGS_enable_peer_status_logging = false;
+         * Verify that the fb303 counter is NOT published
+         */
         EXPECT_EQ(
             0,
             counters.count(
@@ -446,9 +452,9 @@ TEST_P(
       }
     }
     {
-      //
-      // Shutdown BGP session
-      //
+      /*
+       * Shutdown BGP session
+       */
       auto adjRib3 = mockPeerMgr->findAdjRib(kPeerId3);
       ASSERT_TRUE(adjRib3);
       adjRibInQueue->fiberPush(
@@ -478,18 +484,20 @@ TEST_P(
             counters.count(
                 fmt::format(
                     PeerStats::kPeerStatus, adjRib3->getStats().peerIdOdsStr)));
-        // Verify that the fb303 counter is published with value 0 (session goes
-        // down)
+        /*
+         * Verify that the fb303 counter is published with value 0 (session goes
+         * down)
+         */
         EXPECT_EQ(
             0,
             counters.at(
                 fmt::format(
                     PeerStats::kPeerStatus, adjRib3->getStats().peerIdOdsStr)));
       } else {
-        //
-        // FLAGS_enable_peer_status_logging = false;
-        // Verify that the fb303 counter is NOT published
-        //
+        /*
+         * FLAGS_enable_peer_status_logging = false;
+         * Verify that the fb303 counter is NOT published
+         */
         EXPECT_EQ(
             0,
             counters.count(
@@ -565,10 +573,12 @@ TEST_F(PeerManagerTestFixture, GetBgpSummaryTest) {
   SUCCEED();
 }
 
-// The per-message-type socket tx/rx counts in TBgpSessionDetail come from the
-// I/O (SessionManager) snapshot -- the source of truth for messages actually
-// written to / read from the socket. Inject counts on the snapshot and verify
-// getDetailSessionInfos surfaces them into TBgpSessionDetail.
+/*
+ * The per-message-type socket tx/rx counts in TBgpSessionDetail come from the
+ * I/O (SessionManager) snapshot -- the source of truth for messages actually
+ * written to / read from the socket. Inject counts on the snapshot and verify
+ * getDetailSessionInfos surfaces them into TBgpSessionDetail.
+ */
 TEST_F(PeerManagerTestFixture, GetBgpSessionSocketMessageCountsTest) {
   auto config = getConfig(
       true /* includeStaticPeer */,
@@ -591,8 +601,10 @@ TEST_F(PeerManagerTestFixture, GetBgpSessionSocketMessageCountsTest) {
 
   mockPeerMgr->addPeersToSessionMgr();
 
-  // Fetch the I/O-thread snapshot and inject per-type tx/rx socket counts for
-  // staticPeer1_, then render the detail view from the (modified) snapshot.
+  /*
+   * Fetch the I/O-thread snapshot and inject per-type tx/rx socket counts for
+   * staticPeer1_, then render the detail view from the (modified) snapshot.
+   */
   auto allPeers = folly::coro::blockingWait(
       mockPeerMgr->getSessionManager()->co_getAllPeerDisplayInfos());
   const auto staticPeer1Addr = folly::IPAddress(*staticPeer1_.peer_addr());
@@ -770,8 +782,10 @@ TEST_F(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest) {
     EXPECT_EQ(kPerPeerRecvEoRs, d.adjrib_recv_eor_msgs().value());
     EXPECT_EQ(kPerPeerSentUpdates, d.adjrib_sent_update_msgs().value());
     EXPECT_EQ(kPerPeerSentEoRs, d.adjrib_sent_eor_msgs().value());
-    // legacy_v4_nlri_encoding is surfaced from the AdjRib update-group key
-    // (default false for an MP-capable peer).
+    /*
+     * legacy_v4_nlri_encoding is surfaced from the AdjRib update-group key
+     * (default false for an MP-capable peer).
+     */
     EXPECT_FALSE(d.legacy_v4_nlri_encoding().value());
     // No group yet: announcement/withdrawal PDU counts are per-peer.
     EXPECT_EQ(
@@ -892,9 +906,11 @@ TEST_F(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest) {
   sessionMgrThread.join();
 }
 
-// This testlet verify the session detail information retrieve from
-// PeerManagerBase::getDetailSessionInfos via the split sessionMgr +
-// PeerManagerBase coro pattern for each neighbor.
+/*
+ * This testlet verify the session detail information retrieve from
+ * PeerManagerBase::getDetailSessionInfos via the split sessionMgr +
+ * PeerManagerBase coro pattern for each neighbor.
+ */
 CO_TEST_F(PeerManagerTestFixture, GetBgpNeighborsTest) {
   auto config = getConfig(
       true /* includeStaticPeer */,
@@ -919,33 +935,36 @@ CO_TEST_F(PeerManagerTestFixture, GetBgpNeighborsTest) {
   // since we use mockPeerMgr, we have to manually add sessions to sessionMgr
   mockPeerMgr->addPeersToSessionMgr();
 
-  //
-  // Checking each BGP neighbor/session if it has the valid value
-  //
-  // 1st of 4 sessions
-  //
-  // co_getPeerDisplayInfo does not support dynamic peers yet (it does not take
-  // CIDR)
-  // TODO: T190236431
+  /*
+   * Checking each BGP neighbor/session if it has the valid value
+   *
+   * 1st of 4 sessions
+   *
+   * co_getPeerDisplayInfo does not support dynamic peers yet (it does not take
+   * CIDR)
+   * TODO: T190236431
+   */
   std::string peerPrefix1Str =
       fmt::format("{}/{}", kPeerPrefix1.first.str(), kPeerPrefix1.second);
   // CIDR is not a valid IP address, so it gets filtered out in the coro path
   EXPECT_FALSE(folly::IPAddress::validate(peerPrefix1Str));
 
-  //
-  // 2nd of 4 sessions
-  //
-  // co_getPeerDisplayInfo does not support dynamic peers yet (it does not take
-  // CIDR)
-  // TODO: T190236431
+  /*
+   * 2nd of 4 sessions
+   *
+   * co_getPeerDisplayInfo does not support dynamic peers yet (it does not take
+   * CIDR)
+   * TODO: T190236431
+   */
   std::string peerPrefix2Str =
       fmt::format("{}/{}", kPeerPrefix2.first.str(), kPeerPrefix2.second);
   EXPECT_FALSE(folly::IPAddress::validate(peerPrefix2Str));
 
-  //
-  // 3rd of 4 sessions
-  //
-  // statciPeer1_ (remote peerAddr3) does HAVE the description
+  /*
+   * 3rd of 4 sessions
+   *
+   * statciPeer1_ (remote peerAddr3) does HAVE the description
+   */
   {
     std::unordered_multimap<
         folly::IPAddress,
@@ -959,8 +978,10 @@ CO_TEST_F(PeerManagerTestFixture, GetBgpNeighborsTest) {
           kPeerAddr3,
           std::make_shared<BgpPeerDisplayInfo>(peerInfoVector.value()[0]));
       auto sessions = mockPeerMgr->getDetailSessionInfos(peerInfoMap);
-      // Even though the return value is a vector, it should
-      // have 1 session in this case
+      /*
+       * Even though the return value is a vector, it should
+       * have 1 session in this case
+       */
       EXPECT_EQ(1, sessions.size());
       // pick staticPeer1_ to verify fields are set correctly
       auto queriedSession = sessions.at(0);
@@ -975,10 +996,11 @@ CO_TEST_F(PeerManagerTestFixture, GetBgpNeighborsTest) {
     }
   }
 
-  //
-  // 4th of 4 sessions
-  //
-  // statciPeer2_ (remote peerAddr4) does NOT have description
+  /*
+   * 4th of 4 sessions
+   *
+   * statciPeer2_ (remote peerAddr4) does NOT have description
+   */
   {
     std::unordered_multimap<
         folly::IPAddress,
@@ -992,8 +1014,10 @@ CO_TEST_F(PeerManagerTestFixture, GetBgpNeighborsTest) {
           kPeerAddr4,
           std::make_shared<BgpPeerDisplayInfo>(peerInfoVector.value()[0]));
       auto sessions = mockPeerMgr->getDetailSessionInfos(peerInfoMap);
-      // Even though the return value is a vector, it should
-      // have 1 session in this case
+      /*
+       * Even though the return value is a vector, it should
+       * have 1 session in this case
+       */
       EXPECT_EQ(1, sessions.size());
       // pick statciPeer2_ to verify fields are set correctly
       auto queriedSession = sessions.at(0);
@@ -1034,9 +1058,11 @@ CO_TEST_F(PeerManagerTestFixture, GetBgpNeighborsTest) {
   SUCCEED();
 }
 
-// This test verifies if an empty peers list is provided, getDetailSessionInfos
-// via co_getAllPeerDisplayInfos returns information of every BGP
-// neighbor/session (similarly to getBgpSummary), but with session detail.
+/*
+ * This test verifies if an empty peers list is provided, getDetailSessionInfos
+ * via co_getAllPeerDisplayInfos returns information of every BGP
+ * neighbor/session (similarly to getBgpSummary), but with session detail.
+ */
 CO_TEST_F(PeerManagerTestFixture, GetAllBgpNeighborsTest) {
   auto config = getConfig(
       true /* includeStaticPeer */, true /* includeDynamicShivPeer */);
@@ -1070,8 +1096,10 @@ CO_TEST_F(PeerManagerTestFixture, GetAllBgpNeighborsTest) {
   SUCCEED();
 }
 
-// Test getDetailSessionInfos() with specific peer addresses via the split
-// sessionMgr + PeerManagerBase coro pattern (mirrors GetBgpNeighborsTest)
+/*
+ * Test getDetailSessionInfos() with specific peer addresses via the split
+ * sessionMgr + PeerManagerBase coro pattern (mirrors GetBgpNeighborsTest)
+ */
 CO_TEST_F(PeerManagerTestFixture, GetDetailSessionInfosTest) {
   auto config = getConfig(
       true /* includeStaticPeer */,
@@ -1164,8 +1192,10 @@ CO_TEST_F(PeerManagerTestFixture, GetDetailSessionInfosTest) {
   SUCCEED();
 }
 
-// Test getDetailSessionInfos() with all peers via the split sessionMgr +
-// PeerManagerBase coro pattern (mirrors GetAllBgpNeighborsTest)
+/*
+ * Test getDetailSessionInfos() with all peers via the split sessionMgr +
+ * PeerManagerBase coro pattern (mirrors GetAllBgpNeighborsTest)
+ */
 CO_TEST_F(PeerManagerTestFixture, GetAllDetailSessionInfosTest) {
   auto config = getConfig(
       true /* includeStaticPeer */, true /* includeDynamicShivPeer */);
@@ -1201,9 +1231,11 @@ CO_TEST_F(PeerManagerTestFixture, GetAllDetailSessionInfosTest) {
   SUCCEED();
 }
 
-// This test verifies getBgpNeighborsFromSession via the split sessionMgr +
-// PeerManagerBase coro pattern: co_await sessionMgr->co_getPeerDisplayInfo(
-// BgpPeerId), then call getDetailSessionInfos.
+/*
+ * This test verifies getBgpNeighborsFromSession via the split sessionMgr +
+ * PeerManagerBase coro pattern: co_await sessionMgr->co_getPeerDisplayInfo(
+ * BgpPeerId), then call getDetailSessionInfos.
+ */
 CO_TEST_F(PeerManagerTestFixture, GetBgpNeighborsFromSessionTest) {
   auto config = getConfig(
       true /* includeStaticPeer */,
@@ -1228,18 +1260,21 @@ CO_TEST_F(PeerManagerTestFixture, GetBgpNeighborsFromSessionTest) {
   // since we use mockPeerMgr, we have to manually add sessions to sessionMgr
   mockPeerMgr->addPeersToSessionMgr();
 
-  //
-  // The staticPeer1_ with remote peerAddr3 has is added to sessionMgr by
-  // mockPeerMgr and the configuration has its remoteBgpId as "0.0.0.0"
-  //
-  // statciPeer1_ (remote peerAddr3) does HAVE the description
+  /*
+   * The staticPeer1_ with remote peerAddr3 has is added to sessionMgr by
+   * mockPeerMgr and the configuration has its remoteBgpId as "0.0.0.0"
+   *
+   * statciPeer1_ (remote peerAddr3) does HAVE the description
+   */
 
   auto sessions = getSessionsViaSessionMgr(*mockPeerMgr);
   EXPECT_EQ(4, sessions.size());
 
-  // co_getPeerDisplayInfo(BgpPeerId) with valid peer + session
-  // The session is not established so the query by specific BgpPeerId
-  // may not find anything
+  /*
+   * co_getPeerDisplayInfo(BgpPeerId) with valid peer + session
+   * The session is not established so the query by specific BgpPeerId
+   * may not find anything
+   */
   {
     BgpPeerId bgpPeerId{kPeerAddr3, kPeerAddr3.asV4().toLongHBO()};
     auto peerInfoVector = co_await sessionMgr->co_getPeerDisplayInfo(bgpPeerId);
@@ -1254,17 +1289,19 @@ CO_TEST_F(PeerManagerTestFixture, GetBgpNeighborsFromSessionTest) {
           std::make_shared<BgpPeerDisplayInfo>(peerInfoVector.value()[0]));
       result = mockPeerMgr->getDetailSessionInfos(peerInfoMap);
     }
-    // getBgpNeighborsFromSession can only retrieve the "established" session,
-    // which requires the work on the FiberBgpPeerManager
-    //
-    // This functionality of session is established is tested in
-    // FiberBgpPeerManagerTest
+    /*
+     * getBgpNeighborsFromSession can only retrieve the "established" session,
+     * which requires the work on the FiberBgpPeerManager
+     *
+     * This functionality of session is established is tested in
+     * FiberBgpPeerManagerTest
+     */
     EXPECT_EQ(0, result.size());
   }
 
-  //
-  // Nonexistent BGP session
-  //
+  /*
+   * Nonexistent BGP session
+   */
   {
     BgpPeerId bgpPeerId{
         folly::IPAddress("5.6.7.8"), kPeerAddr3.asV4().toLongHBO()};
@@ -1278,10 +1315,10 @@ CO_TEST_F(PeerManagerTestFixture, GetBgpNeighborsFromSessionTest) {
     EXPECT_FALSE(peerInfoVector.has_value());
   }
 
-  //
-  // Invalid peerAddr or invalid sessionId (remoteBgpId) are caught by
-  // folly::IPAddress::validate before constructing BgpPeerId
-  //
+  /*
+   * Invalid peerAddr or invalid sessionId (remoteBgpId) are caught by
+   * folly::IPAddress::validate before constructing BgpPeerId
+   */
   EXPECT_FALSE(folly::IPAddress::validate("hello"));
   EXPECT_FALSE(folly::IPAddress::validate("invalid"));
 
@@ -1295,11 +1332,13 @@ CO_TEST_F(PeerManagerTestFixture, GetBgpNeighborsFromSessionTest) {
   SUCCEED();
 }
 
-// This test setup static peers by the MockPeerManager.
-// The testlet will query the `sessionInfo` of one static peer and verify its
-// result
-//
-// Note: the `getSessionInfo` is also called by the `getDetailedSessionInfo`
+/*
+ * This test setup static peers by the MockPeerManager.
+ * The testlet will query the `sessionInfo` of one static peer and verify its
+ * result
+ *
+ * Note: the `getSessionInfo` is also called by the `getDetailedSessionInfo`
+ */
 TEST_F(PeerManagerTestFixture, GetSessionInfoStaticPeerTest) {
   auto mockPeerMgr = setupMockPeerManagerWithSeparateThread(true, false);
   auto mockSessionMgr = setupMockSessionManager(mockPeerMgr);
@@ -1371,11 +1410,13 @@ TEST_F(PeerManagerTestFixture, GetSessionInfoStaticPeerTest) {
   SUCCEED();
 }
 
-// This test setup dynamic peers by the MockPeerManager.
-// The testlet will query the `getSessionInfo` of one dynamic peer and
-// verify its result
-//
-// Note: the `getSessionInfo` is also called by the `getDetailedSessionInfo`
+/*
+ * This test setup dynamic peers by the MockPeerManager.
+ * The testlet will query the `getSessionInfo` of one dynamic peer and
+ * verify its result
+ *
+ * Note: the `getSessionInfo` is also called by the `getDetailedSessionInfo`
+ */
 TEST_F(PeerManagerTestFixture, GetSessionInfoDynamicPeerTest) {
   auto mockPeerMgr = setupMockPeerManagerWithSeparateThread(true, false);
   auto mockSessionMgr = setupMockSessionManager(mockPeerMgr);
@@ -1540,8 +1581,10 @@ TEST_F(PeerManagerTestFixture, GetDetailSessionInfoTtlSecurityDisabledTest) {
   EXPECT_FALSE(detail.ttl_security_hops().has_value());
 }
 
-// This test verify the getNetworks function correctness when it receives
-// an empty input/argument
+/*
+ * This test verify the getNetworks function correctness when it receives
+ * an empty input/argument
+ */
 TEST_F(PeerManagerTestFixture, GetNetworksEmptyInputTest) {
   // Create static peer and dynamic peers mockPeerManager
   auto mockPeerMgr = setupMockPeerManager(
@@ -1555,8 +1598,10 @@ TEST_F(PeerManagerTestFixture, GetNetworksEmptyInputTest) {
   EXPECT_EQ(0, output.size());
 }
 
-// This test verify the getNetworks2 function correctness when it receives
-// an empty input/argument
+/*
+ * This test verify the getNetworks2 function correctness when it receives
+ * an empty input/argument
+ */
 TEST_F(PeerManagerTestFixture, GetNetworks2EmptyInputTest) {
   // Create static peer and dynamic peers mockPeerManager
   auto mockPeerMgr = setupMockPeerManager(
@@ -1570,8 +1615,10 @@ TEST_F(PeerManagerTestFixture, GetNetworks2EmptyInputTest) {
   EXPECT_EQ(0, output2.size());
 }
 
-// This test verify the getNetworks function correctness when it receives
-// an invalid IP address as an argument
+/*
+ * This test verify the getNetworks function correctness when it receives
+ * an invalid IP address as an argument
+ */
 TEST_F(PeerManagerTestFixture, GetNetworksInvalidIpAddressTest) {
   // Create static peer and dynamic peers mockPeerManager
   auto mockPeerMgr = setupMockPeerManager(
@@ -1588,8 +1635,10 @@ TEST_F(PeerManagerTestFixture, GetNetworksInvalidIpAddressTest) {
   EXPECT_EQ(0, output.size());
 }
 
-// This test verify the getNetworks2 function correctness when it receives
-// an invalid IP address as an argument
+/*
+ * This test verify the getNetworks2 function correctness when it receives
+ * an invalid IP address as an argument
+ */
 TEST_F(PeerManagerTestFixture, GetNetworks2InvalidIpAddressTest) {
   // Create static peer and dynamic peers mockPeerManager
   auto mockPeerMgr = setupMockPeerManager(
@@ -1606,8 +1655,10 @@ TEST_F(PeerManagerTestFixture, GetNetworks2InvalidIpAddressTest) {
   EXPECT_EQ(0, output2.size());
 }
 
-// This test verify the getNetworks functions when it receives
-// an invalid remoteBgpID as an argument
+/*
+ * This test verify the getNetworks functions when it receives
+ * an invalid remoteBgpID as an argument
+ */
 TEST_F(PeerManagerTestFixture, GetNetworksInvalidSessionBgpIdTest) {
   // Create static peer and dynamic peers mockPeerManager
   auto mockPeerMgr = setupMockPeerManager(
@@ -1615,8 +1666,10 @@ TEST_F(PeerManagerTestFixture, GetNetworksInvalidSessionBgpIdTest) {
   const auto invalidSessionBgpId =
       std::make_unique<std::string>(std::string("hello"));
 
-  // Test invalid sessionBgpId argument on getNetworks()
-  // function
+  /*
+   * Test invalid sessionBgpId argument on getNetworks()
+   * function
+   */
   std::map<TIpPrefix, TBgpPath> output;
   mockPeerMgr->getNetworks(
       output,
@@ -1626,8 +1679,10 @@ TEST_F(PeerManagerTestFixture, GetNetworksInvalidSessionBgpIdTest) {
   EXPECT_EQ(0, output.size());
 }
 
-// This test verify the getNetworks2 functions when it receives
-// an invalid remoteBgpID as an argument
+/*
+ * This test verify the getNetworks2 functions when it receives
+ * an invalid remoteBgpID as an argument
+ */
 TEST_F(PeerManagerTestFixture, GetNetworks2InvalidSessionBgpIdTest) {
   // Create static peer and dynamic peers mockPeerManager
   auto mockPeerMgr = setupMockPeerManager(
@@ -1635,8 +1690,10 @@ TEST_F(PeerManagerTestFixture, GetNetworks2InvalidSessionBgpIdTest) {
   const auto invalidSessionBgpId =
       std::make_unique<std::string>(std::string("hello"));
 
-  // Test invalid sessionBgpId argument on getNetworks2()
-  // function
+  /*
+   * Test invalid sessionBgpId argument on getNetworks2()
+   * function
+   */
   std::map<TIpPrefix, std::vector<TBgpPath>> output2;
   mockPeerMgr->getNetworks2(
       output2,
@@ -1646,8 +1703,10 @@ TEST_F(PeerManagerTestFixture, GetNetworks2InvalidSessionBgpIdTest) {
   EXPECT_EQ(0, output2.size());
 }
 
-// This test runs for GetNetworks functions, it has 2 overloading GetNetworks
-// functions
+/*
+ * This test runs for GetNetworks functions, it has 2 overloading GetNetworks
+ * functions
+ */
 TEST_F(PeerManagerTestFixture, GetNetworksTest) {
   // Create static peer and dynamic peers mockPeerManager
   auto mockPeerMgr = setupMockPeerManager(
@@ -1706,8 +1765,10 @@ TEST_F(PeerManagerTestFixture, GetNetworksTest) {
   EXPECT_EQ(1, output.size());
 }
 
-// This test runs for GetNetworks2 functions, it has 2 overloading GetNetworks2
-// functions
+/*
+ * This test runs for GetNetworks2 functions, it has 2 overloading GetNetworks2
+ * functions
+ */
 TEST_F(PeerManagerTestFixture, GetNetworks2Test) {
   // Create static peer and dynamic peers mockPeerManager
   auto mockPeerMgr = setupMockPeerManager(
@@ -1790,22 +1851,28 @@ TEST_F(PeerManagerTestFixture, GetBgpStreamSessionsTest) {
   EXPECT_EQ(kStreamPeerAddr.str(), tBgpStreamSessions[0].peer_addr());
   EXPECT_EQ("testClient", tBgpStreamSessions[0].subscriber_name());
   EXPECT_EQ(TBgpPeerState::ESTABLISHED, tBgpStreamSessions[0].state());
-  // since we just have subscribed, uptime for this session should be pretty
-  // minimal Verify if it has been less than a second
+  /*
+   * since we just have subscribed, uptime for this session should be pretty
+   * minimal Verify if it has been less than a second
+   */
   EXPECT_GT(1000, tBgpStreamSessions[0].uptime());
   EXPECT_EQ(0, tBgpStreamSessions[0].sent_prefix_count());
   EXPECT_EQ(0, tBgpStreamSessions[0].num_flaps());
 
-  // Following subscription call simply required to be able to cancel
-  // the stream that is subscribed earlier
+  /*
+   * Following subscription call simply required to be able to cancel
+   * the stream that is subscribed earlier
+   */
   auto subscription1 =
       std::move(stream1).toClientStreamUnsafeDoNotUse().subscribeExTry(
           &evb, [](auto&&) {
             // Do nothing
           });
 
-  // cleanup channel
-  // Kill channel on client side
+  /*
+   * cleanup channel
+   * Kill channel on client side
+   */
   subscription1.cancel();
   std::move(subscription1).detach();
 
@@ -1817,10 +1884,12 @@ TEST_F(PeerManagerTestFixture, GetBgpStreamSessionsTest) {
   SUCCEED();
 }
 
-// Test that getSessionInfo correctly handles optional UCMP configuration fields
-// (advertiseLinkBandwidth and receiveLinkBandwidth). When these fields have
-// values, they should be set on TBgpSession; when nullopt, they should not be
-// set (leaving the thrift default values).
+/*
+ * Test that getSessionInfo correctly handles optional UCMP configuration fields
+ * (advertiseLinkBandwidth and receiveLinkBandwidth). When these fields have
+ * values, they should be set on TBgpSession; when nullopt, they should not be
+ * set (leaving the thrift default values).
+ */
 TEST_F(PeerManagerTestFixture, GetSessionInfoUcmpOptionalFieldsTest) {
   auto mockPeerMgr = setupMockPeerManager(true, false);
 
@@ -1870,8 +1939,10 @@ TEST_F(PeerManagerTestFixture, GetSessionInfoUcmpOptionalFieldsTest) {
   TBgpSession tBgpSessionWithoutUcmp =
       mockPeerMgr->getSessionInfo(kPeerAddr3, mockPeerInfoWithoutUcmp);
 
-  // Verify UCMP fields use thrift default values when not configured
-  // (DISABLE = 0 is the default for both enums per bgp_attr.thrift)
+  /*
+   * Verify UCMP fields use thrift default values when not configured
+   * (DISABLE = 0 is the default for both enums per bgp_attr.thrift)
+   */
   EXPECT_EQ(
       tBgpSessionWithoutUcmp.advertise_link_bandwidth(),
       AdvertiseLinkBandwidth::DISABLE);
@@ -1881,8 +1952,10 @@ TEST_F(PeerManagerTestFixture, GetSessionInfoUcmpOptionalFieldsTest) {
   EXPECT_FALSE(tBgpSessionWithoutUcmp.link_bandwidth_bps().has_value());
 }
 
-// Test that getHoldTimerInfos correctly returns remaining hold timer
-// information for static peers and skips unattached dynamic peer entries
+/*
+ * Test that getHoldTimerInfos correctly returns remaining hold timer
+ * information for static peers and skips unattached dynamic peer entries
+ */
 TEST_F(PeerManagerTestFixture, GetHoldTimerInfosTest) {
   auto mockPeerMgr = setupMockPeerManagerWithSeparateThread(true, false);
   auto mockSessionMgr = setupMockSessionManager(mockPeerMgr);
@@ -1897,8 +1970,10 @@ TEST_F(PeerManagerTestFixture, GetHoldTimerInfosTest) {
           std::chrono::system_clock::now().time_since_epoch())
           .count();
 
-  // Dynamic peer IDLE entry (unattached prefix-range template) — should be
-  // skipped
+  /*
+   * Dynamic peer IDLE entry (unattached prefix-range template) — should be
+   * skipped
+   */
   auto mockPeerInfo1 =
       getMockPeerInfo(kPeerPrefix1, kDynamicRouterId1, false, true);
 

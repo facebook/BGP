@@ -26,8 +26,10 @@ using namespace facebook::bgp;
 using namespace facebook::nettools::bgplib;
 using namespace ::testing;
 
-// Benchmark the BGP I/O(fiberBgpPeer) -> AdjRibIn message processing loop with
-// different numbers of prefixes.
+/*
+ * Benchmark the BGP I/O(fiberBgpPeer) -> AdjRibIn message processing loop with
+ * different numbers of prefixes.
+ */
 void BM_ProcessAdjRibInMsgLoop(uint32_t iters, size_t numPrefixes) {
   AdjRibInboundFixture fixture;
   BENCHMARK_SUSPEND {

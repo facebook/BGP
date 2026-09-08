@@ -43,8 +43,10 @@ TEST(SessionManagerTest, RunInThreadTest) {
       facebook::bgp::SupportStatefulGr{true},
       facebook::bgp::EnableServerSocket{false}};
 
-  // We MUST create a shared pointer or shared_from_this would fail in
-  // FiberBgpPeerManager
+  /*
+   * We MUST create a shared pointer or shared_from_this would fail in
+   * FiberBgpPeerManager
+   */
   auto sessionMgr = std::make_shared<SessionManager>(globalConfig);
   auto thread = sessionMgr->runInThread();
   sessionMgr->stop();

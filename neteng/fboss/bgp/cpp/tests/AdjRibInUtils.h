@@ -129,9 +129,9 @@ std::shared_ptr<BgpUpdate2> createBgpUpdateWithdrawal(
     const folly::CIDRNetwork& cidr,
     uint32_t addPathId = 0);
 
-//
-// The fixture provides fiber manager and evb_ for the tests
-//
+/*
+ * The fixture provides fiber manager and evb_ for the tests
+ */
 class AdjRibInboundFixture : public ::testing::Test {
  public:
   AdjRibInboundFixture() = default;
@@ -227,10 +227,12 @@ class AdjRibInboundFixture : public ::testing::Test {
       const RouteRefreshNegotiated& isRouteRefreshNegotiated =
           RouteRefreshNegotiated(false));
 
-  // Re-establish session from fiber context, mimicking
-  // PeerManagerBase::sessionEstablished flow by properly awaiting
-  // ensureAsyncScopeInitialized() before calling sessionEstablished()
-  // and startMessageProcessingLoop().
+  /*
+   * Re-establish session from fiber context, mimicking
+   * PeerManagerBase::sessionEstablished flow by properly awaiting
+   * ensureAsyncScopeInitialized() before calling sessionEstablished()
+   * and startMessageProcessingLoop().
+   */
   void reEstablishSession(
       const std::optional<std::chrono::seconds>& remoteGrRestartTime =
           std::nullopt,

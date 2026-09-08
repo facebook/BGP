@@ -32,8 +32,10 @@ DEFINE_bool(
     false,
     "Parameterize egress backpressure enabled/disabled in PeerManagerBase tests.");
 
-// The fiber default is 16KB. We are increasing the default due to nested
-// recursion with large stack due to installed exception handlers.
+/*
+ * The fiber default is 16KB. We are increasing the default due to nested
+ * recursion with large stack due to installed exception handlers.
+ */
 DEFINE_int32(fiber_stack_size, 64, "Default fiber stack size in KB");
 
 using namespace facebook::nettools::bgplib;
@@ -140,8 +142,10 @@ RibOutMessage createRibInitialSingleAnnounce(
   return ribMsg;
 }
 
-// Create GR state from previous incarnation. Save all the peerAddresses as
-// if they support GR and were established in previous incarnation
+/*
+ * Create GR state from previous incarnation. Save all the peerAddresses as
+ * if they support GR and were established in previous incarnation
+ */
 void createGrState(std::vector<BgpPeerId> peerIds, bool staleTime) {
   std::ofstream grFile;
 
@@ -173,8 +177,10 @@ void createGrState(std::vector<BgpPeerId> peerIds, bool staleTime) {
   XLOGF(INFO, "Saved GR state to {}", FLAGS_gr_state_file);
 }
 
-// Verify if the GR state exists or not.
-// Returns TRUE if previous state exists else FALSE
+/*
+ * Verify if the GR state exists or not.
+ * Returns TRUE if previous state exists else FALSE
+ */
 bool isGrStateExists() {
   std::ifstream grFile;
 
@@ -186,8 +192,10 @@ bool isGrStateExists() {
 folly::Future<folly::Unit> TestSessionManager::getSessionsComeUpFuture(
     const std::unordered_set<BgpPeerId>& peerSet,
     const std::chrono::seconds& timeout) {
-  // can only be called before stop, or the evb will not run and
-  // execute the scheduled fiber
+  /*
+   * can only be called before stop, or the evb will not run and
+   * execute the scheduled fiber
+   */
   folly::Future<folly::Unit> future;
   evb_.runInEventBaseThreadAndWait(
       [this, &future, peerSet = peerSet, timeout = timeout]() {
@@ -224,8 +232,10 @@ folly::Future<folly::Unit> TestSessionManager::getSessionsComeUpFuture(
 folly::Future<folly::Unit> TestSessionManager::getSessionsGoDownFuture(
     const std::unordered_set<BgpPeerId>& peerSet,
     const std::chrono::seconds& timeout) {
-  // can only be called before stop, or the evb will not run and
-  // execute the schedule
+  /*
+   * can only be called before stop, or the evb will not run and
+   * execute the schedule
+   */
   folly::Future<folly::Unit> future;
   evb_.runInEventBaseThreadAndWait(
       [this, &future, peerSet = peerSet, timeout = timeout]() {
@@ -326,8 +336,10 @@ void PeerManagerTestFixture::SetUp() {
 
   options_ = nettools::bgplib::getFiberManagerOptions(FLAGS_fiber_stack_size);
 
-  // Override default GR state file with file based on thread id.
-  // This ensures stress run will use different file for each run.
+  /*
+   * Override default GR state file with file based on thread id.
+   * This ensures stress run will use different file for each run.
+   */
   FLAGS_gr_state_file = fmt::format(
       "/dev/shm/bgp_gr_state.txt.{}",
       std::hash<std::thread::id>{}(std::this_thread::get_id()));
@@ -406,11 +418,13 @@ std::shared_ptr<Config> PeerManagerTestFixture::getConfig(
   thriftConfig.graceful_restart_convergence_seconds() = kGrRestartTime.count();
   thriftConfig.listen_addr() = kLocalAddr1.str();
   thriftConfig.eor_time_s() = eorTimeS;
-  // Stress-test will run multiple instance of tests simultaneously.
-  // Binding to a static port is bound to fail in that situation.
-  // Picking a pseudo random port > 1024 based on getpid().
-  // There is a remote possibility this might also result in a collision but
-  // that probability is very very low.
+  /*
+   * Stress-test will run multiple instance of tests simultaneously.
+   * Binding to a static port is bound to fail in that situation.
+   * Picking a pseudo random port > 1024 based on getpid().
+   * There is a remote possibility this might also result in a collision but
+   * that probability is very very low.
+   */
   std::srand((uint16_t)getpid());
   thriftConfig.listen_port() = 1179 + (folly::Random::rand32() % 60000);
 
@@ -727,8 +741,10 @@ std::shared_ptr<MockAdjRib> PeerManagerTestFixture::setupMockAdjRib(
   return adjRib;
 }
 
-// Creates a mock peer manager with appropriate config and
-// mock session manager
+/*
+ * Creates a mock peer manager with appropriate config and
+ * mock session manager
+ */
 std::shared_ptr<MockPeerManager> PeerManagerTestFixture::setupMockPeerManager(
     bool includeStaticPeer,
     bool includeDynamicShivPeer,
@@ -741,8 +757,10 @@ std::shared_ptr<MockPeerManager> PeerManagerTestFixture::setupMockPeerManager(
       includeDynamicMonitorPeer,
       includeDynamicVipInjectorPeer);
 
-  // Setup values returned to sessionEstablishement
-  // getEstablishedPeerDisplayInfo
+  /*
+   * Setup values returned to sessionEstablishement
+   * getEstablishedPeerDisplayInfo
+   */
   auto peeringParams = bgp::PeeringParams();
   peeringParams.peerAddr = kPeerAddr1;
   peeringParams.peerPrefix = kV4Prefix3;
@@ -765,8 +783,10 @@ std::shared_ptr<MockPeerManager> PeerManagerTestFixture::setupMockPeerManager(
   return mockPeerMgr;
 }
 
-// create a mock peer manager in a separate thread such that funcitons running
-// in eventbase loop can also be scheduled
+/*
+ * create a mock peer manager in a separate thread such that funcitons running
+ * in eventbase loop can also be scheduled
+ */
 std::shared_ptr<MockPeerManager>
 PeerManagerTestFixture::setupMockPeerManagerWithSeparateThread(
     bool includeStaticPeer,
@@ -787,9 +807,11 @@ PeerManagerTestFixture::setupMockPeerManagerWithSeparateThread(
   return mockPeerMgr;
 }
 
-// create a mock session manager which shares the same fiber manager with
-// the mock peer manager. The mockPeerMgr should be a non-empty pointer, e.g.,
-// generated by setupMockPeerManager or setupMockPeerManagerWithSeparateThread
+/*
+ * create a mock session manager which shares the same fiber manager with
+ * the mock peer manager. The mockPeerMgr should be a non-empty pointer, e.g.,
+ * generated by setupMockPeerManager or setupMockPeerManagerWithSeparateThread
+ */
 std::shared_ptr<MockSessionManager>
 PeerManagerTestFixture::setupMockSessionManager(
     std::shared_ptr<MockPeerManager>& mockPeerMgr) {
@@ -861,8 +883,10 @@ void PeerManagerTestFixture::runEoRTest(
   auto start = std::chrono::steady_clock::now();
 
   uint32_t numAnnouncementsSent{0};
-  // read ribInQ_, expect to get two announcements (one from sessionMgr1_,
-  // one from sessionMgr2_), then one EoR at the end
+  /*
+   * read ribInQ_, expect to get two announcements (one from sessionMgr1_,
+   * one from sessionMgr2_), then one EoR at the end
+   */
   uint32_t peer1AnnouncementCnt{0}, peer2AnnouncementCnt{0};
   uint32_t numAnnouncementsRcvd{0}, numWithdrawsRcvd{0};
   bool eorReceived{false};
@@ -890,8 +914,10 @@ void PeerManagerTestFixture::runEoRTest(
           sessionMgr2_->getSessionsComeUpFuture({kLocalPeerId1}))
           .get();
 
-      // TODO: remove this sleep after fixing the race between
-      // getSessionsComeUpFuture and getEstablishedCallback().
+      /*
+       * TODO: remove this sleep after fixing the race between
+       * getSessionsComeUpFuture and getEstablishedCallback().
+       */
       nettools::bgplib::fiberSleepFor(100ms);
       // confirm that session comes up
       EXPECT_EQ(numRuns, callback1_.getEstablishedCallbackCount(kLocalPeerId1));
@@ -927,8 +953,10 @@ void PeerManagerTestFixture::runEoRTest(
       }
       // wait for EoR time to finish sending out updates and EoRs
       nettools::bgplib::fiberSleepFor(eor_time + 100ms);
-      // Simulate session was up and running and then post baton to trigger
-      // session tear-down.
+      /*
+       * Simulate session was up and running and then post baton to trigger
+       * session tear-down.
+       */
       stopPeerBaton.post();
 
       XLOG(INFO, "Fiber task (2/4) finished to send out updates and EoRs");
@@ -965,11 +993,13 @@ void PeerManagerTestFixture::runEoRTest(
             },
             [&](RibInWithdrawal /* unused */) { numWithdrawsRcvd++; },
             [&](RibInInitialPathComputation /* unused */) {
-              // This is the crux of the EoR test.  In order to prevent
-              // EoR deadlock, we assert that if other side is in
-              // restarting state, peerMgr does not wait to receive
-              // announcements / EoR from other side before notifying
-              // RibInInitialPathComputation
+              /*
+               * This is the crux of the EoR test.  In order to prevent
+               * EoR deadlock, we assert that if other side is in
+               * restarting state, peerMgr does not wait to receive
+               * announcements / EoR from other side before notifying
+               * RibInInitialPathComputation
+               */
               auto end = std::chrono::steady_clock::now();
               auto elapsed =
                   std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -998,12 +1028,14 @@ void PeerManagerTestFixture::runEoRTest(
             [&](const RibInNexthopUpdate& /* unused */) {},
             [&](const NexthopResolutionUpdate& /* unused */) {},
             [&](const RibInAddPathGrUpdate& /* unused */) {});
-                            // Exit when EoR is received and all expected
-                            // announcements have arrived. Note: stop() calls
-                            // markDaemonShutdown() which skips sending
-                            // withdrawals during session termination (fast
-                            // cleanup path). Therefore, we don't wait for
-                            // withdrawals here
+                            /*
+                             * Exit when EoR is received and all expected
+                             * announcements have arrived. Note: stop() calls
+                             * markDaemonShutdown() which skips sending
+                             * withdrawals during session termination (fast
+                             * cleanup path). Therefore, we don't wait for
+                             * withdrawals here
+                             */
                             if (eorReceived &&
                                 numAnnouncementsRcvd == numAnnouncementsSent) {
                               break;
@@ -1020,8 +1052,10 @@ void PeerManagerTestFixture::runEoRTest(
   // task to verify that stop will save GR state, it has expected peers.
   {
     auto task = fm.addTaskFuture([&] {
-      // Wait for sessions to be established and updates sent before
-      // terminating the sessions.
+      /*
+       * Wait for sessions to be established and updates sent before
+       * terminating the sessions.
+       */
       facebook::bgp::test::boundedBatonWait(
           peerStoppedBaton,
           "peerStoppedBaton",
@@ -1229,8 +1263,10 @@ void StreamSubscriberFixture::SetUp(
   // Simulate the peerManager flags.
   peerMgr->eorTimerExpired_ = false;
   peerMgr->initialized_ = true;
-  // If both flags below are true, this indicates that the EOR is sent out
-  // after initial Fib sync.
+  /*
+   * If both flags below are true, this indicates that the EOR is sent out
+   * after initial Fib sync.
+   */
   peerMgr->ribInitialAnnouncementStarted_ = true;
   peerMgr->ribInitialAnnouncementDone_ = initialAnnouncementDone;
 
@@ -1265,8 +1301,10 @@ void PeerManagerDynamicPolicyEvaluationFixture::SetUp(
   // Call parent's SetUp first
   PeerManagerTestFixture::SetUp();
 
-  // Create the config with appropriate parameters for dynamic policy evaluation
-  // testing
+  /*
+   * Create the config with appropriate parameters for dynamic policy evaluation
+   * testing
+   */
   config_ = getConfig(
       true, // includeStaticPeer
       true, // includeDynamicShivPeer
@@ -1339,8 +1377,10 @@ std::unique_ptr<PeerToPolicyMap> createPolicyMap(
   auto policyMap = std::make_unique<PeerToPolicyMap>();
 
   for (const auto& [key, ingressPolicy, egressPolicy] : policyMapEntries) {
-    // Empty string means "clear/unset policy" (std::nullopt)
-    // Non-empty string means "set to this policy"
+    /*
+     * Empty string means "clear/unset policy" (std::nullopt)
+     * Non-empty string means "set to this policy"
+     */
     (*policyMap)[key][facebook::bgp::bgp_policy::DIRECTION::IN] =
         ingressPolicy.empty() ? std::nullopt
                               : std::make_optional(ingressPolicy);

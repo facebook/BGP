@@ -35,9 +35,11 @@ int64_t counter(const std::string& key) {
 }
 } // namespace
 
-// Each mutator must update the in-memory field AND mirror the matching fb303
-// ODS counter, so existing dashboards / HealthValidator observe identical
-// values.
+/*
+ * Each mutator must update the in-memory field AND mirror the matching fb303
+ * ODS counter, so existing dashboards / HealthValidator observe identical
+ * values.
+ */
 TEST(RibCountersTest, PrefixCountTracksFieldAndFb303) {
   RibStats::initCounters();
   RibCounters c;
@@ -80,10 +82,12 @@ TEST(RibCountersTest, PerAfiPrefixAndPerLengthCounts) {
   EXPECT_EQ(2, c.totalPrefixes(/*isV4=*/true));
 }
 
-// Total paths are tracked per address family from signed deltas (positive on
-// announce, negative on withdraw), so add-path -- multiple paths from one peer
-// for a prefix, surfacing as a delta > 1 -- is counted correctly. The fb303
-// mirror is added in a later diff; this verifies the in-memory field only.
+/*
+ * Total paths are tracked per address family from signed deltas (positive on
+ * announce, negative on withdraw), so add-path -- multiple paths from one peer
+ * for a prefix, surfacing as a delta > 1 -- is counted correctly. The fb303
+ * mirror is added in a later diff; this verifies the in-memory field only.
+ */
 TEST(RibCountersTest, TotalPathsPerAfiFromDeltas) {
   RibStats::initCounters();
   RibCounters c;
@@ -109,9 +113,11 @@ TEST(RibCountersTest, TotalPathsPerAfiFromDeltas) {
   EXPECT_EQ(1, c.totalPaths(/*isV4=*/true));
 }
 
-// Inactive paths are tracked per address family from signed deltas, and the
-// fb303 gauge is SET from the aggregate rather than incremented -- so the
-// exported value always equals the in-memory total and cannot accumulate drift.
+/*
+ * Inactive paths are tracked per address family from signed deltas, and the
+ * fb303 gauge is SET from the aggregate rather than incremented -- so the
+ * exported value always equals the in-memory total and cannot accumulate drift.
+ */
 TEST(RibCountersTest, InactivePathsPerAfiFromDeltas) {
   RibStats::initCounters();
   RibCounters c;
@@ -134,8 +140,10 @@ TEST(RibCountersTest, InactivePathsPerAfiFromDeltas) {
   EXPECT_EQ(2, c.inactivePaths(/*isV4=*/false));
   EXPECT_EQ(2, counter(RibStats::kInactivePathCount));
 
-  // A zero delta -- a prefix re-selected with unchanged eligibility, which is
-  // the common case on every path-selection pass -- is a no-op.
+  /*
+   * A zero delta -- a prefix re-selected with unchanged eligibility, which is
+   * the common case on every path-selection pass -- is a no-op.
+   */
   c.onInactivePathsDelta(/*isV4=*/false, 0);
   EXPECT_EQ(2, c.inactivePaths());
   EXPECT_EQ(2, counter(RibStats::kInactivePathCount));
@@ -183,8 +191,10 @@ TEST(RibCountersTest, UnresolvableNexthopsTracksFieldAndFb303) {
   EXPECT_EQ(2, counter(RibStats::kRibUnresolvableNexthopsCount));
 }
 
-// Best-path source breakdown tracks appear / flip / withdrawal transitions,
-// is a no-op on unchanged class, and is isolated per address family.
+/*
+ * Best-path source breakdown tracks appear / flip / withdrawal transitions,
+ * is a no-op on unchanged class, and is isolated per address family.
+ */
 TEST(RibCountersTest, BestpathSourceBreakdown) {
   using RT = BgpRouteType;
   RibStats::initCounters();
@@ -216,9 +226,11 @@ TEST(RibCountersTest, BestpathSourceBreakdown) {
   c.onBestpathSourceChanged(/*isV4=*/true, RT::IBGP, std::nullopt);
   EXPECT_EQ(1, c.ibgpPrefixes(/*isV4=*/true));
 
-  // A winner classified UNKNOWN maps 1:1 to its own bucket, never folded into
-  // iBGP (getBgpPathType does not emit UNKNOWN in practice; passed directly
-  // here).
+  /*
+   * A winner classified UNKNOWN maps 1:1 to its own bucket, never folded into
+   * iBGP (getBgpPathType does not emit UNKNOWN in practice; passed directly
+   * here).
+   */
   c.onBestpathSourceChanged(/*isV4=*/true, std::nullopt, RT::UNKNOWN);
   EXPECT_EQ(1, c.unknownPrefixes(/*isV4=*/true));
   EXPECT_EQ(0, c.ebgpPrefixes(/*isV4=*/true));
@@ -226,15 +238,19 @@ TEST(RibCountersTest, BestpathSourceBreakdown) {
   EXPECT_EQ(1, c.localPrefixes(/*isV4=*/true));
 }
 
-// routesWithUnresolvedNexthops = total prefixes minus the prefixes counted in
-// the four best-path source buckets, i.e. prefixes left with no best path
-// because all their next-hops are unresolvable.
+/*
+ * routesWithUnresolvedNexthops = total prefixes minus the prefixes counted in
+ * the four best-path source buckets, i.e. prefixes left with no best path
+ * because all their next-hops are unresolvable.
+ */
 TEST(RibCountersTest, RoutesWithUnresolvedNexthops) {
   RibStats::initCounters();
   RibCounters c;
 
-  // Two v6 prefixes are in the RIB; only one wins a best path (iBGP). The other
-  // has no best path (all next-hops unresolvable) -> in no source bucket.
+  /*
+   * Two v6 prefixes are in the RIB; only one wins a best path (iBGP). The other
+   * has no best path (all next-hops unresolvable) -> in no source bucket.
+   */
   c.onPrefixAdded(/*isV4=*/false, 64);
   c.onPrefixAdded(/*isV4=*/false, 64);
   c.onBestpathSourceChanged(/*isV4=*/false, std::nullopt, BgpRouteType::IBGP);
@@ -242,13 +258,17 @@ TEST(RibCountersTest, RoutesWithUnresolvedNexthops) {
   // v4 has no prefixes, so none are unresolved.
   EXPECT_EQ(0, c.routesWithUnresolvedNexthops(/*isV4=*/true));
 
-  // Once the second prefix also resolves to a best path, none remain
-  // unresolved.
+  /*
+   * Once the second prefix also resolves to a best path, none remain
+   * unresolved.
+   */
   c.onBestpathSourceChanged(/*isV4=*/false, std::nullopt, BgpRouteType::EBGP);
   EXPECT_EQ(0, c.routesWithUnresolvedNexthops(/*isV4=*/false));
 
-  // An UNKNOWN-classified winner still has a best path, so the prefix is not
-  // counted as unresolved (the unknown bucket is excluded from the remainder).
+  /*
+   * An UNKNOWN-classified winner still has a best path, so the prefix is not
+   * counted as unresolved (the unknown bucket is excluded from the remainder).
+   */
   c.onPrefixAdded(/*isV4=*/false, 64);
   c.onBestpathSourceChanged(
       /*isV4=*/false, std::nullopt, BgpRouteType::UNKNOWN);

@@ -556,8 +556,10 @@ inline std::shared_ptr<facebook::bgp::RouteInfo> createRouteInfo(
   return routeInfo;
 }
 
-// Builds dynamic attribute with configurable elements
-// All C++ structs instead of thrift struct
+/*
+ * Builds dynamic attribute with configurable elements
+ * All C++ structs instead of thrift struct
+ */
 inline std::shared_ptr<facebook::bgp::BgpPathFields> buildBgpPathFields(
     uint32_t as_count,
     uint32_t community_count,
@@ -985,8 +987,10 @@ using PrefixToPathIdsMap =
 inline void checkRibOutEntriesAddPathIds(
     std::variant<RibOutAnnouncement, RibOutWithdrawal> ribOutMessage,
     std::optional<PrefixToPathIdsMap> expectedPathIds = std::nullopt) {
-  // determine the set of sent path IDs, whether the message is announcement or
-  // withdrawal. Organize them by prefix
+  /*
+   * determine the set of sent path IDs, whether the message is announcement or
+   * withdrawal. Organize them by prefix
+   */
   PrefixToPathIdsMap msgPathIds;
   folly::variant_match(
       ribOutMessage,
@@ -1011,8 +1015,10 @@ inline void checkRibOutEntriesAddPathIds(
         }
       });
 
-  // by default just expect some ascending set starting at kMinPathIDToSend, for
-  // each prefix
+  /*
+   * by default just expect some ascending set starting at kMinPathIDToSend, for
+   * each prefix
+   */
   if (expectedPathIds == std::nullopt) {
     expectedPathIds = PrefixToPathIdsMap{};
     for (const auto& pfxAndPathIdSet : msgPathIds) {

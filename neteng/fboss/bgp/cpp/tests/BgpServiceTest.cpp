@@ -57,8 +57,10 @@ static const std::string kExitNullPtrLogPrefix = "ExitOrNullPtr";
 class BgpServiceTestFixture : public ::testing::Test {
  public:
   void SetUp() override {
-    // rib and peerManager are not tested in the tests
-    // so it is fine to keep invalid references in services_ for now
+    /*
+     * rib and peerManager are not tested in the tests
+     * so it is fine to keep invalid references in services_ for now
+     */
 
     /*
      * The rib policy files default to fixed paths shared by every bgp test
@@ -1210,8 +1212,10 @@ TEST_F(BgpServiceTestFixture, GetEntryStatsTest) {
   ribThread.join();
 }
 
-// Test co_getPolicyStats dispatches to PeerManagerBase evb and returns empty
-// stats
+/*
+ * Test co_getPolicyStats dispatches to PeerManagerBase evb and returns empty
+ * stats
+ */
 TEST_F(BgpServiceTestFixture, GetPolicyStatsTest) {
   auto peerMgrThread = peerManager_->runInThread();
 
@@ -1257,9 +1261,11 @@ TEST_F(BgpServiceTestFixture, GetNexthopInfosEmptyTest) {
   ribThread.join();
 }
 
-// A non-empty request made up solely of invalid nexthop strings must return
-// empty rather than falling through to the list-all path (an empty filter =
-// every cache entry). Exercises the invalid-input guard + drop path.
+/*
+ * A non-empty request made up solely of invalid nexthop strings must return
+ * empty rather than falling through to the list-all path (an empty filter =
+ * every cache entry). Exercises the invalid-input guard + drop path.
+ */
 TEST_F(BgpServiceTestFixture, GetNexthopInfosAllInvalidTest) {
   auto ribThread = rib_->runInThread();
 
@@ -1272,9 +1278,11 @@ TEST_F(BgpServiceTestFixture, GetNexthopInfosAllInvalidTest) {
   ribThread.join();
 }
 
-// Device-wide clearCounters completes cleanly over an empty peer set and
-// exercises the SessionManager (socket tx/rx) + PeerManager (AdjRib/fb303)
-// clear paths through the handler, in both directions.
+/*
+ * Device-wide clearCounters completes cleanly over an empty peer set and
+ * exercises the SessionManager (socket tx/rx) + PeerManager (AdjRib/fb303)
+ * clear paths through the handler, in both directions.
+ */
 TEST_F(BgpServiceTestFixture, ClearCountersTest) {
   auto peerMgrThread = peerManager_->runInThread();
   auto sessionMgrThread = sessionMgr_->runInThread();
@@ -1288,9 +1296,11 @@ TEST_F(BgpServiceTestFixture, ClearCountersTest) {
   sessionMgrThread.join();
 }
 
-// Peer-scoped clearCounters filters to the given IP(s); an address with no
-// matching peer is a no-op and still completes cleanly through both the socket
-// and AdjRib clear paths.
+/*
+ * Peer-scoped clearCounters filters to the given IP(s); an address with no
+ * matching peer is a no-op and still completes cleanly through both the socket
+ * and AdjRib clear paths.
+ */
 TEST_F(BgpServiceTestFixture, ClearCountersForPeerTest) {
   auto peerMgrThread = peerManager_->runInThread();
   auto sessionMgrThread = sessionMgr_->runInThread();
@@ -1398,8 +1408,10 @@ CO_TEST_F(
   CO_ASSERT_TRUE(*ret->success());
   EXPECT_TRUE(rib_->isCrfFileModeEnabled());
 
-  // Block until the enqueued policy is consumed and applied on the rib evb,
-  // then assert the installed version is exactly what the artifact carried.
+  /*
+   * Block until the enqueued policy is consumed and applied on the rib evb,
+   * then assert the installed version is exactly what the artifact carried.
+   */
   rib_->waitForRouteFilterPolicyUpdate();
   EXPECT_EQ(100, rib_->getRouteFilterPolicyVersion());
 }
@@ -1625,8 +1637,10 @@ CO_TEST_F(
   constexpr int kIters = 25;
   folly::CPUThreadPoolExecutor exec(4);
 
-  // Interleave file-mode refreshes and Thrift CRF updates so they contend for
-  // crfPolicyMutex_. Both RPCs return std::unique_ptr<TResult>.
+  /*
+   * Interleave file-mode refreshes and Thrift CRF updates so they contend for
+   * crfPolicyMutex_. Both RPCs return std::unique_ptr<TResult>.
+   */
   std::vector<folly::coro::Task<std::unique_ptr<TResult>>> tasks;
   tasks.reserve(kIters * 2);
   for (int i = 0; i < kIters; ++i) {
@@ -1643,9 +1657,11 @@ CO_TEST_F(
   auto results = co_await folly::coro::co_withExecutor(
       &exec, folly::coro::collectAllRange(std::move(tasks)));
 
-  // Every operation completed with a well-formed result. A Thrift update either
-  // succeeded (it ran before FILE_MODE took effect) or was gracefully rejected
-  // with a FILE_MODE error — never UB or a partial/garbage result.
+  /*
+   * Every operation completed with a well-formed result. A Thrift update either
+   * succeeded (it ran before FILE_MODE took effect) or was gracefully rejected
+   * with a FILE_MODE error — never UB or a partial/garbage result.
+   */
   for (const auto& res : results) {
     CO_ASSERT_NE(res, nullptr);
     if (!*res->success()) {
@@ -1653,8 +1669,10 @@ CO_TEST_F(
     }
   }
 
-  // Thrift updates never clear FILE_MODE, so once any refresh has run the
-  // terminal state is deterministically FILE_MODE enabled.
+  /*
+   * Thrift updates never clear FILE_MODE, so once any refresh has run the
+   * terminal state is deterministically FILE_MODE enabled.
+   */
   EXPECT_TRUE(rib_->isCrfFileModeEnabled());
 }
 
@@ -1728,9 +1746,11 @@ CO_TEST_F(
   writerStop.store(true, std::memory_order_relaxed);
   writer.join();
 
-  // Every refresh completed with a well-formed result. dryrun=false always
-  // enables and applies FILE_MODE, so each refresh succeeds — never UB or a
-  // partial/garbage result.
+  /*
+   * Every refresh completed with a well-formed result. dryrun=false always
+   * enables and applies FILE_MODE, so each refresh succeeds — never UB or a
+   * partial/garbage result.
+   */
   for (const auto& res : results) {
     CO_ASSERT_NE(res, nullptr);
     EXPECT_TRUE(*res->success());
@@ -1772,9 +1792,11 @@ CO_TEST_F(BgpServiceCrfFileModeTestFixture, CrfFileModeOdsCountersIncrement) {
   const std::string kThriftRejectedSum =
       std::string(BgpStatsDC::kCrfThriftRpcRejected) + ".sum";
 
-  // A ".sum" key does not exist until its stat is first added, and SUM stats
-  // accumulate across earlier tests in this process, so treat missing as 0 and
-  // compare deltas rather than absolute values.
+  /*
+   * A ".sum" key does not exist until its stat is first added, and SUM stats
+   * accumulate across earlier tests in this process, so treat missing as 0 and
+   * compare deltas rather than absolute values.
+   */
   auto sumOr0 = [&](const std::string& key) {
     return counters->hasCounter(key) ? counters->getCounter(key) : 0;
   };
@@ -1909,8 +1931,10 @@ CO_TEST_F(
   CO_ASSERT_TRUE(*ret->success());
   EXPECT_TRUE(rib_->isCpsFileModeEnabled());
 
-  // Block until the enqueued policy is consumed and applied on the rib evb,
-  // then assert the installed version is exactly what the artifact carried.
+  /*
+   * Block until the enqueued policy is consumed and applied on the rib evb,
+   * then assert the installed version is exactly what the artifact carried.
+   */
   rib_->waitForPathSelectionPolicyUpdate();
   EXPECT_EQ(100, rib_->getPathSelectionPolicyVersion());
 }
@@ -2016,8 +2040,10 @@ CO_TEST_F(
   CO_ASSERT_TRUE(*ret->success());
   EXPECT_TRUE(rib_->isCpsFileModeEnabled());
 
-  // Wait for the file-mode policy to reach the RIB so the post-clear assertion
-  // below is comparing against a policy that was actually installed.
+  /*
+   * Wait for the file-mode policy to reach the RIB so the post-clear assertion
+   * below is comparing against a policy that was actually installed.
+   */
   rib_->waitForPathSelectionPolicyUpdate();
   EXPECT_EQ(42, rib_->getPathSelectionPolicyVersion());
 
@@ -2025,8 +2051,10 @@ CO_TEST_F(
   // @lint-ignore CLANGTIDY facebook-thrift-handler-direct-call
   co_await service_->co_clearPathSelectionPolicy();
 
-  // Verify FILE_MODE is still active and the installed policy was NOT cleared
-  // (the version still matches the artifact, not the -1 of a cleared policy).
+  /*
+   * Verify FILE_MODE is still active and the installed policy was NOT cleared
+   * (the version still matches the artifact, not the -1 of a cleared policy).
+   */
   EXPECT_TRUE(rib_->isCpsFileModeEnabled());
   EXPECT_EQ(42, rib_->getPathSelectionPolicyVersion());
 }
@@ -2072,8 +2100,10 @@ CO_TEST_F(
   EXPECT_TRUE(*disableRet->success());
   EXPECT_FALSE(rib_->isCpsFileModeEnabled());
 
-  // Step 4: Thrift setPathSelectionPolicy should now succeed and the new policy
-  // must actually reach the RIB (final source = Thrift, final version = 50).
+  /*
+   * Step 4: Thrift setPathSelectionPolicy should now succeed and the new policy
+   * must actually reach the RIB (final source = Thrift, final version = 50).
+   */
   rib_policy::TPathSelectionPolicy tPolicy2;
   tPolicy2.version() = 50;
   auto replaceFuture = rib_->getRibPolicyReplaceFuture();
@@ -2120,8 +2150,10 @@ CO_TEST_F(
   constexpr int kIters = 25;
   folly::CPUThreadPoolExecutor exec(4);
 
-  // Interleave file-mode refreshes and Thrift CPS updates so they contend for
-  // cpsPolicyMutex_. Both RPCs return std::unique_ptr<TResult>.
+  /*
+   * Interleave file-mode refreshes and Thrift CPS updates so they contend for
+   * cpsPolicyMutex_. Both RPCs return std::unique_ptr<TResult>.
+   */
   std::vector<folly::coro::Task<std::unique_ptr<TResult>>> tasks;
   tasks.reserve(kIters * 2);
   for (int i = 0; i < kIters; ++i) {
@@ -2138,9 +2170,11 @@ CO_TEST_F(
   auto results = co_await folly::coro::co_withExecutor(
       &exec, folly::coro::collectAllRange(std::move(tasks)));
 
-  // Every operation completed with a well-formed result. A Thrift update either
-  // succeeded (it ran before FILE_MODE took effect) or was gracefully rejected
-  // with a FILE_MODE error — never UB or a partial/garbage result.
+  /*
+   * Every operation completed with a well-formed result. A Thrift update either
+   * succeeded (it ran before FILE_MODE took effect) or was gracefully rejected
+   * with a FILE_MODE error — never UB or a partial/garbage result.
+   */
   for (const auto& res : results) {
     CO_ASSERT_NE(res, nullptr);
     if (!*res->success()) {
@@ -2148,8 +2182,10 @@ CO_TEST_F(
     }
   }
 
-  // Thrift updates never clear FILE_MODE, so once any refresh has run the
-  // terminal state is deterministically FILE_MODE enabled.
+  /*
+   * Thrift updates never clear FILE_MODE, so once any refresh has run the
+   * terminal state is deterministically FILE_MODE enabled.
+   */
   EXPECT_TRUE(rib_->isCpsFileModeEnabled());
 }
 
@@ -2170,9 +2206,11 @@ CO_TEST_F(BgpServiceCpsFileModeTestFixture, CpsFileModeOdsCountersIncrement) {
   const std::string kThriftRejectedSum =
       std::string(BgpStatsDC::kCpsThriftRpcRejected) + ".sum";
 
-  // A ".sum" key does not exist until its stat is first added, and SUM stats
-  // accumulate across earlier tests in this process, so treat missing as 0 and
-  // compare deltas rather than absolute values.
+  /*
+   * A ".sum" key does not exist until its stat is first added, and SUM stats
+   * accumulate across earlier tests in this process, so treat missing as 0 and
+   * compare deltas rather than absolute values.
+   */
   auto sumOr0 = [&](const std::string& key) {
     return counters->hasCounter(key) ? counters->getCounter(key) : 0;
   };
@@ -2203,8 +2241,10 @@ CO_TEST_F(BgpServiceCpsFileModeTestFixture, CpsFileModeOdsCountersIncrement) {
   CO_ASSERT_TRUE(*ret->success());
   rib_->waitForPathSelectionPolicyUpdate();
 
-  // A non-null Thrift set is rejected in FILE_MODE → thrift_rpc_rejected.
-  // (A null policy would short-circuit to "Empty policy" before the gate.)
+  /*
+   * A non-null Thrift set is rejected in FILE_MODE → thrift_rpc_rejected.
+   * (A null policy would short-circuit to "Empty policy" before the gate.)
+   */
   rib_policy::TPathSelectionPolicy tPolicy;
   tPolicy.version() = 8;
   // @lint-ignore CLANGTIDY facebook-thrift-handler-direct-call
@@ -2218,8 +2258,10 @@ CO_TEST_F(BgpServiceCpsFileModeTestFixture, CpsFileModeOdsCountersIncrement) {
   EXPECT_EQ(thriftRejectedBefore + 1, sumOr0(kThriftRejectedSum));
 }
 
-// Test co_getPartialDrainStatus — dispatches onto Rib evb, returns empty
-// status when no partial-drain entries exist.
+/*
+ * Test co_getPartialDrainStatus — dispatches onto Rib evb, returns empty
+ * status when no partial-drain entries exist.
+ */
 TEST_F(BgpServiceTestFixture, CoGetPartialDrainStatusTest) {
   auto ribThread = rib_->runInThread();
 
@@ -2238,8 +2280,10 @@ TEST_F(BgpServiceTestFixture, CoGetPartialDrainStatusTest) {
   ribThread.join();
 }
 
-// Test co_getPartialDrainState — dispatches onto Rib evb, returns empty
-// state when no partial-drain entries exist.
+/*
+ * Test co_getPartialDrainState — dispatches onto Rib evb, returns empty
+ * state when no partial-drain entries exist.
+ */
 TEST_F(BgpServiceTestFixture, CoGetPartialDrainStateTest) {
   auto ribThread = rib_->runInThread();
 
@@ -2258,8 +2302,10 @@ TEST_F(BgpServiceTestFixture, CoGetPartialDrainStateTest) {
   ribThread.join();
 }
 
-// Test co_getPartiallyDrainedPrefixes — dispatches onto Rib evb, returns
-// empty list when no partial-drain entries exist.
+/*
+ * Test co_getPartiallyDrainedPrefixes — dispatches onto Rib evb, returns
+ * empty list when no partial-drain entries exist.
+ */
 TEST_F(BgpServiceTestFixture, CoGetPartiallyDrainedPrefixesTest) {
   auto ribThread = rib_->runInThread();
 

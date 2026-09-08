@@ -176,10 +176,12 @@ TEST_P(RibFixtureAddPathTestSuite, LbwProgramFibTest) {
   auto prefix2 = folly::IPAddress::createNetwork("2::/64");
   auto prefixBatch2 = PrefixPathIds{{prefix2, kDefaultPathID}};
 
-  // initial setup:
-  // next hop update for prefix 1
-  // rib policy set for prefix 1
-  // sendInitialPathComputation to turn rib into write mode
+  /*
+   * initial setup:
+   * next hop update for prefix 1
+   * rib policy set for prefix 1
+   * sendInitialPathComputation to turn rib into write mode
+   */
   {
     auto ribFuture = rib_->getRibPrepareFibProgrammingFuture();
     // send route from localPeer_
@@ -210,8 +212,10 @@ TEST_P(RibFixtureAddPathTestSuite, LbwProgramFibTest) {
     EXPECT_TRUE(ribPolicyUcmpWeight.has_value());
     EXPECT_EQ(kLbw10G, ribPolicyUcmpWeight.value());
 
-    // make sure fib batch list had only 1 update for prefix1
-    // which has lbw change
+    /*
+     * make sure fib batch list had only 1 update for prefix1
+     * which has lbw change
+     */
     EXPECT_EQ(1, rib_->fibItems.size());
     EXPECT_NE(rib_->fibItems.end(), rib_->fibItems.find(prefix1));
     EXPECT_EQ(
@@ -227,8 +231,10 @@ TEST_P(RibFixtureAddPathTestSuite, LbwProgramFibTest) {
   // push the same policy along with two irrelevant policies
   {
     auto ribFuture = rib_->getRibPrepareFibProgrammingFuture();
-    // send the same statement over
-    // additionally send two statements that expire before and after stmt1
+    /*
+     * send the same statement over
+     * additionally send two statements that expire before and after stmt1
+     */
     auto policy = createTRouteAttributePolicyLbw(
         {prefix1},
         kLbw10G,
@@ -269,9 +275,9 @@ TEST_P(RibFixtureAddPathTestSuite, LbwProgramFibTest) {
         [&]() { EXPECT_EQ(0, rib_->fibItems.size()); });
   }
 
-  //
-  // wait and confirm the statements expire one by one
-  //
+  /*
+   * wait and confirm the statements expire one by one
+   */
   {
     auto ribFuture = rib_->getRibPrepareFibProgrammingFuture();
     EXPECT_TRUE(
@@ -326,8 +332,10 @@ TEST_P(RibFixtureAddPathTestSuite, LbwProgramFibTest) {
     EXPECT_TRUE(rib_->routeAttributePolicy_->match(v4Rib->second));
     EXPECT_FALSE(ribPolicyUcmpWeight.has_value());
 
-    // make sure fib batch list had only 1 update
-    // which has empty lbw
+    /*
+     * make sure fib batch list had only 1 update
+     * which has empty lbw
+     */
     rib_->evb_.runInEventBaseThreadAndWait([&]() {
       EXPECT_EQ(1, rib_->fibItems.size());
       EXPECT_NE(rib_->fibItems.end(), rib_->fibItems.find(prefix1));
@@ -373,8 +381,10 @@ TEST_P(RibFixtureAddPathTestSuite, LbwProgramFibTest) {
     EXPECT_TRUE(ribPolicyUcmpWeight.has_value());
     EXPECT_EQ(kLbw5G, ribPolicyUcmpWeight.value());
 
-    // make sure fib batch list had only 1 update
-    // which has new lbw 5G
+    /*
+     * make sure fib batch list had only 1 update
+     * which has new lbw 5G
+     */
     EXPECT_EQ(1, rib_->fibItems.size());
     EXPECT_NE(rib_->fibItems.end(), rib_->fibItems.find(prefix1));
     EXPECT_EQ(
@@ -407,8 +417,10 @@ TEST_P(RibFixtureAddPathTestSuite, LbwProgramFibTest) {
     EXPECT_TRUE(rib_->routeAttributePolicy_->match(v4Rib->second));
     EXPECT_FALSE(ribPolicyUcmpWeight.has_value());
 
-    // make sure fib batch list had only 1 update
-    // which has empty lbw
+    /*
+     * make sure fib batch list had only 1 update
+     * which has empty lbw
+     */
     EXPECT_EQ(1, rib_->fibItems.size());
     EXPECT_NE(rib_->fibItems.end(), rib_->fibItems.find(prefix1));
     EXPECT_EQ(
@@ -432,8 +444,10 @@ TEST_P(RibFixtureAddPathTestSuite, LbwProgramFibTest) {
     sendAnnouncement(prefixBatch1, localPeer_, attr);
     sendAnnouncement(prefixBatch2, localPeer_, attr);
 
-    // Ensure that we have finished the route installation to investigate only
-    // the results from sendRibPolicySet
+    /*
+     * Ensure that we have finished the route installation to investigate only
+     * the results from sendRibPolicySet
+     */
     ribFuture.wait();
 
     ribFuture = rib_->getRibPrepareFibProgrammingFuture();
@@ -459,8 +473,10 @@ TEST_P(RibFixtureAddPathTestSuite, LbwProgramFibTest) {
     EXPECT_FALSE(rib_->routeAttributePolicy_->match(v4Rib2->second));
     EXPECT_FALSE(v4Rib2->second.getRibPolicyUcmpWeight().has_value());
 
-    // make sure fib batch list had 1 update for prefix1 (prefix2 is not
-    // changed) update for prefix1 combined both next-hop(the same) and 10G lbw
+    /*
+     * make sure fib batch list had 1 update for prefix1 (prefix2 is not
+     * changed) update for prefix1 combined both next-hop(the same) and 10G lbw
+     */
     EXPECT_EQ(1, rib_->fibItems.size());
     const auto& fib1 = rib_->fibItems.find(prefix1);
     const auto& fib2 = rib_->fibItems.find(prefix2);
@@ -499,8 +515,10 @@ TEST_P(RibFixtureAddPathTestSuite, LbwProgramFibTest) {
 }
 
 TEST_P(RibFixtureAddPathTestSuite, SetGetClearRouteAttributePolicyTest) {
-  // test setRouteAttributePolicy, getRouteAttributePolicy, and
-  // clearRouteAttributePolicy
+  /*
+   * test setRouteAttributePolicy, getRouteAttributePolicy, and
+   * clearRouteAttributePolicy
+   */
   rib_->setFibBatchTime(std::chrono::milliseconds(2));
 
   // Create the tRouteAttributePolicy for testing
@@ -652,8 +670,10 @@ TEST_P(
   EXPECT_EQ(tRouteAttributePolicy, ribRouteAttributePolicy);
   EXPECT_NE(nullptr, rib_->routeAttributePolicy_);
 
-  // 2. Create a prefix with 2 routes.
-  // Create attributes for two paths.
+  /*
+   * 2. Create a prefix with 2 routes.
+   * Create attributes for two paths.
+   */
   nettools::bgplib::BgpAttrCommunitiesC communities1;
   communities1.emplace_back(200, 100);
   attrs1 =
@@ -683,8 +703,10 @@ TEST_P(
     EXPECT_NE(rib_->ribEntries_.end(), v6Rib);
     EXPECT_TRUE(rib_->routeAttributePolicy_->match(v6Rib->second));
 
-    // Make sure fib batch list has only 1 update for kV6Prefix1,
-    // and that next-hops have UCMP weights from the policy.
+    /*
+     * Make sure fib batch list has only 1 update for kV6Prefix1,
+     * and that next-hops have UCMP weights from the policy.
+     */
     EXPECT_EQ(1, rib_->fibItems.size());
     EXPECT_NE(rib_->fibItems.end(), rib_->fibItems.find(kV6Prefix1));
     auto& ribEntry = rib_->fibItems.at(kV6Prefix1);
@@ -713,8 +735,10 @@ TEST_P(
     const auto& v6Rib = rib_->ribEntries_.find(kV6Prefix1);
     EXPECT_NE(rib_->ribEntries_.end(), v6Rib);
 
-    // Make sure fib batch list has only 1 update for kV6Prefix1,
-    // and that next-hops have no weights.
+    /*
+     * Make sure fib batch list has only 1 update for kV6Prefix1,
+     * and that next-hops have no weights.
+     */
     EXPECT_EQ(1, rib_->fibItems.size());
     EXPECT_NE(rib_->fibItems.end(), rib_->fibItems.find(kV6Prefix1));
     auto& ribEntry = rib_->fibItems.at(kV6Prefix1);
@@ -789,8 +813,10 @@ TEST_P(
   EXPECT_EQ(tRouteAttributePolicy, ribRouteAttributePolicy);
   EXPECT_NE(nullptr, rib_->routeAttributePolicy_);
 
-  // 2. Create a prefix with 2 routes.
-  // Create attributes for two paths.
+  /*
+   * 2. Create a prefix with 2 routes.
+   * Create attributes for two paths.
+   */
   nettools::bgplib::BgpAttrCommunitiesC communities1;
   communities1.emplace_back(200, 100);
   attrs1 =
@@ -820,8 +846,10 @@ TEST_P(
     EXPECT_NE(rib_->ribEntries_.end(), v6Rib);
     EXPECT_TRUE(rib_->routeAttributePolicy_->match(v6Rib->second));
 
-    // Make sure fib batch list has only 1 update for kV6Prefix1,
-    // and that next-hops have UCMP weights from the policy.
+    /*
+     * Make sure fib batch list has only 1 update for kV6Prefix1,
+     * and that next-hops have UCMP weights from the policy.
+     */
     EXPECT_EQ(1, rib_->fibItems.size());
     EXPECT_NE(rib_->fibItems.end(), rib_->fibItems.find(kV6Prefix1));
     auto& ribEntry = rib_->fibItems.at(kV6Prefix1);
@@ -858,8 +886,10 @@ TEST_P(
     const auto& v6Rib = rib_->ribEntries_.find(kV6Prefix1);
     EXPECT_NE(rib_->ribEntries_.end(), v6Rib);
 
-    // Make sure fib batch list has only 1 update for kV6Prefix1,
-    // and that next-hops have no weights.
+    /*
+     * Make sure fib batch list has only 1 update for kV6Prefix1,
+     * and that next-hops have no weights.
+     */
     EXPECT_EQ(1, rib_->fibItems.size());
     EXPECT_NE(rib_->fibItems.end(), rib_->fibItems.find(kV6Prefix1));
     auto& ribEntry = rib_->fibItems.at(kV6Prefix1);
@@ -941,8 +971,10 @@ TEST_P(
   EXPECT_EQ(tRouteAttributePolicy, ribRouteAttributePolicy);
   EXPECT_NE(nullptr, rib_->routeAttributePolicy_);
 
-  // 2. Create a prefix with 2 routes.
-  // Create attributes for two paths.
+  /*
+   * 2. Create a prefix with 2 routes.
+   * Create attributes for two paths.
+   */
   nettools::bgplib::BgpAttrCommunitiesC communities1;
   communities1.emplace_back(200, 100);
   attrs1 =
@@ -982,8 +1014,10 @@ TEST_P(
     EXPECT_NE(rib_->ribEntries_.end(), v6Rib);
     EXPECT_TRUE(rib_->routeAttributePolicy_->match(v6Rib->second));
 
-    // Make sure fib batch list has only 1 update for kV6Prefix1,
-    // and that next-hops have UCMP weights from the policy.
+    /*
+     * Make sure fib batch list has only 1 update for kV6Prefix1,
+     * and that next-hops have UCMP weights from the policy.
+     */
     EXPECT_EQ(1, rib_->fibItems.size());
     EXPECT_NE(rib_->fibItems.end(), rib_->fibItems.find(kV6Prefix1));
     auto& ribEntry = rib_->fibItems.at(kV6Prefix1);
@@ -1011,8 +1045,10 @@ TEST_P(
     const auto& v6Rib = rib_->ribEntries_.find(kV6Prefix1);
     EXPECT_NE(rib_->ribEntries_.end(), v6Rib);
 
-    // Make sure fib batch list has only 1 update for kV6Prefix1,
-    // and that next-hops have no weights.
+    /*
+     * Make sure fib batch list has only 1 update for kV6Prefix1,
+     * and that next-hops have no weights.
+     */
     EXPECT_EQ(1, rib_->fibItems.size());
     EXPECT_NE(rib_->fibItems.end(), rib_->fibItems.find(kV6Prefix1));
     auto& ribEntry = rib_->fibItems.at(kV6Prefix1);
@@ -1029,8 +1065,10 @@ TEST_P(
   }
 }
 
-// verify that when routes get updated, route attribute policy is re-evaluated
-// only on the changing routes
+/*
+ * verify that when routes get updated, route attribute policy is re-evaluated
+ * only on the changing routes
+ */
 TEST_P(RibFixtureAddPathTestSuite, ReApplyRouteAttributePolicyTest) {
   rib_->setFibBatchTime(std::chrono::milliseconds(2));
 
@@ -1084,8 +1122,10 @@ TEST_P(RibFixtureAddPathTestSuite, ReApplyRouteAttributePolicyTest) {
   EXPECT_EQ(tRouteAttributePolicy, ribRouteAttributePolicy);
   EXPECT_NE(nullptr, rib_->routeAttributePolicy_);
 
-  // 2. Create a prefix with 2 routes.
-  // Create attributes for two paths.
+  /*
+   * 2. Create a prefix with 2 routes.
+   * Create attributes for two paths.
+   */
   auto prefixBatch1 = PrefixPathIds{{kV6Prefix1, kDefaultPathID}};
   {
     nettools::bgplib::BgpAttrCommunitiesC communities1;
@@ -1127,8 +1167,10 @@ TEST_P(RibFixtureAddPathTestSuite, ReApplyRouteAttributePolicyTest) {
     EXPECT_NE(rib_->ribEntries_.end(), v6Rib);
     EXPECT_TRUE(rib_->routeAttributePolicy_->match(v6Rib->second));
 
-    // Make sure fib batch list has only 1 update for kV6Prefix1,
-    // and that next-hops have UCMP weights from the policy.
+    /*
+     * Make sure fib batch list has only 1 update for kV6Prefix1,
+     * and that next-hops have UCMP weights from the policy.
+     */
     EXPECT_EQ(1, rib_->fibItems.size());
     EXPECT_NE(rib_->fibItems.end(), rib_->fibItems.find(kV6Prefix1));
     auto& ribEntry = rib_->fibItems.at(kV6Prefix1);
@@ -1172,8 +1214,10 @@ TEST_P(RibFixtureAddPathTestSuite, ReApplyRouteAttributePolicyTest) {
     const auto& v6Rib = rib_->ribEntries_.find(kV6Prefix2);
     EXPECT_NE(rib_->ribEntries_.end(), v6Rib);
 
-    // Make sure fib batch list has only 1 update for kV6Prefix2,
-    // which has native UCMP weight
+    /*
+     * Make sure fib batch list has only 1 update for kV6Prefix2,
+     * which has native UCMP weight
+     */
     EXPECT_EQ(1, rib_->fibItems.size());
     EXPECT_NE(rib_->fibItems.end(), rib_->fibItems.find(kV6Prefix2));
     auto& ribEntry = rib_->fibItems.at(kV6Prefix2);
@@ -1201,8 +1245,10 @@ TEST_P(RibFixtureAddPathTestSuite, ReApplyRouteAttributePolicyTest) {
     const auto& v6Rib = rib_->ribEntries_.find(kV6Prefix1);
     EXPECT_NE(rib_->ribEntries_.end(), v6Rib);
 
-    // Make sure fib batch list has only 1 update for kV6Prefix1,
-    // and that next-hops have no weights.
+    /*
+     * Make sure fib batch list has only 1 update for kV6Prefix1,
+     * and that next-hops have no weights.
+     */
     EXPECT_EQ(1, rib_->fibItems.size());
     EXPECT_NE(rib_->fibItems.end(), rib_->fibItems.find(kV6Prefix1));
     auto& ribEntry = rib_->fibItems.at(kV6Prefix1);
@@ -1273,12 +1319,16 @@ TEST_P(RibFsdbAddPathTestSuite, ReplaceRouteAttributePolicyTest) {
         5, ASSERT_EVENTUALLY_FALSE(subscribedPolicy.rlock()->has_value()));
   }
   {
-    // Add route attribute policy
-    // It should succeed as we have no route attribute policy before
+    /*
+     * Add route attribute policy
+     * It should succeed as we have no route attribute policy before
+     */
     auto ribFuture = rib_->getRibPrepareFibProgrammingFuture();
-    // We need to run replaceRouteAttributePolicy in runInEventBaseThreadAndWait
-    // as we could potentially call schedulePrepareFibProgrammingTimer, which
-    // should be run in the Rib event base thread
+    /*
+     * We need to run replaceRouteAttributePolicy in runInEventBaseThreadAndWait
+     * as we could potentially call schedulePrepareFibProgrammingTimer, which
+     * should be run in the Rib event base thread
+     */
     rib_->evb_.runInEventBaseThreadAndWait([&]() {
       tRouteAttributePolicy = createTRouteAttributePolicyLbw(
           {kV6Prefix1}, 10, "stmt1", now.count() - 100);
@@ -1309,8 +1359,10 @@ TEST_P(RibFsdbAddPathTestSuite, ReplaceRouteAttributePolicyTest) {
       rib_->replaceRouteAttributePolicy(
           std::make_unique<RouteAttributePolicy>(tRouteAttributePolicy));
     });
-    // the policy is changed, and hence we should trigger fib programming
-    // preparation
+    /*
+     * the policy is changed, and hence we should trigger fib programming
+     * preparation
+     */
     ribFuture.wait();
     EXPECT_NE(rib_->routeAttributePolicy_, nullptr);
 
@@ -1773,8 +1825,10 @@ TEST_P(RibFixtureAddPathTestSuite, CacheMigrationMatcherChange) {
   // prefix1 should be in affectedPrefixes
   EXPECT_THAT(result.affectedPrefixes, ::testing::Contains(kV4Prefix1));
 
-  // Cache for prefix1 should NOT be preserved (matcher changed — must go
-  // through cache-miss path to re-check matcher)
+  /*
+   * Cache for prefix1 should NOT be preserved (matcher changed — must go
+   * through cache-miss path to re-check matcher)
+   */
   EXPECT_FALSE(newPolicy.getCache().contains(kV4Prefix1));
 }
 
@@ -1854,16 +1908,20 @@ TEST_F(
       {kV4Prefix1}, weight, "stmt1", pastExpiration);
   RouteAttributePolicy oldPolicy{tOldPolicy};
 
-  // Warm the cache: prefix1 matches stmt1's matcher, but because stmt1 is
-  // inactive it resolves to no match -> negative cache entry.
+  /*
+   * Warm the cache: prefix1 matches stmt1's matcher, but because stmt1 is
+   * inactive it resolves to no match -> negative cache entry.
+   */
   RibEntry entry1(kV4Prefix1);
   RouteAttributePolicy::RibChange warmupChange;
   EXPECT_FALSE(oldPolicy.overwriteRouteAttributes(entry1, warmupChange));
   ASSERT_TRUE(oldPolicy.getCache().contains(kV4Prefix1));
   EXPECT_FALSE(oldPolicy.getCache().at(kV4Prefix1).has_value()); // negative
 
-  // New policy: same stmt1 (same matcher and action), expiration extended into
-  // the future -> reactivated (stale -> active), no other content change.
+  /*
+   * New policy: same stmt1 (same matcher and action), expiration extended into
+   * the future -> reactivated (stale -> active), no other content change.
+   */
   auto tNewPolicy = createTRouteAttributePolicyLbw(
       {kV4Prefix1}, weight, "stmt1", futureExpiration);
   RouteAttributePolicy newPolicy{tNewPolicy};
@@ -1872,13 +1930,17 @@ TEST_F(
 
   EXPECT_TRUE(result.hasUpdate);
   EXPECT_TRUE(result.needsReEvaluation);
-  // The stale negative entry must be invalidated + re-evaluated so it can pick
-  // up the reactivated statement (rather than being preserved as no-match).
+  /*
+   * The stale negative entry must be invalidated + re-evaluated so it can pick
+   * up the reactivated statement (rather than being preserved as no-match).
+   */
   EXPECT_THAT(result.affectedPrefixes, ::testing::Contains(kV4Prefix1));
   EXPECT_FALSE(newPolicy.getCache().contains(kV4Prefix1));
 
-  // End-to-end: re-evaluating prefix1 against the new policy now matches the
-  // reactivated statement.
+  /*
+   * End-to-end: re-evaluating prefix1 against the new policy now matches the
+   * reactivated statement.
+   */
   RibEntry reEvalEntry(kV4Prefix1);
   RouteAttributePolicy::RibChange reEvalChange;
   EXPECT_TRUE(newPolicy.overwriteRouteAttributes(reEvalEntry, reEvalChange));
@@ -1981,8 +2043,10 @@ TEST_P(RibFixtureAddPathTestSuite, SelectiveReEvaluationOnActionChange) {
     EXPECT_EQ(kLbw10G, it2->second.getRibPolicyUcmpWeight().value());
   }
 
-  // Step 3: Replace policy — stmt1 action changes (LBW 10G → 5G), stmt2
-  // unchanged
+  /*
+   * Step 3: Replace policy — stmt1 action changes (LBW 10G → 5G), stmt2
+   * unchanged
+   */
   {
     rib_->evb_.runInEventBaseThreadAndWait([&]() { rib_->fibItems.clear(); });
 
@@ -2263,8 +2327,10 @@ TEST_P(RibFixtureAddPathTestSuite, SelectiveReEvaluationOnStatementRemoved) {
     ASSERT_NE(rib_->ribEntries_.end(), it2);
     EXPECT_EQ(kLbw5G, it2->second.getRibPolicyUcmpWeight().value());
 
-    // prefix1 should be in fibItems (LBW was removed)
-    // prefix2 should NOT be in fibItems (stmt2 unchanged)
+    /*
+     * prefix1 should be in fibItems (LBW was removed)
+     * prefix2 should NOT be in fibItems (stmt2 unchanged)
+     */
     rib_->evb_.runInEventBaseThreadAndWait([&]() {
       EXPECT_NE(rib_->fibItems.end(), rib_->fibItems.find(prefix1));
       EXPECT_EQ(rib_->fibItems.end(), rib_->fibItems.find(prefix2));
@@ -2314,8 +2380,10 @@ TEST_P(RibFixtureAddPathTestSuite, StopJoinsCoroutinesBeforeResettingTimer) {
             &rib_->getEventBase(), probe(rib_.get(), &probeRunning)));
   });
 
-  // Ensure the probe is registered and suspended before TearDown drives the
-  // single rib_->stop(), which cancels + joins it and runs the assertion.
+  /*
+   * Ensure the probe is registered and suspended before TearDown drives the
+   * single rib_->stop(), which cancels + joins it and runs the assertion.
+   */
   probeRunning.wait();
 }
 

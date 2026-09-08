@@ -14,10 +14,12 @@
  * limitations under the License.
  */
 
-// TODO: This entire file should be deleted, since it's based on mocking unused
-// future_* style apis. All tests shoudl be migrated to use the new mock infra
-// for BGP and agent interaction in FibFbossMock.h Please note this migration
-// work is a pending followup from coro migration done in D52582069
+/*
+ * TODO: This entire file should be deleted, since it's based on mocking unused
+ * future_* style apis. All tests shoudl be migrated to use the new mock infra
+ * for BGP and agent interaction in FibFbossMock.h Please note this migration
+ * work is a pending followup from coro migration done in D52582069
+ */
 
 #pragma once
 
@@ -109,8 +111,10 @@ class MockFibFboss : public facebook::bgp::FibFboss {
   // ATTN: reuse FibFboss's constructor
   using facebook::bgp::FibFboss::FibFboss;
 
-// per class placeholder for test code injection
-// only need to be setup once here
+/*
+ * per class placeholder for test code injection
+ * only need to be setup once here
+ */
 #ifdef MockFibFboss_TEST_FRIENDS
   MockFibFboss_TEST_FRIENDS
 #endif

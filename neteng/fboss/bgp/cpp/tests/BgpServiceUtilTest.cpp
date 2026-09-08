@@ -124,8 +124,10 @@ TEST_F(
   EXPECT_TRUE(*result.success());
 }
 
-// Test validatePeerGroupConfigInPolicy success case when policy has no
-// statements
+/*
+ * Test validatePeerGroupConfigInPolicy success case when policy has no
+ * statements
+ */
 TEST_F(
     BgpServiceUtilTest,
     ValidatePeerGroupConfigInPolicySuccessNoStatementsTest) {
@@ -141,8 +143,10 @@ TEST_F(
   EXPECT_TRUE(*result.success());
 }
 
-// Test validatePeerGroupConfigInPolicy failure case when peer group name
-// doesn't exist
+/*
+ * Test validatePeerGroupConfigInPolicy failure case when peer group name
+ * doesn't exist
+ */
 TEST_F(
     BgpServiceUtilTest,
     ValidatePeerGroupConfigInPolicyPeerGroupNotFoundTest) {
@@ -161,8 +165,10 @@ TEST_F(
   EXPECT_THAT(*result.err(), HasSubstr("PEER_GROUP_NOT_FOUND"));
 }
 
-// Test validatePeerGroupConfigInPolicy failure case for IPv4 version mismatch
-// in ingress filter
+/*
+ * Test validatePeerGroupConfigInPolicy failure case for IPv4 version mismatch
+ * in ingress filter
+ */
 TEST_F(
     BgpServiceUtilTest,
     ValidatePeerGroupConfigInPolicyIpv4IngressMismatchTest) {
@@ -189,8 +195,10 @@ TEST_F(
   EXPECT_THAT(*result.err(), HasSubstr("IPV4_AFI_MISMATCH"));
 }
 
-// Test validatePeerGroupConfigInPolicy failure case for IPv6 version mismatch
-// in egress filter
+/*
+ * Test validatePeerGroupConfigInPolicy failure case for IPv6 version mismatch
+ * in egress filter
+ */
 TEST_F(
     BgpServiceUtilTest,
     ValidatePeerGroupConfigInPolicyIpv6EgressMismatchTest) {
@@ -217,8 +225,10 @@ TEST_F(
   EXPECT_THAT(*result.err(), HasSubstr("IPV6_AFI_MISMATCH"));
 }
 
-// Test validatePeerGroupConfigInPolicy success case when IP version is not set
-// in prefix list
+/*
+ * Test validatePeerGroupConfigInPolicy success case when IP version is not set
+ * in prefix list
+ */
 TEST_F(BgpServiceUtilTest, ValidatePeerGroupConfigInPolicyNoIpVersionTest) {
   rib_policy::TRouteFilterPolicy policy;
   policy.key_type() = rib_policy::KeyType::PEER_GROUP_NAME;
@@ -236,8 +246,10 @@ TEST_F(BgpServiceUtilTest, ValidatePeerGroupConfigInPolicyNoIpVersionTest) {
   EXPECT_TRUE(*result.success()); // Should succeed when IP version is not set
 }
 
-// Test validatePeerGroupConfigInPolicy success case when IPv4 policy with
-// IPv4-enabled peer group
+/*
+ * Test validatePeerGroupConfigInPolicy success case when IPv4 policy with
+ * IPv4-enabled peer group
+ */
 TEST_F(BgpServiceUtilTest, ValidatePeerGroupConfigInPolicyIpv4SuccessTest) {
   rib_policy::TRouteFilterPolicy policy;
   policy.key_type() = rib_policy::KeyType::PEER_GROUP_NAME;
@@ -261,8 +273,10 @@ TEST_F(BgpServiceUtilTest, ValidatePeerGroupConfigInPolicyIpv4SuccessTest) {
   EXPECT_TRUE(*result.success());
 }
 
-// Test validatePeerGroupConfigInPolicy success case when IPv6 policy with
-// IPv6-enabled peer group
+/*
+ * Test validatePeerGroupConfigInPolicy success case when IPv6 policy with
+ * IPv6-enabled peer group
+ */
 TEST_F(BgpServiceUtilTest, ValidatePeerGroupConfigInPolicyIpv6SuccessTest) {
   rib_policy::TRouteFilterPolicy policy;
   policy.key_type() = rib_policy::KeyType::PEER_GROUP_NAME;
@@ -311,8 +325,10 @@ TEST_F(BgpServiceUtilTest, ValidatePeerGroupConfigInPolicyBothFiltersTest) {
   EXPECT_TRUE(*result.success());
 }
 
-// Test validatePeerGroupConfigInPolicy with both filters but ingress fails
-// validation
+/*
+ * Test validatePeerGroupConfigInPolicy with both filters but ingress fails
+ * validation
+ */
 TEST_F(
     BgpServiceUtilTest,
     ValidatePeerGroupConfigInPolicyBothFiltersIngressFailTest) {
@@ -340,8 +356,10 @@ TEST_F(
   EXPECT_THAT(*result.err(), HasSubstr("IPV4_AFI_MISMATCH"));
 }
 
-// Test validatePeerGroupConfigInPolicy with both filters but egress fails
-// validation
+/*
+ * Test validatePeerGroupConfigInPolicy with both filters but egress fails
+ * validation
+ */
 TEST_F(
     BgpServiceUtilTest,
     ValidatePeerGroupConfigInPolicyBothFiltersEgressFailTest) {
@@ -1096,8 +1114,10 @@ TEST_F(BgpServiceUtilTest, GetUnsupportedBgpPeerFieldsEmptyAllowlistTest) {
   EXPECT_FALSE(result.empty());
 }
 
-// Test getUnsupportedBgpPeerFields - non-optional field explicitly set and not
-// in allowlist is detected (local_addr is a non-optional string field)
+/*
+ * Test getUnsupportedBgpPeerFields - non-optional field explicitly set and not
+ * in allowlist is detected (local_addr is a non-optional string field)
+ */
 TEST_F(BgpServiceUtilTest, GetUnsupportedBgpPeerFieldsNonOptionalSetTest) {
   thrift::BgpPeer peer;
   peer.peer_addr() = "10.0.0.1";
@@ -1110,15 +1130,19 @@ TEST_F(BgpServiceUtilTest, GetUnsupportedBgpPeerFieldsNonOptionalSetTest) {
   EXPECT_THAT(result, Contains("local_addr"));
 }
 
-// Test getUnsupportedBgpPeerFields - non-optional field NOT explicitly set
-// should not be flagged even if not in allowlist
+/*
+ * Test getUnsupportedBgpPeerFields - non-optional field NOT explicitly set
+ * should not be flagged even if not in allowlist
+ */
 TEST_F(BgpServiceUtilTest, GetUnsupportedBgpPeerFieldsNonOptionalUnsetTest) {
   thrift::BgpPeer peer;
   peer.peer_addr() = "10.0.0.1";
   // Do NOT set local_addr (non-optional string field)
 
-  // Allowlist only contains peer_addr. local_addr is non-optional and not in
-  // the allowlist, but was never explicitly set so should not be flagged.
+  /*
+   * Allowlist only contains peer_addr. local_addr is non-optional and not in
+   * the allowlist, but was never explicitly set so should not be flagged.
+   */
   folly::F14FastSet<std::string_view> allowedFields = {"peer_addr"};
 
   auto result = getUnsupportedBgpPeerFields(peer, allowedFields);

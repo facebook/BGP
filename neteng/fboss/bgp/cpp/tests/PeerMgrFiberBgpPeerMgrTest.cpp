@@ -14,8 +14,10 @@
  * limitations under the License.
  */
 
-// Forward-declare test classes so the friend declarations in
-// FiberBgpPeerManager.h resolve across namespaces.
+/*
+ * Forward-declare test classes so the friend declarations in
+ * FiberBgpPeerManager.h resolve across namespaces.
+ */
 namespace facebook::bgp {
 class PeerManagerTestFixture_DelPeersTest_Test;
 class PeerManagerTestFixture_DelPeersNonExistentSkipsTest_Test;
@@ -160,8 +162,10 @@ CO_TEST_F(PeerManagerTestFixture, DelPeersTest) {
       true /* includeStaticPeer */, false /* includeDynamicShivPeer */);
   auto sessionMgr = setupMockSessionManager(mockPeerMgr);
 
-  // Directly populate allPeers_ to avoid spawning real FiberBgpPeer fibers
-  // (which hang during shutdown in a mock environment)
+  /*
+   * Directly populate allPeers_ to avoid spawning real FiberBgpPeer fibers
+   * (which hang during shutdown in a mock environment)
+   */
   auto peerToConfig = config_->getPeerToConfig();
   auto params3 = config_->getPeeringParamsForPeer(*peerToConfig.at(kPeerAddr3));
   auto params4 = config_->getPeeringParamsForPeer(*peerToConfig.at(kPeerAddr4));
@@ -213,8 +217,10 @@ CO_TEST_F(PeerManagerTestFixture, DelPeersNonExistentSkipsTest) {
   auto sessionThread = std::thread([&sessionEvb] { sessionEvb.loopForever(); });
   sessionEvb.waitUntilRunning();
 
-  // Remove a mix of existing and non-existent peers.
-  // Non-existent peer should be skipped, existing peer removed.
+  /*
+   * Remove a mix of existing and non-existent peers.
+   * Non-existent peer should be skipped, existing peer removed.
+   */
   auto result = co_await mockPeerMgr->delPeers(
       {folly::IPAddress("192.168.99.99"), kPeerAddr3});
   EXPECT_TRUE(result.hasValue());
@@ -312,8 +318,10 @@ TEST_F(PeerManagerTestFixture, WaitForSessionTerminateBatonTest) {
       configManager, nullptr, ribInQ_, ribOutQ_, nbrRouteChangeQ_);
   auto& evb = peerMgr->getEventBase();
 
-  // Ensure FiberManager is attached to evb (required for
-  // BatchSemaphore::co_wait)
+  /*
+   * Ensure FiberManager is attached to evb (required for
+   * BatchSemaphore::co_wait)
+   */
   auto& fm = folly::fibers::getFiberManager(evb, options_);
 
   // Create baton (starts un-posted / blocked)
@@ -416,32 +424,42 @@ CO_TEST_F(PeerManagerTestFixture, RapidSessionFlapWithVersionCompressionTest) {
   // Register the baton in peerManager for kPeerId3
   peerMgr->sessionTerminateBatons_[kPeerId3] = terminateBaton;
 
-  // Step 1: Simulate session DOWN -- AdjRib loops exit and post the baton.
-  // In production, postTerminateBaton() posts after both loops signal the
-  // local semaphore. Here we directly post() to simulate that.
+  /*
+   * Step 1: Simulate session DOWN -- AdjRib loops exit and post the baton.
+   * In production, postTerminateBaton() posts after both loops signal the
+   * local semaphore. Here we directly post() to simulate that.
+   */
   terminateBaton->post();
 
-  // Step 2: Session UP (stale version) -- PeerManagerBase waits for the
-  // previous session's loops to terminate. With latch semantics, this
-  // passes through immediately because the baton is still posted.
+  /*
+   * Step 2: Session UP (stale version) -- PeerManagerBase waits for the
+   * previous session's loops to terminate. With latch semantics, this
+   * passes through immediately because the baton is still posted.
+   */
   co_await peerMgr->waitForSessionTerminateBaton(kPeerId3);
 
-  // Simulate: version check fails -> early return.
-  // Critically, we do NOT reset the baton here. In production,
-  // baton->reset() only happens after the version check passes
-  // (inside adjRib->sessionEstablished()). A stale version causes
-  // an early return, leaving the baton posted.
+  /*
+   * Simulate: version check fails -> early return.
+   * Critically, we do NOT reset the baton here. In production,
+   * baton->reset() only happens after the version check passes
+   * (inside adjRib->sessionEstablished()). A stale version causes
+   * an early return, leaving the baton posted.
+   */
 
-  // Step 3: Session UP (valid version) -- Another session established
-  // event arrives. PeerManagerBase again waits for termination.
-  // With latch semantics, co_await *baton passes through immediately
-  // because the baton is STILL posted (no reset on early return).
-  // With the old BatchSemaphore, wait(2) in step 2 consumed the tokens,
-  // so this second wait(2) would hang forever with 0 tokens.
+  /*
+   * Step 3: Session UP (valid version) -- Another session established
+   * event arrives. PeerManagerBase again waits for termination.
+   * With latch semantics, co_await *baton passes through immediately
+   * because the baton is STILL posted (no reset on early return).
+   * With the old BatchSemaphore, wait(2) in step 2 consumed the tokens,
+   * so this second wait(2) would hang forever with 0 tokens.
+   */
   co_await peerMgr->waitForSessionTerminateBaton(kPeerId3);
 
-  // Step 4: Version check passes -> reset baton for the next cycle.
-  // This is what adjRib->sessionEstablished() does in production.
+  /*
+   * Step 4: Version check passes -> reset baton for the next cycle.
+   * This is what adjRib->sessionEstablished() does in production.
+   */
   terminateBaton->reset();
 }
 
@@ -456,8 +474,10 @@ CO_TEST_F(PeerManagerTestFixture, CleanupPeerState_NeverEstablished) {
   auto peerMgr = std::make_shared<PeerManagerBase>(
       configManager, nullptr, ribInQ_, ribOutQ_, nbrRouteChangeQ_);
 
-  // No AdjRib in adjRibs_ for kPeerId3 — peer was never established.
-  // No baton in sessionTerminateBatons_ either.
+  /*
+   * No AdjRib in adjRibs_ for kPeerId3 — peer was never established.
+   * No baton in sessionTerminateBatons_ either.
+   */
   EXPECT_FALSE(peerMgr->findAdjRib(kPeerId3));
 
   // Should complete without crash — baton wait is skipped.
@@ -538,9 +558,11 @@ TEST_F(PeerManagerTestFixture, CleanupPeerState_GenerationCheck) {
   std::atomic<bool> cleanupDone{false};
   auto readyBaton = std::make_shared<folly::coro::Baton>();
 
-  // Racer: simulates sessionEstablished + createAdjRib running for the new
-  // session during cleanup's baton wait — replaces map entry AND populates
-  // the new session's per-peer state.
+  /*
+   * Racer: simulates sessionEstablished + createAdjRib running for the new
+   * session during cleanup's baton wait — replaces map entry AND populates
+   * the new session's per-peer state.
+   */
   auto racerTask =
       [&, readyBaton, oldBaton, newBaton]() -> folly::coro::Task<void> {
     co_await *readyBaton;
@@ -569,9 +591,11 @@ TEST_F(PeerManagerTestFixture, CleanupPeerState_GenerationCheck) {
 
   EXPECT_TRUE(cleanupDone);
 
-  // Identity check should preserve EVERYTHING the new session set up:
-  // AdjRib, sessionTerminateBatons_, peerAddrToIds_, establishedGrPeers_,
-  // pendingRibDumpReqs_, and all matching counters.
+  /*
+   * Identity check should preserve EVERYTHING the new session set up:
+   * AdjRib, sessionTerminateBatons_, peerAddrToIds_, establishedGrPeers_,
+   * pendingRibDumpReqs_, and all matching counters.
+   */
   tcData->publishStats();
   EXPECT_EQ(1, peerMgr->adjRibs_.count(kPeerId3));
   EXPECT_EQ(newAdjRib, peerMgr->adjRibs_[kPeerId3]);
@@ -625,8 +649,10 @@ TEST_F(PeerManagerTestFixture, CleanupPeerState_GenerationCheckDuringStop) {
   std::atomic<bool> cleanupDone{false};
   auto readyBaton = std::make_shared<folly::coro::Baton>();
 
-  // Racer: wait until cleanup is suspended in stop(), then swap the map
-  // entry and unblock stop().
+  /*
+   * Racer: wait until cleanup is suspended in stop(), then swap the map
+   * entry and unblock stop().
+   */
   auto racerTask = [&, readyBaton, stopBaton]() -> folly::coro::Task<void> {
     co_await *readyBaton;
     peerMgr->adjRibs_[kPeerId3] = newAdjRib;
@@ -668,8 +694,10 @@ CO_TEST_F(PeerManagerTestFixture, CleanupPeerState_NormalErase) {
   auto mockAdjRib = setupMockAdjRib(
       peerMgr->getEventBase(), kPeerId3, AsNum(kPeerAsn3), terminateBaton);
 
-  // Initialize counters and capture baseline (counters are process-global,
-  // so absolute values aren't reliable across tests).
+  /*
+   * Initialize counters and capture baseline (counters are process-global,
+   * so absolute values aren't reliable across tests).
+   */
   RibStats::initCounters();
   BgpStats::initCounters();
   auto tcData = fb303::ThreadCachedServiceData::get();
@@ -693,10 +721,12 @@ CO_TEST_F(PeerManagerTestFixture, CleanupPeerState_NormalErase) {
   peerMgr->pendingRibDumpReqs_[kPeerId3] = false /* sendAddPath */;
   BgpStats::incrPendingRibDumpReqsCount();
 
-  // Initialize per-peer fb303 counters (cleanupPeerState calls
-  // PeerStats::clearPeerCounters which should erase all of them). Use the
-  // same ODS key the AdjRib was constructed with — for non-VIP peers this
-  // is peeringParams.getUniquePeerId(), not peerId.peerAddr.str().
+  /*
+   * Initialize per-peer fb303 counters (cleanupPeerState calls
+   * PeerStats::clearPeerCounters which should erase all of them). Use the
+   * same ODS key the AdjRib was constructed with — for non-VIP peers this
+   * is peeringParams.getUniquePeerId(), not peerId.peerAddr.str().
+   */
   const auto& peerOdsKey = mockAdjRib->getStats().getPeerIdOdsStr();
   PeerStats::initPeerCounters(peerOdsKey);
   auto preInKey = fmt::format(PeerStats::kPeerPreInPrefixes, peerOdsKey);
@@ -716,8 +746,10 @@ CO_TEST_F(PeerManagerTestFixture, CleanupPeerState_NormalErase) {
 
   co_await peerMgr->cleanupPeerState(kPeerId3, kPeerAddr3);
 
-  // Verify everything erased; counters returned to baseline (incr matched
-  // by cleanupPeerState's decr).
+  /*
+   * Verify everything erased; counters returned to baseline (incr matched
+   * by cleanupPeerState's decr).
+   */
   tcData->publishStats();
   EXPECT_EQ(0, peerMgr->adjRibs_.count(kPeerId3));
   EXPECT_EQ(0, peerMgr->peerAddrToIds_.count(kPeerAddr3));
@@ -766,9 +798,11 @@ CO_TEST_F(PeerManagerTestFixture, CleanupPeerState_ResetsChangeListConsumer) {
   auto mockAdjRib =
       setupMockAdjRib(evb, kPeerId3, AsNum(kPeerAsn3), terminateBaton);
 
-  // Wire a real AdjRibOutConsumer back to the AdjRib — the same shape
-  // PeerManagerBase::createAdjRib produces in the UG-disabled path. This is
-  // the cycle cleanupPeerState must break.
+  /*
+   * Wire a real AdjRibOutConsumer back to the AdjRib — the same shape
+   * PeerManagerBase::createAdjRib produces in the UG-disabled path. This is
+   * the cycle cleanupPeerState must break.
+   */
   std::shared_ptr<ChangeTracker<ShadowRibEntry>> changeListTracker =
       peerMgr->getChangeListTracker();
   std::shared_ptr<AdjRib> adjRibBase = mockAdjRib;
@@ -794,15 +828,19 @@ CO_TEST_F(PeerManagerTestFixture, CleanupPeerState_ResetsChangeListConsumer) {
 
   co_await peerMgr->cleanupPeerState(kPeerId3, kPeerAddr3);
 
-  // Cycle broken even though we still hold mockAdjRib outside the map —
-  // resetChangeListConsumer() ran before adjRibs_.erase().
+  /*
+   * Cycle broken even though we still hold mockAdjRib outside the map —
+   * resetChangeListConsumer() ran before adjRibs_.erase().
+   */
   EXPECT_EQ(nullptr, mockAdjRib->getChangeListConsumer());
   EXPECT_EQ(0, peerMgr->adjRibs_.count(kPeerId3));
 }
 
-// sessionTerminated with evt.peerDelete=true co_awaits cleanupPeerState
-// inline, so the AdjRib is erased from adjRibs_ before sessionTerminated
-// returns.
+/*
+ * sessionTerminated with evt.peerDelete=true co_awaits cleanupPeerState
+ * inline, so the AdjRib is erased from adjRibs_ before sessionTerminated
+ * returns.
+ */
 CO_TEST_F(
     PeerManagerTestFixture,
     SessionTerminated_PeerDeleteRunsCleanupInline) {
@@ -983,8 +1021,10 @@ CO_TEST_F(
   EXPECT_EQ(1, peerMgr->sessionTerminateBatons_.count(kPeerId3));
 }
 
-// evt.peerDelete=false (natural session-down, no delPeers in flight)
-// must NOT run cleanupPeerState. AdjRib stays in adjRibs_ for re-establish.
+/*
+ * evt.peerDelete=false (natural session-down, no delPeers in flight)
+ * must NOT run cleanupPeerState. AdjRib stays in adjRibs_ for re-establish.
+ */
 CO_TEST_F(PeerManagerTestFixture, SessionTerminated_NoPeerDeleteKeepsAdjRib) {
   auto config = getConfig(
       true /* includeStaticPeer */, false /* includeDynamicShivPeer */);
@@ -1041,8 +1081,10 @@ CO_TEST_F(
       std::make_shared<nettools::bgplib::BgpPeerInfoInternal>(
           nettools::bgplib::BgpPeerInfoInternal{params3, {}, {}});
 
-  // Set up an AdjRib for peer3 that is NOT in established state — mirrors
-  // a peer that was previously up, went IDLE, and is now being deleted.
+  /*
+   * Set up an AdjRib for peer3 that is NOT in established state — mirrors
+   * a peer that was previously up, went IDLE, and is now being deleted.
+   */
   auto& evb = mockPeerMgr->getEventBase();
   auto terminateBaton = std::make_shared<folly::coro::Baton>();
   auto mockAdjRib =
@@ -1064,8 +1106,10 @@ CO_TEST_F(
   auto sessionThread = std::thread([&sessionEvb] { sessionEvb.loopForever(); });
   sessionEvb.waitUntilRunning();
 
-  // delPeers's fallback fires because !isStateEstablished — runs
-  // cleanupPeerState inline before returning.
+  /*
+   * delPeers's fallback fires because !isStateEstablished — runs
+   * cleanupPeerState inline before returning.
+   */
   auto result = co_await mockPeerMgr->delPeers({kPeerAddr3});
   EXPECT_TRUE(result.hasValue());
 
@@ -1135,8 +1179,10 @@ CO_TEST_F(PeerManagerTestFixture, DelPeers_AfterFlap_FallbackCleansUp) {
   auto sessionThread = std::thread([&sessionEvb] { sessionEvb.loopForever(); });
   sessionEvb.waitUntilRunning();
 
-  // delPeers's fallback fires because the AdjRib is in adjRibs_ but
-  // !isStateEstablished — runs cleanupPeerState inline before returning.
+  /*
+   * delPeers's fallback fires because the AdjRib is in adjRibs_ but
+   * !isStateEstablished — runs cleanupPeerState inline before returning.
+   */
   auto result = co_await mockPeerMgr->delPeers({kPeerAddr3});
   EXPECT_TRUE(result.hasValue());
 

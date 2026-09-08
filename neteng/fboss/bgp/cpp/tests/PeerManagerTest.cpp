@@ -270,8 +270,10 @@ namespace facebook {
 namespace bgp {
 
 namespace {
-// Helper to replicate getBgpSummary() via the split sessionMgr +
-// PeerManagerBase pattern
+/*
+ * Helper to replicate getBgpSummary() via the split sessionMgr +
+ * PeerManagerBase pattern
+ */
 std::vector<TBgpSession> getSessionsViaSessionMgr(PeerManagerBase& peerMgr) {
   auto allPeers = folly::coro::blockingWait(
       peerMgr.getSessionManager()->co_getAllPeerDisplayInfos());
@@ -391,12 +393,14 @@ TEST_F(PeerManagerTestFixture, SharedAdjRibOutGroupNameTest) {
       EXPECT_TRUE(callback2_.isSessionUp(kLocalPeerId1));
       EXPECT_TRUE(callback3_.isSessionUp(kLocalPeerId1));
 
-      // Wait for PeerManagerBase to establish sessions (create adjRibs).
-      // Sessions are established asynchronously via asyncScope_, so we need
-      // to wait for them to complete before calling stop().
-      // Use a timeout to avoid infinite loops if something goes wrong.
-      // Access adjRibs_ via the PeerManagerBase's event base to avoid data
-      // races.
+      /*
+       * Wait for PeerManagerBase to establish sessions (create adjRibs).
+       * Sessions are established asynchronously via asyncScope_, so we need
+       * to wait for them to complete before calling stop().
+       * Use a timeout to avoid infinite loops if something goes wrong.
+       * Access adjRibs_ via the PeerManagerBase's event base to avoid data
+       * races.
+       */
       int waitCount = 0;
       constexpr int maxWait = 500; // 5 seconds max (500 * 10ms)
       size_t adjRibsSize = 0;
@@ -429,8 +433,10 @@ TEST_F(PeerManagerTestFixture, SharedAdjRibOutGroupNameTest) {
   }
   {
     auto task = fm.addTaskFuture([&] {
-      // Wait for sessions to be established and updates sent before
-      // terminating the sessions.
+      /*
+       * Wait for sessions to be established and updates sent before
+       * terminating the sessions.
+       */
       facebook::bgp::test::boundedBatonWait(
           peerStoppedBaton,
           "peerStoppedBaton",
@@ -450,9 +456,11 @@ TEST_F(PeerManagerTestFixture, SharedAdjRibOutGroupNameTest) {
           peerMgr->adjRibOutGroups_.size(),
           tcData->getCounter(BgpStats::kAdjRibOutGroupsCount));
 
-      // Verify ODS counter still matches establishedGrPeers_ size
-      // (decrement doesn't happen here because PeerManagerBase's event base
-      // stops before sessionTerminated() callbacks are delivered)
+      /*
+       * Verify ODS counter still matches establishedGrPeers_ size
+       * (decrement doesn't happen here because PeerManagerBase's event base
+       * stops before sessionTerminated() callbacks are delivered)
+       */
       tcData->publishStats();
       EXPECT_EQ(
           peerMgr->establishedGrPeers_.size(),
@@ -473,8 +481,10 @@ TEST_F(PeerManagerTestFixture, SharedAdjRibOutGroupNameTest) {
           sessionDownFuture1, sessionDownFuture2, sessionDownFuture3)
           .get();
 
-      // shouldn't stop before the sessionDownFutures, otherwise we stop the evb
-      // to run those futures
+      /*
+       * shouldn't stop before the sessionDownFutures, otherwise we stop the evb
+       * to run those futures
+       */
       sessionMgr1_->stop();
       sessionMgr2_->stop();
       sessionMgr3_->stop();
@@ -751,9 +761,11 @@ TEST_F(PeerManagerTestFixture, IsPeerDynamicTest) {
   auto mockPeerMgr = setupMockPeerManager(
       true /* includeStaticPeer */, true /* includeDynamicShivPeer */);
 
-  // The includeDynamicShivPeer boolean configuration option will configured the
-  // dynamic peers for mockPeerManager of under kPeerPrefix1 which is
-  // 127.1.0.0/30 and kPeerPrefix2 which is 127.2.0.0/30
+  /*
+   * The includeDynamicShivPeer boolean configuration option will configured the
+   * dynamic peers for mockPeerManager of under kPeerPrefix1 which is
+   * 127.1.0.0/30 and kPeerPrefix2 which is 127.2.0.0/30
+   */
 
   // configured dynamic peers under kPeerPrefix1 CIDR
   EXPECT_TRUE(mockPeerMgr->isPeerDynamic(folly::IPAddress("127.1.0.0")));
@@ -767,8 +779,10 @@ TEST_F(PeerManagerTestFixture, IsPeerDynamicTest) {
   EXPECT_TRUE(mockPeerMgr->isPeerDynamic(folly::IPAddress("127.2.0.2")));
   EXPECT_TRUE(mockPeerMgr->isPeerDynamic(folly::IPAddress("127.2.0.3")));
 
-  // These IPAddresses do not fall under any configured kPeerPrefix1 or
-  // kPeerPrefix2 CIDR
+  /*
+   * These IPAddresses do not fall under any configured kPeerPrefix1 or
+   * kPeerPrefix2 CIDR
+   */
   EXPECT_FALSE(mockPeerMgr->isPeerDynamic(kDynamicPeerAddr4));
   EXPECT_FALSE(mockPeerMgr->isPeerDynamic(kPeerAddr3));
   EXPECT_FALSE(mockPeerMgr->isPeerDynamic(folly::IPAddress("127.0.0.0")));
@@ -819,8 +833,10 @@ TEST_F(StreamSubscriberFixture, ThriftNoPeeringStreamSubscribeTest) {
  *        bgp updates and eor
  */
 TEST_F(PeerManagerTestFixture, ThriftStreamSubscribePreInitializationTest) {
-  // This test assumes all other components of the pipeline is working
-  // i.e, Rib, AdjRib, SessionManager
+  /*
+   * This test assumes all other components of the pipeline is working
+   * i.e, Rib, AdjRib, SessionManager
+   */
   auto config = getConfig(false, false, true /* include BgpMonitorPeer */);
   auto configManager = std::make_shared<ConfigManager>(config);
   auto peerMgr = std::make_shared<PeerManagerBase>(
@@ -844,9 +860,11 @@ TEST_F(PeerManagerTestFixture, ThriftStreamSubscribePreInitializationTest) {
 
   const BgpPeerId kStreamPeerId1{kStreamPeerAddr, 1};
 
-  // First test whether subscription functionality works
-  // Have one client subscribe to peerManager, see if initial fullDumpRequest
-  // was received by RIB and RIB can send out deltas to client
+  /*
+   * First test whether subscription functionality works
+   * Have one client subscribe to peerManager, see if initial fullDumpRequest
+   * was received by RIB and RIB can send out deltas to client
+   */
   const std::unique_ptr<std::string> myName =
       std::make_unique<std::string>("testClient");
   auto start_time = std::chrono::steady_clock::now();
@@ -867,9 +885,11 @@ TEST_F(PeerManagerTestFixture, ThriftStreamSubscribePreInitializationTest) {
   EXPECT_TRUE(
       peerMgr->adjRibs_.at(kStreamPeerId1)->isV4OverV6NexthopNegotiated());
 
-  // Send one announcement from RIB, see if client gets it
-  // AdjRib needs to receive Eor from RIB before it starts publishing
-  // So the first announcement's update part will be ignored
+  /*
+   * Send one announcement from RIB, see if client gets it
+   * AdjRib needs to receive Eor from RIB before it starts publishing
+   * So the first announcement's update part will be ignored
+   */
   evb.runInEventBaseThreadAndWait([&]() {
     auto message = createRibSingleAnnounce(
         kV4Prefix1, kV4Nexthop1, kLocalRouteAs, true, true, kPlaceholderPathID);
@@ -917,9 +937,11 @@ TEST_F(PeerManagerTestFixture, ThriftStreamSubscribePreInitializationTest) {
   subscription.cancel();
   std::move(subscription).detach();
 
-  // The baton is posted by AdjRib::sessionTerminated() which is called
-  // for example when subscription is terminated
-  // Wait for post to terminateBaton in this case
+  /*
+   * The baton is posted by AdjRib::sessionTerminated() which is called
+   * for example when subscription is terminated
+   * Wait for post to terminateBaton in this case
+   */
   folly::coro::blockingWait(
       [&]() -> folly::coro::Task<void> { co_await *terminateBaton; }());
   EXPECT_EQ(TBgpPeerState::IDLE, peerMgr->streamSubscribers_.at(*myName).state);
@@ -943,9 +965,11 @@ TEST_F(StreamSubscriberFixture, ThriftStreamSubscribePostInitializationTest) {
 
   const BgpPeerId kStreamPeerId1{kStreamPeerAddr, 1};
 
-  // First test whether subscription functionality works
-  // Have one client subscribe to peerManager, see if initial fullDumpRequest
-  // was received by RIB and RIB can send out deltas to client
+  /*
+   * First test whether subscription functionality works
+   * Have one client subscribe to peerManager, see if initial fullDumpRequest
+   * was received by RIB and RIB can send out deltas to client
+   */
   const std::unique_ptr<std::string> myName =
       std::make_unique<std::string>("testClient");
   auto start_time = std::chrono::steady_clock::now();
@@ -968,9 +992,11 @@ TEST_F(StreamSubscriberFixture, ThriftStreamSubscribePostInitializationTest) {
   // asyncScope should be active (not cancelled) after subscribe
   EXPECT_FALSE(adjRib->asyncScope_->isScopeCancellationRequested());
 
-  // Send one announcement from RIB, see if client gets it
-  // AdjRib needs to receive Eor from RIB before it starts publishing
-  // So the first announcement's update part will be ignored
+  /*
+   * Send one announcement from RIB, see if client gets it
+   * AdjRib needs to receive Eor from RIB before it starts publishing
+   * So the first announcement's update part will be ignored
+   */
   evb.runInEventBaseThreadAndWait([&]() {
     auto message = createRibSingleAnnounce(
         kV4Prefix1, kV4Nexthop1, kLocalRouteAs, true, true, kPlaceholderPathID);
@@ -1025,8 +1051,10 @@ TEST_F(StreamSubscriberFixture, ThriftStreamSubscribePostInitializationTest) {
   // After session terminates, cancellation was requested on the scope
   EXPECT_TRUE(adjRib->asyncScope_->isScopeCancellationRequested());
 
-  // Now try subscribing with the same subscriberName again.  Ensure that it
-  // works, and ensure that we use the same peerId in the second connection
+  /*
+   * Now try subscribing with the same subscriberName again.  Ensure that it
+   * works, and ensure that we use the same peerId in the second connection
+   */
   auto start_time2 = std::chrono::steady_clock::now();
   auto stream2 = peerMgr->subscribe(myName);
 
@@ -1040,8 +1068,10 @@ TEST_F(StreamSubscriberFixture, ThriftStreamSubscribePostInitializationTest) {
   // Ensure that upSince is later than start_time2, i.e, start_time2 < upSince
   EXPECT_LT(start_time2, peerMgr->streamSubscribers_.at(*myName).upSince);
 
-  // After re-subscribe, ensureAsyncScopeInitialized replaced the cancelled
-  // scope with a fresh one
+  /*
+   * After re-subscribe, ensureAsyncScopeInitialized replaced the cancelled
+   * scope with a fresh one
+   */
   EXPECT_FALSE(adjRib->asyncScope_->isScopeCancellationRequested());
 
   auto subscription2 =
@@ -1050,14 +1080,18 @@ TEST_F(StreamSubscriberFixture, ThriftStreamSubscribePostInitializationTest) {
             // Do nothing
           });
 
-  // cleanup channel
-  // Kill channel on client side
+  /*
+   * cleanup channel
+   * Kill channel on client side
+   */
   subscription2.cancel();
   std::move(subscription2).detach();
 
-  // The baton is posted by AdjRib::sessionTerminated() which is called
-  // for example when subscription is terminated
-  // Wait for post to terminateBaton in this case
+  /*
+   * The baton is posted by AdjRib::sessionTerminated() which is called
+   * for example when subscription is terminated
+   * Wait for post to terminateBaton in this case
+   */
   folly::coro::blockingWait(
       [&]() -> folly::coro::Task<void> { co_await *terminateBaton; }());
   EXPECT_EQ(TBgpPeerState::IDLE, peerMgr->streamSubscribers_.at(*myName).state);
@@ -1081,9 +1115,11 @@ TEST_F(StreamSubscriberFixture, ThriftStreamSubscribeIdlePeerQDrainedTest) {
 
   const BgpPeerId kStreamPeerId1{kStreamPeerAddr, 1};
 
-  // First test whether subscription functionality works
-  // Have one client subscribe to peerManager, see if initial fullDumpRequest
-  // was received by RIB and RIB can send out deltas to client
+  /*
+   * First test whether subscription functionality works
+   * Have one client subscribe to peerManager, see if initial fullDumpRequest
+   * was received by RIB and RIB can send out deltas to client
+   */
   const std::unique_ptr<std::string> myName =
       std::make_unique<std::string>("testClient");
   auto stream1 = peerMgr->subscribe(myName);
@@ -1101,8 +1137,10 @@ TEST_F(StreamSubscriberFixture, ThriftStreamSubscribeIdlePeerQDrainedTest) {
             // Do nothing
           });
 
-  // Close channel on client side so that we move the session to IDLE
-  // state
+  /*
+   * Close channel on client side so that we move the session to IDLE
+   * state
+   */
   subscription1.cancel();
   std::move(subscription1).detach();
 
@@ -1110,8 +1148,10 @@ TEST_F(StreamSubscriberFixture, ThriftStreamSubscribeIdlePeerQDrainedTest) {
       [&]() -> folly::coro::Task<void> { co_await *terminateBaton; }());
   EXPECT_EQ(TBgpPeerState::IDLE, peerMgr->streamSubscribers_.at(*myName).state);
 
-  // Now Send one announcement from RIB, and check if we drain PeerQ given
-  // that session was cancelled and its internal state is IDLE
+  /*
+   * Now Send one announcement from RIB, and check if we drain PeerQ given
+   * that session was cancelled and its internal state is IDLE
+   */
   evb.runInEventBaseThreadAndWait([&]() {
     auto message = createRibSingleAnnounce(
         kV4Prefix1, kV4Nexthop1, kLocalRouteAs, true, true, kPlaceholderPathID);
@@ -1163,9 +1203,11 @@ TEST_F(StreamSubscriberFixture, ThriftStreamSubscribeForceCompletionTest) {
 
   const BgpPeerId kStreamPeerId1{kStreamPeerAddr, 1};
 
-  // First test whether subscription functionality works
-  // Have one client subscribe to peerManager, see if initial fullDumpRequest
-  // was received by RIB and RIB can send out deltas to client
+  /*
+   * First test whether subscription functionality works
+   * Have one client subscribe to peerManager, see if initial fullDumpRequest
+   * was received by RIB and RIB can send out deltas to client
+   */
   const std::unique_ptr<std::string> myName =
       std::make_unique<std::string>("testClient");
   auto start_time = std::chrono::steady_clock::now();
@@ -1187,9 +1229,11 @@ TEST_F(StreamSubscriberFixture, ThriftStreamSubscribeForceCompletionTest) {
       peerMgr->adjRibs_.at(kStreamPeerId1)->isV4OverV6NexthopNegotiated());
   peerMgr->adjRibs_.at(kStreamPeerId1)->resetInInitialAnnouncement();
 
-  // Send one announcement from RIB, see if client gets it
-  // AdjRib needs to receive Eor from RIB before it starts publishing
-  // So the first announcement's update part will be ignored
+  /*
+   * Send one announcement from RIB, see if client gets it
+   * AdjRib needs to receive Eor from RIB before it starts publishing
+   * So the first announcement's update part will be ignored
+   */
   evb.runInEventBaseThreadAndWait([&]() {
     auto message = createRibSingleAnnounce(
         kV4Prefix1, kV4Nexthop1, kLocalRouteAs, true, true, kPlaceholderPathID);
@@ -1211,24 +1255,30 @@ TEST_F(StreamSubscriberFixture, ThriftStreamSubscribeForceCompletionTest) {
             delta.withWLock([&t](auto& delta) { delta = *t; });
           });
 
-  // Before we close the connection, ensure that attempting a second
-  // connection closes the current one and then opens new one
+  /*
+   * Before we close the connection, ensure that attempting a second
+   * connection closes the current one and then opens new one
+   */
   auto upSinceLast = peerMgr->streamSubscribers_.at(*myName).upSince;
   auto numFlaps = peerMgr->streamSubscribers_.at(*myName).numFlaps;
 
   auto stream2 = peerMgr->subscribe(myName);
 
-  // a way to verify that a call to subscribe() has gone through closing
-  // old channel and open a new one
+  /*
+   * a way to verify that a call to subscribe() has gone through closing
+   * old channel and open a new one
+   */
   EXPECT_LT(numFlaps, peerMgr->streamSubscribers_.at(*myName).numFlaps);
   EXPECT_LT(upSinceLast, peerMgr->streamSubscribers_.at(*myName).upSince);
 
   {
-    // Verify after the stream2 subscribes, it uses the existing adjRib
-    // i.e., not creating another adjRib since they are the same subscriber.
-    //
-    // Please note that we do not recycle adjRib. It is always there once
-    // created.
+    /*
+     * Verify after the stream2 subscribes, it uses the existing adjRib
+     * i.e., not creating another adjRib since they are the same subscriber.
+     *
+     * Please note that we do not recycle adjRib. It is always there once
+     * created.
+     */
     auto adjRib = peerMgr->adjRibs_.at(kStreamPeerId1);
     EXPECT_EQ(1, peerMgr->adjRibs_.size());
   }
@@ -1249,9 +1299,11 @@ TEST_F(StreamSubscriberFixture, ThriftStreamSubscribeForceCompletionTest) {
   subscription2.cancel();
   std::move(subscription2).detach();
 
-  // The baton is posted by AdjRib::sessionTerminated() which is called
-  // for example when subscription is terminated
-  // Wait for post to terminateBaton in this case
+  /*
+   * The baton is posted by AdjRib::sessionTerminated() which is called
+   * for example when subscription is terminated
+   * Wait for post to terminateBaton in this case
+   */
   folly::coro::blockingWait(
       [&]() -> folly::coro::Task<void> { co_await *terminateBaton; }());
   EXPECT_EQ(TBgpPeerState::IDLE, peerMgr->streamSubscribers_.at(*myName).state);
@@ -1433,8 +1485,10 @@ TEST_F(PeerManagerTestFixture, StatefulGrTest1) {
   EXPECT_EQ(2, config_->getPeerToConfig().size());
   EXPECT_EQ(2, config_->getDynamicPeerToConfig().size());
 
-  // Create previous incarnation file with two static and two dynamic peers
-  // Static and dynamic peers are interleaved, as order doesn't matter
+  /*
+   * Create previous incarnation file with two static and two dynamic peers
+   * Static and dynamic peers are interleaved, as order doesn't matter
+   */
   createGrState({kPeerId3, kDynamicPeerId1, kPeerId4, kDynamicPeerId2});
 
   EXPECT_TRUE(isGrStateExists());
@@ -1460,11 +1514,15 @@ TEST_F(PeerManagerTestFixture, StatefulGrTest1) {
           mockPeerMgr->processAdjRibEvent(std::move(EoRFromPeer)));
     }
 
-    // make sure EoR will be sent without any delay once
-    // all static and dynamic peers EORs received
+    /*
+     * make sure EoR will be sent without any delay once
+     * all static and dynamic peers EORs received
+     */
     EXPECT_TRUE(mockPeerMgr->ribInitPathComputationNotified_);
-    // Ensure that RIB was notified about EOR without timer needing to be
-    // fired
+    /*
+     * Ensure that RIB was notified about EOR without timer needing to be
+     * fired
+     */
     EXPECT_FALSE(mockPeerMgr->eorTimerExpired_);
   });
   taskFutures.emplace_back(std::move(fiber));
@@ -1494,8 +1552,10 @@ TEST_F(PeerManagerTestFixture, StatefulGrTest2) {
       true /* includeStaticPeer */, false /* includeDynamicShivPeer */);
   EXPECT_EQ(2, config_->getPeerToConfig().size());
 
-  // Create previous incarnation file with only one static peer active
-  // but the information is stale
+  /*
+   * Create previous incarnation file with only one static peer active
+   * but the information is stale
+   */
   createGrState({kPeerId3}, true);
 
   EXPECT_TRUE(isGrStateExists());
@@ -1516,17 +1576,21 @@ TEST_F(PeerManagerTestFixture, StatefulGrTest2) {
     folly::coro::blockingWait(
         mockPeerMgr->processAdjRibEvent(std::move(EoRFromStaticPeer1)));
 
-    // Verifying that we are not using stale saved GR state.
-    // Stale info had only kPeerAddr3 but we shouldn't send EOR just
-    // by seeing kPeerAddr3
+    /*
+     * Verifying that we are not using stale saved GR state.
+     * Stale info had only kPeerAddr3 but we shouldn't send EOR just
+     * by seeing kPeerAddr3
+     */
     EXPECT_FALSE(mockPeerMgr->ribInitPathComputationNotified_);
 
     AdjRib::ObservableMessageT EoRFromStaticPeer2{kPeerId4, AdjRib::EoR()};
     folly::coro::blockingWait(
         mockPeerMgr->processAdjRibEvent(std::move(EoRFromStaticPeer2)));
 
-    // make sure EoR will be sent without any delay once
-    // all static peers EORs received (we ignored stale saved info)
+    /*
+     * make sure EoR will be sent without any delay once
+     * all static peers EORs received (we ignored stale saved info)
+     */
     EXPECT_TRUE(mockPeerMgr->ribInitPathComputationNotified_);
   });
   taskFutures.emplace_back(std::move(fiber));
@@ -1559,10 +1623,12 @@ TEST_F(PeerManagerTestFixture, StatefulGrTest3) {
   EXPECT_EQ(2, config_->getPeerToConfig().size());
   EXPECT_EQ(3, config_->getDynamicPeerToConfig().size());
 
-  // Create stateful GR file from previous incarnation, with one statically
-  // configred peer and one dynamic SHIV peer. Skip adding dynamic bgp monitor
-  // peer to the file to simulate it not advertising GR capability (similar to
-  // prod).
+  /*
+   * Create stateful GR file from previous incarnation, with one statically
+   * configred peer and one dynamic SHIV peer. Skip adding dynamic bgp monitor
+   * peer to the file to simulate it not advertising GR capability (similar to
+   * prod).
+   */
   createGrState({kPeerId3, kDynamicPeerId1});
 
   // adds peers to sessionMgr
@@ -1582,9 +1648,11 @@ TEST_F(PeerManagerTestFixture, StatefulGrTest3) {
           mockPeerMgr->processAdjRibEvent(std::move(EoRFromPeer)));
     }
 
-    // Verify that we are not waiting for BGP-Monitor peerings to
-    // re-establish. RIB EOR is sent out when we receive peer EoRs
-    // from the previous Established and GR capable peers.
+    /*
+     * Verify that we are not waiting for BGP-Monitor peerings to
+     * re-establish. RIB EOR is sent out when we receive peer EoRs
+     * from the previous Established and GR capable peers.
+     */
     EXPECT_TRUE(mockPeerMgr->ribInitPathComputationNotified_);
   });
   taskFutures.emplace_back(std::move(fiber));
@@ -1630,13 +1698,17 @@ TEST_F(PeerManagerTestFixture, StatefulGrTest4) {
   auto fiber = fm.addTaskFuture([&] {
     fiberSleepFor(10ms);
 
-    // We are sending a extra dynamic peer, which was not present in
-    // previous incarnation. No rib EoR should be notified.
+    /*
+     * We are sending a extra dynamic peer, which was not present in
+     * previous incarnation. No rib EoR should be notified.
+     */
     mockPeerMgr->processPeerEoR(kDynamicPeerId2);
     EXPECT_FALSE(mockPeerMgr->ribInitPathComputationNotified_);
 
-    // make sure EoR will be sent without any delay once
-    // all dynamic peers EORs received
+    /*
+     * make sure EoR will be sent without any delay once
+     * all dynamic peers EORs received
+     */
     mockPeerMgr->processPeerEoR(kDynamicPeerId1);
     EXPECT_TRUE(mockPeerMgr->ribInitPathComputationNotified_);
   });
@@ -1810,8 +1882,10 @@ TEST_F(PeerManagerTestFixture, StatefulGrConvergenceTestWithNoGrNeighbor) {
   folly::fibers::Baton adjRibReadyBaton, nbrDownSentBaton;
   auto& fm = folly::fibers::getFiberManager(evb, options_);
   fm.addTask([&] {
-    // Create previous incarnation file with one static peer and one dynamic
-    // peer
+    /*
+     * Create previous incarnation file with one static peer and one dynamic
+     * peer
+     */
     createGrState({kPeerId3, kDynamicPeerId1});
     EXPECT_TRUE(isGrStateExists());
     peerMgr->addPeersToSessionMgr();
@@ -1866,11 +1940,15 @@ TEST_F(PeerManagerTestFixture, StatefulGrConvergenceTestWithNoGrNeighbor) {
         folly::coro::blockingWait(
             peerMgr->processAdjRibEvent(std::move(EoRFromPeer)));
       }
-      // make sure EoR will be sent without any delay once
-      // all static and dynamic peers EORs received
+      /*
+       * make sure EoR will be sent without any delay once
+       * all static and dynamic peers EORs received
+       */
       EXPECT_TRUE(peerMgr->ribInitPathComputationNotified_);
-      // Ensure that RIB was notified about EOR without timer needing to be
-      // fired
+      /*
+       * Ensure that RIB was notified about EOR without timer needing to be
+       * fired
+       */
       EXPECT_FALSE(peerMgr->eorTimerExpired_);
     }
 
@@ -1892,8 +1970,10 @@ TEST_F(PeerManagerTestFixture, StatefulGrConvergenceTestWithNoGrNeighbor) {
     XLOG(INFO, "Waiting for adjRibReady baton");
     facebook::bgp::test::boundedBatonWait(adjRibReadyBaton, "adjRibReadyBaton");
 
-    // Initiate neighbor down event for a peer that was not present in previous
-    // incarnation
+    /*
+     * Initiate neighbor down event for a peer that was not present in previous
+     * incarnation
+     */
     nbrRouteChangeQ_->push(NeighborEventMsg(kPeerId3.peerAddr, false));
     // Sleep so that processNeighborRouteChangeLoop can run
     fiberSleepFor(10ms);
@@ -1942,8 +2022,10 @@ TEST_F(PeerManagerTestFixture, StatefulGrConvergenceTestWithNoGrNeighbor2) {
   folly::fibers::Baton adjRibReadyBaton, nbrDownSentBaton;
   auto& fm = folly::fibers::getFiberManager(evb, options_);
   fm.addTask([&] {
-    // Create previous incarnation file with one static peer and one dynamic
-    // peer
+    /*
+     * Create previous incarnation file with one static peer and one dynamic
+     * peer
+     */
     createGrState({kPeerId3, kDynamicPeerId1});
     EXPECT_TRUE(isGrStateExists());
     peerMgr->addPeersToSessionMgr();
@@ -1985,15 +2067,19 @@ TEST_F(PeerManagerTestFixture, StatefulGrConvergenceTestWithNoGrNeighbor2) {
         folly::coro::blockingWait(
             peerMgr->processAdjRibEvent(std::move(EoRFromPeer)));
       }
-      // make sure EoR will be sent without any delay once
-      // all static and dynamic peers EORs received
+      /*
+       * make sure EoR will be sent without any delay once
+       * all static and dynamic peers EORs received
+       */
       EXPECT_FALSE(peerMgr->ribInitPathComputationNotified_);
 
       // Mock EOR_TIMER_EXPIRED
       peerMgr->notifyRibInitialPathComputation(/*timerFired=*/true);
 
-      // Initiate neighbor down event for a peer that was not present in
-      // previous incarnation
+      /*
+       * Initiate neighbor down event for a peer that was not present in
+       * previous incarnation
+       */
       nbrRouteChangeQ_->push(NeighborEventMsg(kPeerId3.peerAddr, false));
       // Sleep so that processNeighborRouteChangeLoop can run
       fiberSleepFor(10ms);
@@ -2036,8 +2122,10 @@ TEST_F(PeerManagerTestFixture, StatefulGrConvergenceTestWithNoGrNeighbor2) {
   SUCCEED();
 }
 
-// Verify that if UCMP SET_LINK_BPS is specified in peering param
-// and linkBandwidthBps is null, we crash
+/*
+ * Verify that if UCMP SET_LINK_BPS is specified in peering param
+ * and linkBandwidthBps is null, we crash
+ */
 TEST_F(PeerManagerTestFixture, NullLinkBandwidthBpsTest) {
   auto mockPeerMgr = setupMockPeerManager(
       true /* includeStaticPeer */, true /* includeDynamicShivPeer */);
@@ -2127,9 +2215,9 @@ TEST_F(PeerManagerTestFixture, MultipleFlapTest) {
       folly::fibers::getFiberManager(mockPeerMgr->getEventBase(), options_);
   fm.addTask([&] {
     mockPeerMgr->ribInitPathComputationNotified_ = false;
-    //
-    // Step 0: Simulate that FiberBgpPeer has the same version
-    //
+    /*
+     * Step 0: Simulate that FiberBgpPeer has the same version
+     */
 
     auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
         mockInfo1_,
@@ -2138,10 +2226,10 @@ TEST_F(PeerManagerTestFixture, MultipleFlapTest) {
         sessionMgr->oQueue_,
         versionNumber);
 
-    //
-    // Step 1: Call sessionEstablished() and verify AdjRib is created and
-    // marked as established
-    //
+    /*
+     * Step 1: Call sessionEstablished() and verify AdjRib is created and
+     * marked as established
+     */
 
     FiberBgpPeer::ObservableStateT stateEvent{
         .peerId = kPeerId3,
@@ -2164,9 +2252,9 @@ TEST_F(PeerManagerTestFixture, MultipleFlapTest) {
 
     fiberSleepFor(20ms);
 
-    //
-    // Step2: Terminate the session. Let adjRib and peerMgr both see the events
-    //
+    /*
+     * Step2: Terminate the session. Let adjRib and peerMgr both see the events
+     */
     sessionMgr->oQueue_->open();
     sessionMgr->oQueue_->fiberPush(
         FiberBgpPeer::BgpSessionStop{GracefulRestartFlag{false}});
@@ -2184,21 +2272,23 @@ TEST_F(PeerManagerTestFixture, MultipleFlapTest) {
     EXPECT_TRUE(
         mockPeerMgr->adjRibOutGroups_.contains(kPeerId3.peerAddr.str()));
 
-    // Post baton to simulate message loops exiting. In production,
-    // postTerminateBaton() posts the baton after both loops signal the local
-    // semaphore.
+    /*
+     * Post baton to simulate message loops exiting. In production,
+     * postTerminateBaton() posts the baton after both loops signal the local
+     * semaphore.
+     */
     auto batonIt = mockPeerMgr->sessionTerminateBatons_.find(kPeerId3);
     ASSERT_NE(batonIt, mockPeerMgr->sessionTerminateBatons_.end());
     batonIt->second->post();
 
     fiberSleepFor(20ms);
 
-    //
-    // Step3: Simulate the FiberBgpPeer has a different version, aka, this
-    //        mimicks the situation that PeerMgr has a slow pace reading
-    //        the previous session establishment. When the reading happens,
-    //        the FiberBgpPeer has flapped, hence with an invalid version.
-    //
+    /*
+     * Step3: Simulate the FiberBgpPeer has a different version, aka, this
+     *        mimicks the situation that PeerMgr has a slow pace reading
+     *        the previous session establishment. When the reading happens,
+     *        the FiberBgpPeer has flapped, hence with an invalid version.
+     */
     stateEvent.versionNumber =
         ++version; // Simulate FiberBgpPeerManager increasing version
 
@@ -2212,16 +2302,18 @@ TEST_F(PeerManagerTestFixture, MultipleFlapTest) {
     folly::coro::blockingWait(mockPeerMgr->sessionTerminated(stateEvent));
     fiberSleepFor(10ms);
 
-    // With baton latch semantics, no re-signal is needed here.
-    // The baton stays posted between post() and reset(), so Step 3's
-    // waitForSessionTerminateBaton passes through without consuming
-    // tokens, and Step 4 will also pass through.
+    /*
+     * With baton latch semantics, no re-signal is needed here.
+     * The baton stays posted between post() and reset(), so Step 3's
+     * waitForSessionTerminateBaton passes through without consuming
+     * tokens, and Step 4 will also pass through.
+     */
 
-    //
-    // Step 4: Simulate sessionTermination with version++ and then session
-    //         establishment with version++. Verify the sessionEstablished
-    //         call can be handled correctly.
-    //
+    /*
+     * Step 4: Simulate sessionTermination with version++ and then session
+     *         establishment with version++. Verify the sessionEstablished
+     *         call can be handled correctly.
+     */
     stateEvent.versionNumber =
         ++version; // Simulate FiberBgpPeerManager increasing version
     sessionInfo->currentVersion = std::make_shared<VersionNumber>(version);
@@ -2246,10 +2338,10 @@ TEST_F(PeerManagerTestFixture, MultipleFlapTest) {
     ASSERT_TRUE(getRunningSessions());
     EXPECT_EQ(1, *getRunningSessions());
 
-    //
-    // Step 5: Make sure normal termination with the version++ will correctly
-    //         mark this adjRib session terminated.
-    //
+    /*
+     * Step 5: Make sure normal termination with the version++ will correctly
+     *         mark this adjRib session terminated.
+     */
     stateEvent.versionNumber =
         ++version; // Simulate FiberBgpPeerManager increasing version
     folly::coro::blockingWait(mockPeerMgr->sessionTerminated(stateEvent));
@@ -2472,9 +2564,11 @@ TEST_F(PeerManagerTestFixture, MultipleFlapMultiplePeersTest) {
   SUCCEED();
 }
 
-// Verify that if peer manager sees terminate and next establish before
-// adjRib sees first terminate it will do busy wait and not misbehave in
-// next establishment.
+/*
+ * Verify that if peer manager sees terminate and next establish before
+ * adjRib sees first terminate it will do busy wait and not misbehave in
+ * next establishment.
+ */
 TEST_F(PeerManagerTestFixture, BusyWaitTest) {
   auto mockPeerMgr = setupMockPeerManager(
       true /* includeStaticPeer */,
@@ -2486,11 +2580,13 @@ TEST_F(PeerManagerTestFixture, BusyWaitTest) {
 
   auto& evb = mockPeerMgr->getEventBase();
 
-  // NOTE: Ideally sessionEstablished and sessionTerminated calls will happen
-  // from same fiber. But for this test case, we split into two fibers as
-  // during busy wait the whole fiber sleeps. To do validations even with
-  // sleep we do sessionEstablished from one fiber and sessionTerminated
-  // from another fiber.
+  /*
+   * NOTE: Ideally sessionEstablished and sessionTerminated calls will happen
+   * from same fiber. But for this test case, we split into two fibers as
+   * during busy wait the whole fiber sleeps. To do validations even with
+   * sleep we do sessionEstablished from one fiber and sessionTerminated
+   * from another fiber.
+   */
   auto& fm =
       folly::fibers::getFiberManager(mockPeerMgr->getEventBase(), options_);
   fm.addTask([&] {
@@ -2514,9 +2610,11 @@ TEST_F(PeerManagerTestFixture, BusyWaitTest) {
     auto adjRib = mockPeerMgr->findAdjRib(kPeerId3);
     EXPECT_EQ(true, adjRib->isStateEstablished());
 
-    // This will cause busy wait, as adjRib has a sleep of 100ms before
-    // it processes sessionTerminated notification
-    // Simulate FiberBgpPeer is consistent as seen by peerManager
+    /*
+     * This will cause busy wait, as adjRib has a sleep of 100ms before
+     * it processes sessionTerminated notification
+     * Simulate FiberBgpPeer is consistent as seen by peerManager
+     */
     stateEvent.versionNumber = version + 2;
     sessionInfo->currentVersion = std::make_shared<VersionNumber>(version + 2);
     folly::coro::blockingWait(mockPeerMgr->sessionEstablished(stateEvent));
@@ -2528,30 +2626,38 @@ TEST_F(PeerManagerTestFixture, BusyWaitTest) {
     auto adjRib = mockPeerMgr->findAdjRib(kPeerId3);
     EXPECT_EQ(true, adjRib->isStateEstablished());
 
-    // Verify that only first sessionEstablished call went through
-    // and increased the counter by 1. If 2nd call went through counter
-    // would increase to 2.
+    /*
+     * Verify that only first sessionEstablished call went through
+     * and increased the counter by 1. If 2nd call went through counter
+     * would increase to 2.
+     */
     ASSERT_TRUE(getRunningSessions());
     EXPECT_EQ(1, *getRunningSessions());
 
     FiberBgpPeer::ObservableStateT stateEvent{
         .peerId = kPeerId3, .versionNumber = version + 1};
 
-    // Terminate session, peer manager will come out of busy wait and
-    // establish again immediately due to pending establishment message
+    /*
+     * Terminate session, peer manager will come out of busy wait and
+     * establish again immediately due to pending establishment message
+     */
     folly::coro::blockingWait(mockPeerMgr->sessionTerminated(stateEvent));
     sessionMgr->oQueue_->fiberPush(
         FiberBgpPeer::BgpSessionStop{GracefulRestartFlag{false}});
     fiberSleepFor(50ms);
 
-    // Verify that peerManager was in busy wait and did not process the 2nd
-    // Establish message till after adjRib has terminated 1st connection.
+    /*
+     * Verify that peerManager was in busy wait and did not process the 2nd
+     * Establish message till after adjRib has terminated 1st connection.
+     */
     EXPECT_EQ(true, adjRib->isStateEstablished());
     ASSERT_TRUE(getRunningSessions());
     EXPECT_EQ(1, *getRunningSessions());
 
-    // Terminate session, this will terminate the 2nd establishement
-    // Needed for clean exist of test case
+    /*
+     * Terminate session, this will terminate the 2nd establishement
+     * Needed for clean exist of test case
+     */
     stateEvent.versionNumber = version + 3;
     folly::coro::blockingWait(mockPeerMgr->sessionTerminated(stateEvent));
     sessionMgr->oQueue_->fiberPush(
@@ -2592,9 +2698,11 @@ TEST_F(PeerManagerTestFixture, EnableVipServerLimitTest) {
   EXPECT_TRUE(peerMgr.vipPeerMgr_->isVipServerLimitEnabled());
 }
 
-// If we get nbrDown message when we are in GR state, where we have marked
-// routes stale waiting for peer to come up, we should clean up the stale
-// routes and withdraw them from RIB
+/*
+ * If we get nbrDown message when we are in GR state, where we have marked
+ * routes stale waiting for peer to come up, we should clean up the stale
+ * routes and withdraw them from RIB
+ */
 TEST_F(PeerManagerTestFixture, NbrDownAfterGRTest) {
   auto config = getConfig(true, false);
   auto globalConfig = config->getBgpGlobalConfig();
@@ -2696,8 +2804,10 @@ TEST_F(PeerManagerTestFixture, NbrDownAfterGRTest) {
   SUCCEED();
 }
 
-// Directly call handleNeighborReachabilityMsg on peerMgr
-// and verify log lines and adjRib shut down behavior.
+/*
+ * Directly call handleNeighborReachabilityMsg on peerMgr
+ * and verify log lines and adjRib shut down behavior.
+ */
 TEST_F(PeerManagerTestFixture, HandleNeighborReachabilityMsgTest) {
   auto dsfPeer = createBgpPeer(
       kPeerAsn1,
@@ -2728,8 +2838,10 @@ TEST_F(PeerManagerTestFixture, HandleNeighborReachabilityMsgTest) {
 
   auto& messages = subscribeToLogMessages("", folly::LogLevel::INFO);
 
-  // Set up 1 peer (adjRib) without GR.
-  // Set up MockAdjRib on peerMgr.
+  /*
+   * Set up 1 peer (adjRib) without GR.
+   * Set up MockAdjRib on peerMgr.
+   */
   peerMgr->addPeersToSessionMgr();
   auto adjRib =
       setupMockAdjRib(evb, kPeerId1, AsNum(kAsn1), sessionTerminateBaton_);
@@ -2754,9 +2866,11 @@ TEST_F(PeerManagerTestFixture, HandleNeighborReachabilityMsgTest) {
   // Directly call handleNeighborReachabilityMsg.
   folly::coro::blockingWait(peerMgr->handleNeighborReachabilityMsg());
 
-  // Check that all peers have been shut down on receipt of
-  // NeighborReachabilityMsg.
-  // Verify stopping peer log line was printed.
+  /*
+   * Check that all peers have been shut down on receipt of
+   * NeighborReachabilityMsg.
+   * Verify stopping peer log line was printed.
+   */
   EXPECT_EQ(2, messages.size());
   EXPECT_TRUE(
       messages[0].first.getMessage().starts_with(
@@ -2811,8 +2925,10 @@ TEST_F(PeerManagerTestFixture, NeighborReachabilityMsgNoGrTest) {
 
   auto& messages = subscribeToLogMessages("", folly::LogLevel::INFO);
 
-  // Set up 2 peers (adjRib) without GR. One is DSF peer
-  // and the other is not.
+  /*
+   * Set up 2 peers (adjRib) without GR. One is DSF peer
+   * and the other is not.
+   */
   fm.addTask([&] {
     // Set up MockAdjRib on peerMgr.
     peerMgr->addPeersToSessionMgr();
@@ -2846,18 +2962,22 @@ TEST_F(PeerManagerTestFixture, NeighborReachabilityMsgNoGrTest) {
     nbrRouteChangeQ_->push(NeighborReachabilityMsg());
     // Sleep so that processNeighborRouteChangeLoop can run
     fiberSleepFor(10ms);
-    // Check that all peers have been shut down on receipt of
-    // NeighborReachabilityMsg.
-    // Verify stopping peer log line was printed.
+    /*
+     * Check that all peers have been shut down on receipt of
+     * NeighborReachabilityMsg.
+     * Verify stopping peer log line was printed.
+     */
     EXPECT_EQ(2, messages.size());
     EXPECT_TRUE(
         messages[0].first.getMessage().starts_with(
             "Received NeighborReachabilityMsg."));
     EXPECT_TRUE(messages[1].first.getMessage().starts_with("Stopping peer:"));
 
-    // Remove test log handler before concurrent shutdown to avoid TSAN race
-    // between main thread (PeerManagerBase::stop -> logEoRPeers) and session
-    // manager thread (FiberBgpPeerManager shutdown logging).
+    /*
+     * Remove test log handler before concurrent shutdown to avoid TSAN race
+     * between main thread (PeerManagerBase::stop -> logEoRPeers) and session
+     * manager thread (FiberBgpPeerManager shutdown logging).
+     */
     folly::LoggerDB::get().getCategory("")->clearHandlers();
 
     // Finish coroutine.
@@ -2912,8 +3032,10 @@ TEST_F(PeerManagerTestFixture, NeighborReachabilityMsgWithGrTest) {
 
   auto& messages = subscribeToLogMessages("", folly::LogLevel::INFO);
 
-  // Set up 2 peers (adjRib) with GR. One is DSF peer and
-  // the other is not.
+  /*
+   * Set up 2 peers (adjRib) with GR. One is DSF peer and
+   * the other is not.
+   */
   fm.addTask([&] {
     // Set up MockAdjRib on peerMgr.
     peerMgr->addPeersToSessionMgr();
@@ -2930,9 +3052,11 @@ TEST_F(PeerManagerTestFixture, NeighborReachabilityMsgWithGrTest) {
     EXPECT_EQ(2, peerMgr->adjRibs_.size());
     // Only one peer's session is stopped.
     EXPECT_CALL(*sessionMgr, stopPeer(kPeerAddr1, false /* withGR */)).Times(1);
-    // adjRib->cleanupGrState() is called once for dsf GR peer in
-    // handleNeighborReachabilityMsg, and adjRib->stop() is called once
-    // when peerMgr is stopped.
+    /*
+     * adjRib->cleanupGrState() is called once for dsf GR peer in
+     * handleNeighborReachabilityMsg, and adjRib->stop() is called once
+     * when peerMgr is stopped.
+     */
     EXPECT_CALL(*dsfAdjRib, cleanupGrState(/*isDaemonShutdown=*/false))
         .Times(1)
         .WillOnce([](bool) -> folly::coro::Task<void> { co_return; });
@@ -2956,9 +3080,11 @@ TEST_F(PeerManagerTestFixture, NeighborReachabilityMsgWithGrTest) {
     nbrRouteChangeQ_->push(NeighborReachabilityMsg());
     // Sleep so that processNeighborRouteChangeLoop can run
     fiberSleepFor(10ms);
-    // Check that all peers have been shut down on receipt of
-    // NeighborReachabilityMsg.
-    // Verify stopping peer log line was printed.
+    /*
+     * Check that all peers have been shut down on receipt of
+     * NeighborReachabilityMsg.
+     * Verify stopping peer log line was printed.
+     */
     EXPECT_EQ(2, messages.size());
     EXPECT_TRUE(
         messages[0].first.getMessage().starts_with(
@@ -2967,9 +3093,11 @@ TEST_F(PeerManagerTestFixture, NeighborReachabilityMsgWithGrTest) {
         messages[1].first.getMessage().starts_with(
             "Stopping peer while peer in GR state:"));
 
-    // Remove test log handler before concurrent shutdown to avoid TSAN race
-    // between main thread (PeerManagerBase::stop -> logEoRPeers) and session
-    // manager thread (FiberBgpPeerManager shutdown logging).
+    /*
+     * Remove test log handler before concurrent shutdown to avoid TSAN race
+     * between main thread (PeerManagerBase::stop -> logEoRPeers) and session
+     * manager thread (FiberBgpPeerManager shutdown logging).
+     */
     folly::LoggerDB::get().getCategory("")->clearHandlers();
 
     // Finish coroutine.
@@ -3067,8 +3195,10 @@ TEST_F(PeerManagerTestFixture, SetRouteFilterPolicyTest) {
     auto policy = std::make_unique<RouteFilterPolicy>(tPolicy);
     peerMgr->setRouteFilterPolicy(std::move(policy));
 
-    // expect both adjribs get different route filter statements
-    // expect both adjribs to have null golden prefix policy
+    /*
+     * expect both adjribs get different route filter statements
+     * expect both adjribs to have null golden prefix policy
+     */
     WITH_RETRIES({
       evb.runInEventBaseThreadAndWait([&]() {
         EXPECT_EVENTUALLY_NE(nullptr, adjRib1->routeFilterStmt_);
@@ -3438,8 +3568,10 @@ TEST_F(PeerManagerTestFixture, SetRouteFilterPolicyForceUpdateTest) {
     });
   }
 
-  // Lower version (5) with forceUpdate=true - should be accepted
-  // This is the primary FILE_MODE scenario (daemon restart, version resets)
+  /*
+   * Lower version (5) with forceUpdate=true - should be accepted
+   * This is the primary FILE_MODE scenario (daemon restart, version resets)
+   */
   {
     rib_policy::TRouteFilterPolicy tPolicy;
     tPolicy.statements()->emplace("adjRib1", createTRouteFilterStatement({}));
@@ -3545,8 +3677,10 @@ TEST_F(
     auto policy = std::make_unique<RouteFilterPolicy>(tPolicy);
     peerMgr->setRouteFilterPolicy(std::move(policy));
 
-    // expect both adjribs get different route filter statements based on peer
-    // group name
+    /*
+     * expect both adjribs get different route filter statements based on peer
+     * group name
+     */
     WITH_RETRIES({
       evb.runInEventBaseThreadAndWait([&]() {
         EXPECT_EVENTUALLY_NE(nullptr, adjRib1->routeFilterStmt_);
@@ -3695,8 +3829,10 @@ TEST_F(
   policy1.key_type() = rib_policy::KeyType::PEER_GROUP_NAME;
   policy1.version() = policyVersion++;
 
-  // Expected final state: all pending flags should be false after async
-  // operations complete
+  /*
+   * Expected final state: all pending flags should be false after async
+   * operations complete
+   */
   std::vector<AdjRibPolicyUpdateState> steadyStates = {
       {adjRib1, false, false}, // adjRib1: no pending flags
       {adjRib2, false, false}, // adjRib2: no pending flags
@@ -3784,8 +3920,10 @@ TEST_F(
   auto policy2Ptr = std::make_unique<RouteFilterPolicy>(policy2);
   peerMgr->setRouteFilterPolicy(std::move(policy2Ptr));
 
-  // Verify final state: async operations completed and new policy correctly
-  // applied
+  /*
+   * Verify final state: async operations completed and new policy correctly
+   * applied
+   */
   verifyStateWithRetries(evb, steadyStates);
   verifyRouteFilterStatement(
       evb,
@@ -3794,8 +3932,10 @@ TEST_F(
           {adjRib2, policy2.statements()->at("PEERGROUP_FSW_RSW_V4")},
       });
 
-  // Verify counters for ingress and egress policy affected peers with new
-  // policy
+  /*
+   * Verify counters for ingress and egress policy affected peers with new
+   * policy
+   */
   EXPECT_EQ(
       2,
       fb303::ThreadCachedServiceData::get()->getCounter(
@@ -3882,8 +4022,10 @@ TEST_F(
   adjRib2->markStateEstablished();
   adjRib3->markStateEstablished();
 
-  // Mark adjRibs as not in initial announcement to make them eligible for
-  // ribDumpReq
+  /*
+   * Mark adjRibs as not in initial announcement to make them eligible for
+   * ribDumpReq
+   */
   adjRib1->resetInInitialAnnouncement();
   adjRib2->resetInInitialAnnouncement();
   adjRib3->resetInInitialAnnouncement();
@@ -3891,8 +4033,10 @@ TEST_F(
   auto peerMgrThread = peerMgr->runInThread();
   auto sessionMgrThread = sessionMgr->runInThread();
 
-  // Expected final state: all pending flags should be false after async
-  // operations complete
+  /*
+   * Expected final state: all pending flags should be false after async
+   * operations complete
+   */
   std::vector<AdjRibPolicyUpdateState> steadyStates = {
       {adjRib1, false, false}, // adjRib1: no pending flags
       {adjRib2, false, false}, // adjRib2: no pending flags
@@ -3951,8 +4095,10 @@ TEST_F(
   auto egressPolicy2Ptr = std::make_unique<RouteFilterPolicy>(egressPolicy2);
   peerMgr->setRouteFilterPolicy(std::move(egressPolicy2Ptr));
 
-  // Verify final state: async operations completed and new policy correctly
-  // applied
+  /*
+   * Verify final state: async operations completed and new policy correctly
+   * applied
+   */
   verifyStateWithRetries(evb, steadyStates);
   verifyRouteFilterStatement(
       evb,
@@ -4070,8 +4216,10 @@ TEST_F(
   auto peerMgrThread = peerMgr->runInThread();
   auto sessionMgrThread = sessionMgr->runInThread();
 
-  // Expected final state: all pending flags should be false after async
-  // operations complete
+  /*
+   * Expected final state: all pending flags should be false after async
+   * operations complete
+   */
   std::vector<AdjRibPolicyUpdateState> steadyStates = {
       {adjRib1, false, false}, // adjRib1: no pending flags
       {adjRib2, false, false}, // adjRib2: no pending flags
@@ -4169,8 +4317,10 @@ TEST_F(
   auto ingressPolicy2Ptr = std::make_unique<RouteFilterPolicy>(ingressPolicy2);
   peerMgr->setRouteFilterPolicy(std::move(ingressPolicy2Ptr));
 
-  // Verify final state: async operations completed and new policy correctly
-  // applied
+  /*
+   * Verify final state: async operations completed and new policy correctly
+   * applied
+   */
   verifyStateWithRetries(evb, steadyStates);
   verifyRouteFilterStatement(
       evb,
@@ -4197,8 +4347,10 @@ TEST_F(
   SUCCEED();
 }
 
-// If switch level limit is enabled, but in Drop mode, golden prefix policy
-// should always be inactive.
+/*
+ * If switch level limit is enabled, but in Drop mode, golden prefix policy
+ * should always be inactive.
+ */
 TEST_F(PeerManagerTestFixture, GoldenPrefixesPolicyStatusTestDropMode) {
   auto config = getConfig(
       true,
@@ -4281,8 +4433,10 @@ TEST_F(PeerManagerTestFixture, GoldenPrefixesPolicyStatusTestDropMode) {
   SUCCEED();
 }
 
-// If switch level limit isn't set, golden prefix policy should always be
-// inactive.
+/*
+ * If switch level limit isn't set, golden prefix policy should always be
+ * inactive.
+ */
 TEST_F(PeerManagerTestFixture, GoldenPrefixesPolicyStatusTestSwitchLimitUnset) {
   auto config = getConfig(
       true,
@@ -4364,8 +4518,10 @@ TEST_F(PeerManagerTestFixture, GoldenPrefixesPolicyStatusTestSwitchLimitUnset) {
   SUCCEED();
 }
 
-// This test verifies periodic eviction of stale entries in policy Cache which
-// is a singleton object shared across all adjRibs
+/*
+ * This test verifies periodic eviction of stale entries in policy Cache which
+ * is a singleton object shared across all adjRibs
+ */
 TEST_F(PeerManagerTestFixture, PolicyCachePeriodicEvictionTest) {
   auto config = getConfig(true, false);
   auto globalConfig = config->getBgpGlobalConfig();
@@ -4485,8 +4641,10 @@ TEST_F(PeerManagerTestFixture, PolicyCachePeriodicEvictionTest) {
 class SafeModeTestFixture : public PeerManagerTestFixture,
                             public testing::WithParamInterface<bool> {};
 
-// When a new AdjRib is created, verify that it gets the golden prefix policy
-// from PeerManagerBase.
+/*
+ * When a new AdjRib is created, verify that it gets the golden prefix policy
+ * from PeerManagerBase.
+ */
 TEST_P(SafeModeTestFixture, InitializeAdjRibWithGoldenPrefixPolicy) {
   auto mockPeerMgr = setupMockPeerManager(
       true /* includeStaticPeer */,
@@ -4510,8 +4668,10 @@ TEST_P(SafeModeTestFixture, InitializeAdjRibWithGoldenPrefixPolicy) {
     tPolicy.golden_prefix_policy() = createTGoldenPrefixPolicy(
         {kV4Prefix1}, 2 /* maxSubnets */, {32} /* allowedMaskLengths */);
     auto policy = std::make_unique<RouteFilterPolicy>(tPolicy);
-    // Set routeFilterPolicy_ instead of calling setRouteFilterPolicy, which is
-    // asynchronous.
+    /*
+     * Set routeFilterPolicy_ instead of calling setRouteFilterPolicy, which is
+     * asynchronous.
+     */
     mockPeerMgr->routeFilterPolicy_ = std::move(policy);
 
     auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
@@ -4527,8 +4687,10 @@ TEST_P(SafeModeTestFixture, InitializeAdjRibWithGoldenPrefixPolicy) {
         .remoteAs = mockInfo1_.peeringParams.remoteAs,
         .sessionInfo = sessionInfo};
 
-    // Establish session, which is expected to create a new AdjRib with
-    // goldenPrefixPolicy set.
+    /*
+     * Establish session, which is expected to create a new AdjRib with
+     * goldenPrefixPolicy set.
+     */
     folly::coro::blockingWait(mockPeerMgr->sessionEstablished(stateEvent));
 
     auto adjRib = mockPeerMgr->findAdjRib(kPeerId3);
@@ -4552,14 +4714,18 @@ INSTANTIATE_TEST_SUITE_P(
     SafeModeTestFixture,
     testing::Bool() /* isSafeModeOn */);
 
-// Parameterized on whether update groups are enabled. The non-update-group path
-// clears each statement and issues per-peer rib dumps directly; the
-// update-group path routes through applyRouteFilterPolicy instead.
+/*
+ * Parameterized on whether update groups are enabled. The non-update-group path
+ * clears each statement and issues per-peer rib dumps directly; the
+ * update-group path routes through applyRouteFilterPolicy instead.
+ */
 class ClearRouteFiltersFixture : public PeerManagerTestFixture,
                                  public testing::WithParamInterface<bool> {};
 
-// Verify that PeerManagerBase clear the Ingress Egress Route Filter statements
-// in each adjrib, and trigger RIB Dump
+/*
+ * Verify that PeerManagerBase clear the Ingress Egress Route Filter statements
+ * in each adjrib, and trigger RIB Dump
+ */
 TEST_P(ClearRouteFiltersFixture, ClearIngressEgressRouteFiltersPolicyTest) {
   const bool enableUpdateGroup = GetParam();
   auto config = getConfig(
@@ -4608,8 +4774,10 @@ TEST_P(ClearRouteFiltersFixture, ClearIngressEgressRouteFiltersPolicyTest) {
   adjRib2->isSafeModeOn_ = std::make_shared<std::atomic<bool>>(false);
   adjRib2->adjRibOutGroup_ = std::make_shared<AdjRibOutGroup>(evb, "Group2");
 
-  // A golden prefix policy is set on each adjRib; clearing the route filters
-  // must leave it untouched.
+  /*
+   * A golden prefix policy is set on each adjRib; clearing the route filters
+   * must leave it untouched.
+   */
   adjRib1->goldenPrefixPolicy_ = std::make_shared<GoldenPrefixPolicy>(
       createTGoldenPrefixPolicy({kV4Prefix1}, 2 /* maxSubnets */, {32}));
   adjRib2->goldenPrefixPolicy_ = std::make_shared<GoldenPrefixPolicy>(
@@ -4657,10 +4825,12 @@ INSTANTIATE_TEST_SUITE_P(
     ClearRouteFiltersFixture,
     testing::Bool() /* enableUpdateGroup */);
 
-// Set a non-null route filter statement, then clear it. Verify the adjRib's
-// statement is dropped and observe whether the update group key changes.
-// Parameterized on {enableUpdateGroup, includeEgressFilter}: scenario (1) is
-// ingress-only, scenario (2) is ingress + egress.
+/*
+ * Set a non-null route filter statement, then clear it. Verify the adjRib's
+ * statement is dropped and observe whether the update group key changes.
+ * Parameterized on {enableUpdateGroup, includeEgressFilter}: scenario (1) is
+ * ingress-only, scenario (2) is ingress + egress.
+ */
 class ClearRouteFiltersWithStmtFixture
     : public PeerManagerTestFixture,
       public testing::WithParamInterface<std::tuple<bool, bool>> {};
@@ -4702,8 +4872,10 @@ TEST_P(
       config);
   adjRib1->peeringParams_.description = "adjRib1";
   adjRib1->isSafeModeOn_ = std::make_shared<std::atomic<bool>>(false);
-  // Build the initial group key so we can observe whether clearing the route
-  // filter changes it.
+  /*
+   * Build the initial group key so we can observe whether clearing the route
+   * filter changes it.
+   */
   adjRib1->buildAndSetUpdateGroupKey();
 
   peerMgr->adjRibs_[kPeerId1] = adjRib1;
@@ -4739,9 +4911,11 @@ TEST_P(
         [&]() { EXPECT_EVENTUALLY_EQ(nullptr, adjRib1->routeFilterStmt_); });
   });
 
-  // The update group key is not derived from the route filter statement (the
-  // route filter name is not yet wired into buildUpdateGroupKey), so clearing
-  // the filter -- ingress-only or ingress+egress -- leaves the key unchanged.
+  /*
+   * The update group key is not derived from the route filter statement (the
+   * route filter name is not yet wired into buildUpdateGroupKey), so clearing
+   * the filter -- ingress-only or ingress+egress -- leaves the key unchanged.
+   */
   evb.runInEventBaseThreadAndWait(
       [&]() { EXPECT_EQ(keyBeforeClear, adjRib1->getUpdateGroupKey()); });
 
@@ -4760,8 +4934,10 @@ INSTANTIATE_TEST_SUITE_P(
         testing::Bool() /* enableUpdateGroup */,
         testing::Bool() /* includeEgressFilter */));
 
-// Verify that PeerManagerBase clear the Golden Prefixes policy in
-// each adjrib.
+/*
+ * Verify that PeerManagerBase clear the Golden Prefixes policy in
+ * each adjrib.
+ */
 TEST_F(PeerManagerTestFixture, ClearGoldenPrefixesPolicyTest) {
   auto config =
       getConfig(true, true, false, false, false, false /* enableVipService */);
@@ -4826,8 +5002,10 @@ TEST_F(PeerManagerTestFixture, ClearGoldenPrefixesPolicyTest) {
   }
 
   {
-    // purge all
-    // one adjrib set safe mode on, all adjribs should have safe mode on
+    /*
+     * purge all
+     * one adjrib set safe mode on, all adjribs should have safe mode on
+     */
     adjRib1->setSafeModeOn();
     peerMgr->clearGoldenPrefixesPolicy();
 
@@ -4940,8 +5118,10 @@ TEST_F(PeerManagerTestFixture, DisableScubaLoggingTest) {
   SUCCEED();
 }
 
-// This test verifies setting safe mode in one session sets all the sessions in
-// safe mode
+/*
+ * This test verifies setting safe mode in one session sets all the sessions in
+ * safe mode
+ */
 TEST_F(PeerManagerTestFixture, SafeModeOnAllSessionsTest) {
   gflags::FlagSaver fs;
   int randomNumber = folly::Random::rand32(); // generate a random integer
@@ -5090,11 +5270,13 @@ TEST_F(PeerManagerTestFixture, SafeModeOnAllSessionsTest) {
   SUCCEED();
 }
 
-// Verify the following safe mode operations when TriggerSafeMode message is
-// received
-// 1. Save Safe mode file
-// 2. Trigger PauseBestPathAndFibProgramming message to RIB
-// 3. Trigger ResumeBestPathAndFibProgramming message to RIB
+/*
+ * Verify the following safe mode operations when TriggerSafeMode message is
+ * received
+ * 1. Save Safe mode file
+ * 2. Trigger PauseBestPathAndFibProgramming message to RIB
+ * 3. Trigger ResumeBestPathAndFibProgramming message to RIB
+ */
 TEST_F(PeerManagerTestFixture, TriggerSafeModeMsgTest) {
   gflags::FlagSaver fs;
   int randomNumber = folly::Random::rand32(); // generate a random integer
@@ -5152,8 +5334,10 @@ TEST_F(PeerManagerTestFixture, TriggerSafeModeMsgTest) {
 
     fiberSleepFor(10ms);
 
-    // Verify PauseBestPathAndFibProgramming and ResumeBestPathAndFibProgramming
-    // message is sent to RIB
+    /*
+     * Verify PauseBestPathAndFibProgramming and ResumeBestPathAndFibProgramming
+     * message is sent to RIB
+     */
     WITH_RETRIES(EXPECT_EVENTUALLY_EQ(2, ribInQ_.size()));
     auto ribInQItem0 =
         facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
@@ -5251,15 +5435,19 @@ TEST_F(PeerManagerTestFixture, TriggerRouteRefreshRequestNegativeTest) {
   fm.addTask([&] {
     mockPeerMgr->initialized_ = false;
 
-    // Case 1: Trigger a route refresh request for a peer when BGP is not
-    // initialized
+    /*
+     * Case 1: Trigger a route refresh request for a peer when BGP is not
+     * initialized
+     */
     auto failedPeers =
         mockPeerMgr->triggerRouteRefreshRequestsForPeers({kPeerId3});
 
     EXPECT_EQ(failedPeers.size(), 1);
 
-    // Case 2: Trigger a route refresh request for a peer when peer is not in
-    // established state
+    /*
+     * Case 2: Trigger a route refresh request for a peer when peer is not in
+     * established state
+     */
     mockPeerMgr->ribInitPathComputationNotified_ = true;
     mockPeerMgr->eorTimerExpired_ = false;
     mockPeerMgr->initialized_ = true;
@@ -5270,8 +5458,10 @@ TEST_F(PeerManagerTestFixture, TriggerRouteRefreshRequestNegativeTest) {
 
     EXPECT_EQ(failedPeers.size(), 1);
 
-    // Case 3: Trigger a route refresh request for a peer when enhanced route
-    // refresh is not present in the negotiated capabilities
+    /*
+     * Case 3: Trigger a route refresh request for a peer when enhanced route
+     * refresh is not present in the negotiated capabilities
+     */
     mockInfo1_.negotiatedCapabilities.enhancedRouteRefresh() = false;
 
     auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
@@ -5350,10 +5540,12 @@ TEST_F(PeerManagerTestFixture, TriggerRouteRefreshRequestTest) {
     mockPeerMgr->ribInitialAnnouncementStarted_ = true;
     mockPeerMgr->ribInitialAnnouncementDone_ = true;
 
-    // No sleep needed: every gate input is set synchronously on this fiber,
-    // and triggerRouteRefreshRequestsForPeers runs synchronously on the same
-    // fiber. Per general_rules.md: "MUST never use sleep-based
-    // synchronization."
+    /*
+     * No sleep needed: every gate input is set synchronously on this fiber,
+     * and triggerRouteRefreshRequestsForPeers runs synchronously on the same
+     * fiber. Per general_rules.md: "MUST never use sleep-based
+     * synchronization."
+     */
     auto failedPeers =
         mockPeerMgr->triggerRouteRefreshRequestsForPeers({kPeerId3});
 
@@ -5420,12 +5612,14 @@ TEST_F(PeerManagerTestFixture, TriggerRouteRefreshRequestRrOnlyTest) {
 
     mockPeerMgr->initialized_ = true;
 
-    // No sleep needed: every gate triggerRouteRefreshRequestForPeer checks
-    // (initialized_, AdjRib presence + isStateEstablished +
-    // isRouteRefresh*Negotiated) is satisfied synchronously on this fiber,
-    // and triggerRouteRefreshRequestsForPeers runs synchronously on the
-    // same fiber. Per general_rules.md: "MUST never use sleep-based
-    // synchronization."
+    /*
+     * No sleep needed: every gate triggerRouteRefreshRequestForPeer checks
+     * (initialized_, AdjRib presence + isStateEstablished +
+     * isRouteRefresh*Negotiated) is satisfied synchronously on this fiber,
+     * and triggerRouteRefreshRequestsForPeers runs synchronously on the
+     * same fiber. Per general_rules.md: "MUST never use sleep-based
+     * synchronization."
+     */
     auto failedPeers =
         mockPeerMgr->triggerRouteRefreshRequestsForPeers({kPeerId3});
 
@@ -5927,50 +6121,58 @@ TEST_F(PeerManagerTestFixture, WaitForSessionTerminateBatonTest) {
   auto sessionTerminateBaton = std::make_shared<folly::coro::Baton>();
   mockPeerMgr->sessionTerminateBatons_[kPeerId] = sessionTerminateBaton;
 
-  // Scope the subscription to the PeerManagerBase log category.
-  // PeerManagerBase.cpp has no XLOG_SET_CATEGORY_NAME, so its XLOGF messages
-  // land in the path-derived category below. Subscribing to the root ("")
-  // instead captured stray DBG1 logs emitted by other components active during
-  // the wait, which made messages.size() exceed 2 and shifted the expected
-  // ordering (observed ~20/300 failures, all with size == 3). This matches the
-  // scoping the other PeerManagerBase log-assertion tests in this file already
-  // use.
+  /*
+   * Scope the subscription to the PeerManagerBase log category.
+   * PeerManagerBase.cpp has no XLOG_SET_CATEGORY_NAME, so its XLOGF messages
+   * land in the path-derived category below. Subscribing to the root ("")
+   * instead captured stray DBG1 logs emitted by other components active during
+   * the wait, which made messages.size() exceed 2 and shifted the expected
+   * ordering (observed ~20/300 failures, all with size == 3). This matches the
+   * scoping the other PeerManagerBase log-assertion tests in this file already
+   * use.
+   */
   auto& messages = subscribeToLogMessages(
       "neteng.fboss.bgp.cpp.peer.PeerManagerBase", folly::LogLevel::DBG1);
 
-  // Drive the coroutine under test on a ManualExecutor on THIS thread. This
-  // keeps all logging on a single thread (TestLogHandler is not thread-safe)
-  // and makes the wait deterministic: drain() runs the coroutine until it
-  // suspends on the (un-posted) baton, i.e. until it has emitted the entry log
-  // and recorded its wait start time. Only after that confirmed suspension do
-  // we let the production 1ms duration threshold elapse and post the baton, so
-  // the "blocked" duration log fires every time.
-  //
-  // Earlier versions raced the post against the coroutine reaching co_await:
-  // a two-thread version timed a sleep from thread creation, and an
-  // EventBase-timer version relied on the queued coroutine being serviced
-  // before a delayed timer. Under load the baton was occasionally posted
-  // first, making the measured wait ~0ms (baton latch passes through) and
-  // dropping the duration log (observed ~3-5/300 failures with size == 1 once
-  // the stray-log pollution above was removed).
+  /*
+   * Drive the coroutine under test on a ManualExecutor on THIS thread. This
+   * keeps all logging on a single thread (TestLogHandler is not thread-safe)
+   * and makes the wait deterministic: drain() runs the coroutine until it
+   * suspends on the (un-posted) baton, i.e. until it has emitted the entry log
+   * and recorded its wait start time. Only after that confirmed suspension do
+   * we let the production 1ms duration threshold elapse and post the baton, so
+   * the "blocked" duration log fires every time.
+   *
+   * Earlier versions raced the post against the coroutine reaching co_await:
+   * a two-thread version timed a sleep from thread creation, and an
+   * EventBase-timer version relied on the queued coroutine being serviced
+   * before a delayed timer. Under load the baton was occasionally posted
+   * first, making the measured wait ~0ms (baton latch passes through) and
+   * dropping the duration log (observed ~3-5/300 failures with size == 1 once
+   * the stray-log pollution above was removed).
+   */
   folly::ManualExecutor executor;
   auto future =
       folly::coro::co_withExecutor(
           &executor, mockPeerMgr->waitForSessionTerminateBaton(kPeerId))
           .start();
 
-  // Run the coroutine until it suspends on co_await *baton. After this the
-  // coroutine has emitted the entry log and recorded its start time.
+  /*
+   * Run the coroutine until it suspends on co_await *baton. After this the
+   * coroutine has emitted the entry log and recorded its start time.
+   */
   executor.drain();
   ASSERT_FALSE(future.isReady());
 
-  // The coroutine is now provably blocked on the baton, so there is no race
-  // left. Spin until strictly more than the production 1ms threshold has
-  // elapsed, then post. The coroutine's startTime was recorded at or before
-  // gateStart, so the wait it measures (postTime - startTime) is guaranteed to
-  // exceed 1ms and the duration log is emitted. This is a deterministic time
-  // gate exercising the production threshold, not a sleep used to paper over
-  // missing synchronization.
+  /*
+   * The coroutine is now provably blocked on the baton, so there is no race
+   * left. Spin until strictly more than the production 1ms threshold has
+   * elapsed, then post. The coroutine's startTime was recorded at or before
+   * gateStart, so the wait it measures (postTime - startTime) is guaranteed to
+   * exceed 1ms and the duration log is emitted. This is a deterministic time
+   * gate exercising the production threshold, not a sleep used to paper over
+   * missing synchronization.
+   */
   const auto gateStart = std::chrono::steady_clock::now();
   while (std::chrono::steady_clock::now() - gateStart <=
          std::chrono::milliseconds(2)) {
@@ -5981,12 +6183,14 @@ TEST_F(PeerManagerTestFixture, WaitForSessionTerminateBatonTest) {
   executor.drain();
   ASSERT_TRUE(future.isReady());
 
-  // Read the captured messages only after the coroutine has completed — no
-  // concurrent access to the non-thread-safe handler.
-  // Expect 2 log messages:
-  // 1. Entry log: "Peer Manager waiting for adjRib..."
-  // 2. Duration log: "Peer Manager blocked waiting for adjRib..." (since
-  // duration > 1ms)
+  /*
+   * Read the captured messages only after the coroutine has completed — no
+   * concurrent access to the non-thread-safe handler.
+   * Expect 2 log messages:
+   * 1. Entry log: "Peer Manager waiting for adjRib..."
+   * 2. Duration log: "Peer Manager blocked waiting for adjRib..." (since
+   * duration > 1ms)
+   */
   ASSERT_EQ(2, messages.size());
   EXPECT_TRUE(
       messages[0].first.getMessage().starts_with(
@@ -6150,9 +6354,11 @@ TEST_F(
   auto peerMgrThread = peerMgr->runInThread();
   auto sessionMgrThread = sessionMgr->runInThread();
 
-  // Create policy name map keyed by peer IP addresses.
-  // BgpServiceBase is now responsible for resolving group → per-peer
-  // policies, so PeerManagerBase receives per-peer maps.
+  /*
+   * Create policy name map keyed by peer IP addresses.
+   * BgpServiceBase is now responsible for resolving group → per-peer
+   * policies, so PeerManagerBase receives per-peer maps.
+   */
   std::string peerAddr1 = adjRib1->peeringParams_.peerAddr.str(); // 1.1.1.1
   std::string peerAddr2 = adjRib2->peeringParams_.peerAddr.str(); // 2.2.2.2
   std::string peerAddr4 = adjRib4->peeringParams_.peerAddr.str(); // 127.4.0.1
@@ -6162,8 +6368,10 @@ TEST_F(
        {peerAddr2, "ingress_policy_v2", "egress_policy_v2"},
        {peerAddr4, "ingress_policy_v2", "egress_policy_v2"}});
 
-  // Increment config version before applying policies (version check requires
-  // currentVersion > lastAppliedPolicyVersion_)
+  /*
+   * Increment config version before applying policies (version check requires
+   * currentVersion > lastAppliedPolicyVersion_)
+   */
   configManager->updateConfig(config_);
 
   // Apply the policies
@@ -6203,9 +6411,11 @@ TEST_F(
   configManager->updateConfig(config_);
   peerMgr->updateIngressEgressPolicyNames(std::move(samePolicyMap));
 
-  // Stats should remain the same (no new changes) - check before EVB
-  // processes the update (same policies = 0 affected, which would reset
-  // counters)
+  /*
+   * Stats should remain the same (no new changes) - check before EVB
+   * processes the update (same policies = 0 affected, which would reset
+   * counters)
+   */
   EXPECT_EQ(
       3,
       fb303::ThreadCachedServiceData::get()->getCounter(
@@ -6215,9 +6425,11 @@ TEST_F(
       fb303::ThreadCachedServiceData::get()->getCounter(
           BgpStats::kEgressRoutingPolicyAffectedPeers));
 
-  // Wait for EVB to process the same-policy update before bumping version
-  // again. Without this sync, the next updateConfig() would bump the version
-  // before the lambda runs, causing the subsequent update to be skipped.
+  /*
+   * Wait for EVB to process the same-policy update before bumping version
+   * again. Without this sync, the next updateConfig() would bump the version
+   * before the lambda runs, causing the subsequent update to be skipped.
+   */
   evb.runInEventBaseThreadAndWait([&]() {
     // Verify same policies still applied (unchanged)
     EXPECT_EQ("ingress_policy_v1", adjRib1->ingressPolicyName_.value());
@@ -6364,9 +6576,11 @@ TEST_F(
   auto peerMgrThread = peerMgr->runInThread();
   auto sessionMgrThread = sessionMgr->runInThread();
 
-  // Create policy name map for IP addresses
-  // Use the actual peerAddr from AdjRib peeringParams to match
-  // PeerManagerBase's matchKey logic
+  /*
+   * Create policy name map for IP addresses
+   * Use the actual peerAddr from AdjRib peeringParams to match
+   * PeerManagerBase's matchKey logic
+   */
   std::string peerAddr1 = adjRib1->peeringParams_.peerAddr.str();
   std::string peerAddr2 = adjRib2->peeringParams_.peerAddr.str();
 
@@ -6457,8 +6671,10 @@ TEST_F(
   // Enable dynamic policy evaluation
   SetUp(true /* enableDynamicPolicyEvaluation */);
 
-  // Create a basic PolicyManager (for consistency, even though this test uses
-  // empty maps)
+  /*
+   * Create a basic PolicyManager (for consistency, even though this test uses
+   * empty maps)
+   */
   auto policyManager = setupPolicyManagerWithMultiplePolicies({});
   auto configManager = std::make_shared<ConfigManager>(config_);
   auto peerMgr = std::make_shared<PeerManagerBase>(
@@ -6588,9 +6804,11 @@ TEST_F(
   evb.runInEventBaseThreadAndWait(
       [&]() { EXPECT_EQ(0, peerMgr->lastAppliedPolicyVersion_); });
 
-  // Trigger a config update to increment the version
-  // This simulates BgpServiceBase updating config before calling
-  // updateIngressEgressPolicyNames
+  /*
+   * Trigger a config update to increment the version
+   * This simulates BgpServiceBase updating config before calling
+   * updateIngressEgressPolicyNames
+   */
   configManager->updateConfig(config_);
   EXPECT_EQ(1, configManager->getConfigVersion());
 
@@ -6701,9 +6919,11 @@ TEST_F(PeerManagerDynamicPolicyEvaluationFixture, StalePolicyUpdateIsSkipped) {
     });
   });
 
-  // Step 3: Try to apply a "stale" update without incrementing config version
-  // This simulates a race where an older update arrives after a newer one
-  // The config version is still 2, same as lastAppliedPolicyVersion_
+  /*
+   * Step 3: Try to apply a "stale" update without incrementing config version
+   * This simulates a race where an older update arrives after a newer one
+   * The config version is still 2, same as lastAppliedPolicyVersion_
+   */
   auto stalePolicyMap = createPolicyMap({{peerAddr1, "stale_policy", ""}});
   peerMgr->updateIngressEgressPolicyNames(std::move(stalePolicyMap));
 
@@ -6782,8 +7002,10 @@ TEST_F(
   configManager->updateConfig(config_); // version 3
   EXPECT_EQ(3, configManager->getConfigVersion());
 
-  // Post all three policy updates
-  // In a real race, these could arrive on EVB in any order
+  /*
+   * Post all three policy updates
+   * In a real race, these could arrive on EVB in any order
+   */
   auto policyMap1 = createPolicyMap({{peerAddr1, "rapid_policy_v1", ""}});
   auto policyMap2 = createPolicyMap({{peerAddr1, "rapid_policy_v2", ""}});
   auto policyMap3 = createPolicyMap({{peerAddr1, "rapid_policy_v3", ""}});
@@ -6795,19 +7017,25 @@ TEST_F(
   // Wait for all EVB tasks to complete
   WITH_RETRIES({
     evb.runInEventBaseThreadAndWait([&]() {
-      // The first update (checking version 3 > 0) should apply
-      // All subsequent updates should be skipped (version 3 <= 3)
+      /*
+       * The first update (checking version 3 > 0) should apply
+       * All subsequent updates should be skipped (version 3 <= 3)
+       */
       EXPECT_EVENTUALLY_EQ(3, peerMgr->lastAppliedPolicyVersion_);
     });
   });
 
-  // The first update that executes (with current version 3) wins.
-  // Since all updates check the same version 3, only the first one
-  // that runs will be applied (version 3 > 0).
-  // All others will see version 3 <= lastApplied (3) and be skipped.
+  /*
+   * The first update that executes (with current version 3) wins.
+   * Since all updates check the same version 3, only the first one
+   * that runs will be applied (version 3 > 0).
+   * All others will see version 3 <= lastApplied (3) and be skipped.
+   */
   evb.runInEventBaseThreadAndWait([&]() {
-    // Policy should be one of the rapid policies (whichever ran first)
-    // Most likely rapid_policy_v1 since it was posted first
+    /*
+     * Policy should be one of the rapid policies (whichever ran first)
+     * Most likely rapid_policy_v1 since it was posted first
+     */
     EXPECT_TRUE(adjRib1->ingressPolicyName_.has_value());
   });
 
@@ -6875,8 +7103,10 @@ TEST_F(
   evb.runInEventBaseThreadAndWait(
       [&]() { EXPECT_EQ(0, peerMgr->lastAppliedPolicyVersion_); });
 
-  // Try to apply policy without incrementing config version
-  // This should be skipped because version 0 <= lastApplied 0
+  /*
+   * Try to apply policy without incrementing config version
+   * This should be skipped because version 0 <= lastApplied 0
+   */
   auto policyMap = createPolicyMap({{peerAddr1, "initial_policy", ""}});
   peerMgr->updateIngressEgressPolicyNames(std::move(policyMap));
 
@@ -7087,16 +7317,20 @@ TEST_F(PeerManagerTestFixture, MarkDaemonShutdownClearsAdjRibTreesTest) {
     EXPECT_FALSE(adjRib1->isDaemonShutdown_);
     EXPECT_FALSE(adjRib2->isDaemonShutdown_);
 
-    // Call markDaemonShutdown() - this should set isDaemonShutdown_ on all
-    // AdjRibs
+    /*
+     * Call markDaemonShutdown() - this should set isDaemonShutdown_ on all
+     * AdjRibs
+     */
     peerMgr->markDaemonShutdown();
 
     // Verify isDaemonShutdown_ is now true on all AdjRibs
     EXPECT_TRUE(adjRib1->isDaemonShutdown_);
     EXPECT_TRUE(adjRib2->isDaemonShutdown_);
 
-    // Trigger sessionTerminated on both AdjRibs
-    // With isDaemonShutdown_=true, this should clear trees via fast-path
+    /*
+     * Trigger sessionTerminated on both AdjRibs
+     * With isDaemonShutdown_=true, this should clear trees via fast-path
+     */
     folly::coro::blockingWait(
         adjRib1->sessionTerminated(FiberBgpPeer::BgpSessionStop{}));
     folly::coro::blockingWait(
@@ -7110,10 +7344,12 @@ TEST_F(PeerManagerTestFixture, MarkDaemonShutdownClearsAdjRibTreesTest) {
     EXPECT_EQ(0, adjRib2->adjRibInPathTree_.size());
     EXPECT_EQ(0, adjRib2->adjRibInStale_.size());
 
-    // Note: adjRibOutGroup_ trees are NOT cleared by sessionTerminated()
-    // because they are shared across peers. They are cleared by
-    // PeerManagerBase::~PeerManagerBase() destructor during BGP daemon
-    // shutdown.
+    /*
+     * Note: adjRibOutGroup_ trees are NOT cleared by sessionTerminated()
+     * because they are shared across peers. They are cleared by
+     * PeerManagerBase::~PeerManagerBase() destructor during BGP daemon
+     * shutdown.
+     */
 
     fiberSleepFor(10ms);
     peerMgr->stop();

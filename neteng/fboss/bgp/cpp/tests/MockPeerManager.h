@@ -110,9 +110,11 @@ class MockPeerManager : public PeerManagerDC {
   }
 
  private:
-  // if true, run VipPeerManager in the run() call
-  // enableVipPeerManager() and run() are most likely going to be called
-  // sequentially but just in case we make the variable atomic
+  /*
+   * if true, run VipPeerManager in the run() call
+   * enableVipPeerManager() and run() are most likely going to be called
+   * sequentially but just in case we make the variable atomic
+   */
   std::atomic<bool> runVipPeerManager_{false};
 };
 

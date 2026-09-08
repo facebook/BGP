@@ -24,9 +24,11 @@
 
 namespace facebook::bgp {
 
-// Fixture that adds FSDB test infrastructure on top of RibFixture.
-// Sets up FsdbTestServer, FsdbTestSubscriber, and FsdbSyncer, then
-// assigns the syncer to the Rib instance.
+/*
+ * Fixture that adds FSDB test infrastructure on top of RibFixture.
+ * Sets up FsdbTestServer, FsdbTestSubscriber, and FsdbSyncer, then
+ * assigns the syncer to the Rib instance.
+ */
 class RibFsdbFixture : public RibFixture {
  public:
   void SetUp() override {

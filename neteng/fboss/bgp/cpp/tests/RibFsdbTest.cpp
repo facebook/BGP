@@ -56,8 +56,10 @@ TEST_F(RibFsdbFixture, PartialDrainStatePublishedToFsdbOnTransition) {
   fibFuture.wait();
   rib_->setFibBatchTime(milliseconds(2));
 
-  // Drain the initial-dump messages (RibInitialAnnouncementStart +
-  // RibOutAnnouncement with initialDump=true).
+  /*
+   * Drain the initial-dump messages (RibInitialAnnouncementStart +
+   * RibOutAnnouncement with initialDump=true).
+   */
   WITH_RETRIES({ ASSERT_EVENTUALLY_EQ(ribOutQ_.size(), 2); });
   REPEAT_N(2, folly::coro::blockingWait(ribOutQ_.pop()));
 
@@ -70,9 +72,11 @@ TEST_F(RibFsdbFixture, PartialDrainStatePublishedToFsdbOnTransition) {
   WITH_RETRIES({ ASSERT_EVENTUALLY_GE(ribOutQ_.size(), 1); });
   folly::coro::blockingWait(ribOutQ_.pop());
 
-  // Inject CPS policy: mnh=3 + drain_on_min_nexthop_violation. The single
-  // installed path violates mnh=3, so the prefix enters partial drain and
-  // drainedPrefixCount_ flips 0 → 1 → setPartialDrainState(state) fires.
+  /*
+   * Inject CPS policy: mnh=3 + drain_on_min_nexthop_violation. The single
+   * installed path violates mnh=3, so the prefix enters partial drain and
+   * drainedPrefixCount_ flips 0 → 1 → setPartialDrainState(state) fires.
+   */
   TPathSelector tPathSelector;
   tPathSelector.bgp_native_path_selection_min_nexthop() = 3;
   tPathSelector.drain_on_min_nexthop_violation() = true;
@@ -139,9 +143,11 @@ TEST_F(RibFsdbFixture, PartialDrainStatePublishedToFsdbOnTransition) {
                                 .has_value());
   })
 
-  // Withdraw the only path → drainedPrefixCount_ flips 1 → 0. The exit edge
-  // publishes a populated is_partially_drained=false snapshot (not nullopt), so
-  // the node stays present with an empty drained set and transition_count=2.
+  /*
+   * Withdraw the only path → drainedPrefixCount_ flips 1 → 0. The exit edge
+   * publishes a populated is_partially_drained=false snapshot (not nullopt), so
+   * the node stays present with an empty drained set and transition_count=2.
+   */
   fibFuture = fib_->getFibProgramFuture();
   sendWithdrawal(prefixBatch, eBgpPeer1_);
   fibFuture.wait();
@@ -185,17 +191,21 @@ TEST_F(RibFsdbFixture, PartialDrainStateInitialFalsePublishedWhenNeverDrained) {
   WITH_RETRIES({ ASSERT_EVENTUALLY_EQ(ribOutQ_.size(), 2); });
   REPEAT_N(2, folly::coro::blockingWait(ribOutQ_.pop()));
 
-  // Install a path with no drain-triggering policy, so the device never enters
-  // partial drain.
+  /*
+   * Install a path with no drain-triggering policy, so the device never enters
+   * partial drain.
+   */
   auto prefixBatch = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
   fibFuture = fib_->getFibProgramFuture();
   sendAnnouncement(prefixBatch, eBgpPeer1_, attr_);
   fibFuture.wait();
 
-  // The first completed FIB pass publishes a positive
-  // is_partially_drained=false snapshot without any transition: node present,
-  // no affected prefixes, empty drained set, and transition_count still 0 (the
-  // initial publish does not bump the enter/exit counter).
+  /*
+   * The first completed FIB pass publishes a positive
+   * is_partially_drained=false snapshot without any transition: node present,
+   * no affected prefixes, empty drained set, and transition_count still 0 (the
+   * initial publish does not bump the enter/exit counter).
+   */
   WITH_RETRIES_N(5, {
     auto stateLk = subscribedState.rlock();
     ASSERT_EVENTUALLY_TRUE(stateLk->has_value());
@@ -238,8 +248,10 @@ TEST_F(RibFsdbFixture, PartialDrainStateNotPublishedWhenFlagDisabled) {
   WITH_RETRIES({ ASSERT_EVENTUALLY_GE(ribOutQ_.size(), 1); });
   folly::coro::blockingWait(ribOutQ_.pop());
 
-  // mnh=3 with a single installed path → prefix enters partial drain
-  // (drainedPrefixCount_ 0 → 1). Flag off → no publish.
+  /*
+   * mnh=3 with a single installed path → prefix enters partial drain
+   * (drainedPrefixCount_ 0 → 1). Flag off → no publish.
+   */
   TPathSelector tPathSelector;
   tPathSelector.bgp_native_path_selection_min_nexthop() = 3;
   tPathSelector.drain_on_min_nexthop_violation() = true;
@@ -255,8 +267,10 @@ TEST_F(RibFsdbFixture, PartialDrainStateNotPublishedWhenFlagDisabled) {
     EXPECT_EVENTUALLY_FALSE(stateLk->has_value());
   })
 
-  // Withdraw the only path → drainedPrefixCount_ flips 1 → 0. Still off, so the
-  // exit edge is also a no-op and the node remains absent.
+  /*
+   * Withdraw the only path → drainedPrefixCount_ flips 1 → 0. Still off, so the
+   * exit edge is also a no-op and the node remains absent.
+   */
   fibFuture = fib_->getFibProgramFuture();
   sendWithdrawal(prefixBatch, eBgpPeer1_);
   fibFuture.wait();
@@ -294,8 +308,10 @@ TEST_F(RibFsdbFixture, PartialDrainStatePublishedWithLbwThresholdOnTransition) {
   fibFuture.wait();
   rib_->setFibBatchTime(milliseconds(2));
 
-  // Drain the initial-dump messages (RibInitialAnnouncementStart +
-  // RibOutAnnouncement with initialDump=true).
+  /*
+   * Drain the initial-dump messages (RibInitialAnnouncementStart +
+   * RibOutAnnouncement with initialDump=true).
+   */
   WITH_RETRIES({ ASSERT_EVENTUALLY_EQ(ribOutQ_.size(), 2); });
   REPEAT_N(2, folly::coro::blockingWait(ribOutQ_.pop()));
 

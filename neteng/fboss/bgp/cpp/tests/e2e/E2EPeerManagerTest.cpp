@@ -324,23 +324,29 @@ TEST_F(E2EPeerManagerTest, RapidSessionFlapWithVersionCompressionE2e) {
   ASSERT_TRUE(waitForRouteInShadowRib(prefix));
   EXPECT_TRUE(verifyRouteAdd("v4", "10.0.0.0", 8, kPeerAddr5, "127.5.0.4"));
 
-  // Step 1: Bring down peer3 -- AdjRib loops terminate, baton posted via
-  // postTerminateBaton()
+  /*
+   * Step 1: Bring down peer3 -- AdjRib loops terminate, baton posted via
+   * postTerminateBaton()
+   */
   bringDownPeer(kPeerAddr3);
   EXPECT_TRUE(verifyRouteWithdraw("v4", "10.0.0.0", 8, kPeerAddr5));
 
-  // Step 2: Dispatch a STALE sessionEstablished event.
-  // PeerManagerBase will wait on the baton (passes -- still posted from step
-  // 1), detect the version mismatch, and return early WITHOUT resetting the
-  // baton.
+  /*
+   * Step 2: Dispatch a STALE sessionEstablished event.
+   * PeerManagerBase will wait on the baton (passes -- still posted from step
+   * 1), detect the version mismatch, and return early WITHOUT resetting the
+   * baton.
+   */
   dispatchStaleSessionEstablished(kPeerAddr3);
 
-  // Step 3: Bring peer3 back up with a VALID version.
-  // With latch semantics (folly::coro::Baton), the baton is still posted
-  // from step 1 (step 2's early return did NOT reset it), so
-  // waitForSessionTerminateBaton() passes through immediately.
-  // With the old BatchSemaphore, wait(2) in step 2 consumed the tokens,
-  // so this wait(2) would HANG FOREVER -- the S619541 bug.
+  /*
+   * Step 3: Bring peer3 back up with a VALID version.
+   * With latch semantics (folly::coro::Baton), the baton is still posted
+   * from step 1 (step 2's early return did NOT reset it), so
+   * waitForSessionTerminateBaton() passes through immediately.
+   * With the old BatchSemaphore, wait(2) in step 2 consumed the tokens,
+   * so this wait(2) would HANG FOREVER -- the S619541 bug.
+   */
   bringUpPeer(kPeerAddr3);
   sendEoRToPeer(peerId3);
   EXPECT_TRUE(waitForEoR(peerId3));
@@ -386,17 +392,21 @@ TEST_F(E2EPeerManagerTest, PeerDeleteTriggersCleanupAndAllowsReBringup) {
   auto oldAdjRib = getAdjRibByAddr(kPeerAddr3);
   ASSERT_NE(nullptr, oldAdjRib);
 
-  // bringDownPeer(addr, peerDelete=true) dispatches an IDLE event with
-  // peerDelete=true to PeerManagerBase::sessionTerminated, which co_awaits
-  // cleanupPeerState inline. By the time bringDownPeer returns the
-  // AdjRib must be erased.
+  /*
+   * bringDownPeer(addr, peerDelete=true) dispatches an IDLE event with
+   * peerDelete=true to PeerManagerBase::sessionTerminated, which co_awaits
+   * cleanupPeerState inline. By the time bringDownPeer returns the
+   * AdjRib must be erased.
+   */
   bringDownPeer(kPeerAddr3, /*peerDelete=*/true);
   EXPECT_TRUE(verifyRouteWithdraw("v4", "10.0.0.0", 8, kPeerAddr5));
   EXPECT_EQ(nullptr, getAdjRibByAddr(kPeerAddr3))
       << "AdjRib for peer3 was not erased after bringDownPeer with peerDelete";
 
-  // Re-bringup on the same address — PeerManagerBase creates a fresh AdjRib
-  // whose identity must differ from the pre-cleanup one.
+  /*
+   * Re-bringup on the same address — PeerManagerBase creates a fresh AdjRib
+   * whose identity must differ from the pre-cleanup one.
+   */
   bringUpPeer(kPeerAddr3, /*versionNumber=*/2);
   sendEoRToPeer(peerId3);
   EXPECT_TRUE(waitForEoR(peerId3));
@@ -444,9 +454,11 @@ TEST_F(E2EPeerManagerTest, IdlePeerDelPeers_FallbackCleansUp) {
   ASSERT_NE(nullptr, getAdjRibByAddr(kPeerAddr3))
       << "AdjRib must remain after natural session-down (no peerDelete)";
 
-  // Now delPeers — fallback fires because !isStateEstablished, runs
-  // cleanupPeerState inline. Baton was posted in bringDownPeer; latch
-  // semantics let cleanupPeerState's wait pass through.
+  /*
+   * Now delPeers — fallback fires because !isStateEstablished, runs
+   * cleanupPeerState inline. Baton was posted in bringDownPeer; latch
+   * semantics let cleanupPeerState's wait pass through.
+   */
   auto delResult = delPeerAtRuntime(kPeerAddr3);
   ASSERT_TRUE(delResult.hasValue());
 

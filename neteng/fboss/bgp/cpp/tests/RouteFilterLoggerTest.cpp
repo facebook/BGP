@@ -71,8 +71,10 @@ TEST(RouteFilterLoggerTest, BasicTest) {
             false,
             {"123:456"}));
   }
-  // test with prod scuba to verify that creating a logger for
-  // non-existent table and logging to it won't crash
+  /*
+   * test with prod scuba to verify that creating a logger for
+   * non-existent table and logging to it won't crash
+   */
   {
     auto rand32 = folly::Random::rand32();
     auto scuba = std::make_shared<rfe::ScubaData>(
@@ -87,9 +89,11 @@ TEST(RouteFilterLoggerTest, BasicTest) {
   }
 }
 
-// When disable_route_filter_scuba_logging is set,
-// createRouteFilterLoggerFactory still returns a usable factory, but the
-// loggers it creates have no Scuba backend, so log() is inert and returns 0.
+/*
+ * When disable_route_filter_scuba_logging is set,
+ * createRouteFilterLoggerFactory still returns a usable factory, but the
+ * loggers it creates have no Scuba backend, so log() is inert and returns 0.
+ */
 TEST(RouteFilterLoggerTest, DisabledFactoryProducesInertLogger) {
   gflags::FlagSaver flagSaver;
   FLAGS_disable_route_filter_scuba_logging = true;

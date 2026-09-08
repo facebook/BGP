@@ -202,44 +202,58 @@ bgp_policy::BgpPolicyAction createPolicySetAsPathPrependAction(
     const uint32_t asn = kAsn1,
     const uint32_t repeated_times = kRepeatedTimes1);
 
-// There is no meaningful name I can give for this filter.
-// So naming it based on number of terms.
-// Create a policy with three terms
-// Term1 match kV4Prefix1, kV4Prefix2 and apply origin action (EGP) & as path
-// overwrite action as_path_overwrite_list set to {0, 0}, AdjRib will override 0
-// asns based on ingress or egress routes;
-// Term2 match kV4Prefix3 and discard
-// Term3 match kV4Prefix4 and PERMIT (do not modify any attributes)
+/*
+ * There is no meaningful name I can give for this filter.
+ * So naming it based on number of terms.
+ * Create a policy with three terms
+ * Term1 match kV4Prefix1, kV4Prefix2 and apply origin action (EGP) & as path
+ * overwrite action as_path_overwrite_list set to {0, 0}, AdjRib will override 0
+ * asns based on ingress or egress routes;
+ * Term2 match kV4Prefix3 and discard
+ * Term3 match kV4Prefix4 and PERMIT (do not modify any attributes)
+ */
 std::shared_ptr<PolicyManager> setup3TermPolicy(const std::string& policyName);
 
-// Create a policy with two terms
-// Term1 match origin IGP and deny
-// Term2 permit all
+/*
+ * Create a policy with two terms
+ * Term1 match origin IGP and deny
+ * Term2 permit all
+ */
 std::shared_ptr<PolicyManager> setupDenyIgpOriginAcceptAllPolicy(
     const std::string& policyName);
 
-// Create a policy with one term
-// Term1 permits all
+/*
+ * Create a policy with one term
+ * Term1 permits all
+ */
 std::shared_ptr<PolicyManager> setupAcceptAllPolicy(
     const std::string& policyName);
 
-// Create a policy with one term
-// Term1 match all, set action origin IGP
+/*
+ * Create a policy with one term
+ * Term1 match all, set action origin IGP
+ */
 std::shared_ptr<PolicyManager> setupMatchAllSetOriginIgpPolicy(
     const std::string& policyName);
 
-// Create a policy with one term
-// Term1 match all, set action to change community list
+/*
+ * Create a policy with one term
+ * Term1 match all, set action to change community list
+ */
 std::shared_ptr<PolicyManager> setupMatchAllSetCommunityPolicy(
     const std::string& policyName);
 
-// Create a policy with one term
-// Term1 match all, set action to set Med
+/*
+ * Create a policy with one term
+ * Term1 match all, set action to set Med
+ */
 std::shared_ptr<PolicyManager> setupMatchAllSetMedPolicy(
     const std::string& policyName);
 
-// Create a policy with one term
-// Term1 match origin EGP, set action to change community list
+/*
+ * Create a policy with one term
+ * Term1 match origin EGP, set action to change community list
+ */
 std::shared_ptr<PolicyManager> setupMatchEgpOriginSetCommunityPolicy(
     const std::string& policyName);
 

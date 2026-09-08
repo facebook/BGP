@@ -134,8 +134,10 @@ TEST_F(AdjRibOutboundFixture, VipInjectorAdditionalRemoteAsPeerIdTest) {
   EXPECT_EQ(bgpPeerId.toOdsKey(), adjRib_->getStats().getPeerIdOdsStr());
 }
 
-// Verify that a v4 local route is announced to a IBGP peer
-// Verify that a v4 local route is withdrawn
+/*
+ * Verify that a v4 local route is announced to a IBGP peer
+ * Verify that a v4 local route is withdrawn
+ */
 TEST_F(AdjRibOutboundFixture, V4LocalRouteIBgpPeer) {
   // IBGP peer
   setupAdjRib();
@@ -156,8 +158,10 @@ TEST_F(AdjRibOutboundFixture, V4LocalRouteIBgpPeer) {
     ASSERT_TRUE(
         std::holds_alternative<std::shared_ptr<const BgpUpdate2>>(*msg));
     auto bgpUpdate = std::get<std::shared_ptr<const BgpUpdate2>>(*msg);
-    // Verify that announcement message is notified to Fiber Bgp Peer
-    // properly
+    /*
+     * Verify that announcement message is notified to Fiber Bgp Peer
+     * properly
+     */
     ASSERT_EQ(1, bgpUpdate->mpAnnounced()->prefixes()->size());
     EXPECT_EQ(
         toIPPrefix(kV4Prefix1),
@@ -224,8 +228,10 @@ TEST_F(AdjRibOutboundFixture, V4LocalRouteIBgpPeer) {
   evb_.loop();
 }
 
-// Verify that a v4 local route is announced to a IBGP peer
-// Verify that a v4 local route is withdrawn
+/*
+ * Verify that a v4 local route is announced to a IBGP peer
+ * Verify that a v4 local route is withdrawn
+ */
 TEST_F(AdjRibOutboundFixture, V4LocalRouteIBgpPeerAddPath) {
   // IBGP peer
   setupAdjRib(true);
@@ -259,8 +265,10 @@ TEST_F(AdjRibOutboundFixture, V4LocalRouteIBgpPeerAddPath) {
     ASSERT_TRUE(
         std::holds_alternative<std::shared_ptr<const BgpUpdate2>>(*msg));
     auto bgpUpdate = std::get<std::shared_ptr<const BgpUpdate2>>(*msg);
-    // Verify that announcement message is notified to Fiber Bgp Peer
-    // properly
+    /*
+     * Verify that announcement message is notified to Fiber Bgp Peer
+     * properly
+     */
     ASSERT_EQ(1, bgpUpdate->mpAnnounced()->prefixes()->size());
     EXPECT_EQ(
         toIPPrefix(kV4Prefix1),
@@ -303,8 +311,10 @@ TEST_F(AdjRibOutboundFixture, V4LocalRouteIBgpPeerAddPath) {
     ASSERT_TRUE(
         std::holds_alternative<std::shared_ptr<const BgpUpdate2>>(*msg));
     bgpUpdate = std::get<std::shared_ptr<const BgpUpdate2>>(*msg);
-    // Verify that announcement message is notified to Fiber Bgp Peer
-    // properly
+    /*
+     * Verify that announcement message is notified to Fiber Bgp Peer
+     * properly
+     */
     ASSERT_EQ(1, bgpUpdate->mpAnnounced()->prefixes()->size());
     EXPECT_EQ(
         toIPPrefix(kV4Prefix1),
@@ -340,8 +350,10 @@ TEST_F(AdjRibOutboundFixture, V4LocalRouteIBgpPeerAddPath) {
 
     // Verify stats
     EXPECT_EQ(2, adjRib_->getStats().getPostOutPrefixCount());
-    // Rib announcement itself is with different next-hops and so expect
-    // different copy of attributes in the set
+    /*
+     * Rib announcement itself is with different next-hops and so expect
+     * different copy of attributes in the set
+     */
     EXPECT_EQ(DeDuplicatedBgpPath::deduplicatorSize(), 2);
 
     syncBaton[2].post();
@@ -391,9 +403,11 @@ TEST_F(AdjRibOutboundFixture, V4LocalRouteIBgpPeerAddPath) {
   evb_.loop();
 }
 
-// Verify that a v6 local route is announced to a IBGP peer
-// Verify that a v6 local route is withdrawn
-// We are advertising ipv6 routes on ipv4 peering
+/*
+ * Verify that a v6 local route is announced to a IBGP peer
+ * Verify that a v6 local route is withdrawn
+ * We are advertising ipv6 routes on ipv4 peering
+ */
 TEST_F(AdjRibOutboundFixture, V6LocalRouteIBgpPeer) {
   // IBGP peer
   setupAdjRib();
@@ -836,8 +850,10 @@ TEST_F(AdjRibOutboundFixture, groupingPrefixesbyAttributes) {
   evb_.loop();
 }
 
-// Verify that using COW attributes are modified properly
-// Verify RR client = True behavior (we announce)
+/*
+ * Verify that using COW attributes are modified properly
+ * Verify RR client = True behavior (we announce)
+ */
 TEST_F(AdjRibOutboundFixture, VerifyCowNhAttributeModification) {
   setupAdjRib(
       kLocalAs1,
@@ -916,8 +932,10 @@ TEST_F(AdjRibOutboundFixture, VerifyEgressFilteringFiber) {
   });
 
   fm_->addTask([&] {
-    // As we are checking for queue to be empty, sleeping for a while
-    // to ensure processing is completed
+    /*
+     * As we are checking for queue to be empty, sleeping for a while
+     * to ensure processing is completed
+     */
     fiberSleepFor(50ms);
     EXPECT_TRUE(adjRibOutQ_->empty());
     auto adjRibEntry = adjRib_->getRibEntry(/*ingress=*/false, kV4Prefix1);
@@ -929,8 +947,10 @@ TEST_F(AdjRibOutboundFixture, VerifyEgressFilteringFiber) {
   evb_.loop();
 }
 
-// Test sender suppress as loop feature: do not send to peer if AS-path
-// contains neighbor ASN
+/*
+ * Test sender suppress as loop feature: do not send to peer if AS-path
+ * contains neighbor ASN
+ */
 TEST_F(AdjRibOutboundFixture, SenderSuppressAsLoop) {
   // Setup up paths that contains remote As and one that does not
   std::array<uint32_t, 2> seg1Arr = {kRemoteAs1, 65000};
@@ -1022,17 +1042,21 @@ TEST_F(AdjRibOutboundFixture, SenderSuppressAsLoop) {
   }
 }
 
-// Verify various cases when we can announce a prefix
-// Testing canAnnounce function
+/*
+ * Verify various cases when we can announce a prefix
+ * Testing canAnnounce function
+ */
 TEST_F(AdjRibOutboundFixture, VerifyAnnounceFiltering) {
   BgpUpdate2 update = buildBgpUpdateAttributes(kV4Nexthop1);
   auto attrs = std::make_shared<facebook::bgp::BgpPath>(
       BgpPathFields(*BgpUpdate2toBgpPathC(update)));
 
-  // NOTE: setupAdjRib set's peer address as kPeerAddr1
-  // kPeerAddr1 ("1.1.1.1"), kLocalAddr1("10.50.139.10")
-  // kLocalAs1(1), kRemoteAs1(1), kRemoteAs2(2), kLocalRouteAs(0)
-  // kLocalV4RoutePeerAddr("0.0.0.0"), kLocalV6RoutePeerAddr("::")
+  /*
+   * NOTE: setupAdjRib set's peer address as kPeerAddr1
+   * kPeerAddr1 ("1.1.1.1"), kLocalAddr1("10.50.139.10")
+   * kLocalAs1(1), kRemoteAs1(1), kRemoteAs2(2), kLocalRouteAs(0)
+   * kLocalV4RoutePeerAddr("0.0.0.0"), kLocalV6RoutePeerAddr("::")
+   */
 
   // iBGP non RRC Peer
   {
@@ -1062,8 +1086,10 @@ TEST_F(AdjRibOutboundFixture, VerifyAnnounceFiltering) {
         kV4Prefix1, kDefaultPathID, localPeerV4_, attrs);
     EXPECT_TRUE(adjRib_->canAnnounce(localRouteRibEntry));
 
-    // Verify route learnt from non RRC iBGP peer is not advertised to
-    // non RR iBgp peer
+    /*
+     * Verify route learnt from non RRC iBGP peer is not advertised to
+     * non RR iBgp peer
+     */
     auto nonRrClientRibEntry =
         RibOutAnnouncementEntry(kV4Prefix1, kDefaultPathID, iBgpPeer_, attrs);
     EXPECT_FALSE(adjRib_->canAnnounce(nonRrClientRibEntry));
@@ -1167,8 +1193,10 @@ TEST_F(AdjRibOutboundFixture, VerifyAnnounceFiltering) {
     EXPECT_EQ(true, ret);
   }
   {
-    // Verify route learnt from IBGP peer is not advertised if RRclient is
-    // false
+    /*
+     * Verify route learnt from IBGP peer is not advertised if RRclient is
+     * false
+     */
     setupAdjRib(
         kLocalAs1,
         kLocalAs1,
@@ -1203,9 +1231,11 @@ TEST_F(AdjRibOutboundFixture, VerifyAnnounceFiltering) {
   }
 
   {
-    // Set up a v4 loopback address peering
-    // IBGP peer, RR client true
-    // allowLoopbackReflection = true (openr setting)
+    /*
+     * Set up a v4 loopback address peering
+     * IBGP peer, RR client true
+     * allowLoopbackReflection = true (openr setting)
+     */
     setupAdjRib(
         kLocalAs1,
         kLocalAs1,
@@ -1233,9 +1263,11 @@ TEST_F(AdjRibOutboundFixture, VerifyAnnounceFiltering) {
     EXPECT_EQ(true, ret);
   }
   {
-    // Set up a v6 loopback address peering
-    // IBGP peer, RR client true
-    // allowLoopbackReflection = true (openr setting)
+    /*
+     * Set up a v6 loopback address peering
+     * IBGP peer, RR client true
+     * allowLoopbackReflection = true (openr setting)
+     */
     setupAdjRib(
         kLocalAs1,
         kLocalAs1,
@@ -1263,9 +1295,11 @@ TEST_F(AdjRibOutboundFixture, VerifyAnnounceFiltering) {
     EXPECT_EQ(true, ret);
   }
   {
-    // Set up a v4 loopback address peering
-    // IBGP peer, RR client true
-    // allowLoopbackReflection is false (bgp++ setting)
+    /*
+     * Set up a v4 loopback address peering
+     * IBGP peer, RR client true
+     * allowLoopbackReflection is false (bgp++ setting)
+     */
     setupAdjRib(
         kLocalAs1,
         kLocalAs1,
@@ -1294,11 +1328,13 @@ TEST_F(AdjRibOutboundFixture, VerifyAnnounceFiltering) {
   }
 }
 
-// Verify Implicit withdrawal to a IBGP peer
-// AdjRib learns an announcement from RIB for a EBGP orginated route,
-// we advertise this route. Later due to bestpath change, same prefix
-// will be announced by RIB to be orginated from IBGP peer. Verify that
-// we withdraw previously announced route.
+/*
+ * Verify Implicit withdrawal to a IBGP peer
+ * AdjRib learns an announcement from RIB for a EBGP orginated route,
+ * we advertise this route. Later due to bestpath change, same prefix
+ * will be announced by RIB to be orginated from IBGP peer. Verify that
+ * we withdraw previously announced route.
+ */
 TEST_F(AdjRibOutboundFixture, ImplicitWithdrawalOfChangedRoute) {
   // IBGP peer
   setupAdjRib();
@@ -1309,8 +1345,10 @@ TEST_F(AdjRibOutboundFixture, ImplicitWithdrawalOfChangedRoute) {
         createRibSingleAnnounce(kV6Prefix1, kV6Nexthop1, eBgpPeer_, true);
     pushRibOutMsgToAdjRib(ribMsg);
     fiberSleepFor(50ms);
-    // RIB is updating the prefix to point to IBGP peer and different
-    // nexthop Ensure that AdjRib withdraws previous route
+    /*
+     * RIB is updating the prefix to point to IBGP peer and different
+     * nexthop Ensure that AdjRib withdraws previous route
+     */
     ribMsg = createRibSingleAnnounce(kV6Prefix1, kV6Nexthop2, iBgpPeer_, false);
     pushRibOutMsgToAdjRib(ribMsg);
   });
@@ -1369,9 +1407,11 @@ TEST_F(AdjRibOutboundFixture, ImplicitWithdrawalOfChangedRoute) {
   evb_.loop();
 }
 
-// Verify EoR is sent only for negotiated address families
-// The same setup of ImplicitWithdrawalOfChangedRoute is used to make sure
-// that only one EoR is sent.
+/*
+ * Verify EoR is sent only for negotiated address families
+ * The same setup of ImplicitWithdrawalOfChangedRoute is used to make sure
+ * that only one EoR is sent.
+ */
 TEST_F(AdjRibOutboundFixture, EoRSentForNegotiatedAfis) {
   // Setting up a peering with ipv6 only
   setupAdjRib(
@@ -1393,8 +1433,10 @@ TEST_F(AdjRibOutboundFixture, EoRSentForNegotiatedAfis) {
         createRibSingleAnnounce(kV6Prefix1, kV6Nexthop1, eBgpPeer_, true);
     pushRibOutMsgToAdjRib(ribMsg);
     fiberSleepFor(50ms);
-    // RIB is updating the prefix to point to IBGP peer and different
-    // nexthop Ensure that AdjRib withdraws previous route
+    /*
+     * RIB is updating the prefix to point to IBGP peer and different
+     * nexthop Ensure that AdjRib withdraws previous route
+     */
     ribMsg = createRibSingleAnnounce(kV6Prefix1, kV6Nexthop2, iBgpPeer_, false);
     pushRibOutMsgToAdjRib(ribMsg);
   });
@@ -1439,8 +1481,10 @@ TEST_F(AdjRibOutboundFixture, VerifySendingEoRWithoutPrefixes) {
   fm_->addTask([&] {
     /* Let sendBgpUpdates coro run if scheduled. */
     fiberSleepFor(10ms);
-    // Announcement will not lead to any bgp update but
-    // we should see v4 and v6 EoRs
+    /*
+     * Announcement will not lead to any bgp update but
+     * we should see v4 and v6 EoRs
+     */
     auto msg = folly::coro::blockingWait(popFromEgressQueue());
     ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*msg));
     msg = folly::coro::blockingWait(popFromEgressQueue());
@@ -1457,19 +1501,23 @@ TEST_F(AdjRibOutboundFixture, VerifySendingEoRWithoutPrefixes) {
   evb_.loop();
 }
 
-// Ensure that a RibOutAnnouncement with multiple prefix is properly
-// processed. Verify the following: Prefix discarded by policy is processed
-// properly Accepted prefixes with policy modified attributes are processed
-// properly Accepted prefix without changes to attributes is processed
-// properly Verify grouping of updates based on modified attributes at
-// egress
+/*
+ * Ensure that a RibOutAnnouncement with multiple prefix is properly
+ * processed. Verify the following: Prefix discarded by policy is processed
+ * properly Accepted prefixes with policy modified attributes are processed
+ * properly Accepted prefix without changes to attributes is processed
+ * properly Verify grouping of updates based on modified attributes at
+ * egress
+ */
 TEST_F(AdjRibOutboundFixture, UpdatePolicyProcessingIBgpPeer) {
-  // Create a policy with three terms
-  // Term1 match kV4Prefix1, kV4Prefix2 and apply origin action (EGP) & as
-  // path overwrite action as_path_overwrite_list set to {0, 0}, AdjRib will
-  // override 0 asns based on ingress or egress routes; Term2 match
-  // kV4Prefix3 and discard Term3 match kV4Prefix4 and PERMIT (do not modify
-  // any attributes)
+  /*
+   * Create a policy with three terms
+   * Term1 match kV4Prefix1, kV4Prefix2 and apply origin action (EGP) & as
+   * path overwrite action as_path_overwrite_list set to {0, 0}, AdjRib will
+   * override 0 asns based on ingress or egress routes; Term2 match
+   * kV4Prefix3 and discard Term3 match kV4Prefix4 and PERMIT (do not modify
+   * any attributes)
+   */
   const std::string policyName = kEgressPolicyName;
   auto policyManager = setup3TermPolicy(policyName);
   // IBGP peer
@@ -1507,8 +1555,10 @@ TEST_F(AdjRibOutboundFixture, UpdatePolicyProcessingIBgpPeer) {
       auto bgpUpdate = std::get<std::shared_ptr<const BgpUpdate2>>(*msg);
 
       if (1 == bgpUpdate->mpAnnounced()->prefixes()->size()) {
-        // Verify that announcement message is notified to Fiber Bgp Peer
-        // properly
+        /*
+         * Verify that announcement message is notified to Fiber Bgp Peer
+         * properly
+         */
         ASSERT_EQ(1, bgpUpdate->mpAnnounced()->prefixes()->size());
         EXPECT_THAT(
             permittedPrefixSet2,
@@ -1523,9 +1573,11 @@ TEST_F(AdjRibOutboundFixture, UpdatePolicyProcessingIBgpPeer) {
       }
 
       if (2 == bgpUpdate->mpAnnounced()->prefixes()->size()) {
-        // Verify that announcement message is notified to Fiber Bgp Peer
-        // properly
-        // Verify that grouping of announcement based on modified attributes
+        /*
+         * Verify that announcement message is notified to Fiber Bgp Peer
+         * properly
+         * Verify that grouping of announcement based on modified attributes
+         */
         EXPECT_THAT(
             permittedPrefixSet1,
             testing::UnorderedElementsAreArray(
@@ -1547,8 +1599,10 @@ TEST_F(AdjRibOutboundFixture, UpdatePolicyProcessingIBgpPeer) {
     auto adjRibEntry3 = adjRib_->getRibEntry(/*ingress=*/false, kV4Prefix3);
     auto adjRibEntry4 = adjRib_->getRibEntry(/*ingress=*/false, kV4Prefix4);
 
-    // Verify various fields of rib entries which are accepted and policy
-    // changed attributes. Verify modified attributes are present in postOut
+    /*
+     * Verify various fields of rib entries which are accepted and policy
+     * changed attributes. Verify modified attributes are present in postOut
+     */
     EXPECT_NE(
         BgpAttrOrigin::BGP_ORIGIN_EGP, adjRibEntry1->getPreOut()->getOrigin());
     EXPECT_NE(adjRibEntry1->getPostAttr(), adjRibEntry1->getPreOut());
@@ -1568,8 +1622,10 @@ TEST_F(AdjRibOutboundFixture, UpdatePolicyProcessingIBgpPeer) {
     // Verify postOut attributes are shared
     EXPECT_EQ(adjRibEntry1->getPostAttr(), adjRibEntry2->getPostAttr());
 
-    // Verify as path in attributes (was {0, 0} after policy action)
-    // has been replace to two localAsn of peer
+    /*
+     * Verify as path in attributes (was {0, 0} after policy action)
+     * has been replace to two localAsn of peer
+     */
     auto asPath = adjRibEntry1->getPostAttr()->getAsPath();
     EXPECT_EQ(1, asPath->size());
     auto expectedAsns = std::vector<uint32_t>{
@@ -1581,8 +1637,10 @@ TEST_F(AdjRibOutboundFixture, UpdatePolicyProcessingIBgpPeer) {
     EXPECT_NE(nullptr, adjRibEntry3->getPreOut());
     EXPECT_EQ(nullptr, adjRibEntry3->getPostAttr());
 
-    // Verify prefix permitted and policy did not modify anything
-    // Same shared_ptr is used for postOut (IBGP)
+    /*
+     * Verify prefix permitted and policy did not modify anything
+     * Same shared_ptr is used for postOut (IBGP)
+     */
     EXPECT_EQ(adjRibEntry4->getPreOut(), adjRibEntry4->getPostAttr());
     EXPECT_NE(nullptr, adjRibEntry4->getPostAttr());
     EXPECT_EQ(
@@ -1603,14 +1661,18 @@ TEST_F(AdjRibOutboundFixture, UpdatePolicyProcessingIBgpPeer) {
   evb_.loop();
 }
 
-// Verify that a prefix which is denied due to policy, later changes it's
-// attributes, and is permitted by policy due to attribute changes is
-// processed properly and notified to Rib Verify that EORs are sent even if
-// policy denies all prefixes.
+/*
+ * Verify that a prefix which is denied due to policy, later changes it's
+ * attributes, and is permitted by policy due to attribute changes is
+ * processed properly and notified to Rib Verify that EORs are sent even if
+ * policy denies all prefixes.
+ */
 TEST_F(AdjRibOutboundFixture, VerifyPermitAfterDeny) {
-  // Create a policy with two terms
-  // Term1 match origin IGP and deny
-  // Term2 permit all
+  /*
+   * Create a policy with two terms
+   * Term1 match origin IGP and deny
+   * Term2 permit all
+   */
   const std::string policyName = kEgressPolicyName;
   auto policyManager = setupDenyIgpOriginAcceptAllPolicy(policyName);
   // IBGP peer
@@ -1635,8 +1697,10 @@ TEST_F(AdjRibOutboundFixture, VerifyPermitAfterDeny) {
       pushRibOutMsgToAdjRib(ribMsg);
     }
     {
-      // Announcement 2 (modified origin) for same prefix will be accepted
-      // by policy
+      /*
+       * Announcement 2 (modified origin) for same prefix will be accepted
+       * by policy
+       */
       auto ribMsg = createRibSingleAnnounce(
           kV4Prefix1,
           kV4Nexthop1,
@@ -1650,8 +1714,10 @@ TEST_F(AdjRibOutboundFixture, VerifyPermitAfterDeny) {
   fm_->addTask([&] {
     /* Let sendBgpUpdates coro run if scheduled. */
     fiberSleepFor(10ms);
-    // Announcement 1 will not lead to any bgp update but
-    // we should see v4 and v6 EoRs
+    /*
+     * Announcement 1 will not lead to any bgp update but
+     * we should see v4 and v6 EoRs
+     */
     auto msg = folly::coro::blockingWait(popFromEgressQueue());
     ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*msg));
     msg = folly::coro::blockingWait(popFromEgressQueue());
@@ -1694,9 +1760,11 @@ TEST_F(AdjRibOutboundFixture, VerifyPermitAfterDeny) {
  *  6. Verify again adjrib entry and adjrib tree
  */
 TEST_F(AdjRibOutboundFixture, VerifyPermitAfterDenyAddPath) {
-  // Create a policy with two terms
-  // Term1 match origin IGP and deny
-  // Term2 permit all
+  /*
+   * Create a policy with two terms
+   * Term1 match origin IGP and deny
+   * Term2 permit all
+   */
   const std::string policyName = kEgressPolicyName;
   auto policyManager = setupDenyIgpOriginAcceptAllPolicy(policyName);
   // IBGP peer
@@ -1727,8 +1795,10 @@ TEST_F(AdjRibOutboundFixture, VerifyPermitAfterDenyAddPath) {
       pushRibOutMsgToAdjRib(ribMsg);
     }
     {
-      // Announcement 2 (modified origin) for same prefix will be accepted
-      // by policy
+      /*
+       * Announcement 2 (modified origin) for same prefix will be accepted
+       * by policy
+       */
       auto ribMsg = createRibSingleAnnounce(
           kV4Prefix1,
           kV4Nexthop1,
@@ -1748,8 +1818,10 @@ TEST_F(AdjRibOutboundFixture, VerifyPermitAfterDenyAddPath) {
   fm_->addTask([&] {
     /* Let sendBgpUpdates coro run if scheduled. */
     fiberSleepFor(10ms);
-    // Announcement 1 will not lead to any bgp update but
-    // we should see v4 and v6 EoRs
+    /*
+     * Announcement 1 will not lead to any bgp update but
+     * we should see v4 and v6 EoRs
+     */
     auto msg = folly::coro::blockingWait(popFromEgressQueue());
     ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*msg));
     msg = folly::coro::blockingWait(popFromEgressQueue());
@@ -1975,9 +2047,11 @@ TEST_F(AdjRibOutboundFixture, AdvertiseLinkBandwidth) {
     BgpExtCommunityLinkBandWidthTypeC correctLBW{uint16_t(kRemoteAs2), kLbw10G};
     // get the raw values from correct lbw
     auto [rawHighVal, rawLowVal] = correctLBW.getRawValueInWords();
-    // flip the type from 0x40 to 0x00 so that it is "transitive" now
-    // and we treat it as invalid LBW, which will be pruned before
-    // advertising
+    /*
+     * flip the type from 0x40 to 0x00 so that it is "transitive" now
+     * and we treat it as invalid LBW, which will be pruned before
+     * advertising
+     */
     uint32_t newHighVal = (0x00 << 24) + (rawHighVal - (0x40 << 24));
     BgpAttrExtCommunityC transitiveLBW{newHighVal, rawLowVal};
     extCommunities.emplace_back(correctLBW);
@@ -1986,8 +2060,10 @@ TEST_F(AdjRibOutboundFixture, AdvertiseLinkBandwidth) {
   }
   inAttrs->publish();
   {
-    // Test with a rib announcement where aggregated UCMP weights are not
-    // set
+    /*
+     * Test with a rib announcement where aggregated UCMP weights are not
+     * set
+     */
     RibOutAnnouncementEntry update{prefix, kDefaultPathID, inPeer, inAttrs};
     {
       // Peer1, DISABLE - LBW community should be pruned always
@@ -1999,8 +2075,10 @@ TEST_F(AdjRibOutboundFixture, AdvertiseLinkBandwidth) {
       EXPECT_FALSE(outAttrs->hasNonTransitiveLbwExtCommunity());
     }
     {
-      // Peer2, BEST_PATH - LBW community should be pruned because
-      // aggregated received weight is missing
+      /*
+       * Peer2, BEST_PATH - LBW community should be pruned because
+       * aggregated received weight is missing
+       */
       adjRibOutPeer2.processRibAnnouncedEntry(update);
       auto adjRibEntry = adjRibOutPeer2.getRibEntry(/*ingress=*/false, prefix);
       auto outAttrs = adjRibEntry->getPostAttr();
@@ -2009,8 +2087,10 @@ TEST_F(AdjRibOutboundFixture, AdvertiseLinkBandwidth) {
       EXPECT_FALSE(outAttrs->hasNonTransitiveLbwExtCommunity());
     }
     {
-      // Peer3, SET_LINK_BPS - Should have community with desired value of
-      // 5G
+      /*
+       * Peer3, SET_LINK_BPS - Should have community with desired value of
+       * 5G
+       */
       adjRibOutPeer3.processRibAnnouncedEntry(update);
       auto adjRibEntry = adjRibOutPeer3.getRibEntry(/*ingress=*/false, prefix);
       auto outAttrs = adjRibEntry->getPostAttr();
@@ -2021,8 +2101,10 @@ TEST_F(AdjRibOutboundFixture, AdvertiseLinkBandwidth) {
       EXPECT_EQ(AsNum(outAttrs->getNonTransitiveLbwAsn().value()), kLocalAs1);
     }
     {
-      // Peer4, AGGREGATE_RECEIVED - LBW community should be pruned because
-      // aggregated received weight is missing
+      /*
+       * Peer4, AGGREGATE_RECEIVED - LBW community should be pruned because
+       * aggregated received weight is missing
+       */
       adjRibOutPeer4.processRibAnnouncedEntry(update);
       auto adjRibEntry = adjRibOutPeer4.getRibEntry(/*ingress=*/false, prefix);
       auto outAttrs = adjRibEntry->getPostAttr();
@@ -2031,8 +2113,10 @@ TEST_F(AdjRibOutboundFixture, AdvertiseLinkBandwidth) {
       EXPECT_FALSE(outAttrs->hasNonTransitiveLbwExtCommunity());
     }
     {
-      // Peer5, AGGREGATE_LOCAL - LBW community should be pruned because
-      // aggregated local weight is missing
+      /*
+       * Peer5, AGGREGATE_LOCAL - LBW community should be pruned because
+       * aggregated local weight is missing
+       */
       adjRibOutPeer5.processRibAnnouncedEntry(update);
       auto adjRibEntry = adjRibOutPeer5.getRibEntry(/*ingress=*/false, prefix);
       auto outAttrs = adjRibEntry->getPostAttr();
@@ -2041,8 +2125,10 @@ TEST_F(AdjRibOutboundFixture, AdvertiseLinkBandwidth) {
       EXPECT_FALSE(outAttrs->hasNonTransitiveLbwExtCommunity());
     }
     {
-      // Peer6, RIB_POLICY_LBW - LBW community should be pruned because
-      // rib policy weight is missing
+      /*
+       * Peer6, RIB_POLICY_LBW - LBW community should be pruned because
+       * rib policy weight is missing
+       */
       adjRibOutPeer6.processRibAnnouncedEntry(update);
       auto adjRibEntry = adjRibOutPeer6.getRibEntry(/*ingress=*/false, prefix);
       auto outAttrs = adjRibEntry->getPostAttr();
@@ -2052,8 +2138,10 @@ TEST_F(AdjRibOutboundFixture, AdvertiseLinkBandwidth) {
     }
   }
   {
-    // Test with a rib announcement where aggregated weights as 20G
-    // (received) 30G (local), 10G (best-path), 5G (rib-policy)
+    /*
+     * Test with a rib announcement where aggregated weights as 20G
+     * (received) 30G (local), 10G (best-path), 5G (rib-policy)
+     */
     RibOutAnnouncementEntry update{
         prefix,
         kDefaultPathID,
@@ -2074,8 +2162,10 @@ TEST_F(AdjRibOutboundFixture, AdvertiseLinkBandwidth) {
       EXPECT_FALSE(outAttrs->hasNonTransitiveLbwExtCommunity());
     }
     {
-      // Peer2, BEST_PATH - LBW community should be retained because
-      // aggregated received weight is present
+      /*
+       * Peer2, BEST_PATH - LBW community should be retained because
+       * aggregated received weight is present
+       */
       adjRibOutPeer2.processRibAnnouncedEntry(update);
       auto adjRibEntry = adjRibOutPeer2.getRibEntry(/*ingress=*/false, prefix);
       auto outAttrs = adjRibEntry->getPostAttr();
@@ -2086,8 +2176,10 @@ TEST_F(AdjRibOutboundFixture, AdvertiseLinkBandwidth) {
       EXPECT_EQ(AsNum(outAttrs->getNonTransitiveLbwAsn().value()), kRemoteAs2);
     }
     {
-      // Peer3, SET_LINK_BPS - Should have community with desired value of
-      // 5G
+      /*
+       * Peer3, SET_LINK_BPS - Should have community with desired value of
+       * 5G
+       */
       adjRibOutPeer3.processRibAnnouncedEntry(update);
       auto adjRibEntry = adjRibOutPeer3.getRibEntry(/*ingress=*/false, prefix);
       auto outAttrs = adjRibEntry->getPostAttr();
@@ -2098,8 +2190,10 @@ TEST_F(AdjRibOutboundFixture, AdvertiseLinkBandwidth) {
       EXPECT_EQ(AsNum(outAttrs->getNonTransitiveLbwAsn().value()), kLocalAs1);
     }
     {
-      // Peer4, AGGREGATE_RECEIVED - LBW community should be set to
-      // aggregated received weight of 20G
+      /*
+       * Peer4, AGGREGATE_RECEIVED - LBW community should be set to
+       * aggregated received weight of 20G
+       */
       adjRibOutPeer4.processRibAnnouncedEntry(update);
       auto adjRibEntry = adjRibOutPeer4.getRibEntry(/*ingress=*/false, prefix);
       auto outAttrs = adjRibEntry->getPostAttr();
@@ -2110,8 +2204,10 @@ TEST_F(AdjRibOutboundFixture, AdvertiseLinkBandwidth) {
       EXPECT_EQ(AsNum(outAttrs->getNonTransitiveLbwAsn().value()), kLocalAs1);
     }
     {
-      // Peer5, AGGREGATE_LOCAL - LBW community should be set to aggregated
-      // local weight of 30G
+      /*
+       * Peer5, AGGREGATE_LOCAL - LBW community should be set to aggregated
+       * local weight of 30G
+       */
       adjRibOutPeer5.processRibAnnouncedEntry(update);
       auto adjRibEntry = adjRibOutPeer5.getRibEntry(/*ingress=*/false, prefix);
       auto outAttrs = adjRibEntry->getPostAttr();
@@ -2122,8 +2218,10 @@ TEST_F(AdjRibOutboundFixture, AdvertiseLinkBandwidth) {
       EXPECT_EQ(AsNum(outAttrs->getNonTransitiveLbwAsn().value()), kLocalAs1);
     }
     {
-      // Peer6, RIB_POLICY_LBW - LBW community should be set to rib
-      // policy weight of 5G
+      /*
+       * Peer6, RIB_POLICY_LBW - LBW community should be set to rib
+       * policy weight of 5G
+       */
       adjRibOutPeer6.processRibAnnouncedEntry(update);
       auto adjRibEntry = adjRibOutPeer6.getRibEntry(/*ingress=*/false, prefix);
       auto outAttrs = adjRibEntry->getPostAttr();
@@ -2423,17 +2521,21 @@ TEST_P(EgressUcmpPolicyFixture, EgressUcmpPolicy) {
         EXPECT_TRUE(attrs->getNonTransitiveLbwAsn().has_value());
         EXPECT_TRUE(attrs->getNonTransitiveRawLbwValue().has_value());
         EXPECT_EQ(AsNum(attrs->getNonTransitiveLbwAsn().value()), kLocalAs1);
-        // both encoding actions will update instead of overwrite lbw value
-        // kLbw10G in float is 01001110100101010000001011111001b as uint32
-        // which is 1318388473; if we replace the 8th - 15th bits with 8
-        // then it becomes 1318390009
+        /*
+         * both encoding actions will update instead of overwrite lbw value
+         * kLbw10G in float is 01001110100101010000001011111001b as uint32
+         * which is 1318388473; if we replace the 8th - 15th bits with 8
+         * then it becomes 1318390009
+         */
         EXPECT_EQ(attrs->getNonTransitiveRawLbwValue().value(), 1318390009);
         break;
       case bgp_policy::LbwExtCommunityActionType::
           DECODE_AGGREGATE_CAPACITY_OVERWRITE:
-        // kLbw10G in float is (01001110)(10010101)(00000010)(1111)(1001)b
-        // the 8th - 15th bits are 2
-        // the ucmp weight is 2
+        /*
+         * kLbw10G in float is (01001110)(10010101)(00000010)(1111)(1001)b
+         * the 8th - 15th bits are 2
+         * the ucmp weight is 2
+         */
         EXPECT_EQ(1, attrs->getExtCommunities()->size());
         EXPECT_TRUE(attrs->hasNonTransitiveLbwExtCommunity());
         EXPECT_TRUE(attrs->getNonTransitiveLbwAsn().has_value());
@@ -2454,11 +2556,13 @@ TEST_P(EgressUcmpPolicyFixture, EgressUcmpPolicy) {
   encoding.l2_encoding()->spine_capacity() = 8;
   encoding.l2_encoding()->local_rack_capacity() = 8;
 
-  // helper function to verify each test case, each test case takes two
-  // prefixes: p1, p2. ONLY p2 will match UCMP policy. Veriy that p1 takes
-  // "per peer config" while p2 takes "per route config"
-  // - advertiseLinkBandwidth: per peer config
-  // - lbwPolicyActionType: per route config (policy)
+  /*
+   * helper function to verify each test case, each test case takes two
+   * prefixes: p1, p2. ONLY p2 will match UCMP policy. Veriy that p1 takes
+   * "per peer config" while p2 takes "per route config"
+   * - advertiseLinkBandwidth: per peer config
+   * - lbwPolicyActionType: per route config (policy)
+   */
   auto verify = [&](AdvertiseLinkBandwidth advertiseLinkBandwidth,
                     bgp_policy::LbwExtCommunityActionType lbwPolicyActionType) {
     // create term1 without UCMP policy
@@ -2484,8 +2588,10 @@ TEST_P(EgressUcmpPolicyFixture, EgressUcmpPolicy) {
     TinyPeerInfo inPeer{
         folly::IPAddress("20.1.1.1"), 1, 1, BgpSessionType::EBGP, false};
 
-    // create out peer config with ASN,LBW as
-    // (kLocalAs1, kLbw5G)
+    /*
+     * create out peer config with ASN,LBW as
+     * (kLocalAs1, kLbw5G)
+     */
     TinyPeerInfo outPeer{
         folly::IPAddress("30.1.1.1"), 1, 2, BgpSessionType::EBGP, false};
     BgpPeerId outPeerId(outPeer.addr, outPeer.routerId);
@@ -2511,8 +2617,10 @@ TEST_P(EgressUcmpPolicyFixture, EgressUcmpPolicy) {
     adjRibOutPeer.isAfiIpv4Negotiated_ = true;
     adjRibOutPeer.pathIdGenerator_ = std::make_unique<PathIdGenerator>(false);
 
-    // build a BgpAttrs with ASN,LBW as
-    // (kRemoteAs2, kLbw10G)
+    /*
+     * build a BgpAttrs with ASN,LBW as
+     * (kRemoteAs2, kLbw10G)
+     */
     BgpUpdate2 inputUpdate = buildBgpUpdateAttributes(kV4Nexthop1);
     auto inAttrs = std::make_shared<facebook::bgp::BgpPath>(
         BgpPathFields(*BgpUpdate2toBgpPathC(inputUpdate)));
@@ -2520,9 +2628,11 @@ TEST_P(EgressUcmpPolicyFixture, EgressUcmpPolicy) {
     BgpExtCommunityLinkBandWidthTypeC correctLBW{uint16_t(kRemoteAs2), kLbw10G};
     // get the raw values from correct lbw
     auto [rawHighVal, rawLowVal] = correctLBW.getRawValueInWords();
-    // flip the type from 0x40 to 0x00 so that it is "transitive" now
-    // and we treat it as invalid LBW, which will be pruned before
-    // advertising
+    /*
+     * flip the type from 0x40 to 0x00 so that it is "transitive" now
+     * and we treat it as invalid LBW, which will be pruned before
+     * advertising
+     */
     uint32_t newHighVal =
         (BgpExtCommunityAsSpecificExtTypeC::kBgpExtCommASTransitiveType << 24) +
         (rawHighVal - (correctLBW.getType() << 24));
@@ -2579,14 +2689,18 @@ TEST_P(EgressUcmpPolicyFixture, EgressUcmpPolicy) {
   verify(advertiseLinkBandwidth, lbwPolicyActionType);
 }
 
-// Verify that a prefix, which is permitted due to policy, and later changes
-// it's attributes and is denied by policy due to attribute changes, is
-// processed properly and notified to peer. i.e. 2nd Rib Announcement leads
-// to AdjRib sending BgpUpdate2 withdrawal
+/*
+ * Verify that a prefix, which is permitted due to policy, and later changes
+ * it's attributes and is denied by policy due to attribute changes, is
+ * processed properly and notified to peer. i.e. 2nd Rib Announcement leads
+ * to AdjRib sending BgpUpdate2 withdrawal
+ */
 TEST_F(AdjRibOutboundFixture, VerifyDenyAfterPermit) {
-  // Create a policy with two terms
-  // Term1 match origin IGP and deny
-  // Term2 permit all
+  /*
+   * Create a policy with two terms
+   * Term1 match origin IGP and deny
+   * Term2 permit all
+   */
   const std::string policyName = kEgressPolicyName;
   auto policyManager = setupDenyIgpOriginAcceptAllPolicy(policyName);
   // IBGP peer
@@ -2605,8 +2719,10 @@ TEST_F(AdjRibOutboundFixture, VerifyDenyAfterPermit) {
     }
     fiberSleepFor(40ms);
     {
-      // Announcement 2 (modified origin) for same prefix will be denied by
-      // policy
+      /*
+       * Announcement 2 (modified origin) for same prefix will be denied by
+       * policy
+       */
       auto ribMsg = createRibSingleAnnounce(
           kV4Prefix1,
           kV4Nexthop1,
@@ -2649,8 +2765,10 @@ TEST_F(AdjRibOutboundFixture, VerifyDenyAfterPermit) {
       EXPECT_EQ(1, adjRib_->getStats().getPostOutPrefixCount());
     }
     {
-      // Verifying withdrawal due to policy denying kV4Prefix1
-      // after attribute change Rib announcement
+      /*
+       * Verifying withdrawal due to policy denying kV4Prefix1
+       * after attribute change Rib announcement
+       */
       auto msg = folly::coro::blockingWait(popFromEgressQueue());
       ASSERT_TRUE(
           std::holds_alternative<std::shared_ptr<const BgpUpdate2>>(*msg));
@@ -2673,15 +2791,19 @@ TEST_F(AdjRibOutboundFixture, VerifyDenyAfterPermit) {
   evb_.loop();
 }
 
-// Verify that BgpUpdate2 of a prefix is sent only if postOutAttrs
-// contents have changed and not because of shared_ptr changed.
-// This can happen for cases like
-// - Rib announcement received with same values as policy modified
-// attributes from prior announcement
-// - Policy created attributes which are exactly same as received attributes
+/*
+ * Verify that BgpUpdate2 of a prefix is sent only if postOutAttrs
+ * contents have changed and not because of shared_ptr changed.
+ * This can happen for cases like
+ * - Rib announcement received with same values as policy modified
+ * attributes from prior announcement
+ * - Policy created attributes which are exactly same as received attributes
+ */
 TEST_F(AdjRibOutboundFixture, DeepComparePostOutAttributesBeforeNotifying) {
-  // Create a policy with one term
-  // Term1 match all, set action origin IGP
+  /*
+   * Create a policy with one term
+   * Term1 match all, set action origin IGP
+   */
   const std::string policyName = kEgressPolicyName;
   auto policyManager = setupMatchAllSetOriginIgpPolicy(policyName);
   // IBGP peer
@@ -2741,8 +2863,10 @@ TEST_F(AdjRibOutboundFixture, DeepComparePostOutAttributesBeforeNotifying) {
     msg = folly::coro::blockingWait(popFromEgressQueue());
     ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*msg));
 
-    // No new BgpUpdate2 for the announcement 2
-    // even though preOut updated (origin changed from EGP to IGP)
+    /*
+     * No new BgpUpdate2 for the announcement 2
+     * even though preOut updated (origin changed from EGP to IGP)
+     */
     fiberSleepFor(40ms);
     EXPECT_TRUE(adjRibOutQ_->empty());
 
@@ -2894,8 +3018,10 @@ TEST_F(AdjRibOutboundFixture, VerifyEgressEoRsPendingSetDuringRibInitialDump) {
 
 // Verify we announce prefix properly according to negotiated afi value
 TEST_F(AdjRibOutboundFixture, VerifyV4OverV6) {
-  // 1. afi v4 = true, v6 = true => v4 & v6 both enabled, v4OverV6 true
-  // => v4 update go through, v6 update go through
+  /*
+   * 1. afi v4 = true, v6 = true => v4 & v6 both enabled, v4OverV6 true
+   * => v4 update go through, v6 update go through
+   */
   {
     setupAdjRib(
         kLocalAs1,
@@ -2966,9 +3092,11 @@ TEST_F(AdjRibOutboundFixture, VerifyV4OverV6) {
     evb_.loop();
   }
 
-  // 2. v4 = true, v6 = false, v4OverV6 false
-  // => v4 update with v6 nexthop not go through,
-  // => v4 update with v4 nexthop go through
+  /*
+   * 2. v4 = true, v6 = false, v4OverV6 false
+   * => v4 update with v6 nexthop not go through,
+   * => v4 update with v4 nexthop go through
+   */
   {
     setupAdjRib(
         kLocalAs1,
@@ -3022,8 +3150,10 @@ TEST_F(AdjRibOutboundFixture, VerifyV4OverV6) {
     evb_.loop();
   }
 
-  // 3. v4 = true, v6 = false, v4OverV6 true
-  // => v4 update with v4 nexthop should got updated to v6 nexthop
+  /*
+   * 3. v4 = true, v6 = false, v4OverV6 true
+   * => v4 update with v4 nexthop should got updated to v6 nexthop
+   */
   {
     setupAdjRib(
         kLocalAs1,
@@ -3071,8 +3201,10 @@ TEST_F(AdjRibOutboundFixture, VerifyV4OverV6) {
     evb_.loop();
   }
 
-  // 4. v4 = true, v6 = false, v4OverV6 false
-  // => v4 update with v6 nexthop should got updated to v4 nexthop
+  /*
+   * 4. v4 = true, v6 = false, v4OverV6 false
+   * => v4 update with v6 nexthop should got updated to v4 nexthop
+   */
   {
     setupAdjRib(
         kLocalAs1,
@@ -3123,8 +3255,10 @@ TEST_F(AdjRibOutboundFixture, VerifyV4OverV6) {
 
 // Verify we announce prefix properly according to negotiated afi value
 TEST_F(AdjRibOutboundFixture, VerifyAfiNegotiation) {
-  // 1. v4 = false, v6 = false
-  // => v4 update not go through, v6 update not go through
+  /*
+   * 1. v4 = false, v6 = false
+   * => v4 update not go through, v6 update not go through
+   */
   {
     setupAdjRib(
         kLocalAs1,
@@ -3160,8 +3294,10 @@ TEST_F(AdjRibOutboundFixture, VerifyAfiNegotiation) {
     evb_.loop();
   }
 
-  // 2. v4 = false, v6 = true => v6 enabled
-  // => v4 update not go through, v6 update go through
+  /*
+   * 2. v4 = false, v6 = true => v6 enabled
+   * => v4 update not go through, v6 update go through
+   */
   {
     setupAdjRib(
         kLocalAs1,
@@ -3213,8 +3349,10 @@ TEST_F(AdjRibOutboundFixture, VerifyAfiNegotiation) {
     evb_.loop();
   }
 
-  // 3. v4 = true, v6 = false => v4 enabled
-  // => v4 update go through, v6 update not go through
+  /*
+   * 3. v4 = true, v6 = false => v4 enabled
+   * => v4 update go through, v6 update not go through
+   */
   {
     setupAdjRib(
         kLocalAs1,
@@ -3257,8 +3395,10 @@ TEST_F(AdjRibOutboundFixture, VerifyAfiNegotiation) {
           *bgpUpdate->mpAnnounced()->prefixes()[0].prefix());
       EXPECT_EQ(kV4Nexthop1.str(), *bgpUpdate->attrs()->nexthop());
 
-      // v6 update didn't come through
-      // no more msg in the queue
+      /*
+       * v6 update didn't come through
+       * no more msg in the queue
+       */
       EXPECT_EQ(0, adjRibOutQ_->size());
       fiberSleepFor(50ms);
       terminateAdjRib();
@@ -3266,8 +3406,10 @@ TEST_F(AdjRibOutboundFixture, VerifyAfiNegotiation) {
     evb_.loop();
   }
 
-  // 4. v4 = true, v6 = true => v4 & v6 both enabled
-  // => v4 update go through, v6 update go through
+  /*
+   * 4. v4 = true, v6 = true => v4 & v6 both enabled
+   * => v4 update go through, v6 update go through
+   */
   {
     setupAdjRib(
         kLocalAs1,
@@ -3345,8 +3487,10 @@ class MockScubaData : public rfe::ScubaData {
       (override));
 };
 
-// Verify that a prefix which passes egress policy gets denied by route
-// filter policy
+/*
+ * Verify that a prefix which passes egress policy gets denied by route
+ * filter policy
+ */
 TEST_F(AdjRibOutboundFixture, VerifyRouteFilterPolicyDeny) {
   auto mockScuba = std::make_shared<MockScubaData>();
 
@@ -3397,8 +3541,10 @@ TEST_F(AdjRibOutboundFixture, VerifyRouteFilterPolicyDeny) {
   fm_->addTask([&] {
     /* Let sendBgpUpdates coro run if scheduled. */
     fiberSleepFor(10ms);
-    // Announcement will not lead to any bgp update but
-    // we should see v4 and v6 EoRs
+    /*
+     * Announcement will not lead to any bgp update but
+     * we should see v4 and v6 EoRs
+     */
     auto msg = folly::coro::blockingWait(popFromEgressQueue());
     ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*msg));
     msg = folly::coro::blockingWait(popFromEgressQueue());
@@ -3418,8 +3564,10 @@ TEST_F(AdjRibOutboundFixture, VerifyRouteFilterPolicyDeny) {
   evb_.loop();
 }
 
-// Verify that a prefix which passes egress policy also passes route filter
-// policy in permissive mode
+/*
+ * Verify that a prefix which passes egress policy also passes route filter
+ * policy in permissive mode
+ */
 TEST_F(AdjRibOutboundFixture, VerifyRouteFilterPolicyPermissiveAllow) {
   auto mockScuba = std::make_shared<MockScubaData>();
 
@@ -3451,8 +3599,10 @@ TEST_F(AdjRibOutboundFixture, VerifyRouteFilterPolicyPermissiveAllow) {
   auto policyManager = setupAcceptAllPolicy(policyName);
   setupAdjRib(policyManager, policyName);
   fm_->addTask([&] {
-    // load adjrib with empty prefix list, blocking every prefix, but in
-    // permissive mode
+    /*
+     * load adjrib with empty prefix list, blocking every prefix, but in
+     * permissive mode
+     */
     auto tStmt = createTRouteFilterStatement({}, true /* permissive */);
     auto [ingressChanged, egressChanged] = adjRib_->setRouteFilterStatement(
         std::make_shared<RouteFilterStatement>(tStmt), std::move(logger));
@@ -3595,8 +3745,10 @@ TEST_F(AdjRibOutboundFixture, ProcessRibMessageTest) {
   }
 
   if (!FLAGS_enable_egress_backpressure_in_adjribout_tests) {
-    // after processRibMessage, the
-    // attrToPrefixMap_ is cleared.
+    /*
+     * after processRibMessage, the
+     * attrToPrefixMap_ is cleared.
+     */
     EXPECT_TRUE(adjRib_->attrToPrefixMap_.empty());
   }
 
@@ -3672,8 +3824,10 @@ TEST_F(AdjRibOutboundFixture, BuildAndSendBgpMessagesTest) {
   EXPECT_FALSE(adjRib_->getRibEntry(false, kV4Prefix1, 0));
   adjRib_->processRibAnnouncedEntry(ribMsg.entries[0]);
 
-  // test announce prefix: after announcement,
-  // attrToPrefixMap_ is empty
+  /*
+   * test announce prefix: after announcement,
+   * attrToPrefixMap_ is empty
+   */
   {
     EXPECT_EQ(1, adjRib_->attrToPrefixMap_.size());
     // The key should be a positive advertisement, i.e. not nullptr.
@@ -3696,8 +3850,10 @@ TEST_F(AdjRibOutboundFixture, BuildAndSendBgpMessagesTest) {
         "(0 withdraws, 1 announcements, EoR false) - 1 BGP message(s)."));
   }
 
-  // test withdraw prefix: after withdrawal,
-  // attrToPrefixMap_ is empty
+  /*
+   * test withdraw prefix: after withdrawal,
+   * attrToPrefixMap_ is empty
+   */
   adjRib_->isAfiIpv4Negotiated_ = true;
   adjRib_->isAfiIpv6Negotiated_ = true;
   adjRib_->processRibWithdraw(kV4Prefix1, 0);
@@ -3851,19 +4007,23 @@ TEST_F(AdjRibOutboundFixture, ProcessRibWithdrawTest) {
     adjRib_->stats_.decrementPostOutPrefixCount(kV4Prefix1.first.isV4());
   }
 
-  // withdraw the prefix but the prefix count is 0
-  // this would result in additional error message
+  /*
+   * withdraw the prefix but the prefix count is 0
+   * this would result in additional error message
+   */
   {
     messages.clear();
     EXPECT_EQ(adjRib_->stats_.getPostOutPrefixCount(), 0);
 
     adjRib_->processRibWithdraw(kV4Prefix1, 0);
 
-    // decrementPostOutPrefixCount returns early on the postOutPrefixCount == 0
-    // underflow path, so it does not reach the totalSentPrefixCount decrement
-    // (keeping per-container and global counters from diverging). Hence only
-    // the postOutPrefixCount underflow is logged, not a totalSentPrefixCount
-    // underflow.
+    /*
+     * decrementPostOutPrefixCount returns early on the postOutPrefixCount == 0
+     * underflow path, so it does not reach the totalSentPrefixCount decrement
+     * (keeping per-container and global counters from diverging). Hence only
+     * the postOutPrefixCount underflow is logged, not a totalSentPrefixCount
+     * underflow.
+     */
     EXPECT_EQ(3, messages.size());
     EXPECT_TRUE(
         messages[0].first.getMessage().starts_with(
@@ -3914,10 +4074,12 @@ TEST_F(AdjRibOutboundFixture, TryInsertWithdrawalTest) {
     adjRib_->tryInsertWithdrawal(
         kV4Prefix1, &adjRibEntry, "Dummy inserted", "Dummy not inserted");
 
-    // stats_.getPostOutPrefixCount == 0 is invalid. decrementPostOutPrefixCount
-    // returns early on this underflow path, so it does not reach the
-    // totalSentPrefixCount decrement -- only the postOutPrefixCount underflow
-    // is logged.
+    /*
+     * stats_.getPostOutPrefixCount == 0 is invalid. decrementPostOutPrefixCount
+     * returns early on this underflow path, so it does not reach the
+     * totalSentPrefixCount decrement -- only the postOutPrefixCount underflow
+     * is logged.
+     */
     EXPECT_EQ(3, messages.size());
     EXPECT_TRUE(
         messages[0].first.getMessage().starts_with(
@@ -3955,8 +4117,10 @@ TEST_F(AdjRibOutboundFixture, TryInsertRibOutEntryTest) {
 
   EXPECT_NE(adjRibEntry1, nullptr);
 
-  // try inserting the same prefix with different nexthop
-  // the two entries do not share the same path id
+  /*
+   * try inserting the same prefix with different nexthop
+   * the two entries do not share the same path id
+   */
   messages.clear();
 
   auto adjRibEntry2 = adjRib_->tryInsertRibOutEntry(kV4Prefix1, kNextHopV4_2);
@@ -4004,8 +4168,10 @@ TEST_F(AdjRibOutboundFixture, PolicyCacheEvaluationTest) {
   auto prePolicyAttrs = std::make_shared<facebook::bgp::BgpPath>(BgpPathFields(
       *BgpUpdate2toBgpPathC(buildBgpUpdateAttributes(kV4Nexthop1))));
 
-  // NOTE: must clone this. Otherwise, prePolicyAttrs can be changed with
-  // shared_ptr access.
+  /*
+   * NOTE: must clone this. Otherwise, prePolicyAttrs can be changed with
+   * shared_ptr access.
+   */
   auto prePolicyAttrsClone = prePolicyAttrs->clone();
 
   const std::string policyName = kEgressPolicyName;
@@ -4071,8 +4237,10 @@ TEST_F(AdjRibOutboundFixture, GetPostOutPolicyAttributesTest) {
       *BgpUpdate2toBgpPathC(buildBgpUpdateAttributes(kV4Nexthop1))));
   std::string updatePeerIdStr = "[UPDATE] ";
 
-  // Case 1:
-  //   adjRibEntry must not be nullptr
+  /*
+   * Case 1:
+   *   adjRibEntry must not be nullptr
+   */
   {
     std::unique_ptr<AdjRibEntry> uniqueNullAdjRibEntry{nullptr};
     auto nullAdjRibEntry = uniqueNullAdjRibEntry.get();
@@ -4096,15 +4264,17 @@ TEST_F(AdjRibOutboundFixture, GetPostOutPolicyAttributesTest) {
   }
 
   const std::string policyName = kEgressPolicyName;
-  // Create a policy with three terms
-  //
-  // Term1 match kV4Prefix1, kV4Prefix2 and apply origin action (EGP) & as
-  // path overwrite action as_path_overwrite_list set to {0, 0}, AdjRib will
-  // override 0 asns based on ingress or egress routes;
-  //
-  // Term2 match kV4Prefix3 and discard
-  //
-  // Term3 match kV4Prefix4 and PERMIT (do not modify any attributes)
+  /*
+   * Create a policy with three terms
+   *
+   * Term1 match kV4Prefix1, kV4Prefix2 and apply origin action (EGP) & as
+   * path overwrite action as_path_overwrite_list set to {0, 0}, AdjRib will
+   * override 0 asns based on ingress or egress routes;
+   *
+   * Term2 match kV4Prefix3 and discard
+   *
+   * Term3 match kV4Prefix4 and PERMIT (do not modify any attributes)
+   */
   auto policyManager = setup3TermPolicy(policyName);
 
   // for unit test, we don't need the session being established
@@ -4113,8 +4283,10 @@ TEST_F(AdjRibOutboundFixture, GetPostOutPolicyAttributesTest) {
   // Case 3: adjRib_ has egress policy, but it has no policyCache_
   std::shared_ptr<AdjRibPolicyCache> policyCachePtr{nullptr};
   std::swap(adjRib_->policyCache_, policyCachePtr);
-  // Case 3.1: prefix is accepted, postOutPolicy is set to
-  // "Accepted/Modified"
+  /*
+   * Case 3.1: prefix is accepted, postOutPolicy is set to
+   * "Accepted/Modified"
+   */
   {
     messages.clear();
 
@@ -4196,8 +4368,10 @@ TEST_F(AdjRibOutboundFixture, GetPostOutPolicyAttributesTest) {
     EXPECT_TRUE(messages[1].first.getMessage().starts_with("Policy Cache Hit"));
   }
 
-  // Case 5: Blocked by Centralized Route Filtering (CRF)
-  // the statement that blocks kV4Prefix1
+  /*
+   * Case 5: Blocked by Centralized Route Filtering (CRF)
+   * the statement that blocks kV4Prefix1
+   */
   rib_policy::TRouteFilterStatement tStmt = createTRouteFilterStatement({});
   adjRib_->routeFilterStmt_ =
       std::make_shared<const RouteFilterStatement>(tStmt);
@@ -4304,8 +4478,10 @@ TEST_F(AdjRibOutboundFixture, TryDeleteRibOutEntryTest) {
         adjRib_->getRibTreeSize(/*ingress=*/false, /*isAddPathEnabled=*/false));
   }
 
-  // remove the entry if both pre/post out are not set
-  // i.e., the rib entry is no longer in use for output
+  /*
+   * remove the entry if both pre/post out are not set
+   * i.e., the rib entry is no longer in use for output
+   */
   {
     adjRibEntry->setPreOut(nullptr);
     adjRibEntry->setPostAttr(nullptr);
@@ -4377,8 +4553,10 @@ TEST_F(AdjRibOutboundFixture, TryDeleteRibOutEntryTestAddPath) {
         adjRib_->getRibTreeSize(/*ingress=*/false, /*isAddPathEnabled=*/true));
   }
 
-  // remove the entry if both pre/post out are not set
-  // i.e., the rib entry is no longer in use for output
+  /*
+   * remove the entry if both pre/post out are not set
+   * i.e., the rib entry is no longer in use for output
+   */
   {
     adjRibEntry->setPreOut(nullptr);
     adjRibEntry->setPostAttr(nullptr);
@@ -4478,13 +4656,15 @@ TEST_F(AdjRibOutboundFixture, OverridePrePolicyAttributesPositiveTest) {
   auto preAttrs = std::make_shared<BgpPath>(*fields1);
   auto policyResultAttrs = std::make_shared<BgpPath>(*fields2);
 
-  // Make Path1 and Path2 have different values for all attributes.
-  // With the construction above,
-  //   AsPath, Communities, ExtCommunities, ClusterList
-  // are already guaranteed to be different.
-  // Remaining fields are
-  //   Origin, Nexthop, Med, LocalPref,
-  //   AtomicAggregate, Aggregator, OriginatorId.
+  /*
+   * Make Path1 and Path2 have different values for all attributes.
+   * With the construction above,
+   *   AsPath, Communities, ExtCommunities, ClusterList
+   * are already guaranteed to be different.
+   * Remaining fields are
+   *   Origin, Nexthop, Med, LocalPref,
+   *   AtomicAggregate, Aggregator, OriginatorId.
+   */
   preAttrs->setOrigin(BgpAttrOrigin::BGP_ORIGIN_EGP);
   policyResultAttrs->setOrigin(BgpAttrOrigin::BGP_ORIGIN_IGP);
 
@@ -4747,9 +4927,11 @@ TEST_F(
     GetPostPolicyAttributesPolicyTermAndInfoTest_RejectedByInvalidGarWeights) {
   setupAdjRibForOutUnitTest();
 
-  // Create a ENCODE_AGGREGATE_RECEIVED_OVERWRITE UCMP policy.
-  // When aggregateReceivedUcmpWeight is missing (nullopt), isLbwRejected
-  // will be set to true.
+  /*
+   * Create a ENCODE_AGGREGATE_RECEIVED_OVERWRITE UCMP policy.
+   * When aggregateReceivedUcmpWeight is missing (nullopt), isLbwRejected
+   * will be set to true.
+   */
   nsf_policy::NsfTeWeightEncoding encoding;
   encoding.l2_encoding() = nsf_policy::NsfL2TeWeightEncoding();
   encoding.l2_encoding()->rack_id() = 4;
@@ -4777,8 +4959,10 @@ TEST_F(
   auto prePolicyAttrs = std::make_shared<facebook::bgp::BgpPath>(BgpPathFields(
       *BgpUpdate2toBgpPathC(buildBgpUpdateAttributes(kV4Nexthop1))));
 
-  // Create policy action data WITHOUT aggregateReceivedUcmpWeight.
-  // This triggers isLbwRejected = true in ENCODE_AGGREGATE_RECEIVED_OVERWRITE.
+  /*
+   * Create policy action data WITHOUT aggregateReceivedUcmpWeight.
+   * This triggers isLbwRejected = true in ENCODE_AGGREGATE_RECEIVED_OVERWRITE.
+   */
   auto policyActionData = adjRib_->createPolicyActionData(
       prePolicyAttrs,
       std::nullopt, // switchId
@@ -4821,9 +5005,11 @@ TEST(PruneLbwExtCommunitiesCommonTest, EmptyCommunities) {
 TEST(PruneLbwExtCommunitiesCommonTest, OneTransitiveLBW) {
   BgpAttrExtCommunitiesC communities;
 
-  // Create a transitive LBW community: type = 0x00, subtype = 0x04
-  // rawValHigh = (type << 24) | (subtype << 16) | asn
-  // Using type 0x00 (transitive), subtype 0x04 (LBW), ASN 12345
+  /*
+   * Create a transitive LBW community: type = 0x00, subtype = 0x04
+   * rawValHigh = (type << 24) | (subtype << 16) | asn
+   * Using type 0x00 (transitive), subtype 0x04 (LBW), ASN 12345
+   */
   uint32_t rawValHigh = (0x00 << 24) | (0x04 << 16) | 12345;
   uint32_t rawValLow = 1000; // LBW value
   communities.emplace_back(rawValHigh, rawValLow);
@@ -4837,8 +5023,10 @@ TEST(PruneLbwExtCommunitiesCommonTest, OneTransitiveLBW) {
   EXPECT_EQ(rawValLow, communities[0].getRawValueInWords().second);
 }
 
-// Test case 3: One non-transitive LBW extended community - should remain
-// unchanged
+/*
+ * Test case 3: One non-transitive LBW extended community - should remain
+ * unchanged
+ */
 TEST(PruneLbwExtCommunitiesCommonTest, OneNonTransitiveLBW) {
   BgpAttrExtCommunitiesC communities;
 
@@ -4856,14 +5044,18 @@ TEST(PruneLbwExtCommunitiesCommonTest, OneNonTransitiveLBW) {
   EXPECT_TRUE(communities[0].isNonTransitiveLinkBandwidthCommunity());
 }
 
-// Test case 4: One of each transitivity type + 5 non-LBW extended communities
-// Verify the lowest value is returned for each transitivity type and non-LBW
-// communities are preserved.
+/*
+ * Test case 4: One of each transitivity type + 5 non-LBW extended communities
+ * Verify the lowest value is returned for each transitivity type and non-LBW
+ * communities are preserved.
+ */
 TEST(PruneLbwExtCommunitiesCommonTest, NonLBWOnly) {
   BgpAttrExtCommunitiesC communities;
 
-  // Add 5 non-LBW extended communities (route targets)
-  // Route target: type = 0x00, subtype = 0x02
+  /*
+   * Add 5 non-LBW extended communities (route targets)
+   * Route target: type = 0x00, subtype = 0x02
+   */
   for (int i = 0; i < 5; ++i) {
     uint32_t rawValHigh = (0x00 << 24) | (0x02 << 16) | (100 + i);
     uint32_t rawValLow = 1000 + i;
@@ -4878,14 +5070,18 @@ TEST(PruneLbwExtCommunitiesCommonTest, NonLBWOnly) {
   EXPECT_EQ(originalCommunities, communities);
 }
 
-// Test case 4: One of each transitivity type + 5 non-LBW extended communities
-// Verify only the absolute lowest LBW is kept (regardless of transitivity)
-// and non-LBW communities are preserved.
+/*
+ * Test case 4: One of each transitivity type + 5 non-LBW extended communities
+ * Verify only the absolute lowest LBW is kept (regardless of transitivity)
+ * and non-LBW communities are preserved.
+ */
 TEST(PruneLbwExtCommunitiesCommonTest, MixedTransitivityWithNonLBW) {
   BgpAttrExtCommunitiesC communities;
 
-  // Add 5 non-LBW extended communities (route targets)
-  // Route target: type = 0x00, subtype = 0x02
+  /*
+   * Add 5 non-LBW extended communities (route targets)
+   * Route target: type = 0x00, subtype = 0x02
+   */
   for (int i = 0; i < 5; ++i) {
     uint32_t rawValHigh = (0x00 << 24) | (0x02 << 16) | (100 + i);
     uint32_t rawValLow = 1000 + i;
@@ -4900,8 +5096,10 @@ TEST(PruneLbwExtCommunitiesCommonTest, MixedTransitivityWithNonLBW) {
   communities.emplace_back(lbwNonTrans2);
   communities.emplace_back(lbwNonTrans3);
 
-  // Add multiple transitive LBW communities with different values
-  // Transitive LBW: type = 0x00, subtype = 0x04
+  /*
+   * Add multiple transitive LBW communities with different values
+   * Transitive LBW: type = 0x00, subtype = 0x04
+   */
   uint32_t transLbwHigh = (0x00 << 24) | (0x04 << 16) | 12345;
   union {
     float floatVal;
@@ -4924,10 +5122,12 @@ TEST(PruneLbwExtCommunitiesCommonTest, MixedTransitivityWithNonLBW) {
 
   pruneLbwExtCommunitiesCommon(communities);
 
-  // After pruning:
-  // - 5 non-LBW communities should remain
-  // - Only 1 LBW with the absolute lowest value (50.0f transitive) should
-  // remain
+  /*
+   * After pruning:
+   * - 5 non-LBW communities should remain
+   * - Only 1 LBW with the absolute lowest value (50.0f transitive) should
+   * remain
+   */
   EXPECT_EQ(6, communities.size());
 
   // Count each type to verify
@@ -4952,8 +5152,10 @@ TEST(PruneLbwExtCommunitiesCommonTest, MixedTransitivityWithNonLBW) {
 TEST(PruneLbwExtCommunitiesCommonTest, SingleNegativeTransitiveLBW) {
   BgpAttrExtCommunitiesC communities;
 
-  // Create a transitive LBW community with negative value
-  // Transitive LBW: type = 0x00, subtype = 0x04
+  /*
+   * Create a transitive LBW community with negative value
+   * Transitive LBW: type = 0x00, subtype = 0x04
+   */
   uint32_t transLbwHigh = (0x00 << 24) | (0x04 << 16) | 12345;
 
   // Convert negative float to uint32_t
@@ -4992,8 +5194,10 @@ TEST(PruneLbwExtCommunitiesCommonTest, SingleNegativeNonTransitiveLBW) {
   EXPECT_EQ(0, communities.size());
 }
 
-// Test case 7: Mixed positive and negative transitive LBWs - negative should be
-// filtered out
+/*
+ * Test case 7: Mixed positive and negative transitive LBWs - negative should be
+ * filtered out
+ */
 TEST(PruneLbwExtCommunitiesCommonTest, MixedPositiveNegativeTransitiveLBW) {
   BgpAttrExtCommunitiesC communities;
 
@@ -5014,8 +5218,10 @@ TEST(PruneLbwExtCommunitiesCommonTest, MixedPositiveNegativeTransitiveLBW) {
   tmp.floatVal = -50.0f;
   communities.emplace_back(transLbwHigh, tmp.intVal);
 
-  // Add another positive transitive LBW (200.0f) - should be filtered (not
-  // lowest)
+  /*
+   * Add another positive transitive LBW (200.0f) - should be filtered (not
+   * lowest)
+   */
   tmp.floatVal = 200.0f;
   communities.emplace_back(transLbwHigh, tmp.intVal);
 
@@ -5031,8 +5237,10 @@ TEST(PruneLbwExtCommunitiesCommonTest, MixedPositiveNegativeTransitiveLBW) {
   EXPECT_EQ(positiveLbw, communities[0].getRawValueInWords().second);
 }
 
-// Test case 8: Mixed positive and negative non-transitive LBWs - negative
-// should be filtered out
+/*
+ * Test case 8: Mixed positive and negative non-transitive LBWs - negative
+ * should be filtered out
+ */
 TEST(PruneLbwExtCommunitiesCommonTest, MixedPositiveNegativeNonTransitiveLBW) {
   BgpAttrExtCommunitiesC communities;
 
@@ -5045,8 +5253,10 @@ TEST(PruneLbwExtCommunitiesCommonTest, MixedPositiveNegativeNonTransitiveLBW) {
   BgpExtCommunityLinkBandWidthTypeC lbwNeg(12345, -50.0f);
   communities.emplace_back(lbwNeg);
 
-  // Add another positive non-transitive LBW (200.0f) - should be filtered (not
-  // lowest)
+  /*
+   * Add another positive non-transitive LBW (200.0f) - should be filtered (not
+   * lowest)
+   */
   BgpExtCommunityLinkBandWidthTypeC lbwPos2(12345, 200.0f);
   communities.emplace_back(lbwPos2);
 
@@ -5060,9 +5270,11 @@ TEST(PruneLbwExtCommunitiesCommonTest, MixedPositiveNegativeNonTransitiveLBW) {
   EXPECT_EQ(lowestLbw, communities[0].getRawValueInWords().second);
 }
 
-// Test case 9: Negative LBWs mixed with positive ones and non-LBW communities -
-// negative LBWs should be filtered, only absolute lowest positive kept, non-LBW
-// preserved
+/*
+ * Test case 9: Negative LBWs mixed with positive ones and non-LBW communities -
+ * negative LBWs should be filtered, only absolute lowest positive kept, non-LBW
+ * preserved
+ */
 TEST(PruneLbwExtCommunitiesCommonTest, NegativeLBWsWithPositiveAndNonLBW) {
   BgpAttrExtCommunitiesC communities;
 
@@ -5079,8 +5291,10 @@ TEST(PruneLbwExtCommunitiesCommonTest, NegativeLBWsWithPositiveAndNonLBW) {
   communities.emplace_back(lbwNeg1);
   communities.emplace_back(lbwNeg2);
 
-  // Add positive non-transitive LBWs (50.0f is lowest among non-trans, but not
-  // absolute lowest)
+  /*
+   * Add positive non-transitive LBWs (50.0f is lowest among non-trans, but not
+   * absolute lowest)
+   */
   BgpExtCommunityLinkBandWidthTypeC lbwPos1(12345, 50.0f);
   BgpExtCommunityLinkBandWidthTypeC lbwPos2(12345, 100.0f);
   communities.emplace_back(lbwPos1);
@@ -5109,11 +5323,13 @@ TEST(PruneLbwExtCommunitiesCommonTest, NegativeLBWsWithPositiveAndNonLBW) {
 
   pruneLbwExtCommunitiesCommon(communities);
 
-  // After pruning:
-  // - 3 non-LBW communities should remain
-  // - Only 1 LBW with the absolute lowest value (25.0f transitive) should
-  // remain
-  // - All negative LBWs and non-lowest positive LBWs should be filtered out
+  /*
+   * After pruning:
+   * - 3 non-LBW communities should remain
+   * - Only 1 LBW with the absolute lowest value (25.0f transitive) should
+   * remain
+   * - All negative LBWs and non-lowest positive LBWs should be filtered out
+   */
   EXPECT_EQ(4, communities.size());
 
   // Count each type to verify
@@ -5134,8 +5350,10 @@ TEST(PruneLbwExtCommunitiesCommonTest, NegativeLBWsWithPositiveAndNonLBW) {
   EXPECT_EQ(1, lbwCount);
 }
 
-// Test case 10: Mixed positive, negative, and zero LBWs - negative filtered,
-// zero and positive kept
+/*
+ * Test case 10: Mixed positive, negative, and zero LBWs - negative filtered,
+ * zero and positive kept
+ */
 TEST(PruneLbwExtCommunitiesCommonTest, MixedPositiveNegativeZeroLBW) {
   BgpAttrExtCommunitiesC communities;
 
@@ -5162,8 +5380,10 @@ TEST(PruneLbwExtCommunitiesCommonTest, MixedPositiveNegativeZeroLBW) {
   EXPECT_EQ(zeroLbw, communities[0].getRawValueInWords().second);
 }
 
-// Test case 11: All negative LBWs with non-LBW communities - all negative LBWs
-// should be filtered, non-LBW preserved
+/*
+ * Test case 11: All negative LBWs with non-LBW communities - all negative LBWs
+ * should be filtered, non-LBW preserved
+ */
 TEST(PruneLbwExtCommunitiesCommonTest, AllNegativeLBWsWithNonLBW) {
   BgpAttrExtCommunitiesC communities;
 
@@ -5204,8 +5424,10 @@ TEST(PruneLbwExtCommunitiesCommonTest, AllNegativeLBWsWithNonLBW) {
   }
 }
 
-// Test case 12: Transitive and non-transitive LBWs with the SAME value -
-// both should be kept since they have the same lowest bandwidth
+/*
+ * Test case 12: Transitive and non-transitive LBWs with the SAME value -
+ * both should be kept since they have the same lowest bandwidth
+ */
 TEST(PruneLbwExtCommunitiesCommonTest, SameValueTransitiveAndNonTransitiveLBW) {
   BgpAttrExtCommunitiesC communities;
 
@@ -5214,8 +5436,10 @@ TEST(PruneLbwExtCommunitiesCommonTest, SameValueTransitiveAndNonTransitiveLBW) {
   communities.emplace_back(lbwNonTrans);
   uint32_t sameLbwValue = lbwNonTrans.rawValLow;
 
-  // Add a transitive LBW with the SAME value (100.0f)
-  // Transitive LBW: type = 0x00, subtype = 0x04
+  /*
+   * Add a transitive LBW with the SAME value (100.0f)
+   * Transitive LBW: type = 0x00, subtype = 0x04
+   */
   uint32_t transLbwHigh = (0x00 << 24) | (0x04 << 16) | 12345;
   communities.emplace_back(transLbwHigh, sameLbwValue);
 
@@ -5242,9 +5466,11 @@ TEST(PruneLbwExtCommunitiesCommonTest, SameValueTransitiveAndNonTransitiveLBW) {
   EXPECT_EQ(1, nonTransCount);
 }
 
-// Test case 13: Multiple LBWs with same value and some with different values -
-// only the lowest value LBWs should be kept (both transitive and non-transitive
-// if they share the same lowest value)
+/*
+ * Test case 13: Multiple LBWs with same value and some with different values -
+ * only the lowest value LBWs should be kept (both transitive and non-transitive
+ * if they share the same lowest value)
+ */
 TEST(
     PruneLbwExtCommunitiesCommonTest,
     SameLowestValueWithOtherHigherValuesLBW) {
@@ -5259,8 +5485,10 @@ TEST(
   communities.emplace_back(lbwNonTrans3);
   uint32_t lowestLbwValue = lbwNonTrans1.rawValLow;
 
-  // Add transitive LBWs: 50.0f (same as lowest non-trans), 75.0f, 150.0f
-  // Transitive LBW: type = 0x00, subtype = 0x04
+  /*
+   * Add transitive LBWs: 50.0f (same as lowest non-trans), 75.0f, 150.0f
+   * Transitive LBW: type = 0x00, subtype = 0x04
+   */
   uint32_t transLbwHigh = (0x00 << 24) | (0x04 << 16) | 12345;
   union {
     float floatVal;
@@ -5288,10 +5516,12 @@ TEST(
 
   pruneLbwExtCommunitiesCommon(communities);
 
-  // After pruning:
-  // - 2 non-LBW communities should remain
-  // - 2 LBWs with the same lowest value (50.0f) should remain:
-  //   one transitive and one non-transitive
+  /*
+   * After pruning:
+   * - 2 non-LBW communities should remain
+   * - 2 LBWs with the same lowest value (50.0f) should remain:
+   *   one transitive and one non-transitive
+   */
   EXPECT_EQ(4, communities.size());
 
   // Count each type to verify
@@ -5329,29 +5559,37 @@ TEST(
  */
 class UpdateExtCommunitiesCommonTest : public ::testing::Test {
  protected:
-  // Helper to build extended communities for testing:
-  // - 2 transitive LBW (bandwidths 200 and 100, lowest=100 is absolute lowest)
-  // - 2 non-transitive LBW (bandwidths 300 and 150)
-  // - 1 non-LBW extended community (route target)
-  // After pruning, only the absolute lowest LBW (100.0f transitive) remains
+  /*
+   * Helper to build extended communities for testing:
+   * - 2 transitive LBW (bandwidths 200 and 100, lowest=100 is absolute lowest)
+   * - 2 non-transitive LBW (bandwidths 300 and 150)
+   * - 1 non-LBW extended community (route target)
+   * After pruning, only the absolute lowest LBW (100.0f transitive) remains
+   */
   static BgpAttrExtCommunitiesC buildTestExtCommunities() {
     BgpAttrExtCommunitiesC communities;
 
-    // Add 1 transitive non-LBW extended community
-    // (route target: type=0x00, subtype=0x02)
+    /*
+     * Add 1 transitive non-LBW extended community
+     * (route target: type=0x00, subtype=0x02)
+     */
     uint32_t rtHigh = (0x00 << 24) | (0x02 << 16) | 65000;
     uint32_t rtLow = 12345;
     communities.emplace_back(rtHigh, rtLow);
 
-    // Add 2 non-transitive LBW communities using the helper
-    // Non-transitive LBW: type=0x40, subtype=0x04
+    /*
+     * Add 2 non-transitive LBW communities using the helper
+     * Non-transitive LBW: type=0x40, subtype=0x04
+     */
     BgpExtCommunityLinkBandWidthTypeC lbwNonTrans1(12345, 300.0f);
     BgpExtCommunityLinkBandWidthTypeC lbwNonTrans2(12345, 150.0f); // lowest
     communities.emplace_back(lbwNonTrans1);
     communities.emplace_back(lbwNonTrans2);
 
-    // Add 2 transitive LBW communities
-    // Transitive LBW: type=0x00, subtype=0x04
+    /*
+     * Add 2 transitive LBW communities
+     * Transitive LBW: type=0x00, subtype=0x04
+     */
     uint32_t transLbwHigh = (0x00 << 24) | (0x04 << 16) | 12345;
     union {
       float floatVal;
@@ -5416,10 +5654,12 @@ class UpdateExtCommunitiesCommonTest : public ::testing::Test {
   }
 };
 
-// Test case 1: customizedLbwEnabled = true
-// Non-transitive LBW communities are kept during EBGP filtering but then
-// pruneLbwExtCommunitiesCommon prunes to the absolute lowest LBW (100.0f
-// transitive). Result: 1 non-LBW + 1 transitive LBW = 2 communities.
+/*
+ * Test case 1: customizedLbwEnabled = true
+ * Non-transitive LBW communities are kept during EBGP filtering but then
+ * pruneLbwExtCommunitiesCommon prunes to the absolute lowest LBW (100.0f
+ * transitive). Result: 1 non-LBW + 1 transitive LBW = 2 communities.
+ */
 TEST_F(UpdateExtCommunitiesCommonTest, CustomizedLbwEnabledNoModification) {
   auto communities = buildTestExtCommunities();
 
@@ -5436,8 +5676,10 @@ TEST_F(UpdateExtCommunitiesCommonTest, CustomizedLbwEnabledNoModification) {
 
   updateExtCommunitiesCommon(peeringParams, BgpSessionType::EBGP, &mask, attrs);
 
-  // Non-transitive LBW kept during EBGP filtering, but then pruned to lowest
-  // LBW (100.0f transitive) by pruneLbwExtCommunitiesCommon
+  /*
+   * Non-transitive LBW kept during EBGP filtering, but then pruned to lowest
+   * LBW (100.0f transitive) by pruneLbwExtCommunitiesCommon
+   */
   EXPECT_EQ(2, attrs->getExtCommunities()->size());
   auto counts = countCommunityTypes(attrs->getExtCommunities().get());
   EXPECT_EQ(1, counts.nonLbw);
@@ -5445,10 +5687,12 @@ TEST_F(UpdateExtCommunitiesCommonTest, CustomizedLbwEnabledNoModification) {
   EXPECT_EQ(0, counts.nonTransitiveLbw);
 }
 
-// Test case 2: receive/advertise link bandwidth configured
-// Non-transitive LBW communities are kept during EBGP filtering but then
-// pruneLbwExtCommunitiesCommon prunes to the absolute lowest LBW (100.0f
-// transitive). Result: 1 non-LBW + 1 transitive LBW = 2 communities.
+/*
+ * Test case 2: receive/advertise link bandwidth configured
+ * Non-transitive LBW communities are kept during EBGP filtering but then
+ * pruneLbwExtCommunitiesCommon prunes to the absolute lowest LBW (100.0f
+ * transitive). Result: 1 non-LBW + 1 transitive LBW = 2 communities.
+ */
 TEST_F(UpdateExtCommunitiesCommonTest, ReceiveAdvertiseLbwNoModification) {
   auto communities = buildTestExtCommunities();
 
@@ -5466,8 +5710,10 @@ TEST_F(UpdateExtCommunitiesCommonTest, ReceiveAdvertiseLbwNoModification) {
 
   updateExtCommunitiesCommon(peeringParams, BgpSessionType::EBGP, &mask, attrs);
 
-  // Non-transitive LBW kept during EBGP filtering, but then pruned to lowest
-  // LBW (100.0f transitive) by pruneLbwExtCommunitiesCommon
+  /*
+   * Non-transitive LBW kept during EBGP filtering, but then pruned to lowest
+   * LBW (100.0f transitive) by pruneLbwExtCommunitiesCommon
+   */
   EXPECT_EQ(2, attrs->getExtCommunities()->size());
   auto counts = countCommunityTypes(attrs->getExtCommunities().get());
   EXPECT_EQ(1, counts.nonLbw);
@@ -5493,9 +5739,11 @@ TEST_F(UpdateExtCommunitiesCommonTest, ReceiveAdvertiseLbwNoModification) {
   EXPECT_EQ(0, counts.nonTransitiveLbw);
 }
 
-// Test case 3: EBGP + (customizedLbwEnabled = false or mask = nullptr)
-// Only 1 transitive LBW + 1 non-LBW should remain
-// (non-transitive LBW removed per RFC 4360 for EBGP peers)
+/*
+ * Test case 3: EBGP + (customizedLbwEnabled = false or mask = nullptr)
+ * Only 1 transitive LBW + 1 non-LBW should remain
+ * (non-transitive LBW removed per RFC 4360 for EBGP peers)
+ */
 TEST_F(UpdateExtCommunitiesCommonTest, EBgpPrunesNonTransitiveLbw) {
   // Test with mask = nullptr
   {
@@ -5508,8 +5756,10 @@ TEST_F(UpdateExtCommunitiesCommonTest, EBgpPrunesNonTransitiveLbw) {
     updateExtCommunitiesCommon(
         peeringParams, BgpSessionType::EBGP, nullptr, attrs);
 
-    // EBGP removes non-transitive communities (RFC 4360)
-    // After pruning: 1 transitive non-LBW + 1 lowest transitive LBW
+    /*
+     * EBGP removes non-transitive communities (RFC 4360)
+     * After pruning: 1 transitive non-LBW + 1 lowest transitive LBW
+     */
     EXPECT_EQ(2, attrs->getExtCommunities()->size());
     auto counts = countCommunityTypes(attrs->getExtCommunities().get());
     EXPECT_EQ(1, counts.nonLbw);
@@ -5531,8 +5781,10 @@ TEST_F(UpdateExtCommunitiesCommonTest, EBgpPrunesNonTransitiveLbw) {
     updateExtCommunitiesCommon(
         peeringParams, BgpSessionType::EBGP, &mask, attrs);
 
-    // EBGP removes non-transitive communities (RFC 4360)
-    // After pruning: 1 transitive non-LBW + 1 lowest transitive LBW
+    /*
+     * EBGP removes non-transitive communities (RFC 4360)
+     * After pruning: 1 transitive non-LBW + 1 lowest transitive LBW
+     */
     EXPECT_EQ(2, attrs->getExtCommunities()->size());
     auto counts = countCommunityTypes(attrs->getExtCommunities().get());
     EXPECT_EQ(1, counts.nonLbw);
@@ -5541,11 +5793,13 @@ TEST_F(UpdateExtCommunitiesCommonTest, EBgpPrunesNonTransitiveLbw) {
   }
 }
 
-// Test case 3b: EBGP + advertiseLinkBandwidth = AGGREGATE_LOCAL
-// Non-transitive LBW should be kept because advertiseLinkBandwidth is set
-// (keepNonTransitiveLbw = true when advertiseLinkBandwidth.has_value())
-// Use custom test data where non-transitive LBW is the lowest to demonstrate
-// that it's kept and selected as the lowest LBW
+/*
+ * Test case 3b: EBGP + advertiseLinkBandwidth = AGGREGATE_LOCAL
+ * Non-transitive LBW should be kept because advertiseLinkBandwidth is set
+ * (keepNonTransitiveLbw = true when advertiseLinkBandwidth.has_value())
+ * Use custom test data where non-transitive LBW is the lowest to demonstrate
+ * that it's kept and selected as the lowest LBW
+ */
 TEST_F(
     UpdateExtCommunitiesCommonTest,
     EBgpKeepsNonTransitiveLbwWithAdvertiseLinkBandwidth) {
@@ -5580,10 +5834,12 @@ TEST_F(
   updateExtCommunitiesCommon(
       peeringParams, BgpSessionType::EBGP, nullptr, attrs);
 
-  // With advertiseLinkBandwidth set, non-transitive LBW is kept during EBGP
-  // filtering and participates in LBW selection. Since 50.0f (non-transitive)
-  // is lower than 100.0f (transitive), the non-transitive LBW is selected.
-  // Result: 1 non-LBW + 1 non-transitive LBW = 2 communities
+  /*
+   * With advertiseLinkBandwidth set, non-transitive LBW is kept during EBGP
+   * filtering and participates in LBW selection. Since 50.0f (non-transitive)
+   * is lower than 100.0f (transitive), the non-transitive LBW is selected.
+   * Result: 1 non-LBW + 1 non-transitive LBW = 2 communities
+   */
   EXPECT_EQ(2, attrs->getExtCommunities()->size());
   auto counts = countCommunityTypes(attrs->getExtCommunities().get());
   EXPECT_EQ(1, counts.nonLbw);
@@ -5591,10 +5847,12 @@ TEST_F(
   EXPECT_EQ(1, counts.nonTransitiveLbw);
 }
 
-// Test case 4: IBGP or EBGP-Confed + (customizedLbwEnabled = false or mask =
-// nullptr) should prune to absolute lowest LBW (100.0f transitive).
-// Non-transitive LBWs (150.0f, 300.0f) are higher than 100.0f, so they are
-// removed. Result: 1 non-LBW + 1 transitive LBW = 2 communities.
+/*
+ * Test case 4: IBGP or EBGP-Confed + (customizedLbwEnabled = false or mask =
+ * nullptr) should prune to absolute lowest LBW (100.0f transitive).
+ * Non-transitive LBWs (150.0f, 300.0f) are higher than 100.0f, so they are
+ * removed. Result: 1 non-LBW + 1 transitive LBW = 2 communities.
+ */
 TEST_F(UpdateExtCommunitiesCommonTest, IBgpConfedKeepsAllLbwTypes) {
   // Test with IBGP peer
   {
@@ -5607,8 +5865,10 @@ TEST_F(UpdateExtCommunitiesCommonTest, IBgpConfedKeepsAllLbwTypes) {
     updateExtCommunitiesCommon(
         peeringParams, BgpSessionType::IBGP, nullptr, attrs);
 
-    // IBGP keeps non-transitive communities but prunes LBW to absolute lowest
-    // After pruning: 1 non-LBW + 1 lowest LBW (100.0f transitive)
+    /*
+     * IBGP keeps non-transitive communities but prunes LBW to absolute lowest
+     * After pruning: 1 non-LBW + 1 lowest LBW (100.0f transitive)
+     */
     EXPECT_EQ(2, attrs->getExtCommunities()->size());
     auto counts = countCommunityTypes(attrs->getExtCommunities().get());
     EXPECT_EQ(1, counts.nonLbw);
@@ -5627,8 +5887,10 @@ TEST_F(UpdateExtCommunitiesCommonTest, IBgpConfedKeepsAllLbwTypes) {
     updateExtCommunitiesCommon(
         peeringParams, BgpSessionType::ConfedEBGP, nullptr, attrs);
 
-    // ConfedEBGP keeps non-transitive communities but prunes LBW to absolute
-    // lowest. After pruning: 1 non-LBW + 1 lowest LBW (100.0f transitive)
+    /*
+     * ConfedEBGP keeps non-transitive communities but prunes LBW to absolute
+     * lowest. After pruning: 1 non-LBW + 1 lowest LBW (100.0f transitive)
+     */
     EXPECT_EQ(2, attrs->getExtCommunities()->size());
     auto counts = countCommunityTypes(attrs->getExtCommunities().get());
     EXPECT_EQ(1, counts.nonLbw);
@@ -5726,8 +5988,10 @@ TEST_F(AdjRibOutboundFixture, EgressPolicyLinkBandwidthPropagationEBGPTest) {
   TinyPeerInfo inPeer{
       folly::IPAddress("20.1.1.1"), 1, 1, BgpSessionType::EBGP, false};
 
-  // Build input attributes and add both transitive and non-transitive
-  // communities
+  /*
+   * Build input attributes and add both transitive and non-transitive
+   * communities
+   */
   BgpUpdate2 inputUpdate = buildBgpUpdateAttributes(kV4Nexthop1);
   auto inAttrs = std::make_shared<facebook::bgp::BgpPath>(
       BgpPathFields(*BgpUpdate2toBgpPathC(inputUpdate)));
@@ -5755,10 +6019,12 @@ TEST_F(AdjRibOutboundFixture, EgressPolicyLinkBandwidthPropagationEBGPTest) {
     auto outAttrs = adjRibEntry->getPostAttr();
     ASSERT_NE(nullptr, outAttrs);
 
-    // For EBGP peers, only transitive extended communities should remain
-    // So we should have 1 extended community (the 100G transitive one)
-    // The 10G non-transitive should be filtered out by
-    // updateExtCommunitiesCommon
+    /*
+     * For EBGP peers, only transitive extended communities should remain
+     * So we should have 1 extended community (the 100G transitive one)
+     * The 10G non-transitive should be filtered out by
+     * updateExtCommunitiesCommon
+     */
     auto outExtCommunities = outAttrs->getExtCommunities();
     EXPECT_FALSE(outExtCommunities.nullOrEmpty());
     EXPECT_EQ(1, outExtCommunities->size());
@@ -5841,8 +6107,10 @@ TEST_F(AdjRibOutboundFixture, EgressPolicyLinkBandwidthPropagationIBGPTest) {
   TinyPeerInfo inPeer{
       folly::IPAddress("20.1.1.1"), 1, 1, BgpSessionType::IBGP, false};
 
-  // Build input attributes and add both transitive and non-transitive
-  // communities
+  /*
+   * Build input attributes and add both transitive and non-transitive
+   * communities
+   */
   BgpUpdate2 inputUpdate = buildBgpUpdateAttributes(kV4Nexthop1);
   auto inAttrs = std::make_shared<facebook::bgp::BgpPath>(
       BgpPathFields(*BgpUpdate2toBgpPathC(inputUpdate)));
@@ -5870,11 +6138,13 @@ TEST_F(AdjRibOutboundFixture, EgressPolicyLinkBandwidthPropagationIBGPTest) {
     auto outAttrs = adjRibEntry->getPostAttr();
     ASSERT_NE(nullptr, outAttrs);
 
-    // For IBGP peers, non-transitive extended communities are NOT filtered out
-    // (unlike EBGP where they would be removed per RFC 4360). However, LBW
-    // deduplication still occurs, keeping only the lowest LBW value.
-    // Since 10G < 100G, the 10G non-transitive LBW is kept.
-    // Result: 1 extended community (the 10G non-transitive one)
+    /*
+     * For IBGP peers, non-transitive extended communities are NOT filtered out
+     * (unlike EBGP where they would be removed per RFC 4360). However, LBW
+     * deduplication still occurs, keeping only the lowest LBW value.
+     * Since 10G < 100G, the 10G non-transitive LBW is kept.
+     * Result: 1 extended community (the 10G non-transitive one)
+     */
     auto outExtCommunities = outAttrs->getExtCommunities();
     EXPECT_FALSE(outExtCommunities.nullOrEmpty());
     EXPECT_EQ(1, outExtCommunities->size());

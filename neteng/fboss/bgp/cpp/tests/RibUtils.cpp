@@ -295,8 +295,10 @@ void MockFib::connect() {
 void MockFib::fulfillFibProgramPromise() {
   std::unique_lock lock(fibProgramPromiseMutex_);
   if (fibProgramPromise_) {
-    // not calling fibProgramPromise_->setValue() directly as fiber context
-    // switch happens before updating fibProgramPromise_ to nullptr
+    /*
+     * not calling fibProgramPromise_->setValue() directly as fiber context
+     * switch happens before updating fibProgramPromise_ to nullptr
+     */
     auto promise = std::move(fibProgramPromise_);
     lock.unlock();
     promise->setValue();
@@ -532,9 +534,11 @@ bool MockRib::replaceRouteFilterPolicy(
 void MockRib::fulfillRibPolicyReplacePromise() {
   ribPolicyReplacePromise_.withWLock([this](auto& ribPolicyReplacePromise) {
     if (ribPolicyReplacePromise) {
-      // not calling ribPolicyReplacePromise_->setValue() directly as fiber
-      // context switch happens before updating ribPolicyReplacePromise_ to
-      // nullptr
+      /*
+       * not calling ribPolicyReplacePromise_->setValue() directly as fiber
+       * context switch happens before updating ribPolicyReplacePromise_ to
+       * nullptr
+       */
       auto promise = std::move(ribPolicyReplacePromise);
       promise->setValue();
     }
@@ -613,9 +617,11 @@ void MockRib::fulfillRibPrepareFibProgrammingPromise(
         if (ribPrepareFibProgrammingPromise) {
           this->ribEntriesToProgram_ -= numRibEntriesProgrammed;
           if (this->ribEntriesToProgram_ <= 0) {
-            // not calling fibProgramPromise_->setValue() directly as fiber
-            // context switch happens before updating fibProgramPromise_ to
-            // nullptr
+            /*
+             * not calling fibProgramPromise_->setValue() directly as fiber
+             * context switch happens before updating fibProgramPromise_ to
+             * nullptr
+             */
             auto promise = std::move(ribPrepareFibProgrammingPromise);
             promise->setValue();
           }
@@ -941,22 +947,24 @@ void RibFixture::sendNexthopResolutionUpdate(
   ribInQ_.fiberPush(std::move(nexthopResUpdate));
 }
 
-// Case1:
-// Build 4 paths with first 3 of localPref=200 and 4th one with
-// localPref=100.  In all attrs add 5 extended community attributes as
-// follows:
-// Each has two unique transitive community (one AStype and one IPv4
-// type).
-// Each has 1 LBW attr:- path1 lbw=10G, path2 lbw=5G, path3 lbw=2G,
-// path4 lbw=1G.
-// Each has two non-transitive (one opaque type and one regular type)
-// Path4 does not have the last two non-transitive communities.
-// Call sendInitialPathComputation() which in turn will trigger calling of
-// selectBestPath(multipathSelector, bestpathSelector, ) on above path-set.
-// Verify that :
-//  * Each path should have correct weights
-//  * Path4 should not be in multipath
-//  * Check the weights of the nethops in the fib program call.
+/*
+ * Case1:
+ * Build 4 paths with first 3 of localPref=200 and 4th one with
+ * localPref=100.  In all attrs add 5 extended community attributes as
+ * follows:
+ * Each has two unique transitive community (one AStype and one IPv4
+ * type).
+ * Each has 1 LBW attr:- path1 lbw=10G, path2 lbw=5G, path3 lbw=2G,
+ * path4 lbw=1G.
+ * Each has two non-transitive (one opaque type and one regular type)
+ * Path4 does not have the last two non-transitive communities.
+ * Call sendInitialPathComputation() which in turn will trigger calling of
+ * selectBestPath(multipathSelector, bestpathSelector, ) on above path-set.
+ * Verify that :
+ *  * Each path should have correct weights
+ *  * Path4 should not be in multipath
+ *  * Check the weights of the nethops in the fib program call.
+ */
 void RibFixture::runLbwCommunityBestPathTest(bool computeUcmpFromLbwComm) {
   uint32_t nhWt1{0}, nhWt2{0}, nhWt3{0};
   if (computeUcmpFromLbwComm) {
@@ -1059,10 +1067,12 @@ void RibFixture::runLbwCommunityBestPathTest(bool computeUcmpFromLbwComm) {
   {
     InSequence dummy;
     EXPECT_CALL(*fib_, program_(true)).Times(1);
-    // As LBW community is present in all paths,
-    // UCMP will be effective. Hence we should expect
-    // weight params of each nh to be proportional to lbw community
-    // announced b/w.
+    /*
+     * As LBW community is present in all paths,
+     * UCMP will be effective. Hence we should expect
+     * weight params of each nh to be proportional to lbw community
+     * announced b/w.
+     */
     WeightedNexthopMap nhWts = {
         {kV4Nexthop1, nhWt1}, {kV4Nexthop2, nhWt2}, {kV4Nexthop3, nhWt3}};
     EXPECT_CALL(
@@ -1126,25 +1136,31 @@ void RibFixture::runLbwCommunityBestPathTest(bool computeUcmpFromLbwComm) {
     }
   }
 
-  // Case2:
-  // All attrs are same from all peers except for peer3 which changes the
-  // lbw value of attrs3 to 1G from 2G.  If computeUcmpFromLbwComm is
-  // turned on, expected behavior is that after bestpath selection new
-  // weights are programmed in the fib side but ecmp nexthop should be
-  // same as before.
+  /*
+   * Case2:
+   * All attrs are same from all peers except for peer3 which changes the
+   * lbw value of attrs3 to 1G from 2G.  If computeUcmpFromLbwComm is
+   * turned on, expected behavior is that after bestpath selection new
+   * weights are programmed in the fib side but ecmp nexthop should be
+   * same as before.
+   */
   if (!computeUcmpFromLbwComm) {
-    // If computeUcmpFromLbwComm is not on, then there is no change in
-    // weights computed
+    /*
+     * If computeUcmpFromLbwComm is not on, then there is no change in
+     * weights computed
+     */
     return;
   }
 
   EXPECT_CALL(*rib_, prepareFibProgramming_()).Times(1);
   {
     InSequence dummy;
-    // As LBW community is present in all paths,
-    // UCMP will be effective. Hence we should expect
-    // weight params of each nh to be proportional to lbw community
-    // announced b/w.
+    /*
+     * As LBW community is present in all paths,
+     * UCMP will be effective. Hence we should expect
+     * weight params of each nh to be proportional to lbw community
+     * announced b/w.
+     */
     if (computeUcmpFromLbwComm) {
       nhWt1 = 10;
       nhWt2 = 5;

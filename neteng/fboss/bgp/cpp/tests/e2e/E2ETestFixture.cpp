@@ -1500,10 +1500,12 @@ void E2ETestFixture::dispatchStaleSessionEstablished(
       .remoteAs = cfg.peerAsn,
       .sessionInfo = std::move(sessionInfo)};
 
-  // Simulate FiberBgpPeer bumping the version for a new session incarnation.
-  // Now currentVersion->getWithoutLock() != staleVersionNumber, causing
-  // the version check inside sessionEstablished() to fail -> early return.
-  // Critically, the baton is NOT reset on early return (latch stays posted).
+  /*
+   * Simulate FiberBgpPeer bumping the version for a new session incarnation.
+   * Now currentVersion->getWithoutLock() != staleVersionNumber, causing
+   * the version check inside sessionEstablished() to fail -> early return.
+   * Critically, the baton is NOT reset on early return (latch stays posted).
+   */
   currentVersion->bumpUp();
 
   auto& evb = peerManager_->getEventBase();
@@ -1560,8 +1562,10 @@ void E2ETestFixture::sendRouteRefreshToPeer(
   it->second.adjRibInQ->fiberPush(std::move(rr));
 }
 
-// ==================== HELPER FUNCTIONS FOR QUEUE/MESSAGE HANDLING
-// ====================
+/*
+ * ==================== HELPER FUNCTIONS FOR QUEUE/MESSAGE HANDLING
+ * ====================
+ */
 
 namespace {
 
@@ -2176,8 +2180,10 @@ bool E2ETestFixture::waitForEoR(const BgpPeerId& peerId) {
   return result;
 }
 
-// ==================== QUEUE BLOCKING HELPER IMPLEMENTATIONS
-// ====================
+/*
+ * ==================== QUEUE BLOCKING HELPER IMPLEMENTATIONS
+ * ====================
+ */
 
 bool E2ETestFixture::isPeerQueueBlocked(const BgpPeerId& peerId) {
   auto queues = getPeerQueues(peerId);
@@ -3368,8 +3374,10 @@ bool E2ETestFixture::verifyRoutes(
 
   XLOGF(INFO, "Verifying {} routes from peer {}", routes.size(), peer.str());
 
-  // Keep reading UPDATEs until all routes are verified
-  // readOutboundUpdateToPeer() handles retries internally
+  /*
+   * Keep reading UPDATEs until all routes are verified
+   * readOutboundUpdateToPeer() handles retries internally
+   */
   int updateCount = 0;
   while (verifiedCount < routes.size()) {
     auto updateOpt = readOutboundUpdateToPeer(*peerIdOpt);
@@ -3431,8 +3439,10 @@ bool E2ETestFixture::verifyRouteWithdraws(
   std::vector<bool> verified(routes.size(), false);
   size_t verifiedCount = 0;
 
-  // Keep reading UPDATEs until all withdrawals are verified
-  // readOutboundUpdateToPeer() handles retries internally
+  /*
+   * Keep reading UPDATEs until all withdrawals are verified
+   * readOutboundUpdateToPeer() handles retries internally
+   */
   while (verifiedCount < routes.size()) {
     auto updateOpt = readOutboundUpdateToPeer(*peerIdOpt);
     if (!updateOpt.has_value()) {

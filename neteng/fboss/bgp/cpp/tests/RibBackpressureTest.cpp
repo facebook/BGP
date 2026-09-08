@@ -202,27 +202,37 @@ TEST_F(RibFixture, MultipleRibPauseResumeFromDifferentTasksTest) {
   rib_->setRibPauseTime(seconds(30));
   sendInitialPathComputation();
   fibFuture.wait();
-  // Step 2: Send PauseBestPathAndFibProgramming message to rib from SAFE_MODE
-  // and verify best path and Fib programming is paused
+  /*
+   * Step 2: Send PauseBestPathAndFibProgramming message to rib from SAFE_MODE
+   * and verify best path and Fib programming is paused
+   */
   sendPauseBestPathAndFibProgramming(RibPauseResumeCause::SAFE_MODE);
 
-  // Step 3: Send PauseBestPathAndFibProgramming message to rib from
-  // BACKPRESSURE and verify best path and Fib programming is paused
+  /*
+   * Step 3: Send PauseBestPathAndFibProgramming message to rib from
+   * BACKPRESSURE and verify best path and Fib programming is paused
+   */
   sendPauseBestPathAndFibProgramming(RibPauseResumeCause::BACKPRESSURE);
 
-  // Step 4: Send PauseBestPathAndFibProgramming message to rib from
-  // ROUTE_FILTER_POLICY_UPDATE and verify best path and Fib programming is
-  // paused
+  /*
+   * Step 4: Send PauseBestPathAndFibProgramming message to rib from
+   * ROUTE_FILTER_POLICY_UPDATE and verify best path and Fib programming is
+   * paused
+   */
   sendPauseBestPathAndFibProgramming(
       RibPauseResumeCause::ROUTE_FILTER_POLICY_UPDATE);
 
-  // Step 5: Send ResumeBestPathAndFibProgramming message to rib from
-  // ROUTE_FILTER_POLICY_UPDATE
+  /*
+   * Step 5: Send ResumeBestPathAndFibProgramming message to rib from
+   * ROUTE_FILTER_POLICY_UPDATE
+   */
   sendResumeBestPathAndFibProgramming(
       RibPauseResumeCause::ROUTE_FILTER_POLICY_UPDATE);
 
-  // Step 6: Send ResumeBestPathAndFibProgramming message to rib from
-  // ROUTE_FILTER_POLICY_UPDATE again and ensure RIB is not resumed
+  /*
+   * Step 6: Send ResumeBestPathAndFibProgramming message to rib from
+   * ROUTE_FILTER_POLICY_UPDATE again and ensure RIB is not resumed
+   */
   sendResumeBestPathAndFibProgramming(
       RibPauseResumeCause::ROUTE_FILTER_POLICY_UPDATE);
   WITH_RETRIES_N_TIMED(600, milliseconds(50), {
@@ -237,8 +247,10 @@ TEST_F(RibFixture, MultipleRibPauseResumeFromDifferentTasksTest) {
             RibPauseResumeCause::BACKPRESSURE));
   });
 
-  // Step 7: Resume BACKPRESSURE and verify SAFE_MODE still keeps best path
-  // and Fib programming paused.
+  /*
+   * Step 7: Resume BACKPRESSURE and verify SAFE_MODE still keeps best path
+   * and Fib programming paused.
+   */
   sendResumeBestPathAndFibProgramming(RibPauseResumeCause::BACKPRESSURE);
   WITH_RETRIES_N_TIMED(600, milliseconds(50), {
     EXPECT_EVENTUALLY_TRUE(isBestPathAndFibProgrammingPaused());
@@ -249,8 +261,10 @@ TEST_F(RibFixture, MultipleRibPauseResumeFromDifferentTasksTest) {
             RibPauseResumeCause::SAFE_MODE));
   });
 
-  // Step 8: Send ResumeBestPathAndFibProgramming message to rib from
-  // SAFE_MODE and verify best path and Fib programming is now resumed.
+  /*
+   * Step 8: Send ResumeBestPathAndFibProgramming message to rib from
+   * SAFE_MODE and verify best path and Fib programming is now resumed.
+   */
   sendResumeBestPathAndFibProgramming(RibPauseResumeCause::SAFE_MODE);
   WITH_RETRIES(
       { ASSERT_EVENTUALLY_FALSE(isBestPathAndFibProgrammingPaused()); });
@@ -263,8 +277,10 @@ TEST_F(RibFixture, MultipleRibPauseResumeFromDifferentTasksTest) {
 TEST_F(
     RibFixture,
     InlineBackpressurePauseAndResumeBestPathAndFibProgrammingTest) {
-  // Case 1: Send 1 RibAnnouncement when local Rib thread operations are
-  // paused and 1 RibAnnouncement when it is resumed
+  /*
+   * Case 1: Send 1 RibAnnouncement when local Rib thread operations are
+   * paused and 1 RibAnnouncement when it is resumed
+   */
   auto prefixBatch1 = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
   {
     auto fibFuture = fib_->getFibProgramFuture();
@@ -302,8 +318,10 @@ TEST_F(
 
     fibFuture.wait();
 
-    // Test expects to see RibInitialAnnouncementStart and both the
-    // announcements
+    /*
+     * Test expects to see RibInitialAnnouncementStart and both the
+     * announcements
+     */
     WITH_RETRIES({ ASSERT_EVENTUALLY_TRUE(ribOutQ_.size() == 4); });
     // RibInitialAnnouncementStart
     auto msg = folly::coro::blockingWait(ribOutQ_.pop());
@@ -332,8 +350,10 @@ TEST_F(
     // pop last message out
     msg = folly::coro::blockingWait(ribOutQ_.pop());
   }
-  // Case 2: Send 1 RibAnnouncement when local Rib thread operations are
-  // paused and 1 RibWithdrawal when it is resumed
+  /*
+   * Case 2: Send 1 RibAnnouncement when local Rib thread operations are
+   * paused and 1 RibWithdrawal when it is resumed
+   */
   {
     auto fibFuture = fib_->getFibProgramFuture();
 
@@ -479,16 +499,20 @@ TEST(RibBackpressureTest, RibInQueueBackpressureTest) {
         {{folly::IPAddress::createNetwork("10.0.1.0/24"), kDefaultPathID}},
         attr);
 
-    // Fill the queue to exactly capacity
-    // Note: Rib processing is stopped, so messages accumulate in ribInQ
+    /*
+     * Fill the queue to exactly capacity
+     * Note: Rib processing is stopped, so messages accumulate in ribInQ
+     */
     fm.addTask([&] {
       for (size_t i = 0; i < maxIngressQueueSize + 2; ++i) {
         ribInQ.fiberPush(announcement);
       }
     });
 
-    // Wait for queue to fill to capacity by polling the queue size
-    // Use fiberSleepFor(0ms) to allow event loop to run
+    /*
+     * Wait for queue to fill to capacity by polling the queue size
+     * Use fiberSleepFor(0ms) to allow event loop to run
+     */
     while (ribInQ.size() < maxIngressQueueSize) {
       folly::fibers::yield();
     }
@@ -498,8 +522,10 @@ TEST(RibBackpressureTest, RibInQueueBackpressureTest) {
     XLOGF(INFO, "ribInQ size after filling: {}", queueSize);
     EXPECT_EQ(maxIngressQueueSize, queueSize);
 
-    // Create a fiber task to try pushing additional messages
-    // This should block because the queue is full
+    /*
+     * Create a fiber task to try pushing additional messages
+     * This should block because the queue is full
+     */
     std::atomic<bool> pushBlocked{true};
     fm.addTask([&] {
       const size_t additionalMessages = 3;
@@ -510,8 +536,10 @@ TEST(RibBackpressureTest, RibInQueueBackpressureTest) {
       pushBlocked = false;
     });
 
-    // Yield multiple times and verify queue size stays at capacity
-    // The push fiber should be blocked and not complete
+    /*
+     * Yield multiple times and verify queue size stays at capacity
+     * The push fiber should be blocked and not complete
+     */
     for (int i = 0; i < 10; ++i) {
       fiberSleepFor(0ms);
       queueSize = ribInQ.size();
@@ -523,13 +551,17 @@ TEST(RibBackpressureTest, RibInQueueBackpressureTest) {
     XLOGF(INFO, "ribInQ size after attempting more pushes: {}", queueSize);
     EXPECT_EQ(maxIngressQueueSize, queueSize);
 
-    // Start Rib processing by adding processRibInMsgLoop to async scope
-    // The coroutine is scheduled on the local event base via co_withExecutor
-    // The event loop (evb.loop()) will process both fibers and the coroutine
+    /*
+     * Start Rib processing by adding processRibInMsgLoop to async scope
+     * The coroutine is scheduled on the local event base via co_withExecutor
+     * The event loop (evb.loop()) will process both fibers and the coroutine
+     */
     XLOG(INFO, "Starting Rib processing to drain queue");
 
-    // Create async scope and add processRibInMsgLoop coroutine
-    // The async scope manages the coroutine lifecycle for later cancellation
+    /*
+     * Create async scope and add processRibInMsgLoop coroutine
+     * The async scope manages the coroutine lifecycle for later cancellation
+     */
     folly::coro::CancellableAsyncScope asyncScope;
     asyncScope.add(
         folly::coro::co_withExecutor(&evb, mockRib->processRibInMsgLoop()));
@@ -636,8 +668,10 @@ TEST(RibBackpressureTest, RibInQueueConsumerScopeTest) {
       ribInQ.push(RibInAnnouncement(eBgpPeer, prefixBatch2, attr)));
   EXPECT_EQ(1, ribInQ.size()); // Push was dropped
 
-  // Step 3: Start processRibInMsgLoop
-  // This creates a ConsumerScope which should open the queue
+  /*
+   * Step 3: Start processRibInMsgLoop
+   * This creates a ConsumerScope which should open the queue
+   */
   folly::coro::CancellableAsyncScope asyncScope;
   folly::EventBase evb;
   asyncScope.add(
@@ -666,8 +700,10 @@ TEST(RibBackpressureTest, RibInQueueConsumerScopeTest) {
   folly::coro::blockingWait(asyncScope.cancelAndJoinAsync());
   evbThread.join();
 
-  // Step 6: Verify queue is closed after ConsumerScope is destroyed
-  // Queue is now closed, push should be dropped
+  /*
+   * Step 6: Verify queue is closed after ConsumerScope is destroyed
+   * Queue is now closed, push should be dropped
+   */
   size_t sizeBeforePush = ribInQ.size();
   auto prefixBatch4 = PrefixPathIds{
       {folly::IPAddress::createNetwork("11::/64"), kDefaultPathID}};
@@ -729,8 +765,10 @@ TEST(RibBackpressureTest, RibInQueueConsumerScopeExceptionPathTest) {
       std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
   attr->publish();
 
-  // Step 1: Start processRibInMsgLoop
-  // This creates a ConsumerScope which opens the queue
+  /*
+   * Step 1: Start processRibInMsgLoop
+   * This creates a ConsumerScope which opens the queue
+   */
   folly::coro::CancellableAsyncScope asyncScope;
   folly::EventBase evb;
   asyncScope.add(
@@ -745,8 +783,10 @@ TEST(RibBackpressureTest, RibInQueueConsumerScopeExceptionPathTest) {
   folly::coro::blockingWait(
       ribInQ.push(RibInAnnouncement(eBgpPeer, prefixBatch1, attr)));
 
-  // Verify the announcement was consumed (and hence has been pushed
-  // successfully) by checking ribEntries_ on the evb thread
+  /*
+   * Verify the announcement was consumed (and hence has been pushed
+   * successfully) by checking ribEntries_ on the evb thread
+   */
   WITH_RETRIES({
     bool found = false;
     evb.runInEventBaseThreadAndWait([&]() {
@@ -755,9 +795,11 @@ TEST(RibBackpressureTest, RibInQueueConsumerScopeExceptionPathTest) {
     ASSERT_EVENTUALLY_TRUE(found);
   });
 
-  // Step 3: Destroy MockRib WITHOUT normal termination
-  // This triggers cleanup. The async scope will be cancelled next,
-  // causing the loop to exit via cancellation and ConsumerScope to close queue.
+  /*
+   * Step 3: Destroy MockRib WITHOUT normal termination
+   * This triggers cleanup. The async scope will be cancelled next,
+   * causing the loop to exit via cancellation and ConsumerScope to close queue.
+   */
   XLOG(INFO, "Destroying MockRib to trigger exception path");
   evb.runInEventBaseThreadAndWait([&]() { mockRib.reset(); });
 
@@ -765,9 +807,11 @@ TEST(RibBackpressureTest, RibInQueueConsumerScopeExceptionPathTest) {
   folly::coro::blockingWait(asyncScope.cancelAndJoinAsync());
   evbThread.join();
 
-  // Step 5: Verify queue is closed by ConsumerScope destructor
-  // (RAII guarantee - queue closed even on cancellation exit path)
-  // Push should be dropped when queue is closed
+  /*
+   * Step 5: Verify queue is closed by ConsumerScope destructor
+   * (RAII guarantee - queue closed even on cancellation exit path)
+   * Push should be dropped when queue is closed
+   */
   size_t sizeBeforePush = ribInQ.size();
   auto prefixBatch2 = PrefixPathIds{
       {folly::IPAddress::createNetwork("2::/64"), kDefaultPathID}};

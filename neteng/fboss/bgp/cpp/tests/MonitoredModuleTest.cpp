@@ -45,8 +45,10 @@ namespace facebook::bgp {
        module.monitoredItems_.rlock()->at(name))         \
        .get()
 
-// Ensure that MonitoredModule would be added to MonitoredModule
-// Also test the error message when the module name is already monitored
+/*
+ * Ensure that MonitoredModule would be added to MonitoredModule
+ * Also test the error message when the module name is already monitored
+ */
 TEST(MonitoredModuleTest, MonitorModuleTest) {
   MonitoredModule module, testModule;
 
@@ -105,8 +107,10 @@ TEST(MonitoredModuleTest, MonitorModuleTest) {
   }
 }
 
-// Ensure that MonitoredQueue would be added to MonitoredModule
-// Also test the error message when the queue name is already monitored
+/*
+ * Ensure that MonitoredQueue would be added to MonitoredModule
+ * Also test the error message when the queue name is already monitored
+ */
 TEST(MonitoredModuleTest, MonitorQueueTest) {
   MonitoredModule module;
   MonitoredMPMCQueue<int> testQueue;
@@ -212,8 +216,10 @@ TEST(MonitoredModuleTest, MonitorQueueReplaceTest) {
   }
 }
 
-// Check that a queue could be monitored in two directions by two
-// modules
+/*
+ * Check that a queue could be monitored in two directions by two
+ * modules
+ */
 TEST(MonitoredModuleTest, TwoModulesMonitorQueueTest) {
   MonitoredModule module1, module2;
   MonitoredMPMCQueue<int> testQueue;
@@ -255,8 +261,10 @@ TEST(MonitoredModuleTest, TwoModulesMonitorQueueTest) {
   }
 }
 
-// Ensure that the same name could be only used to a monitored item, be it a
-// module or a queue
+/*
+ * Ensure that the same name could be only used to a monitored item, be it a
+ * module or a queue
+ */
 TEST(MonitoredModuleTest, MonitoredNameTest) {
   MonitoredModule module, testModule;
   MonitoredMPMCQueue<int> testQueue;
@@ -398,8 +406,10 @@ TEST(MonitoredModuleTest, GetQueueSizesNestedModuleTest) {
   EXPECT_EQ(module2.getQueueSizes(&queryNode), expectedResults);
 }
 
-// Two threads try to update and query the monitored items at the same time
-// They shouldn't crash
+/*
+ * Two threads try to update and query the monitored items at the same time
+ * They shouldn't crash
+ */
 TEST(MonitoredModuleTest, InterThreadMonitoringTest) {
   MonitoredModule module;
 

@@ -56,8 +56,10 @@ void AdjRibOutboundFixture::setupAdjRib(
     const std::optional<std::string>& ingressPolicyName) {
   auto peerId = nettools::bgplib::BgpPeerId(
       peerAddr, folly::IPAddressV4("255.0.0.1").toLongHBO());
-  // Recursively calling the overload setupAdjRib(...) by passing the peerId
-  // instead of the peerAddr
+  /*
+   * Recursively calling the overload setupAdjRib(...) by passing the peerId
+   * instead of the peerAddr
+   */
   setupAdjRib(
       globalAs,
       localAs,
@@ -205,8 +207,10 @@ void AdjRibOutboundFixture::setupAdjRib(const bool sendAddPath) {
   if (sendAddPath) {
     addPath = facebook::nettools::bgplib::BgpAddPathSendRec::SEND;
   }
-  // Calling the overload setupAdjRib(...) by passing the peerAddr and addPath
-  // capability
+  /*
+   * Calling the overload setupAdjRib(...) by passing the peerAddr and addPath
+   * capability
+   */
   setupAdjRib(
       kLocalAs1,
       kLocalAs1,

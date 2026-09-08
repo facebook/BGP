@@ -37,8 +37,10 @@ namespace facebook::bgp {
 
 class WatchdogTestFixture : public ::testing::Test {
  protected:
-  // Create a minimal Config for testing
-  // Subclasses can override this to provide different configurations
+  /*
+   * Create a minimal Config for testing
+   * Subclasses can override this to provide different configurations
+   */
   virtual std::shared_ptr<const Config> createConfig() {
     thrift::BgpConfig bgpConfig;
     // Set minimal required fields for a valid config
@@ -283,8 +285,10 @@ TEST_F(WatchdogTestFixture, SystemMetricsUpdateBasicTest) {
           "bgpd.process.uptime.seconds");
   EXPECT_GT(uptimeSeconds, 0);
 
-  // Memory and CPU counters depend on system availability
-  // but at minimum should not cause crashes
+  /*
+   * Memory and CPU counters depend on system availability
+   * but at minimum should not cause crashes
+   */
   const int64_t memoryBytes =
       facebook::fb303::ThreadCachedServiceData::getShared()->getCounter(
           "bgpd.process.memory.rss.bytes");
@@ -296,11 +300,15 @@ TEST_F(WatchdogTestFixture, SystemMetricsUpdateBasicTest) {
   EXPECT_GE(cpuPercent, 0);
 }
 
-// Verify getUptimeSeconds() reflects the configured start time and is
-// monotonically non-decreasing across samples.
+/*
+ * Verify getUptimeSeconds() reflects the configured start time and is
+ * monotonically non-decreasing across samples.
+ */
 TEST_F(WatchdogTestFixture, GetUptimeSecondsTest) {
-  // Pin the start time 5 seconds in the past so uptime is deterministically >
-  // 0.
+  /*
+   * Pin the start time 5 seconds in the past so uptime is deterministically >
+   * 0.
+   */
   setStartTime(5);
 
   const int64_t uptime1 = getWatchdog().getUptimeSeconds();

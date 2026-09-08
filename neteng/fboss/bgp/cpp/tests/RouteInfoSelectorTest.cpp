@@ -198,8 +198,10 @@ class RouteInfoSelectorTest : public ::testing::Test {
 
     RibEntry testRibEntry(kV4Prefix1);
 
-    // Store NexthopInfo objects as shared_ptr to ensure proper lifetime
-    // management
+    /*
+     * Store NexthopInfo objects as shared_ptr to ensure proper lifetime
+     * management
+     */
     static std::vector<std::shared_ptr<NexthopInfo>> nextHopInfos;
     nextHopInfos.clear();
     nextHopInfos.reserve(3);
@@ -316,9 +318,11 @@ TEST_F(RouteInfoSelectorTest, InvalidAttributesTest) {
 
 TEST_F(RouteInfoSelectorTest, UninstallDeletedRoutesTest) {
   {
-    // routes
-    // routes are preferred in the order of 3 > 1, 2 as 3 is the only valid
-    // route.
+    /*
+     * routes
+     * routes are preferred in the order of 3 > 1, 2 as 3 is the only valid
+     * route.
+     */
     auto rInfos = createTestRouteInfos(getDefaultAttrs());
     rInfos[0]->setRoutePreferred();
     rInfos[0]->setRouteDeleted();
@@ -333,8 +337,10 @@ TEST_F(RouteInfoSelectorTest, UninstallDeletedRoutesTest) {
     EXPECT_THAT(chosenRoutes, UnorderedElementsAre(rInfos[2]));
   }
   {
-    // routes
-    // all routes are invalid.
+    /*
+     * routes
+     * all routes are invalid.
+     */
     auto rInfos = createTestRouteInfos(getDefaultAttrs());
     rInfos[0]->setRouteDeleted();
     rInfos[1]->setRouteDeleted();
@@ -351,8 +357,10 @@ TEST_F(RouteInfoSelectorTest, UninstallDeletedRoutesTest) {
 
 TEST_F(RouteInfoSelectorTest, LocalPreferenceWinsTest) {
   {
-    // routes
-    // routes are preferred in the order of 1 > 2 > 3 based on BGP localperf.
+    /*
+     * routes
+     * routes are preferred in the order of 1 > 2 > 3 based on BGP localperf.
+     */
     auto attrs = getDefaultAttrs();
     attrs[0]->setLocalPref(300);
     attrs[1]->setLocalPref(200);
@@ -367,9 +375,11 @@ TEST_F(RouteInfoSelectorTest, LocalPreferenceWinsTest) {
     EXPECT_THAT(chosenRoutes, UnorderedElementsAre(rInfos[0]));
   }
   {
-    // routes
-    // routes are preferred in the order of 1 > 2 > 3 based on BGP localperf,
-    // but they are preferred in the order of 2 > 1, 3 based on being local.
+    /*
+     * routes
+     * routes are preferred in the order of 1 > 2 > 3 based on BGP localperf,
+     * but they are preferred in the order of 2 > 1, 3 based on being local.
+     */
     auto attrs = getDefaultAttrs();
     attrs[0]->setLocalPref(300);
     attrs[1]->setLocalPref(200);
@@ -386,9 +396,11 @@ TEST_F(RouteInfoSelectorTest, LocalPreferenceWinsTest) {
     EXPECT_THAT(chosenRoutes, UnorderedElementsAre(rInfos[0]));
   }
   {
-    // routes
-    // routes are preferred in the order of 1 > 2 > 3 based on BGP localperf,
-    // but they are preferred in the order of 2 > 1, 3 based on ASPath length.
+    /*
+     * routes
+     * routes are preferred in the order of 1 > 2 > 3 based on BGP localperf,
+     * but they are preferred in the order of 2 > 1, 3 based on ASPath length.
+     */
     auto attrs = getDefaultAttrs();
     attrs[0]->setLocalPref(300);
     auto asPath = createAsPath({2001});
@@ -406,9 +418,11 @@ TEST_F(RouteInfoSelectorTest, LocalPreferenceWinsTest) {
     EXPECT_THAT(chosenRoutes, UnorderedElementsAre(rInfos[0]));
   }
   {
-    // routes
-    // routes are preferred in the order of 1 > 2 > 3 based on BGP localperf,
-    // but they are preferred in the order of 2 > 1 > 3 based on Origin.
+    /*
+     * routes
+     * routes are preferred in the order of 1 > 2 > 3 based on BGP localperf,
+     * but they are preferred in the order of 2 > 1 > 3 based on Origin.
+     */
     auto attrs = getDefaultAttrs();
     attrs[0]->setLocalPref(300);
     attrs[0]->setOrigin(BgpAttrOrigin::BGP_ORIGIN_EGP);
@@ -426,9 +440,11 @@ TEST_F(RouteInfoSelectorTest, LocalPreferenceWinsTest) {
     EXPECT_THAT(chosenRoutes, UnorderedElementsAre(rInfos[0]));
   }
   {
-    // routes
-    // routes are preferred in the order of 1 > 2 > 3 based on BGP localperf,
-    // but they are preferred in the order of 3 > 1, 2 based on Med.
+    /*
+     * routes
+     * routes are preferred in the order of 1 > 2 > 3 based on BGP localperf,
+     * but they are preferred in the order of 3 > 1, 2 based on Med.
+     */
     auto attrs = getDefaultAttrs();
     attrs[0]->setLocalPref(300);
     attrs[0]->setMed(10);
@@ -446,9 +462,11 @@ TEST_F(RouteInfoSelectorTest, LocalPreferenceWinsTest) {
     EXPECT_THAT(chosenRoutes, UnorderedElementsAre(rInfos[0]));
   }
   {
-    // routes
-    // routes are preferred in the order of 1 > 2 > 3 based on BGP localperf,
-    // but they are preferred in the order of 2 > 1, 3 based on being external.
+    /*
+     * routes
+     * routes are preferred in the order of 1 > 2 > 3 based on BGP localperf,
+     * but they are preferred in the order of 2 > 1, 3 based on being external.
+     */
     auto attrs = getDefaultAttrs();
     attrs[0]->setLocalPref(300);
     attrs[1]->setLocalPref(200);
@@ -468,8 +486,10 @@ TEST_F(RouteInfoSelectorTest, LocalPreferenceWinsTest) {
 
 TEST_F(RouteInfoSelectorTest, LocalRouteWinsTest) {
   {
-    // routes
-    // routes are preferred in the order of 1 > 2, 3 based on being local.
+    /*
+     * routes
+     * routes are preferred in the order of 1 > 2, 3 based on being local.
+     */
     auto rInfos = createTestRouteInfos(getDefaultAttrs());
     rInfos[0]->setRouteLocal();
 
@@ -481,9 +501,11 @@ TEST_F(RouteInfoSelectorTest, LocalRouteWinsTest) {
     EXPECT_THAT(chosenRoutes, UnorderedElementsAre(rInfos[0]));
   }
   {
-    // routes
-    // routes are preferred in the order of 1 > 2, 3 based on being local.
-    // but they are preferred in the order of 2 > 1, 3 based on ASPath length.
+    /*
+     * routes
+     * routes are preferred in the order of 1 > 2, 3 based on being local.
+     * but they are preferred in the order of 2 > 1, 3 based on ASPath length.
+     */
     auto attrs = getDefaultAttrs();
     auto asPath = createAsPath({2001});
     attrs[0]->setAsPath(asPath);
@@ -500,9 +522,11 @@ TEST_F(RouteInfoSelectorTest, LocalRouteWinsTest) {
     EXPECT_THAT(chosenRoutes, UnorderedElementsAre(rInfos[0]));
   }
   {
-    // routes
-    // routes are preferred in the order of 1 > 2, 3 based on being local.
-    // but they are preferred in the order of 2 > 1 > 3 based on Origin.
+    /*
+     * routes
+     * routes are preferred in the order of 1 > 2, 3 based on being local.
+     * but they are preferred in the order of 2 > 1 > 3 based on Origin.
+     */
     auto attrs = getDefaultAttrs();
     attrs[0]->setOrigin(BgpAttrOrigin::BGP_ORIGIN_EGP);
     attrs[1]->setOrigin(BgpAttrOrigin::BGP_ORIGIN_IGP);
@@ -519,9 +543,11 @@ TEST_F(RouteInfoSelectorTest, LocalRouteWinsTest) {
     EXPECT_THAT(chosenRoutes, UnorderedElementsAre(rInfos[0]));
   }
   {
-    // routes
-    // routes are preferred in the order of 1 > 2, 3 based on being local.
-    // but they are preferred in the order of 3 > 1, 2 based on Med.
+    /*
+     * routes
+     * routes are preferred in the order of 1 > 2, 3 based on being local.
+     * but they are preferred in the order of 3 > 1, 2 based on Med.
+     */
     auto attrs = getDefaultAttrs();
     attrs[0]->setMed(10);
     attrs[1]->setMed(10);
@@ -538,9 +564,11 @@ TEST_F(RouteInfoSelectorTest, LocalRouteWinsTest) {
     EXPECT_THAT(chosenRoutes, UnorderedElementsAre(rInfos[0]));
   }
   {
-    // routes
-    // routes are preferred in the order of 1 > 2, 3 based on being local.
-    // but they are preferred in the order of 2 > 1, 3 based on being external.
+    /*
+     * routes
+     * routes are preferred in the order of 1 > 2, 3 based on being local.
+     * but they are preferred in the order of 2 > 1, 3 based on being external.
+     */
     auto rInfos = createTestRouteInfos(getDefaultAttrs());
     rInfos[0]->setRouteLocal();
     rInfos[1]->setRouteExternal();
@@ -556,8 +584,10 @@ TEST_F(RouteInfoSelectorTest, LocalRouteWinsTest) {
 
 TEST_F(RouteInfoSelectorTest, ShortestASPathWinsTest) {
   {
-    // routes
-    // routes are preferred in the order of 2 > 1, 3 based on ASPath length.
+    /*
+     * routes
+     * routes are preferred in the order of 2 > 1, 3 based on ASPath length.
+     */
     auto attrs = getDefaultAttrs();
     auto asPath = createAsPath({2001});
     attrs[0]->setAsPath(asPath);
@@ -572,9 +602,11 @@ TEST_F(RouteInfoSelectorTest, ShortestASPathWinsTest) {
     EXPECT_THAT(chosenRoutes, UnorderedElementsAre(rInfos[1]));
   }
   {
-    // routes
-    // routes are preferred in the order of 2 > 1, 3 based on ASPath length,
-    // as confed as segments are ignored.
+    /*
+     * routes
+     * routes are preferred in the order of 2 > 1, 3 based on ASPath length,
+     * as confed as segments are ignored.
+     */
     auto attrs = getDefaultAttrs();
     auto asPath = createAsPath({2001});
     auto asPathWithConfedAsSeq = createAsPath({}, {5000, 5001});
@@ -592,9 +624,11 @@ TEST_F(RouteInfoSelectorTest, ShortestASPathWinsTest) {
   }
 
   {
-    // routes
-    // routes are preferred in the order of 2 > 1, 3 based on ASPath length.
-    // but they are preferred in the order of 2 > 1 > 3 based on Origin.
+    /*
+     * routes
+     * routes are preferred in the order of 2 > 1, 3 based on ASPath length.
+     * but they are preferred in the order of 2 > 1 > 3 based on Origin.
+     */
     auto attrs = getDefaultAttrs();
     auto asPath = createAsPath({2001});
     attrs[0]->setAsPath(asPath);
@@ -612,9 +646,11 @@ TEST_F(RouteInfoSelectorTest, ShortestASPathWinsTest) {
     EXPECT_THAT(chosenRoutes, UnorderedElementsAre(rInfos[1]));
   }
   {
-    // routes
-    // routes are preferred in the order of 2 > 1, 3 based on ASPath length.
-    // but they are preferred in the order of 3 > 1, 2 based on Med.
+    /*
+     * routes
+     * routes are preferred in the order of 2 > 1, 3 based on ASPath length.
+     * but they are preferred in the order of 3 > 1, 2 based on Med.
+     */
     auto attrs = getDefaultAttrs();
     auto asPath = createAsPath({2001});
     attrs[0]->setAsPath(asPath);
@@ -632,9 +668,11 @@ TEST_F(RouteInfoSelectorTest, ShortestASPathWinsTest) {
     EXPECT_THAT(chosenRoutes, UnorderedElementsAre(rInfos[1]));
   }
   {
-    // routes
-    // routes are preferred in the order of 2 > 1, 3 based on ASPath length.
-    // but they are preferred in the order of 1 > 2, 3 based on being external.
+    /*
+     * routes
+     * routes are preferred in the order of 2 > 1, 3 based on ASPath length.
+     * but they are preferred in the order of 1 > 2, 3 based on being external.
+     */
     auto attrs = getDefaultAttrs();
     auto asPath = createAsPath({2001});
     attrs[0]->setAsPath(asPath);
@@ -654,9 +692,11 @@ TEST_F(RouteInfoSelectorTest, ShortestASPathWinsTest) {
 
 TEST_F(RouteInfoSelectorTestAsPathLenWithConfed, ShortestASPathWinsTest) {
   {
-    // routes
-    // routes are preferred in the order of 2 > 1, 3 based on ASPath length with
-    // confed the route with shorter confed as win
+    /*
+     * routes
+     * routes are preferred in the order of 2 > 1, 3 based on ASPath length with
+     * confed the route with shorter confed as win
+     */
     auto attrs = getDefaultAttrs();
     auto asPathWithConfedAsSeqShort = createAsPath({2001}, {5000});
     auto asPathWithConfedAsSeqLong = createAsPath({2001}, {5000, 5001});
@@ -673,9 +713,11 @@ TEST_F(RouteInfoSelectorTestAsPathLenWithConfed, ShortestASPathWinsTest) {
     EXPECT_THAT(chosenRoutes, UnorderedElementsAre(rInfos[1]));
   }
   {
-    // routes
-    // routes are preferred in the order of 2 = 1 = 3 based on ASPath length,
-    // a route with 1 as + 1 confed = a route with 2 confed =  a route with 2 as
+    /*
+     * routes
+     * routes are preferred in the order of 2 = 1 = 3 based on ASPath length,
+     * a route with 1 as + 1 confed = a route with 2 confed =  a route with 2 as
+     */
     auto attrs = getDefaultAttrs();
     auto asPathWithConfedAsSeq = createAsPath({2001}, {5000});
     auto asPathWithConfedAsSeqOnly = createAsPath({}, {5000, 5001});
@@ -696,8 +738,10 @@ TEST_F(RouteInfoSelectorTestAsPathLenWithConfed, ShortestASPathWinsTest) {
 
 TEST_F(RouteInfoSelectorTest, LowestOriginNumberWinsTest) {
   {
-    // routes
-    // routes are preferred in the order of 1 > 2 > 3 based on Origin.
+    /*
+     * routes
+     * routes are preferred in the order of 1 > 2 > 3 based on Origin.
+     */
     auto attrs = getDefaultAttrs();
     attrs[0]->setOrigin(BgpAttrOrigin::BGP_ORIGIN_IGP);
     attrs[1]->setOrigin(BgpAttrOrigin::BGP_ORIGIN_EGP);
@@ -712,9 +756,11 @@ TEST_F(RouteInfoSelectorTest, LowestOriginNumberWinsTest) {
     EXPECT_THAT(chosenRoutes, UnorderedElementsAre(rInfos[0]));
   }
   {
-    // routes
-    // routes are preferred in the order of 1 > 2 > 3 based on Origin.
-    // but they are preferred in the order of 3 > 1, 2 based on Med.
+    /*
+     * routes
+     * routes are preferred in the order of 1 > 2 > 3 based on Origin.
+     * but they are preferred in the order of 3 > 1, 2 based on Med.
+     */
     auto attrs = getDefaultAttrs();
     attrs[0]->setOrigin(BgpAttrOrigin::BGP_ORIGIN_IGP);
     attrs[0]->setMed(10);
@@ -732,9 +778,11 @@ TEST_F(RouteInfoSelectorTest, LowestOriginNumberWinsTest) {
     EXPECT_THAT(chosenRoutes, UnorderedElementsAre(rInfos[0]));
   }
   {
-    // routes
-    // routes are preferred in the order of 1 > 2 > 3 based on Origin.
-    // but they are preferred in the order of 1 > 2, 3 based on being external.
+    /*
+     * routes
+     * routes are preferred in the order of 1 > 2 > 3 based on Origin.
+     * but they are preferred in the order of 1 > 2, 3 based on being external.
+     */
     auto attrs = getDefaultAttrs();
     attrs[0]->setOrigin(BgpAttrOrigin::BGP_ORIGIN_IGP);
     attrs[1]->setOrigin(BgpAttrOrigin::BGP_ORIGIN_EGP);
@@ -756,8 +804,10 @@ TEST_F(RouteInfoSelectorTest, LowestOriginNumberWinsTest) {
  */
 TEST_F(RouteInfoSelectorTestWithMedEnabled, LowestMedWinsTest) {
   {
-    // routes
-    // routes are preferred in the order of 2 > 0, 1 based on Med.
+    /*
+     * routes
+     * routes are preferred in the order of 2 > 0, 1 based on Med.
+     */
     auto attrs = getDefaultAttrs();
     attrs[0]->setMed(10);
     attrs[1]->setMed(10);
@@ -808,8 +858,10 @@ TEST_F(RouteInfoSelectorTestWithMedEnabled, LowestMedWinsTest) {
 
 TEST_F(RouteInfoSelectorTestWithMedMissingAsWorstEnabled, LowestMedWinsTest) {
   {
-    // routes
-    // routes are preferred in the order of 2 > 0, 1 based on Med.
+    /*
+     * routes
+     * routes are preferred in the order of 2 > 0, 1 based on Med.
+     */
     auto attrs = getDefaultAttrs();
     attrs[0]->setMed(10);
     attrs[1]->setMed(10);
@@ -860,8 +912,10 @@ TEST_F(RouteInfoSelectorTestWithMedMissingAsWorstEnabled, LowestMedWinsTest) {
 
 TEST_F(RouteInfoSelectorTestWithWeightEnabled, HighestWeightWinsTest) {
   {
-    // routes
-    // routes are preferred in the order of 0, 1 > 2 based on Weight.
+    /*
+     * routes
+     * routes are preferred in the order of 0, 1 > 2 based on Weight.
+     */
     auto attrs = getDefaultAttrs();
     attrs[0]->setWeight(10);
     attrs[1]->setWeight(10);
@@ -932,8 +986,10 @@ TEST_F(RouteInfoSelectorTestWithWeightEnabled, HighestWeightWinsTest) {
 
 TEST_F(RouteInfoSelectorTestWithNextHopEnabled, LowestIgpCostWinsTest) {
   {
-    // routes
-    // routes are preferred in the order of 2 > 0, 1 based on IgpCost.
+    /*
+     * routes
+     * routes are preferred in the order of 2 > 0, 1 based on IgpCost.
+     */
     auto attrs = getDefaultAttrs();
 
     std::vector<uint32_t> igpCosts = {10, 10, 1};
@@ -1007,8 +1063,10 @@ class RouteInfoSelectorTestWithEiBgpEnabled : public RouteInfoSelectorTest {
 TEST_F(
     RouteInfoSelectorTestWithEiBgpEnabled,
     ExternalRouteDoesNotBreakTieTest) {
-  // With eiBGP enabled, external route attribute should not cause preference.
-  // All routes should be selected as multipath.
+  /*
+   * With eiBGP enabled, external route attribute should not cause preference.
+   * All routes should be selected as multipath.
+   */
   auto rInfos = createTestRouteInfos(getDefaultAttrs());
   rInfos[0]->setRouteExternal();
 
@@ -1023,8 +1081,10 @@ TEST_F(
 
 TEST_F(RouteInfoSelectorTestWithEiBgpEnabled, EbgpAndIbgpEqualizedTest) {
   {
-    // With eiBGP enabled, EBGP and IBGP sessions should be treated equally.
-    // All routes should be selected as multipath.
+    /*
+     * With eiBGP enabled, EBGP and IBGP sessions should be treated equally.
+     * All routes should be selected as multipath.
+     */
     auto attrs = getDefaultAttrs();
     vector<BgpSessionType> sessionTypes = {
         BgpSessionType::EBGP, BgpSessionType::EBGP, BgpSessionType::IBGP};
@@ -1060,8 +1120,10 @@ TEST_F(RouteInfoSelectorTestWithEiBgpEnabled, EbgpAndIbgpEqualizedTest) {
 TEST_F(
     RouteInfoSelectorTestWithEiBgpEnabled,
     ConfedEbgpStillPreferredOverIbgpTest) {
-  // With eiBGP enabled, CONFED_EXTERNAL_ROUTE filter is still active.
-  // ConfedEBGP should still be preferred over IBGP.
+  /*
+   * With eiBGP enabled, CONFED_EXTERNAL_ROUTE filter is still active.
+   * ConfedEBGP should still be preferred over IBGP.
+   */
   auto attrs = getDefaultAttrs();
   vector<BgpSessionType> sessionTypes = {
       BgpSessionType::ConfedEBGP, BgpSessionType::IBGP, BgpSessionType::IBGP};
@@ -1114,8 +1176,10 @@ TEST_F(RouteInfoSelectorTestWithEiBgpEnabled, OtherFiltersStillApplyTest) {
 }
 
 TEST_F(RouteInfoSelectorTest, ExternalRouteBreaksTieTest) {
-  // routes
-  // routes are preferred in the order of 1 > 2, 3 based on being external.
+  /*
+   * routes
+   * routes are preferred in the order of 1 > 2, 3 based on being external.
+   */
   auto rInfos = createTestRouteInfos(getDefaultAttrs());
   rInfos[0]->setRouteExternal();
 
@@ -1128,8 +1192,10 @@ TEST_F(RouteInfoSelectorTest, ExternalRouteBreaksTieTest) {
 }
 
 TEST_F(RouteInfoSelectorTest, MultipathRecoveryTest) {
-  // routes
-  // routes are preferred in the order of 1, 2 > 3 based on multipath criteria.
+  /*
+   * routes
+   * routes are preferred in the order of 1, 2 > 3 based on multipath criteria.
+   */
   auto attrs = getDefaultAttrs();
   auto asPath1 = createAsPath({2001, 3000});
   auto asPath2 = createAsPath({2002, 3000});
@@ -1143,16 +1209,20 @@ TEST_F(RouteInfoSelectorTest, MultipathRecoveryTest) {
   // when
   auto chosenRoutes = multipathSamePeerAsnSelector_->selectRoutes(rInfos);
 
-  // then
-  // we should choose the path from the lowest peer ID (peer1), and then recover
-  // equivalent paths from peer2
+  /*
+   * then
+   * we should choose the path from the lowest peer ID (peer1), and then recover
+   * equivalent paths from peer2
+   */
   EXPECT_EQ(2, chosenRoutes.size());
   EXPECT_THAT(chosenRoutes, UnorderedElementsAre(rInfos[0], rInfos[1]));
 }
 
 TEST_F(RouteInfoSelectorTest, BestpathSelectionTest) {
-  // routes
-  // all routes are preferred based on multipath criteria.
+  /*
+   * routes
+   * all routes are preferred based on multipath criteria.
+   */
   auto attrs = getDefaultAttrs();
   auto asPath1 = createAsPath({2001, 3000});
   auto asPath2 = createAsPath({2002, 3000});
@@ -1166,9 +1236,11 @@ TEST_F(RouteInfoSelectorTest, BestpathSelectionTest) {
   // when running multipath selector
   auto chosenRoutes = multipathSelector_->selectRoutes(rInfos);
 
-  // then
-  // we should choose the path from the lowest peer ID (peer1), and then recover
-  // equivalent paths from peer2
+  /*
+   * then
+   * we should choose the path from the lowest peer ID (peer1), and then recover
+   * equivalent paths from peer2
+   */
   EXPECT_EQ(3, chosenRoutes.size());
   EXPECT_THAT(
       chosenRoutes, UnorderedElementsAre(rInfos[0], rInfos[1], rInfos[2]));
@@ -1176,18 +1248,22 @@ TEST_F(RouteInfoSelectorTest, BestpathSelectionTest) {
   // tie break using bestpath selector
   auto bestpath = bestpathSelector_->selectRoutes(chosenRoutes);
 
-  // then
-  // we should choose the path from the lowest peer ID (peer1) as the best
+  /*
+   * then
+   * we should choose the path from the lowest peer ID (peer1) as the best
+   */
   EXPECT_EQ(1, bestpath.size());
   EXPECT_THAT(bestpath[0], rInfos[0]);
 }
 
 TEST_F(RouteInfoSelectorTest, OriginatorIdOverwritesRouterIdTest) {
-  // routes
-  // routes are preferred in the order of 1 > 3 > 2 based on router id filter
-  // Note here RouteInfo will use originator id instead of router id based
-  // on [RFC 4456] Route Reflection
-  // all routes are preferred based on multipath criteria.
+  /*
+   * routes
+   * routes are preferred in the order of 1 > 3 > 2 based on router id filter
+   * Note here RouteInfo will use originator id instead of router id based
+   * on [RFC 4456] Route Reflection
+   * all routes are preferred based on multipath criteria.
+   */
   auto attrs = getDefaultAttrs();
   attrs[0]->setOriginatorId(1);
   // overwrite default router id
@@ -1197,9 +1273,11 @@ TEST_F(RouteInfoSelectorTest, OriginatorIdOverwritesRouterIdTest) {
   // when
   auto chosenRoutes = multipathSelector_->selectRoutes(rInfos);
 
-  // then
-  // we should choose the path from the lowest peer ID (peer1), and then recover
-  // equivalent paths from peer2
+  /*
+   * then
+   * we should choose the path from the lowest peer ID (peer1), and then recover
+   * equivalent paths from peer2
+   */
   EXPECT_EQ(3, chosenRoutes.size());
   EXPECT_THAT(
       chosenRoutes, UnorderedElementsAre(rInfos[0], rInfos[1], rInfos[2]));
@@ -1207,8 +1285,10 @@ TEST_F(RouteInfoSelectorTest, OriginatorIdOverwritesRouterIdTest) {
   // tie break using bestpath selector
   auto bestpath = bestpathSelector_->selectRoutes(chosenRoutes);
 
-  // then
-  // we should choose the path from the lowest peer ID (peer1) as the best
+  /*
+   * then
+   * we should choose the path from the lowest peer ID (peer1) as the best
+   */
   EXPECT_EQ(1, bestpath.size());
   EXPECT_THAT(bestpath[0], rInfos[0]);
 }
@@ -1216,9 +1296,11 @@ TEST_F(RouteInfoSelectorTest, OriginatorIdOverwritesRouterIdTest) {
 using facebook::nettools::bgplib::BgpAttrClusterListC;
 TEST_F(RouteInfoSelectorTest, ClusterListLenTest) {
   {
-    // routes
-    // routes are preferred in the order of 1 > 2 > 3 due to cluster list len.
-    // all routes are preferred based on multipath criteria.
+    /*
+     * routes
+     * routes are preferred in the order of 1 > 2 > 3 due to cluster list len.
+     * all routes are preferred based on multipath criteria.
+     */
 
     // set different cluster list
     vector<BgpAttrClusterListC> clusterLists = {
@@ -1247,10 +1329,12 @@ TEST_F(RouteInfoSelectorTest, ClusterListLenTest) {
         chosenRoutes, UnorderedElementsAre(rInfos[0], rInfos[1], rInfos[2]));
   }
   {
-    // routes
-    // routes are preferred in the order of 1 > 2 > 3 due to cluster list len.
-    // 1, 2 are preferred based on multipath with same peer as criteria.
-    // set different cluster list
+    /*
+     * routes
+     * routes are preferred in the order of 1 > 2 > 3 due to cluster list len.
+     * 1, 2 are preferred based on multipath with same peer as criteria.
+     * set different cluster list
+     */
     vector<facebook::nettools::bgplib::BgpAttrClusterListC> clusterLists = {
         facebook::nettools::bgplib::BgpAttrClusterListC{},
         facebook::nettools::bgplib::BgpAttrClusterListC{{1001}},
@@ -1271,16 +1355,20 @@ TEST_F(RouteInfoSelectorTest, ClusterListLenTest) {
     // when
     auto chosenRoutes = multipathSamePeerAsnSelector_->selectRoutes(rInfos);
 
-    // then
-    // we should choose the path with the shorted cluster list, and then recover
-    // equivalent paths from peer2
+    /*
+     * then
+     * we should choose the path with the shorted cluster list, and then recover
+     * equivalent paths from peer2
+     */
     EXPECT_THAT(chosenRoutes, SizeIs(2));
     EXPECT_THAT(chosenRoutes, UnorderedElementsAre(rInfos[0], rInfos[1]));
   }
   {
-    // routes
-    // routes are preferred in the order of 1 > 2 > 3 due to cluster list len
-    // with no chance of multipath with same peer as criteria.
+    /*
+     * routes
+     * routes are preferred in the order of 1 > 2 > 3 due to cluster list len
+     * with no chance of multipath with same peer as criteria.
+     */
     vector<facebook::nettools::bgplib::BgpAttrClusterListC> clusterLists = {
         facebook::nettools::bgplib::BgpAttrClusterListC{},
         facebook::nettools::bgplib::BgpAttrClusterListC{{1001}},
@@ -1303,15 +1391,19 @@ TEST_F(RouteInfoSelectorTest, ClusterListLenTest) {
     // when
     auto chosenRoutes = multipathSamePeerAsnSelector_->selectRoutes(rInfos);
 
-    // then
-    // we should choose the path with the shorted cluster list.
+    /*
+     * then
+     * we should choose the path with the shorted cluster list.
+     */
     EXPECT_THAT(chosenRoutes, SizeIs(1));
     EXPECT_THAT(chosenRoutes, UnorderedElementsAre(rInfos[0]));
   }
   {
-    // routes
-    // routes are preferred in the order of 1, 2 > 3 due to cluster list len
-    // with no chance of multipath with same peer as criteria.
+    /*
+     * routes
+     * routes are preferred in the order of 1, 2 > 3 due to cluster list len
+     * with no chance of multipath with same peer as criteria.
+     */
     vector<facebook::nettools::bgplib::BgpAttrClusterListC> clusterLists = {
         facebook::nettools::bgplib::BgpAttrClusterListC{{1001}},
         facebook::nettools::bgplib::BgpAttrClusterListC{{1001}},
@@ -1334,8 +1426,10 @@ TEST_F(RouteInfoSelectorTest, ClusterListLenTest) {
     // when
     auto chosenRoutes = multipathSamePeerAsnSelector_->selectRoutes(rInfos);
 
-    // then
-    // we should choose the path with the shorted cluster list.
+    /*
+     * then
+     * we should choose the path with the shorted cluster list.
+     */
     EXPECT_THAT(chosenRoutes, SizeIs(1));
     EXPECT_THAT(chosenRoutes, UnorderedElementsAre(rInfos[0]));
   }
@@ -1343,8 +1437,10 @@ TEST_F(RouteInfoSelectorTest, ClusterListLenTest) {
 
 TEST_F(RouteInfoSelectorTest, PreferEBgpOverConfedEBgpOverIBgpTest) {
   {
-    // routes
-    // all routes are preferred based on multipath criteria.
+    /*
+     * routes
+     * all routes are preferred based on multipath criteria.
+     */
     auto attrs = getDefaultAttrs();
     vector<BgpSessionType> sessionTypes = {
         BgpSessionType::IBGP, BgpSessionType::IBGP, BgpSessionType::IBGP};
@@ -1362,14 +1458,18 @@ TEST_F(RouteInfoSelectorTest, PreferEBgpOverConfedEBgpOverIBgpTest) {
     // tie break using bestpath selector
     auto bestpath = bestpathSelector_->selectRoutes(chosenRoutes);
 
-    // then
-    // we should choose the path from the lowest peer ID (peer1) as the best
+    /*
+     * then
+     * we should choose the path from the lowest peer ID (peer1) as the best
+     */
     EXPECT_EQ(1, bestpath.size());
     EXPECT_THAT(bestpath[0], rInfos[0]);
   }
   {
-    // routes
-    // all routes are preferred based on multipath criteria.
+    /*
+     * routes
+     * all routes are preferred based on multipath criteria.
+     */
     auto attrs = getDefaultAttrs();
     vector<BgpSessionType> sessionTypes = {
         BgpSessionType::EBGP, BgpSessionType::EBGP, BgpSessionType::EBGP};
@@ -1387,15 +1487,19 @@ TEST_F(RouteInfoSelectorTest, PreferEBgpOverConfedEBgpOverIBgpTest) {
     // tie break using bestpath selector
     auto bestpath = bestpathSelector_->selectRoutes(chosenRoutes);
 
-    // then
-    // we should choose the path from the lowest peer ID (peer1) as the best
+    /*
+     * then
+     * we should choose the path from the lowest peer ID (peer1) as the best
+     */
     EXPECT_EQ(1, bestpath.size());
     EXPECT_THAT(bestpath[0], rInfos[0]);
   }
   {
-    // routes
-    // routes are preferred in the order of 1, 2 > 3 based on multipath
-    // criteria.
+    /*
+     * routes
+     * routes are preferred in the order of 1, 2 > 3 based on multipath
+     * criteria.
+     */
     auto attrs = getDefaultAttrs();
     vector<BgpSessionType> sessionTypes = {
         BgpSessionType::EBGP, BgpSessionType::EBGP, BgpSessionType::IBGP};
@@ -1412,15 +1516,19 @@ TEST_F(RouteInfoSelectorTest, PreferEBgpOverConfedEBgpOverIBgpTest) {
     // tie break using bestpath selector
     auto bestpath = bestpathSelector_->selectRoutes(chosenRoutes);
 
-    // then
-    // we should choose the path from the lowest peer ID (peer1) as the best
+    /*
+     * then
+     * we should choose the path from the lowest peer ID (peer1) as the best
+     */
     EXPECT_EQ(1, bestpath.size());
     EXPECT_THAT(bestpath[0], rInfos[0]);
   }
   {
-    // routes
-    // routes are preferred in the order of 1 > 2, 3 based on multipath
-    // criteria.
+    /*
+     * routes
+     * routes are preferred in the order of 1 > 2, 3 based on multipath
+     * criteria.
+     */
     auto attrs = getDefaultAttrs();
     vector<BgpSessionType> sessionTypes = {
         BgpSessionType::EBGP, BgpSessionType::ConfedEBGP, BgpSessionType::IBGP};
@@ -1437,15 +1545,19 @@ TEST_F(RouteInfoSelectorTest, PreferEBgpOverConfedEBgpOverIBgpTest) {
     // tie break using bestpath selector
     auto bestpath = bestpathSelector_->selectRoutes(chosenRoutes);
 
-    // then
-    // we should choose the path from the lowest peer ID (peer1) as the best
+    /*
+     * then
+     * we should choose the path from the lowest peer ID (peer1) as the best
+     */
     EXPECT_EQ(1, bestpath.size());
     EXPECT_THAT(bestpath[0], rInfos[0]);
   }
   {
-    // routes
-    // routes are preferred in the order of 1 > 2, 3 based on multipath
-    // criteria.
+    /*
+     * routes
+     * routes are preferred in the order of 1 > 2, 3 based on multipath
+     * criteria.
+     */
     auto attrs = getDefaultAttrs();
     vector<BgpSessionType> sessionTypes = {
         BgpSessionType::ConfedEBGP, BgpSessionType::IBGP, BgpSessionType::IBGP};
@@ -1462,8 +1574,10 @@ TEST_F(RouteInfoSelectorTest, PreferEBgpOverConfedEBgpOverIBgpTest) {
     // tie break using bestpath selector
     auto bestpath = bestpathSelector_->selectRoutes(chosenRoutes);
 
-    // then
-    // we should choose the path from the lowest peer ID (peer1) as the best
+    /*
+     * then
+     * we should choose the path from the lowest peer ID (peer1) as the best
+     */
     EXPECT_EQ(1, bestpath.size());
     EXPECT_THAT(bestpath[0], rInfos[0]);
   }

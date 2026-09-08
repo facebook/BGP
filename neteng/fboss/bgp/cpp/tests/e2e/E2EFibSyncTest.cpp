@@ -54,9 +54,11 @@ TEST_F(E2EFibSyncTest, RouteProgrammedToFib) {
   EXPECT_GT(testFib->getProgramCallCount(), 0u);
   EXPECT_TRUE(testFib->isFullSynced());
 
-  // Verify fibBatchList_ quantile stat is published after FIB programming.
-  // Quantile stats compute averages over time windows, so we can only
-  // verify the counter is registered, not its exact value.
+  /*
+   * Verify fibBatchList_ quantile stat is published after FIB programming.
+   * Quantile stats compute averages over time windows, so we can only
+   * verify the counter is registered, not its exact value.
+   */
   auto tcData = fb303::ThreadCachedServiceData::get();
   tcData->publishStats();
   const std::string avgKey =

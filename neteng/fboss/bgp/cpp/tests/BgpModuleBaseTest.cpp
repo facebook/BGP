@@ -52,8 +52,10 @@ class DerivedBgpModule : public BgpModuleBase {
     BgpModuleBase::scheduleHeartbeatLoop();
   }
 
-  // use std::atomic to avoid some tricky tests in the future that
-  // could suffer race conditions
+  /*
+   * use std::atomic to avoid some tricky tests in the future that
+   * could suffer race conditions
+   */
   std::atomic<bool> heartBeatScheduled_{false};
 };
 

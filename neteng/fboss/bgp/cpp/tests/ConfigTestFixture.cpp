@@ -24,8 +24,10 @@ using facebook::nettools::bgplib::constants::kBgpPort;
 namespace facebook::bgp {
 
 void ConfigTestFixture::SetUp() {
-  // create bgpPeerTimers for testing, only hold_time and keep_alive is used
-  // hold_time = 30, keep_alive = 10
+  /*
+   * create bgpPeerTimers for testing, only hold_time and keep_alive is used
+   * hold_time = 30, keep_alive = 10
+   */
   timers1_.hold_time_seconds() = kHoldTime.count();
   timers1_.keep_alive_seconds() = kKeepAliveTime1.count();
 
@@ -33,8 +35,10 @@ void ConfigTestFixture::SetUp() {
   timers2_.hold_time_seconds() = kHoldTime.count();
   timers2_.keep_alive_seconds() = kKeepAliveTime2.count();
 
-  // pre & post route limit
-  // max_routes = 12000, warning_only = true, warning_limit = 0
+  /*
+   * pre & post route limit
+   * max_routes = 12000, warning_only = true, warning_limit = 0
+   */
   preRouteLimit.max_routes() = kPreMaxRoutes;
   preRouteLimit.warning_only() = true;
   preRouteLimit.warning_limit() = kPreWarningThreshold;
@@ -78,9 +82,11 @@ void ConfigTestFixture::SetUp() {
       kNextHopV6_2,
       true,
       kPeerTypeBgpMonitor);
-  // description is not set for dynamicPeer2
-  // peer_id is not set for dynamicPeer2
-  // no bgpPeerTimers for dynamicPeer2
+  /*
+   * description is not set for dynamicPeer2
+   * peer_id is not set for dynamicPeer2
+   * no bgpPeerTimers for dynamicPeer2
+   */
 
   staticPeer1_ = createBgpPeer(
       kAsn1,
@@ -97,8 +103,10 @@ void ConfigTestFixture::SetUp() {
       true // enableStatefulHa
   );
   staticPeer1_.next_hop_self() = false;
-  // description is not set for staticPeer1
-  // peer_id is not set for staticPeer1
+  /*
+   * description is not set for staticPeer1
+   * peer_id is not set for staticPeer1
+   */
   staticPeer1_.disable_ipv4_afi() = false;
   staticPeer1_.disable_ipv6_afi() = false;
   // no timers for staticPeer1
