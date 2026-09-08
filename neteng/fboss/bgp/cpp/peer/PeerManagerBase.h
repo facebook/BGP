@@ -287,9 +287,9 @@ class SubscriberStreamTeardown {
 
 class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
  public:
-  //
-  // Creates PeerManagerBase instance with given configuration
-  //
+  /*
+   * Creates PeerManagerBase instance with given configuration
+   */
   PeerManagerBase(
       std::shared_ptr<ConfigManager> configManager,
       const std::shared_ptr<PolicyManager> policyManager,
@@ -297,13 +297,15 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
       MonitoredMPMCQueue<RibOutMessage>& ribOutQ,
       std::optional<MonitoredMPMCQueue<NeighborWatcherMessage>>&
           nbrRouteChangeQ,
-      // When true (DC production): notifyRibInitialPathComputation carries the
-      // remaining EoR budget to RIB as a nexthop-resolution timeout, so RIB
-      // defers its initial full-sync until all registered nexthops resolve or
-      // that budget expires — preventing the initial syncFib from wiping
-      // FibAgent's GR-retained routes whose nexthops FSDB has not resolved yet.
-      // When false (default — EBB production, PM-only tests, e2e tests with
-      // TestRib): the timeout is zero, so RIB computes immediately.
+      /*
+       * When true (DC production): notifyRibInitialPathComputation carries the
+       * remaining EoR budget to RIB as a nexthop-resolution timeout, so RIB
+       * defers its initial full-sync until all registered nexthops resolve or
+       * that budget expires — preventing the initial syncFib from wiping
+       * FibAgent's GR-retained routes whose nexthops FSDB has not resolved yet.
+       * When false (default — EBB production, PM-only tests, e2e tests with
+       * TestRib): the timeout is zero, so RIB computes immediately.
+       */
       bool requireNexthopResolution = false,
       std::chrono::milliseconds minConnRetryDur_ =
           std::chrono::milliseconds(FLAGS_min_conn_retry_time_ms),
@@ -320,14 +322,14 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
 
   virtual ~PeerManagerBase();
 
-  //
-  // Bgp peer manager main event loop. This creates child fibers.
-  //
+  /*
+   * Bgp peer manager main event loop. This creates child fibers.
+   */
   virtual void run() noexcept override;
 
-  //
-  // Terminates peer connections and kills all fibers.
-  //
+  /*
+   * Terminates peer connections and kills all fibers.
+   */
   void stop() noexcept override;
 
   /**
@@ -362,10 +364,12 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
     return changeListTracker_;
   }
 
-  // Various UI/CLI/Thrift service handlers
-  // These will be invoked from a service handler thread, will be
-  // scheduled to run in appropriate thread
-  // Get pre/post in/out networks information
+  /*
+   * Various UI/CLI/Thrift service handlers
+   * These will be invoked from a service handler thread, will be
+   * scheduled to run in appropriate thread
+   * Get pre/post in/out networks information
+   */
   virtual void getNetworks(
       std::map<
           facebook::neteng::fboss::bgp_attr::TIpPrefix,
@@ -381,10 +385,12 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
       const std::unique_ptr<std::string>& sessionBgpId,
       const RouteFilterType& type) noexcept;
 
-  // Various UI/CLI/Thrift service handlers
-  // These will be invoked from a service handler thread, will be
-  // scheduled to run in appropriate thread
-  // Get pre/post in/out networks information
+  /*
+   * Various UI/CLI/Thrift service handlers
+   * These will be invoked from a service handler thread, will be
+   * scheduled to run in appropriate thread
+   * Get pre/post in/out networks information
+   */
   virtual void getNetworks2(
       std::map<
           facebook::neteng::fboss::bgp_attr::TIpPrefix,
@@ -467,8 +473,10 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
           std::shared_ptr<nettools::bgplib::BgpPeerDisplayInfo>>&
           allPeers) noexcept;
 
-  // Highest RibVersion seen across all RibOutAnnouncement/RibOutWithdrawal
-  // entries processed from the RIB.
+  /*
+   * Highest RibVersion seen across all RibOutAnnouncement/RibOutWithdrawal
+   * entries processed from the RIB.
+   */
   uint64_t getMaxRibVersion() const noexcept {
     return maxRibVersion_;
   }
@@ -865,8 +873,10 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   void distributeRibOutAnnouncementToAdjRibs(
       const RibOutAnnouncement& announcement);
 
-  // Helper coroutine to process RibDumpReq for a specific peer during egress
-  // policy update (non-update-group path).
+  /*
+   * Helper coroutine to process RibDumpReq for a specific peer during egress
+   * policy update (non-update-group path).
+   */
   folly::coro::Task<void> processRibDumpReqForEgressPolicyUpdate(
       const nettools::bgplib::BgpPeerId& peerId,
       std::shared_ptr<AdjRib> adjRib);
@@ -987,8 +997,10 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   // process Rib message and send to target AdjRibs
   folly::coro::Task<void> processRibOutMsgLoop() noexcept;
 
-  // coro tasks for periodic publish all outstanding updates to
-  // thrift stream subscribers
+  /*
+   * coro tasks for periodic publish all outstanding updates to
+   * thrift stream subscribers
+   */
   folly::coro::Task<void> publishUpdatesRoutine();
   folly::coro::Task<void> publishUpdates();
 
@@ -1040,12 +1052,16 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
    */
   void reportStreamSubscriberBackpressureStats() noexcept;
 
-  // coro task to process neighbor event from FSDB
-  // Bring down session if no arp/ndp entry resolution
+  /*
+   * coro task to process neighbor event from FSDB
+   * Bring down session if no arp/ndp entry resolution
+   */
   folly::coro::Task<void> processNeighborRouteChangeLoop() noexcept;
 
-  // Handlers for different NeighborWatcherMessages
-  // received in processNeighborRouteChangeLoop.
+  /*
+   * Handlers for different NeighborWatcherMessages
+   * received in processNeighborRouteChangeLoop.
+   */
   virtual folly::coro::Task<void> handleNeighborEventMsg(
       const NeighborEventMsg& msg) noexcept;
   virtual folly::coro::Task<void> handleNeighborReachabilityMsg() noexcept;
@@ -1066,9 +1082,11 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   folly::coro::Task<void> waitForSessionTerminateBaton(
       const nettools::bgplib::BgpPeerId& peerId) noexcept;
 
-  // Full peer state cleanup after session termination (Phase 3).
-  // Waits for AdjRib message loops to exit, then erases all per-peer state.
-  // Must be co_awaited from delPeers before returning SUCCESS.
+  /*
+   * Full peer state cleanup after session termination (Phase 3).
+   * Waits for AdjRib message loops to exit, then erases all per-peer state.
+   * Must be co_awaited from delPeers before returning SUCCESS.
+   */
   folly::coro::Task<void> cleanupPeerState(
       const nettools::bgplib::BgpPeerId& peerId,
       const folly::IPAddress& peerAddr) noexcept;
@@ -1152,12 +1170,16 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   // Process EgressEoR to mark successful sending EgressEoR towards this peer
   void processEgressEoR(const nettools::bgplib::BgpPeerId& peerId) noexcept;
 
-  // Process TriggerSafeMode generated internally from AdjRib when total
-  // path scale or unique prefix limit is reached.
+  /*
+   * Process TriggerSafeMode generated internally from AdjRib when total
+   * path scale or unique prefix limit is reached.
+   */
   void processTriggerSafeMode() noexcept;
 
-  // Util function to check if all EoR received from expected peers
-  // and notify RIB if not already notified
+  /*
+   * Util function to check if all EoR received from expected peers
+   * and notify RIB if not already notified
+   */
   void checkAndNotifyAllEoRReceived() noexcept;
 
   /*
@@ -1171,20 +1193,26 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   // Util function to check if all EoR sent to expected peers
   bool checkAllEoRSent();
 
-  // Util function to check initial Fib sync is done and Rib is
-  // finished with initial announcement.
+  /*
+   * Util function to check initial Fib sync is done and Rib is
+   * finished with initial announcement.
+   */
   bool isRibInitialAnnouncementStart();
 
-  // Move peer-manager state to ribInitialAnnouncementDone_
-  // and handle certain work as a result of reaching to this
-  // state
+  /*
+   * Move peer-manager state to ribInitialAnnouncementDone_
+   * and handle certain work as a result of reaching to this
+   * state
+   */
   void markRibInitialAnnouncementDone() noexcept;
 
   // One-time signal to notify RIB to start best-path computation.
   void notifyRibInitialPathComputation(bool timerFired) noexcept;
 
-  // We are possibly at the stage where we can declare all the
-  // initialization complete
+  /*
+   * We are possibly at the stage where we can declare all the
+   * initialization complete
+   */
   void maybeMarkInitialized() noexcept;
 
   // Update non-graceful peer counters (state changed for peerAddr)
@@ -1315,8 +1343,10 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   // Config Manager
   std::shared_ptr<ConfigManager> configManager_;
 
-  // Track last applied policy version for race avoidance
-  // Only accessed from EVB thread (same as adjRibs_)
+  /*
+   * Track last applied policy version for race avoidance
+   * Only accessed from EVB thread (same as adjRibs_)
+   */
   uint64_t lastAppliedPolicyVersion_{0};
 
   // Policy Manager
@@ -1325,8 +1355,10 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   // Route Filter Policy
   std::unique_ptr<RouteFilterPolicy> routeFilterPolicy_{nullptr};
 
-  // Builds per-statement route filter loggers; null when logging is
-  // unavailable.
+  /*
+   * Builds per-statement route filter loggers; null when logging is
+   * unavailable.
+   */
   std::unique_ptr<RouteFilterLoggerFactory> routeFilterLoggerFactory_{nullptr};
 
   /*
@@ -1386,10 +1418,12 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
       std::pair<bool /* ingress EoR */, bool /* egress EoR */>>
       staticPeerEoRReceived_{};
 
-  // [Dynamic Peer]: tracking INGRESS + EGRESS EoR status
-  //
-  // NOTE: Dynamic peers can have multiple peerings with the same ip address
-  // but different remote bgp peerId.
+  /*
+   * [Dynamic Peer]: tracking INGRESS + EGRESS EoR status
+   *
+   * NOTE: Dynamic peers can have multiple peerings with the same ip address
+   * but different remote bgp peerId.
+   */
   folly::F14NodeMap<
       nettools::bgplib::BgpPeerId,
       std::pair<bool /* ingress EoR */, bool /* egress EoR */>>
@@ -1444,18 +1478,20 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
    */
   void setMaxRibVersion(uint64_t ribVersion) noexcept;
 
-  // AdjRib will post this baton when session is terminated (both message
-  // processing loops have completed). Used to do sequential synchronization
-  // between adjRib and peerManager. Latch semantics: passes through between
-  // post() and reset(), ensuring rapid session flaps don't hang.
+  /*
+   * AdjRib will post this baton when session is terminated (both message
+   * processing loops have completed). Used to do sequential synchronization
+   * between adjRib and peerManager. Latch semantics: passes through between
+   * post() and reset(), ensuring rapid session flaps don't hang.
+   */
   folly::F14NodeMap<
       nettools::bgplib::BgpPeerId,
       std::shared_ptr<folly::coro::Baton>>
       sessionTerminateBatons_;
 
-  //
-  // Timers
-  //
+  /*
+   * Timers
+   */
 
   // max cap count-down to publish initialized signal
   std::unique_ptr<folly::AsyncTimeout> initializedMaxWaitTimer_;
@@ -1476,8 +1512,10 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   std::atomic<bool> daemonShutdown_{false};
   // One-time flag, mark true when all initial announcements are done
   bool ribInitialAnnouncementDone_{false};
-  // One-time flag to prevent scheduling multiple handleBufferedRibDumpReqs
-  // tasks
+  /*
+   * One-time flag to prevent scheduling multiple handleBufferedRibDumpReqs
+   * tasks
+   */
   bool handleRibDumpsScheduled_{false};
 
   /**
@@ -1505,9 +1543,9 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
    */
   folly::F14FastSet<std::shared_ptr<AdjRib>> pendingRibDumpAdjRibs_;
 
-  //
-  // Stats
-  //
+  /*
+   * Stats
+   */
 
   // Running Bgp sessions
   uint32_t runningSessions_{0};
@@ -1527,9 +1565,11 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   const std::chrono::milliseconds maxSessionRetryDur_;
   const std::chrono::milliseconds maxSessionDampenDur_;
 
-  // This is used to eliminate false alarms in convergence time measurement.
-  // In case EOR timeout fired, it indicates some peer went down and so
-  // measured convergence doesn't indicate true convergence but timeout value.
+  /*
+   * This is used to eliminate false alarms in convergence time measurement.
+   * In case EOR timeout fired, it indicates some peer went down and so
+   * measured convergence doesn't indicate true convergence but timeout value.
+   */
   bool eorTimerExpired_{false};
 
   /*
@@ -1605,8 +1645,10 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
 
   friend class PeerManagerDC;
 
-// per class placeholder for test code injection
-// only need to be setup once here
+/*
+ * per class placeholder for test code injection
+ * only need to be setup once here
+ */
 #ifdef PeerManager_TEST_FRIENDS
   PeerManager_TEST_FRIENDS
 #endif

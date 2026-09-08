@@ -204,16 +204,20 @@ std::vector<TUpdateGroupInfo> PeerManagerBase::getUpdateGroupInfo(
 
       TUpdateGroupStats thriftStats;
 
-      // TODO: Add per-group counters to AdjRibOutGroup and
-      // wire them up. These events currently have no per-group tracking.
+      /*
+       * TODO: Add per-group counters to AdjRibOutGroup and
+       * wire them up. These events currently have no per-group tracking.
+       */
       thriftStats.slow_peer_detachments() = 0;
       thriftStats.dfp_rejoin_events() = 0;
       thriftStats.collapse_entries_corrected() = 0;
       thriftStats.dsp_rejoin_events() = 0;
       thriftStats.lazy_clone_events() = 0;
 
-      // The per-AFI group_update_messages_ipv4/ipv6 stay 0: AdjRibStats tracks
-      // sent UPDATE messages as a single counter, not per-AFI.
+      /*
+       * The per-AFI group_update_messages_ipv4/ipv6 stay 0: AdjRibStats tracks
+       * sent UPDATE messages as a single counter, not per-AFI.
+       */
       thriftStats.group_update_messages_ipv4() = 0;
       thriftStats.group_update_messages_ipv6() = 0;
 
@@ -273,10 +277,12 @@ std::vector<TUpdateGroupInfo> PeerManagerBase::getUpdateGroupInfo(
           peerInfo.detached_rib_version() = adjRib->getDetachedRibVersion();
         }
 
-        // TODO: session_state and description should come from
-        // BgpPeer/SessionManager, not AdjRib. AdjRib only has the update-group
-        // state machine state and formatted peer name. remote_as needs config
-        // data not available from AdjRib.
+        /*
+         * TODO: session_state and description should come from
+         * BgpPeer/SessionManager, not AdjRib. AdjRib only has the update-group
+         * state machine state and formatted peer name. remote_as needs config
+         * data not available from AdjRib.
+         */
         peerInfo.session_state() = TBgpPeerState::IDLE;
         peerInfo.description() = adjRib->getPeerName();
         peerInfo.remote_as() = 0;
@@ -380,8 +386,10 @@ PeerManagerBase::createTRibEntryWithFilter(
   std::vector<TBgpPath> tMultiPaths{};
   const auto& srEntry = entry.second;
   const auto& bestpath = srEntry.bestpath;
-  // Don't exit pre-maturely because we can have bestpath == null but
-  // multipath not null in the case of bgp_native_path_selection_min_nexthop
+  /*
+   * Don't exit pre-maturely because we can have bestpath == null but
+   * multipath not null in the case of bgp_native_path_selection_min_nexthop
+   */
   if (bestpath) {
     auto bestNexthop = bestpath->attrs->getNexthop();
     tRibEntry.best_next_hop() = createTIpPrefix(bestNexthop);
@@ -573,8 +581,10 @@ std::vector<TBgpSession> PeerManagerBase::getSessionInfos(
   return sessions;
 }
 
-// TODO: Unused: peer_id, next_hop4, next_hop6 are not being currently used in
-//       display
+/*
+ * TODO: Unused: peer_id, next_hop4, next_hop6 are not being currently used in
+ *       display
+ */
 std::vector<TBgpStreamSession> PeerManagerBase::getBgpStreamSummary() noexcept {
   std::vector<TBgpStreamSession> stream_sessions;
   evb_.runImmediatelyOrRunInEventBaseThreadAndWait([&]() {
@@ -770,9 +780,11 @@ TBgpSession PeerManagerBase::getDetailSessionInfo(
       tBgpSessionDetail.legacy_v4_nlri_encoding() =
           adjRibs_.at(bgpPeerId)->getUpdateGroupKey().legacyV4NlriEncoding;
 
-      // Control-plane per-type message counts (PeerManager / AdjRib), the
-      // counterpart to the socket_* counts below. Both directions are
-      // cumulative per-peer counts.
+      /*
+       * Control-plane per-type message counts (PeerManager / AdjRib), the
+       * counterpart to the socket_* counts below. Both directions are
+       * cumulative per-peer counts.
+       */
       tBgpSessionDetail.adjrib_recv_update_msgs() =
           static_cast<int64_t>(stats.getRecvUpdateMsgs());
       tBgpSessionDetail.adjrib_recv_eor_msgs() =
@@ -783,8 +795,10 @@ TBgpSession PeerManagerBase::getDetailSessionInfo(
           static_cast<int64_t>(stats.getSentEndOfRibMsgs());
     }
   }
-  // This is mainly for ACTIVE state peers to see how long the TCP socket has
-  // been up
+  /*
+   * This is mainly for ACTIVE state peers to see how long the TCP socket has
+   * been up
+   */
   if (peerInfo->state >= BgpSessionState::ACTIVE) {
     const auto currentTime = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -813,8 +827,10 @@ TBgpSession PeerManagerBase::getDetailSessionInfo(
     tBgpSessionDetail.add_path_capabilities()->emplace_back(nc);
   }
 
-  // Layer-2 data-plane: PDUs actually written to / read from the socket, from
-  // the I/O-thread snapshot. These converge with the AdjRib control counts.
+  /*
+   * Layer-2 data-plane: PDUs actually written to / read from the socket, from
+   * the I/O-thread snapshot. These converge with the AdjRib control counts.
+   */
   {
     const auto& tx = peerInfo->txMsgs;
     tBgpSessionDetail.socket_tx_open_msgs() = static_cast<int64_t>(tx.open);
@@ -877,9 +893,11 @@ TBgpSession PeerManagerBase::getSessionInfo(
 
   tBgpSession.peer_bgp_id() =
       folly::IPAddressV4::fromLongHBO(peerInfo->remoteBgpId).str();
-  // Display negotiated value if already negotiated (State >= open_confirm)
-  // All other cases (IDLE peer, Dynamic prefix peer etc) display configured
-  // value
+  /*
+   * Display negotiated value if already negotiated (State >= open_confirm)
+   * All other cases (IDLE peer, Dynamic prefix peer etc) display configured
+   * value
+   */
   if (peerInfo->negotiatedHoldTime) {
     tBgpPeer.hold_time() =
         static_cast<int32_t>(peerInfo->negotiatedHoldTime->count());
@@ -946,12 +964,14 @@ TBgpSession PeerManagerBase::getSessionInfo(
         peerInfo->peeringParams.linkBandwidthBps.value();
   }
 
-  // Please see T126145664 and D54921268
-  // For ESTABLISHED peer, the peerInfo->lastResetReason and
-  // peerInfo->numResets are from sessionInfo. For IDLE and ACTIVE peers, the
-  // peerInfo->lastResetReason and peerInfo->numResets are from
-  // connectionInfo->lastSessionInfo weak pointer which points to the latest
-  // sessionInfo.
+  /*
+   * Please see T126145664 and D54921268
+   * For ESTABLISHED peer, the peerInfo->lastResetReason and
+   * peerInfo->numResets are from sessionInfo. For IDLE and ACTIVE peers, the
+   * peerInfo->lastResetReason and peerInfo->numResets are from
+   * connectionInfo->lastSessionInfo weak pointer which points to the latest
+   * sessionInfo.
+   */
   if (peerInfo->state == BgpSessionState::ESTABLISHED ||
       peerInfo->state == BgpSessionState::ACTIVE ||
       peerInfo->state == BgpSessionState::IDLE) {
@@ -1015,9 +1035,11 @@ TBgpSession PeerManagerBase::getSessionInfo(
       auto groupId = adjRib->getUpdateGroupId();
       if (groupId.has_value()) {
         tBgpSession.update_group_id() = groupId.value();
-        // Use group-level prefix count only when peer is in-sync with
-        // the group (JOINED_RUNNING or JOINED_BLOCKED). Detached peers
-        // have their own independent RIB-OUT state.
+        /*
+         * Use group-level prefix count only when peer is in-sync with
+         * the group (JOINED_RUNNING or JOINED_BLOCKED). Detached peers
+         * have their own independent RIB-OUT state.
+         */
         auto peerState = adjRib->getPeerState();
         if (peerState == PeerUpdateState::JOINED_RUNNING ||
             peerState == PeerUpdateState::JOINED_BLOCKED) {

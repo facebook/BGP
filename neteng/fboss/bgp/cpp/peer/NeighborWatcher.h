@@ -71,8 +71,10 @@ class FsdbConfigWatcher
 
   void stop() noexcept;
 
-  // Return mapping of peer subnet to link bandwidth based on port and vlan
-  // config
+  /*
+   * Return mapping of peer subnet to link bandwidth based on port and vlan
+   * config
+   */
   std::optional<folly::F14NodeMap<folly::CIDRNetwork, int64_t>>
   getPeerSubnetLbwMap() noexcept;
 
@@ -98,8 +100,10 @@ class FsdbConfigWatcher
 
   const int32_t fsdbPort_;
 
-// per class placeholder for test code injection
-// only need to be setup once here
+/*
+ * per class placeholder for test code injection
+ * only need to be setup once here
+ */
 #ifdef NeighborWatcher_TEST_FRIENDS
   NeighborWatcher_TEST_FRIENDS
 #endif
@@ -140,17 +144,21 @@ class FsdbNeighborWatcher
 
   void stop() noexcept;
 
-  // Callback type for forwarding resolved ARP/NDP neighbor IPs to
-  // NexthopCache. Called on evb_ with the full set of resolved neighbor IPs
-  // (portId != 0, non-link-local) from all interfaces' arpTable/ndpTable.
-  // The callback should only emit "reachable" for newly resolved neighbors;
-  // removals are handled by the session-teardown path
-  // (processInterfaceMapChanges → neighborEventQ_).
+  /*
+   * Callback type for forwarding resolved ARP/NDP neighbor IPs to
+   * NexthopCache. Called on evb_ with the full set of resolved neighbor IPs
+   * (portId != 0, non-link-local) from all interfaces' arpTable/ndpTable.
+   * The callback should only emit "reachable" for newly resolved neighbors;
+   * removals are handled by the session-teardown path
+   * (processInterfaceMapChanges → neighborEventQ_).
+   */
   using ResolvedNeighborCallback =
       std::function<void(folly::F14FastSet<folly::IPAddress>)>;
 
-  // Set a callback to receive resolved neighbor updates. Must be called
-  // before subscription callbacks fire (i.e., before evb_ loop starts).
+  /*
+   * Set a callback to receive resolved neighbor updates. Must be called
+   * before subscription callbacks fire (i.e., before evb_ loop starts).
+   */
   void setResolvedNeighborCallback(ResolvedNeighborCallback cb) {
     resolvedNeighborCb_ = std::move(cb);
   }
@@ -200,10 +208,12 @@ class FsdbNeighborWatcher
       const std::map<std::string, fboss::state::NeighborEntryFields>& nbrTable,
       folly::F14FastSet<folly::IPAddress>& resolvedIps);
 
-  // Bumps BgpStats::kNeighborPortIdStateMismatch and emits a rate-limited
-  // WARNING when portId and state disagree. Called from
-  // collectResolvedIpsFromTable only, so the
-  // counter fires once per entry per scan.
+  /*
+   * Bumps BgpStats::kNeighborPortIdStateMismatch and emits a rate-limited
+   * WARNING when portId and state disagree. Called from
+   * collectResolvedIpsFromTable only, so the
+   * counter fires once per entry per scan.
+   */
   static void reportPortIdStateMismatch(
       const fboss::state::NeighborEntryFields& nbrFields);
 
@@ -240,8 +250,10 @@ class FsdbNeighborWatcher
   // Optional callback to forward resolved neighbor IPs to NexthopCache
   ResolvedNeighborCallback resolvedNeighborCb_;
 
-// per class placeholder for test code injection
-// only need to be setup once here
+/*
+ * per class placeholder for test code injection
+ * only need to be setup once here
+ */
 #ifdef NeighborWatcher_TEST_FRIENDS
   NeighborWatcher_TEST_FRIENDS
 #endif
@@ -293,8 +305,10 @@ class FsdbSwitchReachabilityWatcher
 
   const int32_t fsdbPort_;
 
-// per class placeholder for test code injection
-// only need to be setup once here
+/*
+ * per class placeholder for test code injection
+ * only need to be setup once here
+ */
 #ifdef NeighborWatcher_TEST_FRIENDS
   NeighborWatcher_TEST_FRIENDS
 #endif
@@ -355,16 +369,18 @@ class NeighborWatcher : public BgpModuleBase {
    **/
   void requestNexthopSubscribe(std::vector<folly::IPAddress> nexthops);
 
-  // return nullopt if connection is not ready
-  // return empty map if IO fails (cannot construct map)
-  // otherwise return full map
+  /*
+   * return nullopt if connection is not ready
+   * return empty map if IO fails (cannot construct map)
+   * otherwise return full map
+   */
   folly::coro::Task<
       std::optional<folly::F14NodeMap<folly::CIDRNetwork, int64_t>>>
   co_getPeerSubnetLbwMap() noexcept;
 
-  //
-  // Thrift service handlers
-  //
+  /*
+   * Thrift service handlers
+   */
 
  private:
   /*
@@ -407,8 +423,10 @@ class NeighborWatcher : public BgpModuleBase {
   std::optional<folly::F14NodeMap<folly::CIDRNetwork, int64_t>>
   getFsdbPeerSubnetLbwMap() noexcept;
 
-// per class placeholder for code injection
-// only need to setup once
+/*
+ * per class placeholder for code injection
+ * only need to setup once
+ */
 #ifdef NeighborWatcher_TEST_FRIENDS
   NeighborWatcher_TEST_FRIENDS
 #endif

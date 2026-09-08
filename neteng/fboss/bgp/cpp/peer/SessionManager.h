@@ -49,8 +49,10 @@ class SessionManager : public nettools::bgplib::FiberBgpPeerManager {
 
   folly::Future<folly::Unit> mainFiber_;
 
-// per class placeholder for test code injection
-// only need to be setup once here
+/*
+ * per class placeholder for test code injection
+ * only need to be setup once here
+ */
 #ifdef SessionManager_TEST_FRIENDS
   SessionManager_TEST_FRIENDS
 #endif

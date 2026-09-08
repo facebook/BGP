@@ -115,8 +115,10 @@ void FsdbConfigWatcher::stop() noexcept {
 void FsdbConfigWatcher::processSwitchCfgChanges(
     const fboss::cfg::SwitchConfig& switchConfig) {
   XLOG(INFO, "FSDB: received SwitchConfig");
-  // Create a mapping of peer subnet to interface info (which includes
-  // vlanId) based on interface config details
+  /*
+   * Create a mapping of peer subnet to interface info (which includes
+   * vlanId) based on interface config details
+   */
   folly::F14FastMap<folly::CIDRNetwork, fboss::cfg::Interface>
       peerSubnetInterfaceMap;
   for (const auto& intf : *switchConfig.interfaces()) {
@@ -136,9 +138,11 @@ void FsdbConfigWatcher::processSwitchCfgChanges(
     }
   }
 
-  // Create mapping of vlanId to port speed based on port config details.
-  // Note that in the case of aggregated ports, multiple ports will share the
-  // same vlanId, so "value" is another map of portId to speed
+  /*
+   * Create mapping of vlanId to port speed based on port config details.
+   * Note that in the case of aggregated ports, multiple ports will share the
+   * same vlanId, so "value" is another map of portId to speed
+   */
   folly::F14FastMap<int32_t, folly::F14FastMap<int32_t, int64_t>>
       vlanPortSpeedMap;
   for (const auto& port : *switchConfig.ports()) {
@@ -164,8 +168,10 @@ void FsdbConfigWatcher::processSwitchCfgChanges(
     }
   }
 
-  // Use peerSubnetInterfaceMap and vlanPortSpeedMap to create a mapping of
-  // port subnet to aggregated port speed (LBW) map
+  /*
+   * Use peerSubnetInterfaceMap and vlanPortSpeedMap to create a mapping of
+   * port subnet to aggregated port speed (LBW) map
+   */
   folly::F14NodeMap<folly::CIDRNetwork, int64_t> peerSubnetLbwMap;
   for (const auto& [peerSubnet, interface] : peerSubnetInterfaceMap) {
     auto vlanId = *interface.vlanID();
@@ -196,13 +202,15 @@ void FsdbConfigWatcher::fsdbSwitchCfgCb(
   switchConfig_ = std::make_shared<fboss::cfg::SwitchConfig>(switchConfig);
   fsdbCfgBaton_->post();
 
-  // Currently, upon BGP restart, we wait for wedge_agent to publish its
-  // switch config and use it to build peerSubnet-LBW map, which we use in
-  // UCMP-related functionality.  If wedge_agent switch config were to change
-  // without wedge_agent / BGP restart, we currently do not have code in place
-  // to modify the received / advertised routes to use the updated values.
-  // Till those changes are in place, it is better to simply stop subscribing
-  // for FSDB updates after receiving the first published values.
+  /*
+   * Currently, upon BGP restart, we wait for wedge_agent to publish its
+   * switch config and use it to build peerSubnet-LBW map, which we use in
+   * UCMP-related functionality.  If wedge_agent switch config were to change
+   * without wedge_agent / BGP restart, we currently do not have code in place
+   * to modify the received / advertised routes to use the updated values.
+   * Till those changes are in place, it is better to simply stop subscribing
+   * for FSDB updates after receiving the first published values.
+   */
   stopFsdbSubscription();
 }
 
@@ -353,8 +361,10 @@ bool isLinkLocalAddress(const folly::IPAddress& ipAddress) {
   return false;
 }
 
-// Helper function to find addresses that are resolved in sourceEntry but
-// either missing or non-resolvable in targetEntry
+/*
+ * Helper function to find addresses that are resolved in sourceEntry but
+ * either missing or non-resolvable in targetEntry
+ */
 void findMissingOrNonResolvableAddr(
     const std::map<std::string, fboss::state::NeighborEntryFields>& sourceEntry,
     const std::map<std::string, fboss::state::NeighborEntryFields>& targetEntry,
@@ -383,17 +393,23 @@ void FsdbNeighborWatcher::getNbrEntryChanges(
     const std::map<std::string, fboss::state::NeighborEntryFields>& newNbrEntry,
     std::vector<folly::IPAddress>& deletedAddrs,
     std::vector<folly::IPAddress>& addedAddrs) {
-  // Find addresses that were resolved in old state but are now missing or
-  // non-resolvable in new state (deleted addresses)
+  /*
+   * Find addresses that were resolved in old state but are now missing or
+   * non-resolvable in new state (deleted addresses)
+   */
   findMissingOrNonResolvableAddr(oldNbrEntry, newNbrEntry, deletedAddrs);
-  // Find addresses that are resolved in new state but were missing or
-  // non-resolvable in old state (added addresses)
+  /*
+   * Find addresses that are resolved in new state but were missing or
+   * non-resolvable in old state (added addresses)
+   */
   findMissingOrNonResolvableAddr(newNbrEntry, oldNbrEntry, addedAddrs);
 }
 
-// TODO: Instead of comparing old vs new interfaceMap to look for changes, keep
-// a list of ip-addresses of interest to us and notify PeerManagerBase if any of
-// them went down.  This is more resilient to FSDB going down/up
+/*
+ * TODO: Instead of comparing old vs new interfaceMap to look for changes, keep
+ * a list of ip-addresses of interest to us and notify PeerManagerBase if any of
+ * them went down.  This is more resilient to FSDB going down/up
+ */
 folly::coro::Task<void> FsdbNeighborWatcher::processInterfaceMapChanges(
     std::map<int32_t, fboss::state::InterfaceFields> newInterfaceMap) {
   std::vector<folly::IPAddress> deletedAddrs;
@@ -407,8 +423,10 @@ folly::coro::Task<void> FsdbNeighborWatcher::processInterfaceMapChanges(
       co_await folly::coro::co_safe_point;
       if (!newInterfaceMap.contains(interfaceId)) {
         XLOGF(ERR, "new state does not have interface {}", interfaceId);
-        // if new map doesn't have this interfaceId, then all old entries are
-        // potentially deleted
+        /*
+         * if new map doesn't have this interfaceId, then all old entries are
+         * potentially deleted
+         */
         getNbrEntryChanges(
             *oldInterfaceFields.arpTable(), {}, deletedAddrs, addedAddrs);
         getNbrEntryChanges(
@@ -427,8 +445,10 @@ folly::coro::Task<void> FsdbNeighborWatcher::processInterfaceMapChanges(
             addedAddrs);
       }
     }
-    // deleted entries are relative to the old map, so we can handle it here
-    // peer manager only cares about deleted entries
+    /*
+     * deleted entries are relative to the old map, so we can handle it here
+     * peer manager only cares about deleted entries
+     */
     for (const auto& ipAddress : deletedAddrs) {
       XLOGF(
           INFO,
@@ -504,8 +524,10 @@ void FsdbNeighborWatcher::logNeighborTable(
   }
 }
 
-// Callback upon FSDB state change.  As per our registration request, FSDB
-// sends entire new state of interfaceMap if something changed
+/*
+ * Callback upon FSDB state change.  As per our registration request, FSDB
+ * sends entire new state of interfaceMap if something changed
+ */
 void FsdbNeighborWatcher::fsdbInterfaceStateCb(
     const std::map<int32_t, fboss::state::InterfaceFields>& newInterfaceMap) {
   XLOG_IF(
@@ -523,9 +545,9 @@ void FsdbNeighborWatcher::fsdbInterfaceStateCb(
       neighborWatcherEvb_, processInterfaceMapChanges(newInterfaceMap)));
 }
 
-//
-// FsdbSwitchReachabilityWatcher
-//
+/*
+ * FsdbSwitchReachabilityWatcher
+ */
 void FsdbSwitchReachabilityWatcher::processSwitchReachability() {
   neighborEventQ_.push(NeighborReachabilityMsg{});
 }
@@ -537,13 +559,17 @@ void FsdbSwitchReachabilityWatcher::run() noexcept {
                      fboss::fsdb::SubscriptionState /*newState*/,
                      std::optional<bool> /*initialSyncHasData*/) {};
     auto checkReachability = [](const auto& dsfSwitchReachability) -> bool {
-      // Check if dsfSwitchReachability table is populated. Return
-      // early if not.
+      /*
+       * Check if dsfSwitchReachability table is populated. Return
+       * early if not.
+       */
       if (dsfSwitchReachability.empty()) {
         return false;
       }
-      // The agent will only contain the entry for its own switchId
-      // in the dsfSwitchReachability table.
+      /*
+       * The agent will only contain the entry for its own switchId
+       * in the dsfSwitchReachability table.
+       */
       auto entry = dsfSwitchReachability.begin();
       auto switchId = entry->first;
 
@@ -601,9 +627,9 @@ void FsdbSwitchReachabilityWatcher::stop() noexcept {
   }
 }
 
-//
-// NeighborWatcher
-//
+/*
+ * NeighborWatcher
+ */
 
 NeighborWatcher::NeighborWatcher(
     MonitoredMPMCQueue<NeighborWatcherMessage>& neighborEventQ,
