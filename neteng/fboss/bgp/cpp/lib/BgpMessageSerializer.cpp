@@ -28,8 +28,10 @@ using folly::io::Cursor;
 using folly::io::RWPrivateCursor;
 
 namespace {
-// 25 = AttrType: 2 + AttrLen(extended): 2 + Attr: 21
-// Attr 21 = afi: 2 + safi: 1 + nextHop len: 1 + v6 next hop: 16 + reserved: 1
+/*
+ * 25 = AttrType: 2 + AttrLen(extended): 2 + Attr: 21
+ * Attr 21 = afi: 2 + safi: 1 + nextHop len: 1 + v6 next hop: 16 + reserved: 1
+ */
 const size_t kMpAnnouncedAttrLen = 25;
 /**
  * Bgp update message struct:
@@ -301,8 +303,10 @@ std::unique_ptr<folly::IOBuf> BgpMessageSerializer::serializeBgpUpdate2(
   auto v4Announced = *update.v4Announced2();
   auto v4Withdrawn = *update.v4Withdrawn2();
 
-  // Client is still using deprecated v4Announced/v4Withdrawn, populate routes
-  // in v4Announced2/v4Withdrawn2 format
+  /*
+   * Client is still using deprecated v4Announced/v4Withdrawn, populate routes
+   * in v4Announced2/v4Withdrawn2 format
+   */
   if (v4Announced.empty()) {
     for (const auto& prf : *update.v4Announced()) {
       RiggedIPPrefix rigPrf;
@@ -618,8 +622,10 @@ std::unique_ptr<folly::IOBuf> BgpMessageSerializer::serializeBgpUpdate2(
 
       // Track nexthop offset for zero-copy optimization (all messages)
       if (trackNexthopOffsets) {
-        // Nexthop offset = header + withdrawn length + path attr length +
-        // offset in attrs
+        /*
+         * Nexthop offset = header + withdrawn length + path attr length +
+         * offset in attrs
+         */
         outNexthopOffsets->emplace_back(
             queueIndex,
             (curMsg.plcursor + 2 - curMsg.hcursor) + nexthopOffsetInAttrs,
@@ -670,8 +676,10 @@ int BgpMessageSerializer::serializeBgpHeader(
     RWPrivateCursor headCursor,
     RWPrivateCursor tailCursor,
     BgpMessageType msgType) {
-  // Sanity check for bgp message length (msgLen is guaranteed to be less than
-  // kMaxBgpMsgLen)
+  /*
+   * Sanity check for bgp message length (msgLen is guaranteed to be less than
+   * kMaxBgpMsgLen)
+   */
   uint16_t msgLen = static_cast<uint16_t>(tailCursor - headCursor);
   if (msgLen > kMaxBgpMsgLen) {
     throw BgpSerializerException(

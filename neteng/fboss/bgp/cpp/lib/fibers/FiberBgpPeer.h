@@ -344,9 +344,9 @@ class FiberBgpPeer : public std::enable_shared_from_this<FiberBgpPeer>,
   FiberBgpPeer(FiberBgpPeer const&) = delete;
   FiberBgpPeer& operator=(FiberBgpPeer const&) = default;
 
-  //
-  // Dummy types used for message passing internally
-  //
+  /*
+   * Dummy types used for message passing internally
+   */
 
   // generic type to reflect any parser error
   struct BgpParserError {
@@ -541,14 +541,14 @@ class FiberBgpPeer : public std::enable_shared_from_this<FiberBgpPeer>,
    */
   const bool enableSerializeGroupPdu_{false};
 
-  //
-  // This reports the state transitions for this peer
-  //
+  /*
+   * This reports the state transitions for this peer
+   */
   RWQueue<ObservableStateT> observerStateQueue_;
 
-  //
-  // This reports the received Bgp Updates and EoRs from this peer
-  //
+  /*
+   * This reports the received Bgp Updates and EoRs from this peer
+   */
   RWQueue<ObservableMessageT> observerRcvdMessageQueue_;
 
   /*

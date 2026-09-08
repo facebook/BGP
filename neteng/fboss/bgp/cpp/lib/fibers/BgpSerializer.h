@@ -24,9 +24,9 @@
 namespace facebook {
 namespace nettools {
 namespace bgplib {
-//
-// Dispatcher for outgoing BGP messages
-//
+/*
+ * Dispatcher for outgoing BGP messages
+ */
 struct BgpSerializer {
   const BgpCapabilities caps_;
 

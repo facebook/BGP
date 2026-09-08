@@ -149,8 +149,10 @@ class MPMCWatermarkQueue {
   void close() {
     // Set closed flag (only first caller wins, but that's fine)
     closed_.store(true, std::memory_order_release);
-    // Always signal - multiple signals are harmless (just increments token
-    // count) This ensures ALL waiters eventually wake up, not just one
+    /*
+     * Always signal - multiple signals are harmless (just increments token
+     * count) This ensures ALL waiters eventually wake up, not just one
+     */
     writeSem_.signal();
   }
 
@@ -212,8 +214,10 @@ class MPMCWatermarkQueue {
       if (result.hasException()) {
         co_yield folly::coro::co_error(std::move(result).exception());
       }
-      // Check if we were woken up due to close()
-      // Must check AFTER wait returns to handle race with close()
+      /*
+       * Check if we were woken up due to close()
+       * Must check AFTER wait returns to handle race with close()
+       */
       if (closed_.load(std::memory_order_acquire)) {
         co_return false;
       }

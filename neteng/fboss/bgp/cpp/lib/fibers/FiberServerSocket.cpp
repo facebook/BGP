@@ -23,8 +23,10 @@
 using namespace folly::fibers;
 namespace {
 
-// accept returns the fd and the client's socket address if completed
-// successfully.
+/*
+ * accept returns the fd and the client's socket address if completed
+ * successfully.
+ */
 struct AcceptResult {
   int fd;
   folly::SocketAddress clientAddr;
@@ -44,22 +46,24 @@ class AcceptCallback : public folly::AsyncServerSocket::AcceptCallback {
   }
 
  private:
-  //
-  // Invariant state
-  //
+  /*
+   * Invariant state
+   */
 
   const std::shared_ptr<folly::AsyncServerSocket> socket_;
 
   // the promise to pass data from the callback
   std::optional<Promise<AcceptResult>> promise_;
 
-  // Indicate connectionAcceped() or acceptError() has not completed yet.
-  // Used by acceptStopped() to determine to throw an exception or not.
+  /*
+   * Indicate connectionAcceped() or acceptError() has not completed yet.
+   * Used by acceptStopped() to determine to throw an exception or not.
+   */
   bool callbackStarted_{false};
 
-  //
-  // AcceptCallback methods
-  //
+  /*
+   * AcceptCallback methods
+   */
 
   void connectionAccepted(
       folly::NetworkSocket fdNetworkSocket,
@@ -108,9 +112,9 @@ class AcceptCallback : public folly::AsyncServerSocket::AcceptCallback {
     }
   }
 
-  //
-  // End AcceptCallback methods
-  //
+  /*
+   * End AcceptCallback methods
+   */
 };
 
 } // namespace
@@ -160,11 +164,13 @@ FiberServerSocket::accept() noexcept {
   try {
     auto result = await([&cb, this](Promise<AcceptResult> promise) {
       cb.setPromise(std::move(promise));
-      // here we rely on AsyncServerSocket (ASS) to properly
-      // dispatch the callback from its primary event base.
-      // By default, it uses notification queue's to talk
-      // to other threads, but we need to avoid this, to be
-      // able to stop/unregister callbacks on first hit.
+      /*
+       * here we rely on AsyncServerSocket (ASS) to properly
+       * dispatch the callback from its primary event base.
+       * By default, it uses notification queue's to talk
+       * to other threads, but we need to avoid this, to be
+       * able to stop/unregister callbacks on first hit.
+       */
       socket_->addAcceptCallback(&cb, nullptr);
       // only dispatch signal callback to us
       socket_->setMaxAcceptAtOnce(1);
@@ -207,8 +213,10 @@ int FiberServerSocket::setSockOpt(
     int optname,
     const void* optval,
     socklen_t optlen) const noexcept {
-  // AsyncServerSocket has a list of sockets underneath, set
-  // same socket option on all the sockets.
+  /*
+   * AsyncServerSocket has a list of sockets underneath, set
+   * same socket option on all the sockets.
+   */
   for (auto& netsock : socket_->getNetworkSockets()) {
     if (netsock == folly::NetworkSocket()) {
       continue;
@@ -222,8 +230,10 @@ int FiberServerSocket::setSockOpt(
 }
 
 void FiberServerSocket::close() noexcept {
-  // shutdown listening socket
-  // socket_ might be null if this object has been moved from
+  /*
+   * shutdown listening socket
+   * socket_ might be null if this object has been moved from
+   */
   if (socket_) {
     socket_->stopAccepting();
   }

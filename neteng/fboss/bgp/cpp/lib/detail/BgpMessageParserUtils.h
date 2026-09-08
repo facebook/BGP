@@ -57,8 +57,10 @@ inline T readBigEndian(const uint8_t* buf) {
  */
 struct BgpPrefix {
   const folly::CIDRNetwork prefix;
-  // ideally label should be uint32_t, but we make it
-  // int32_t because of thrift types
+  /*
+   * ideally label should be uint32_t, but we make it
+   * int32_t because of thrift types
+   */
   const std::vector<int32_t> labels;
 
   // path id used by ADD_PATH feature.
@@ -118,9 +120,9 @@ struct UpdateMsgParsingState {
   std::vector<BgpPrefix> v4Announced;
   std::vector<BgpPrefix> v4Withdrawn;
 
-  //
-  // Multiprotocol announced/withdrawn prefixes
-  //
+  /*
+   * Multiprotocol announced/withdrawn prefixes
+   */
   BgpUpdateAfi mpAnnouncedAfi{static_cast<BgpUpdateAfi>(0)};
   BgpUpdateSafi mpAnnouncedSafi{static_cast<BgpUpdateSafi>(0)};
   std::vector<BgpPrefix> mpAnnounced;
@@ -136,10 +138,10 @@ struct UpdateMsgParsingState {
   // this is set if message is End Of Rib
   std::optional<BgpEndOfRib> eor;
 
-  //
-  // Bgp Nexthops in update message are parsed into following variable
-  // and at the end it is populated in "attrs"
-  //
+  /*
+   * Bgp Nexthops in update message are parsed into following variable
+   * and at the end it is populated in "attrs"
+   */
 
   // Bgp atribute NEXT_HOP
   folly::IPAddress v4Nexthop;
@@ -147,9 +149,9 @@ struct UpdateMsgParsingState {
   // Nexthop information encoded in MP_REACH_NLRI
   folly::IPAddress mpNexthop;
 
-  //
-  // Booleans to keep state of different attributes
-  //
+  /*
+   * Booleans to keep state of different attributes
+   */
 
   // Origin attribute was found
   bool hasOriginAttr{false};
@@ -157,9 +159,9 @@ struct UpdateMsgParsingState {
   // AS_PATH attribute was found
   bool hasAsPathAttr{false};
 
-  //
-  // Parsing methods
-  //
+  /*
+   * Parsing methods
+   */
 
   /**
    * Parse the IPv4 Withdrawn routes at the start of the message

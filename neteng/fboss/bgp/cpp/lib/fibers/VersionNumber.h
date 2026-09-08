@@ -80,8 +80,10 @@ class VersionNumber {
   }
 
  private:
-  // use semaphore (1) to lock the version in a fiber-safe manner
-  // notice that folly::fibers::Semaphore is thread-safe already
+  /*
+   * use semaphore (1) to lock the version in a fiber-safe manner
+   * notice that folly::fibers::Semaphore is thread-safe already
+   */
   mutable folly::fibers::Semaphore semaphore_{1};
   // actual version number, should be protected by the semaphore
   uint64_t versionNumber_{0};

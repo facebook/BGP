@@ -27,10 +27,11 @@ namespace facebook {
 namespace nettools {
 namespace bgplib {
 
-//
-// Creates AsyncServerSocket internally and handles
-// the accept() calls producing new FiberSockets
-// for every accepted connection
+/*
+ * Creates AsyncServerSocket internally and handles
+ * the accept() calls producing new FiberSockets
+ * for every accepted connection
+ */
 
 class FiberServerSocket {
  public:
@@ -38,22 +39,28 @@ class FiberServerSocket {
   FiberServerSocket(FiberServerSocket&&) = default;
   FiberServerSocket& operator=(FiberServerSocket&&) = default;
 
-  // create and bind server socket, return server socket ready
-  // to accept connections; if the bind address is omitted, listen
-  // on any address with random port (useful for testing)
+  /*
+   * create and bind server socket, return server socket ready
+   * to accept connections; if the bind address is omitted, listen
+   * on any address with random port (useful for testing)
+   */
   explicit FiberServerSocket(
       std::optional<folly::SocketAddress> bindAddr,
       uint32_t listenQueueDepth = 256);
 
-  // we need to shutdown the accepting socket when cleaning, so
-  // override default d-tor
+  /*
+   * we need to shutdown the accepting socket when cleaning, so
+   * override default d-tor
+   */
   virtual ~FiberServerSocket();
 
   // accept next pending connection and return new FiberSocket
   virtual folly::Expected<FiberSocket, FiberSocketError> accept() noexcept;
 
-  // get the listening address of this server - useful for unittessting,
-  // when we bind to a random port
+  /*
+   * get the listening address of this server - useful for unittessting,
+   * when we bind to a random port
+   */
   folly::SocketAddress getListenAddress() const noexcept;
 
   // return all bound listen addresses
@@ -70,9 +77,9 @@ class FiberServerSocket {
   FiberServerSocket(const FiberServerSocket&) = delete;
   FiberServerSocket& operator=(const FiberServerSocket&) = delete;
 
-  //
-  // Invariant state
-  //
+  /*
+   * Invariant state
+   */
 
   // non-cost cause we create this during construction :(
   std::shared_ptr<folly::AsyncServerSocket> socket_;

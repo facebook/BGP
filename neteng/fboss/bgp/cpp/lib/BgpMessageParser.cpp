@@ -116,8 +116,10 @@ BgpMessageHeader BgpMessageParser2::consumeBgpMsgHdr(
   BgpMessageHeader hdr = BgpMessageParser2::parseBgpMsgHdr(cursor, msgType);
   cursor.skip(kBgpMsgHeaderLen);
 
-  // Additionally, validate we have sufficient data buffered to parse
-  // the length indicated in the BGP header.
+  /*
+   * Additionally, validate we have sufficient data buffered to parse
+   * the length indicated in the BGP header.
+   */
   if (hdr.length > readable) {
     auto errData = htons(hdr.length);
     /* RFC4271 6.1:
@@ -163,8 +165,10 @@ BgpOpenMsg BgpMessageParser2::parseBgpOpenMsgRaw(folly::IOBuf buf) {
             buf.length()));
   }
 
-  // Parse the OPEN message contents
-  // Read BGP Version Number
+  /*
+   * Parse the OPEN message contents
+   * Read BGP Version Number
+   */
   msg.version() = cursor.read<uint8_t>();
 
   if (*msg.version() != kBgpVersion) {
@@ -277,9 +281,11 @@ BgpOpenMsg BgpMessageParser2::parseBgpOpenMsgRaw(folly::IOBuf buf) {
 BgpNotification BgpMessageParser2::parseBgpNotificationRaw(folly::IOBuf buf) {
   Cursor cursor(&buf);
 
-  // Parse and validate common bgp message header
-  // Cursor is advanced and stops at the start of the
-  // actual BGP message
+  /*
+   * Parse and validate common bgp message header
+   * Cursor is advanced and stops at the start of the
+   * actual BGP message
+   */
   BgpMessageHeader hdr;
 
   // Parse the header
@@ -368,8 +374,10 @@ BgpNotification BgpMessageParser2::parseBgpNotificationRaw(folly::IOBuf buf) {
     case (int)BgpNotifErrCode::BN_FSM_ERROR:
       break;
     case (int)BgpNotifErrCode::BN_ROUTE_REFRESH_MSG_ERR:
-      // Error handling for Route Refresh message per RFC 7313(Section 5)
-      // Subcode 0 is the only valid subcode for Error handling
+      /*
+       * Error handling for Route Refresh message per RFC 7313(Section 5)
+       * Subcode 0 is the only valid subcode for Error handling
+       */
       if (subCode != 0) {
         throw BgpException(
             fmt::format(
@@ -437,9 +445,11 @@ BgpRouteRefresh BgpMessageParser2::parseBgpRouteRefreshRaw(
   auto msgSubType = cursor.read<uint8_t>();
   auto safi = cursor.read<uint8_t>();
 
-  // Validate the message length (RFC 7313)
-  // Length of Route Refresh message must be 4 (apart from common header) if
-  // message subType is 1 or 2
+  /*
+   * Validate the message length (RFC 7313)
+   * Length of Route Refresh message must be 4 (apart from common header) if
+   * message subType is 1 or 2
+   */
   if ((hdr.length != kBgpMsgHeaderLen + 4) &&
       (msgSubType == 1 || msgSubType == 2)) {
     auto errData = htons(hdr.length);
@@ -458,9 +468,9 @@ BgpRouteRefresh BgpMessageParser2::parseBgpRouteRefreshRaw(
   return msg;
 }
 
-//
-// BgpMessageParser2 methods
-//
+/*
+ * BgpMessageParser2 methods
+ */
 
 // static, public
 std::variant<std::shared_ptr<const BgpUpdate2>, BgpEndOfRib>
@@ -469,9 +479,11 @@ BgpMessageParser2::parseBgpUpdateRaw(
     const BgpCapabilities& capabilities) {
   Cursor updateMsgCursor(&buf);
 
-  // Parse and validate common bgp message header
-  // Cursor is advanced and stops at the start of the
-  // actual BGP message
+  /*
+   * Parse and validate common bgp message header
+   * Cursor is advanced and stops at the start of the
+   * actual BGP message
+   */
   BgpMessageHeader hdr;
 
   // Parse the header
@@ -481,9 +493,11 @@ BgpMessageParser2::parseBgpUpdateRaw(
       DBG4,
       "parseBgpUpdateRaw: parsing full update message:\n{}",
       folly::hexDump(buf.data(), hdr.length));
-  // The last v4 NLRI field has an implied length. Fix the cursor to the end
-  // of this message (there may be more messages in the buffer) to avoid
-  // NLRI parser overrun into next message.
+  /*
+   * The last v4 NLRI field has an implied length. Fix the cursor to the end
+   * of this message (there may be more messages in the buffer) to avoid
+   * NLRI parser overrun into next message.
+   */
   updateMsgCursor = Cursor(updateMsgCursor, hdr.length - kBgpMsgHeaderLen);
 
   // Size of Bgp Update must be at least 4
@@ -499,8 +513,10 @@ BgpMessageParser2::parseBgpUpdateRaw(
             buf.length()));
   }
 
-  // State will be populated accordingly as we parse raw BgpMessage and at the
-  // end it will be used to generate BgpUpdate messages
+  /*
+   * State will be populated accordingly as we parse raw BgpMessage and at the
+   * end it will be used to generate BgpUpdate messages
+   */
   UpdateMsgParsingState state;
 
   state.parseV4Withdrawn(updateMsgCursor, capabilities);
@@ -644,9 +660,11 @@ void BgpMessageParser2::parseBgpMessage(
   Cursor cursor(&buf);
 
   try {
-    // Parse and validate common bgp message header
-    // Cursor is advanced and stops at the start of the
-    // actual BGP message
+    /*
+     * Parse and validate common bgp message header
+     * Cursor is advanced and stops at the start of the
+     * actual BGP message
+     */
     BgpMessageHeader hdr;
 
     // Parse the header

@@ -63,12 +63,14 @@ namespace facebook::nettools::bgplib {
     co_yield folly::coro::co_error(std::move(result).exception()); \
   }
 
-// workflow:
-// - Request to push
-// - Once the push request is granted (no matter pushed or not),
-//   the val is moved and no longer valid
-// - When the data queue is full, wait for space to become available
-// - If anything is pushed to the data queue, signal to pop
+/*
+ * workflow:
+ * - Request to push
+ * - Once the push request is granted (no matter pushed or not),
+ *   the val is moved and no longer valid
+ * - When the data queue is full, wait for space to become available
+ * - If anything is pushed to the data queue, signal to pop
+ */
 #define PUSH_IMPL(waitOperation)                                              \
   bool granted, pushed;                                                       \
   while (true) {                                                              \
@@ -110,8 +112,10 @@ class BackPressuredQueue {
   BackPressuredQueue(const BackPressuredQueue& other)
       : capacity_(other.capacity_) {}
 
-  // The copy assignment only copies the capacity, leaving everything else the
-  // same
+  /*
+   * The copy assignment only copies the capacity, leaving everything else the
+   * same
+   */
   BackPressuredQueue& operator=(const BackPressuredQueue& other) {
     capacity_ = other.capacity_;
     return *this;
@@ -124,8 +128,10 @@ class BackPressuredQueue {
   // asynchronous push for coro, no cancellation
   folly::coro::Task<void> nonCancellablePush(T&& val) noexcept {
     PUSH_IMPL(
-        // co_wait itself can be cancelled. Therefore we need to use a dummy
-        // CancellationToken to avoid co_wait being cancelled
+        /*
+         * co_wait itself can be cancelled. Therefore we need to use a dummy
+         * CancellationToken to avoid co_wait being cancelled
+         */
         co_await folly::coro::co_withCancellation(
             folly::CancellationToken{}, pushRequestQueue_.co_wait()));
   }
@@ -174,8 +180,10 @@ class BackPressuredQueue {
     return dataQueue_.empty();
   }
 
-  // Close the queue and wake up all existing waiting push requests
-  // When the queue is closed, nothing will be pushed to the queue
+  /*
+   * Close the queue and wake up all existing waiting push requests
+   * When the queue is closed, nothing will be pushed to the queue
+   */
   void close() noexcept {
     size_t pushRequestQueueSize;
     {
@@ -201,11 +209,13 @@ class BackPressuredQueue {
   }
 
  protected:
-  // request to push to the data queue, three outcomes represented by (granted,
-  // pushed):
-  // - queue closed, the request is granted but the data is dropped
-  // - request granted, at this moment, val is moved to the queue
-  // - request failed, need to wait in the push request queue later
+  /*
+   * request to push to the data queue, three outcomes represented by (granted,
+   * pushed):
+   * - queue closed, the request is granted but the data is dropped
+   * - request granted, at this moment, val is moved to the queue
+   * - request failed, need to wait in the push request queue later
+   */
   inline std::pair<bool, bool> requestPushToDataQueue(T&& val) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (closed_) {
@@ -245,9 +255,11 @@ class BackPressuredQueue {
   std::deque<T> dataQueue_;
   folly::fibers::Semaphore dataQueueReadSem_{0};
 
-  // Semaphore that blocks push operations when queue is at capacity
-  // Initialized with 0 tokens - producers wait here when queue is full
-  // and are signaled by pop() operations when space becomes available.
+  /*
+   * Semaphore that blocks push operations when queue is at capacity
+   * Initialized with 0 tokens - producers wait here when queue is full
+   * and are signaled by pop() operations when space becomes available.
+   */
   folly::fibers::Semaphore pushRequestQueue_{0};
   size_t pushRequestQueueSize_{0};
 

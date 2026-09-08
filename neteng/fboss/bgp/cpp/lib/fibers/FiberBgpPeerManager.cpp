@@ -97,8 +97,10 @@ std::unique_ptr<BgpEndOfRib> createEndOfRib(BgpUpdateAfi afi) {
   return eor;
 }
 
-// Apply GTSM (RFC 5082) socket options to a connected socket.
-// Returns true on success, false if any setsockopt failed.
+/*
+ * Apply GTSM (RFC 5082) socket options to a connected socket.
+ * Returns true on success, false if any setsockopt failed.
+ */
 bool applyGtsmSockOptions(
     FiberSocket& socket,
     const folly::IPAddress& peerAddr,
@@ -206,9 +208,11 @@ void FiberBgpPeerManager::setServerSocketOptions() noexcept {
     }
   };
 
-  // Set TOS socket option for both v4 and v6 family on listening socket
-  // This ensures that syn-ack which is replied before accept call returns
-  // a new socket is also replied with proper TOS values.
+  /*
+   * Set TOS socket option for both v4 and v6 family on listening socket
+   * This ensures that syn-ack which is replied before accept call returns
+   * a new socket is also replied with proper TOS values.
+   */
   lambdaSetSockOptionsForAFamily(true);
   lambdaSetSockOptionsForAFamily(false);
 }
@@ -222,8 +226,10 @@ void FiberBgpPeerManager::run() noexcept {
   folly::fibers::Semaphore passiveConnectLoopStartSemaphore{1};
 
   if (bgpGlobalConfig_.enableServerSocket) {
-    // Enable passive connect loop only if required.
-    // Services like openr-bgp, vip injector etc do not need to turn it on
+    /*
+     * Enable passive connect loop only if required.
+     * Services like openr-bgp, vip injector etc do not need to turn it on
+     */
     auto listenAddr =
         (bgpGlobalConfig_.listenAddr ? *bgpGlobalConfig_.listenAddr
                                      : AsyncSocket::anyAddress());
@@ -248,8 +254,10 @@ void FiberBgpPeerManager::run() noexcept {
       } else {
         me->peerWorkerIds_.erase(*msg);
       }
-      // only exit when process signal us it's time to exit,
-      // and all peer worker loops finished execution
+      /*
+       * only exit when process signal us it's time to exit,
+       * and all peer worker loops finished execution
+       */
       if (tryExit && me->peerWorkerIds_.empty()) {
         break;
       }
@@ -386,8 +394,10 @@ void FiberBgpPeerManager::processObservableState(
 
   switch (newState) {
     case BgpSessionState::OPEN_CONFIRM:
-      // collision detection case 1: bgp id comparison
-      // allow session open if remoteBgpId is different
+      /*
+       * collision detection case 1: bgp id comparison
+       * allow session open if remoteBgpId is different
+       */
       for (const auto& [_, connectionInfo] : peerInfo->connectionInfos) {
         const auto& sessionInfo = connectionInfo->activeSessionInfo;
         if (!sessionInfo || (sessionInfo == activeSessionInfo) ||
@@ -414,8 +424,10 @@ void FiberBgpPeerManager::processObservableState(
         return;
       }
       {
-        // collision detection case 2: keep the already established session
-        // bgp id is the same
+        /*
+         * collision detection case 2: keep the already established session
+         * bgp id is the same
+         */
         for (const auto& [_, sessionInfo] : peerInfo->sessionInfos) {
           if (sessionInfo->establishedSessionInfo &&
               sessionInfo->establishedSessionInfo != activeSessionInfo &&
@@ -521,15 +533,19 @@ void FiberBgpPeerManager::processObservableState(
 
           sessionInfo->lastResetTime = std::chrono::steady_clock::now();
 
-          // Set the connectionInfo->lastSessionInfo to point to this
-          // sessionInfo so that the IDLE session can retrieve information, e.g.
-          // numResets, lastResetReason, and lastResetTime about its last BGP
-          // session which WAS established over this port (connectionInfo).
+          /*
+           * Set the connectionInfo->lastSessionInfo to point to this
+           * sessionInfo so that the IDLE session can retrieve information, e.g.
+           * numResets, lastResetReason, and lastResetTime about its last BGP
+           * session which WAS established over this port (connectionInfo).
+           */
           sessionInfo->connectionInfo->lastSessionInfo =
               std::weak_ptr<BgpSessionInfo>(sessionInfo);
-          // set sessionInfo->connectionInfo and
-          // sessionInfo->establishedSessionInfo to nullptr because the session
-          // goes down
+          /*
+           * set sessionInfo->connectionInfo and
+           * sessionInfo->establishedSessionInfo to nullptr because the session
+           * goes down
+           */
           sessionInfo->connectionInfo = nullptr;
           sessionInfo->establishedSessionInfo = nullptr;
           XLOGF(
@@ -616,8 +632,10 @@ void FiberBgpPeerManager::shutdownPeerDueToCollision(
       folly::IPAddress::fromLongHBO(peer->getRemoteBgpIdHBO()).str(),
       remoteAddr.getPort());
 
-  // send notification with the error code cease
-  // close the session
+  /*
+   * send notification with the error code cease
+   * close the session
+   */
   peer->stop(BgpNotifCeaseErrSubCode::BN_CEASE_CONN_COLLISION_RES, false);
 
   // increment per-peer collision counter
@@ -638,9 +656,11 @@ Expected<Unit, FiberBgpPeerManager::ErrorCode> FiberBgpPeerManager::addPeer(
     const ConnTimeParams& connTimeParams,
     const TBgpSessionConnectMode connectMode,
     const std::optional<uint32_t>& localBgpIdOpt) {
-  // sanity check for overlapping peerPrefix or peerAddress configuration:
-  //    E.g. If dynamic peer 10.1.0.0/30 is configured already,
-  //         peer 10.1.0.1 will be reject here
+  /*
+   * sanity check for overlapping peerPrefix or peerAddress configuration:
+   *    E.g. If dynamic peer 10.1.0.0/30 is configured already,
+   *         peer 10.1.0.1 will be reject here
+   */
   if (getPeerPrefix(peerAddr)) {
     return makeUnexpected(ErrorCode::PEER_EXISTS_ALREADY);
   }
@@ -673,9 +693,11 @@ Expected<Unit, FiberBgpPeerManager::ErrorCode> FiberBgpPeerManager::addPeer(
     const IPAddress& peerAddr,
     const bgp::PeeringParams& params,
     const ConnTimeParams& connTimeParams) {
-  // sanity check for overlapping peerPrefix or peerAddress configuration:
-  //    E.g. If dynamic peer 10.1.0.0/30 is configured already,
-  //         peer 10.1.0.1 will be reject here
+  /*
+   * sanity check for overlapping peerPrefix or peerAddress configuration:
+   *    E.g. If dynamic peer 10.1.0.0/30 is configured already,
+   *         peer 10.1.0.1 will be reject here
+   */
   if (getPeerPrefix(peerAddr)) {
     return makeUnexpected(ErrorCode::PEER_EXISTS_ALREADY);
   }
@@ -725,9 +747,11 @@ FiberBgpPeerManager::addDynamicPeer(
   if (isPeerConfigured(peerPrefix)) {
     return makeUnexpected(ErrorCode::PEER_EXISTS_ALREADY);
   }
-  // sanity check for overlapping peerPrefix or peerAddress configuration.
-  // For example, if peer 10.1.0.1 is configured already
-  // Here dynamic peer 10.1.0.0/30 will be reject
+  /*
+   * sanity check for overlapping peerPrefix or peerAddress configuration.
+   * For example, if peer 10.1.0.1 is configured already
+   * Here dynamic peer 10.1.0.0/30 will be reject
+   */
   if (!getPeerAddrs(peerPrefix).empty()) {
     return makeUnexpected(ErrorCode::PEER_EXISTS_ALREADY);
   }
@@ -767,9 +791,11 @@ FiberBgpPeerManager::addDynamicPeer(
   if (isPeerConfigured(peerPrefix)) {
     return makeUnexpected(ErrorCode::PEER_EXISTS_ALREADY);
   }
-  // sanity check for overlapping peerPrefix or peerAddress configuration.
-  // For example, if peer 10.1.0.1 is configured already
-  // Here dynamic peer 10.1.0.0/30 will be reject
+  /*
+   * sanity check for overlapping peerPrefix or peerAddress configuration.
+   * For example, if peer 10.1.0.1 is configured already
+   * Here dynamic peer 10.1.0.0/30 will be reject
+   */
   if (!getPeerAddrs(peerPrefix).empty()) {
     return makeUnexpected(ErrorCode::PEER_EXISTS_ALREADY);
   }
@@ -1080,10 +1106,12 @@ void FiberBgpPeerManager::passiveConnectLoop(
         return;
       }
 
-      // Set socket options, for now it's only TOS
-      // Set the socket option based on address family. In daemon mode we always
-      // listen to ::, accepted address can be v4 mapped or v6 address, so set
-      // TOS accordingly. For tests we some times listen on 0.0.0.0
+      /*
+       * Set socket options, for now it's only TOS
+       * Set the socket option based on address family. In daemon mode we always
+       * listen to ::, accepted address can be v4 mapped or v6 address, so set
+       * TOS accordingly. For tests we some times listen on 0.0.0.0
+       */
       auto options = getBgpSockOptions(isV6Peer(peerAddr));
       for (auto const& option : options) {
         auto ret = fiberSocket.setSockOpt(
@@ -1094,8 +1122,10 @@ void FiberBgpPeerManager::passiveConnectLoop(
         }
       }
 
-      // Convert IPv4 mapped IPv6 address to IPv4. So that we process it as
-      // IPv4 peer and inSubnet etc can be verified.
+      /*
+       * Convert IPv4 mapped IPv6 address to IPv4. So that we process it as
+       * IPv4 peer and inSubnet etc can be verified.
+       */
       if (peerAddr.isIPv4Mapped()) {
         peerAddr = IPAddress::createIPv4(peerAddr);
       }
@@ -1123,8 +1153,10 @@ void FiberBgpPeerManager::passiveConnectLoop(
         auto peerConf = me->dynamicPeerGroups_[*peerPrefix];
         auto params = peerConf->peeringParams;
         if (params.isShutdown) {
-          // if a dynamic peer is shutdown,
-          // then not allowed to accecpt incoming connections
+          /*
+           * if a dynamic peer is shutdown,
+           * then not allowed to accecpt incoming connections
+           */
           XLOGF(
               DBG1,
               "Reject tcp connection from shutdown dynamic peer {}",
@@ -1165,9 +1197,11 @@ void FiberBgpPeerManager::passiveConnectLoop(
       // setup and run fibers for a Bgp peer
       const auto& peerInfo = me->allPeers_[peerAddr];
 
-      // Apply TTL Security / GTSM (RFC 5082) socket options now that we
-      // know the peer. If any option fails, close the socket — running
-      // without TTL security when it is configured is a security gap.
+      /*
+       * Apply TTL Security / GTSM (RFC 5082) socket options now that we
+       * know the peer. If any option fails, close the socket — running
+       * without TTL security when it is configured is a security gap.
+       */
       const auto& ttlSecurityHops = peerInfo->peeringParams.ttlSecurityHops;
       if (ttlSecurityHops.has_value()) {
         if (!applyGtsmSockOptions(
@@ -1350,8 +1384,10 @@ void FiberBgpPeerManager::setupAndRunActiveConnectFibers(
     delay = initialDelay + jitter;
   }
 
-  // Schedule initial timeout — callback will spawn a fiber to
-  // activeConnect() when it fires.
+  /*
+   * Schedule initial timeout — callback will spawn a fiber to
+   * activeConnect() when it fires.
+   */
   scheduleConnectTimeout(activeConnectInfo, delay);
 }
 
@@ -1374,8 +1410,10 @@ void FiberBgpPeerManager::scheduleConnRetryWithBackoff(
     const std::shared_ptr<BgpPeerActiveConnectInfo>&
         activeConnectInfo) noexcept {
   activeConnectInfo->connectBackoffReportError();
-  // Adding jitter upto +/- 10 percent of backoff time in milliseconds.
-  // Capping the max jitter to +/- 1 second.
+  /*
+   * Adding jitter upto +/- 10 percent of backoff time in milliseconds.
+   * Capping the max jitter to +/- 1 second.
+   */
   auto nextRetryTime = activeConnectInfo->getNextRetryTime();
   auto jitter =
       std::chrono::milliseconds(generateJitter(nextRetryTime.count()));
@@ -1431,8 +1469,10 @@ void FiberBgpPeerManager::activeConnect(
       return;
     }
 
-    // Apply GTSM socket options post-connect with fail-closed behavior,
-    // consistent with passive connect path.
+    /*
+     * Apply GTSM socket options post-connect with fail-closed behavior,
+     * consistent with passive connect path.
+     */
     if (activeConnectInfo->ttlSecurityHops.has_value()) {
       if (!applyGtsmSockOptions(
               *activeConnectInfo->socket,
@@ -1609,8 +1649,10 @@ Expected<Unit, FiberBgpPeerManager::ErrorCode> FiberBgpPeerManager::runBgpPeer(
   const auto monitorKey = fmt::format("{}-{}", peerAddr.str(), peerPort);
   monitorModule(monitorKey, *activeSessionInfo->peer);
 
-  // child fibers created for this peer
-  // TODO: migrate to folly::coro tasks
+  /*
+   * child fibers created for this peer
+   * TODO: migrate to folly::coro tasks
+   */
   std::vector<folly::Future<Unit>> workers;
   {
     // Observe state changes and received Bgp messages
@@ -1624,8 +1666,10 @@ Expected<Unit, FiberBgpPeerManager::ErrorCode> FiberBgpPeerManager::runBgpPeer(
     workers.emplace_back(std::move(fiber));
   }
   {
-    // Process observed state changes and received Bgp messages and put events
-    // to notifyQueue_
+    /*
+     * Process observed state changes and received Bgp messages and put events
+     * to notifyQueue_
+     */
     auto fiber = fm_.addTaskFuture(
         [me = shared_from_this(), peerInfo, activeSessionInfo]() mutable {
           me->processObservableEventLoop(peerInfo, activeSessionInfo);
@@ -1693,13 +1737,15 @@ Expected<Unit, FiberBgpPeerManager::ErrorCode> FiberBgpPeerManager::runBgpPeer(
   // Remove the entry if both activeSessionInfo and activeConnectInfo are null
   if (!peerInfo->connectionInfos[peerPort]->activeSessionInfo &&
       !peerInfo->connectionInfos[peerPort]->activeConnectInfo) {
-    // If the peer reconnects over a new TCP port, we need to pass the
-    // lastSessionInfo to the new connectionInfo so that it can retrieve
-    // information about its last BGP session which was established over this
-    // connection.
-    //
-    // previous connection was on `peerPort` and we are listening on
-    // `peerListenPort`
+    /*
+     * If the peer reconnects over a new TCP port, we need to pass the
+     * lastSessionInfo to the new connectionInfo so that it can retrieve
+     * information about its last BGP session which was established over this
+     * connection.
+     *
+     * previous connection was on `peerPort` and we are listening on
+     * `peerListenPort`
+     */
     { // start of weak_ptr lock()
       std::shared_ptr<BgpSessionInfo> lastSessionInfo =
           peerInfo->connectionInfos[peerPort]->lastSessionInfo.lock();
@@ -1707,8 +1753,10 @@ Expected<Unit, FiberBgpPeerManager::ErrorCode> FiberBgpPeerManager::runBgpPeer(
         peerInfo->connectionInfos[peerListenPort]->lastSessionInfo =
             lastSessionInfo;
       } else {
-        // If the lastSessionInfo is nullptr, it is likely that this BGP peer
-        // has never been established.
+        /*
+         * If the lastSessionInfo is nullptr, it is likely that this BGP peer
+         * has never been established.
+         */
         peerInfo->connectionInfos[peerListenPort]->lastSessionInfo =
             std::weak_ptr<BgpSessionInfo>();
       }
@@ -1756,8 +1804,10 @@ FiberBgpPeerManager::addPeerHelper(
     peerInfo = allPeers_.at(peerAddr);
   }
   const auto peerPort = peeringParams.peerPort;
-  // TODO: make hold time also configurable
-  //       support configured hold time and negotiated hold time
+  /*
+   * TODO: make hold time also configurable
+   *       support configured hold time and negotiated hold time
+   */
   const auto connectionInfo = std::make_shared<BgpConnectionInfo>();
   connectionInfo->activeConnectInfo = populateBgpPeerActiveConnectInfo(
       peerAddr,
@@ -2217,8 +2267,10 @@ BgpPeerDisplayInfo FiberBgpPeerManager::getActivePeerDisplayInfoHelper(
   peerInfo.remoteAs = connectionInfo->activeSessionInfo->peer->getRemoteAs();
   peerInfo.localAddr =
       connectionInfo->activeSessionInfo->peer->getLocalSocketAddress();
-  // for ACTIVE session, we use the startTime from activeSessionInfo because the
-  // TCP socket has been connected
+  /*
+   * for ACTIVE session, we use the startTime from activeSessionInfo because the
+   * TCP socket has been connected
+   */
   peerInfo.startTime = connectionInfo->activeSessionInfo->startTime;
   peerInfo.numOfConnectionAttempts = connectionInfo->activeConnectInfo
       ? connectionInfo->activeConnectInfo->numOfConnectionAttempts
@@ -2303,9 +2355,11 @@ folly::coro::Task<void> FiberBgpPeerManager::co_clearSocketCounters(
           }
         }
 
-        // Warn on requested peers that matched no known peer, so an operator
-        // typo is not silently masked by the RPC's success response (the CLI
-        // otherwise reports "cleared for <ip>" even when nothing was cleared).
+        /*
+         * Warn on requested peers that matched no known peer, so an operator
+         * typo is not silently masked by the RPC's success response (the CLI
+         * otherwise reports "cleared for <ip>" even when nothing was cleared).
+         */
         if (!clearAll) {
           for (const auto& requested : filter) {
             if (!allPeers_.contains(requested)) {

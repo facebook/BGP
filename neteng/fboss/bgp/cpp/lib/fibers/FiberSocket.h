@@ -38,8 +38,10 @@ enum class FiberGenericSocketErrorType : uint8_t {
   CONNECT_ALREADY = 3
 };
 
-// Wrap socket errors occur in FiberSocket, FiberServerSocket, and
-// FiberUDPSocket layer
+/*
+ * Wrap socket errors occur in FiberSocket, FiberServerSocket, and
+ * FiberUDPSocket layer
+ */
 struct FiberGenericSocketError {
   explicit FiberGenericSocketError(std::string const& msg) : msg_(msg) {
     type_ = FiberGenericSocketErrorType::UNKNOWN;
@@ -67,9 +69,9 @@ struct FiberSocketErrorVisitor {
 
 struct FiberSocketInputMessageT {};
 
-//
-// Wrapper on AsyncSocket Option map
-//
+/*
+ * Wrapper on AsyncSocket Option map
+ */
 using FiberOptionKey = folly::SocketOptionKey;
 using FiberOptionMap = folly::SocketOptionMap;
 
@@ -91,9 +93,9 @@ class FiberSocketBufferCallback : public folly::AsyncTransport::BufferCallback {
   uint64_t lastBufferedTimeMs_{0};
 };
 
-//
-// Wraps AsyncSocket and provides basic read/write/close operations
-//
+/*
+ * Wraps AsyncSocket and provides basic read/write/close operations
+ */
 class FiberSocket {
  public:
   // movable
@@ -106,10 +108,10 @@ class FiberSocket {
       std::shared_ptr<folly::AsyncSocket> socket,
       folly::EventBase* evb);
 
-  //
-  // Factory method to produce FiberSocket by connecting
-  // to the remote side
-  //
+  /*
+   * Factory method to produce FiberSocket by connecting
+   * to the remote side
+   */
   static folly::Expected<FiberSocket, FiberSocketError> makeConnectedSocket(
       const folly::SocketAddress& destAddr,
       std::chrono::milliseconds connectTimeout = std::chrono::milliseconds(0),
@@ -118,9 +120,11 @@ class FiberSocket {
       bool disableTSocks = false,
       std::shared_ptr<folly::SSLContext> ctx = nullptr);
 
-  // notice that we do not close the socket on destruction.
-  // we assume that this has to be done by the caller
-  // who wrapped AsyncSocket in FiberSocket initially
+  /*
+   * notice that we do not close the socket on destruction.
+   * we assume that this has to be done by the caller
+   * who wrapped AsyncSocket in FiberSocket initially
+   */
   ~FiberSocket();
 
   // connect socket to remote address
@@ -130,39 +134,45 @@ class FiberSocket {
       const folly::SocketAddress& bindAddr = folly::AsyncSocket::anyAddress(),
       const FiberOptionMap& options = folly::emptySocketOptionMap);
 
-  // read data and return new buffer or error. Notice that we sacrifice
-  // performance on purpose: we allocate new buffer on every read and
-  // pass it to the user. This streamlines the processing, and allows
-  // the logic to be easily "chained"
+  /*
+   * read data and return new buffer or error. Notice that we sacrifice
+   * performance on purpose: we allocate new buffer on every read and
+   * pass it to the user. This streamlines the processing, and allows
+   * the logic to be easily "chained"
+   */
   folly::Expected<std::unique_ptr<folly::IOBuf>, FiberSocketError> read(
       uint64_t maxSize,
       std::chrono::milliseconds timeout =
           std::chrono::milliseconds(0)) noexcept;
 
-  // write the supplied buffer; returns the size written on
-  // success, and actual bytes written on failure. It's up to
-  // the caller to retry write on failure
+  /*
+   * write the supplied buffer; returns the size written on
+   * success, and actual bytes written on failure. It's up to
+   * the caller to retry write on failure
+   */
   folly::Expected<size_t, FiberSocketError> write(
       std::unique_ptr<folly::IOBuf> buf) noexcept;
 
-  // FiberServerSocket may produce FiberSockets without exposing the
-  // underlying AsyncSocket. This method is a convenience handler to
-  // close such socket.
+  /*
+   * FiberServerSocket may produce FiberSockets without exposing the
+   * underlying AsyncSocket. This method is a convenience handler to
+   * close such socket.
+   */
   void close() noexcept;
 
-  //
-  // This will close local end without lingering on any unsent data
-  //
+  /*
+   * This will close local end without lingering on any unsent data
+   */
   void closeWithReset() noexcept;
 
-  //
-  // Shutdown the write side of the socket
-  //
+  /*
+   * Shutdown the write side of the socket
+   */
   void shutdownWrite() noexcept;
 
-  //
-  // Get the underlying FD
-  //
+  /*
+   * Get the underlying FD
+   */
   int getFd() const noexcept;
 
   /**
@@ -214,16 +224,18 @@ class FiberSocket {
   FiberSocket(const FiberSocket&) = delete;
   FiberSocket& operator=(const FiberSocket&) = delete;
 
-  //
-  // Class invariants
-  //
+  /*
+   * Class invariants
+   */
 
   // Async socket we are working with
   const std::shared_ptr<folly::AsyncSocket> socket_;
 
-  // address information for the socket: local + remote
-  // both should be set since we are being passed a
-  // connected socket. No disconnected bullshit.
+  /*
+   * address information for the socket: local + remote
+   * both should be set since we are being passed a
+   * connected socket. No disconnected bullshit.
+   */
   folly::SocketAddress localAddress_;
   folly::SocketAddress peerAddress_;
 

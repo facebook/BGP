@@ -139,24 +139,30 @@ void FiberBgpParser::processBgpMsgBuf(std::unique_ptr<folly::IOBuf> buf) {
     buf_ = std::move(buf);
   }
 
-  // NOTE: Majority of cases IOBuf will have only 1 element in chain
-  //       this call will bailout without leading to any allocation and
-  //       copying of buffer.
+  /*
+   * NOTE: Majority of cases IOBuf will have only 1 element in chain
+   *       this call will bailout without leading to any allocation and
+   *       copying of buffer.
+   */
   buf_->coalesce();
   XLOGF(DBG4, "Total buffer size accumulated to {}", buf_->length());
 
   folly::io::Cursor cur{buf_.get()};
-  // TODO : potential issue when we open source, if we have a message <
-  // kBgpMsgHeaderLen we won't be able to terminate correctly
+  /*
+   * TODO : potential issue when we open source, if we have a message <
+   * kBgpMsgHeaderLen we won't be able to terminate correctly
+   */
   while (cur.length() >= kBgpMsgHeaderLen) {
     XLOGF(DBG4, "Parsing loop, cursor length {}", cur.length());
     BgpMessageHeader msgHdr;
 
-    // try parsing header. if we fail, stop parsing since the stream
-    // of data is likely damaged and sessions needs to re-synchronize.
-    // Record the error here and push it *after* the catch unwinds: a fiber
-    // must never suspend (e.g. on a backpressured fiberPush) while a C++
-    // exception is in flight -- folly::fibers::Fiber::preempt CHECK-fails.
+    /*
+     * try parsing header. if we fail, stop parsing since the stream
+     * of data is likely damaged and sessions needs to re-synchronize.
+     * Record the error here and push it *after* the catch unwinds: a fiber
+     * must never suspend (e.g. on a backpressured fiberPush) while a C++
+     * exception is in flight -- folly::fibers::Fiber::preempt CHECK-fails.
+     */
     std::optional<folly::Try<BgpMessageT>> headerError;
     try {
       msgHdr = BgpMessageParser2::parseBgpMsgHdr(cur);
@@ -188,11 +194,13 @@ void FiberBgpParser::processBgpMsgBuf(std::unique_ptr<folly::IOBuf> buf) {
 
     BgpMessageParser2::parseBgpMessage(&parserCb_, *buf_, negotiatedCaps_);
 
-    // The parser's handle*Exception callbacks record any parse error rather
-    // than pushing it directly (they run inside the parser's catch block, where
-    // suspending a fiber would trip folly::fibers::Fiber::preempt). Push it
-    // here, after the catch has unwound, so the fiber never suspends
-    // mid-flight.
+    /*
+     * The parser's handle*Exception callbacks record any parse error rather
+     * than pushing it directly (they run inside the parser's catch block, where
+     * suspending a fiber would trip folly::fibers::Fiber::preempt). Push it
+     * here, after the catch has unwound, so the fiber never suspends
+     * mid-flight.
+     */
     if (auto err = parserCb_.takePendingError()) {
       wqueue_.fiberPush(std::move(*err));
     }

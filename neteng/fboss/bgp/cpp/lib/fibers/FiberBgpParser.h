@@ -32,12 +32,12 @@ namespace facebook {
 namespace nettools {
 namespace bgplib {
 
-//
-// This is a filter that consumes IOBufs and emits BGP messages
-// as they become fully available and parsable. Empty value on
-// input would stop the filter. There is no exceptions, everything
-// is propagated via folly::Try<>
-//
+/*
+ * This is a filter that consumes IOBufs and emits BGP messages
+ * as they become fully available and parsable. Empty value on
+ * input would stop the filter. There is no exceptions, everything
+ * is propagated via folly::Try<>
+ */
 class FiberBgpParser {
  public:
   using BgpMessageT = std::variant<
@@ -55,9 +55,11 @@ class FiberBgpParser {
   FiberBgpParser(FiberBgpParser&&) = default;
   FiberBgpParser& operator=(FiberBgpParser&&) = default;
 
-  // read IOBufs from rqueue until we have enough data to process
-  // then emit new message into WQueue. Pass error along the pipeline
-  // if the parser encounters any
+  /*
+   * read IOBufs from rqueue until we have enough data to process
+   * then emit new message into WQueue. Pass error along the pipeline
+   * if the parser encounters any
+   */
   FiberBgpParser(
       const BgpCapabilities& myCaps,
       MonitoredBackPressuredQueue<std::optional<folly::Try<BgpMessageT>>>&
@@ -118,10 +120,12 @@ class FiberBgpParser {
   FiberBgpParser(FiberBgpParser const&) = delete;
   FiberBgpParser& operator=(FiberBgpParser const&) = default;
 
-  // we use the buffer to accumulate read data blocks before we
-  // parse a message.
-  // we take buffers by unique_ptr since many methods in IOBuf
-  // take unique_ptr most of the time
+  /*
+   * we use the buffer to accumulate read data blocks before we
+   * parse a message.
+   * we take buffers by unique_ptr since many methods in IOBuf
+   * take unique_ptr most of the time
+   */
   std::unique_ptr<folly::IOBuf> buf_;
 
   const BgpCapabilities myCaps_; // Configured capabilities

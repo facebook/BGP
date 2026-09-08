@@ -43,12 +43,14 @@ enum class ResetReason : uint8_t {
 
 std::string getResetReasonName(ResetReason reason);
 
-// Per-peer count of BGP messages actually written to / read from the peer's
-// socket, by message type. The source of truth lives on the I/O
-// (SessionManager) thread (FiberBgpPeer::sendSocketLoop for tx, the ingress
-// loop for rx) and is snapshotted into BgpPeerDisplayInfo on that same thread;
-// anything counted before the socket is not trustworthy. Correct even for
-// in-sync update-group peers, since each peer drains its own socket queue.
+/*
+ * Per-peer count of BGP messages actually written to / read from the peer's
+ * socket, by message type. The source of truth lives on the I/O
+ * (SessionManager) thread (FiberBgpPeer::sendSocketLoop for tx, the ingress
+ * loop for rx) and is snapshotted into BgpPeerDisplayInfo on that same thread;
+ * anything counted before the socket is not trustworthy. Correct even for
+ * in-sync update-group peers, since each peer drains its own socket queue.
+ */
 struct SocketMessageCounters {
   uint64_t open{0};
   uint64_t update{0};
@@ -58,10 +60,12 @@ struct SocketMessageCounters {
   uint64_t endOfRib{0};
 };
 
-// All the information needed to be displayed
-// To hide implementation details of FiberBgpPeer we are copying the data
-// to new struct and returning rather than returning allPeers_ etc
-// This should handle both static and dynamic peers
+/*
+ * All the information needed to be displayed
+ * To hide implementation details of FiberBgpPeer we are copying the data
+ * to new struct and returning rather than returning allPeers_ etc
+ * This should handle both static and dynamic peers
+ */
 struct BgpPeerDisplayInfo {
   bgp::PeeringParams peeringParams;
   uint32_t remoteBgpId;

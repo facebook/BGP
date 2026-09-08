@@ -59,14 +59,18 @@ BgpCapabilities buildBgpCapabilities(
   capabilities.routeRefresh() = routeRefresh;
   if (restartTime) {
     capabilities.gracefulRestart() = true;
-    // Tell BGP peer to advertise bgp updates without waiting for EndOfRib
-    // marker
+    /*
+     * Tell BGP peer to advertise bgp updates without waiting for EndOfRib
+     * marker
+     */
     capabilities.isRestarting() = isRestarting;
     // Estimated time for re-establishing connection after restart
     capabilities.restartTime() = restartTime->count();
-    // Address families which support GR
-    // forwardingState is set to true to workaround NX-OS's issue of purging
-    // routes when this is false.
+    /*
+     * Address families which support GR
+     * forwardingState is set to true to workaround NX-OS's issue of purging
+     * routes when this is false.
+     */
     BgpGrCapability grCapa;
     grCapa.afi() = BgpUpdateAfi::AFI_IPv4;
     grCapa.safi() = BgpUpdateSafi::SAFI_UNICAST;
@@ -79,8 +83,10 @@ BgpCapabilities buildBgpCapabilities(
   }
   // RFC 5549
   if (v4OverV6Nexthop) {
-    // We only support two the capability values with <1,1,2> and <1,4,2>
-    // <1,1,2>
+    /*
+     * We only support two the capability values with <1,1,2> and <1,4,2>
+     * <1,1,2>
+     */
     if (*capabilities.mpExtV4Unicast()) {
       BgpExtNHEncodingCapability capa;
       capa.nlriAfi() = BgpUpdateAfi::AFI_IPv4;
@@ -332,9 +338,11 @@ bool FiberBgpPeer::processBgpParserError(const BgpParserError& e) {
 }
 
 bool FiberBgpPeer::processBgpNotificationError(const BgpNotificationError& e) {
-  // Any notification we will treat it as GR false. Going forward
-  // we may expand it so that only certain notifications like admin shutdown
-  // etc only lead to GR failure.
+  /*
+   * Any notification we will treat it as GR false. Going forward
+   * we may expand it so that only certain notifications like admin shutdown
+   * etc only lead to GR failure.
+   */
   XLOGF(
       ERR,
       "Notification from peer [{}]: Code = {} SubCode = {}. Msg: {}",
@@ -470,8 +478,10 @@ void FiberBgpPeer::run() noexcept {
   auto err = errorQueue_.getReader();
   auto errMsg = err.get();
 
-  // NOTE: folly::variant_match will evaluate the callback functions by order.
-  // Consider the frequency of the lambda functions when changing the order.
+  /*
+   * NOTE: folly::variant_match will evaluate the callback functions by order.
+   * Consider the frequency of the lambda functions when changing the order.
+   */
   auto gracefulRestart = folly::variant_match(
       *errMsg,
       [this](const BgpSessionStop& e) { return processBgpSessionStop(e); },
@@ -579,9 +589,9 @@ void FiberBgpPeer::closeSocket() noexcept {
 
 void FiberBgpPeer::sendSocketLoop() noexcept {
   sock_.setBufferCallback();
-  //
-  // Get and serialize BGP messages
-  //
+  /*
+   * Get and serialize BGP messages
+   */
   uint16_t msgCnt{0};
   while (true) {
     /**
@@ -772,8 +782,10 @@ folly::coro::Task<void> FiberBgpPeer::processIngressBgpMessageLoop() noexcept {
         ++peeringState_.rxMsgs.update;
       },
       [](const UpdateDescriptor& msg) -> folly::coro::Task<void> {
-        // UpdateDescriptor is handled on egress path, not ingress
-        // If received on ingress, it's an internal error
+        /*
+         * UpdateDescriptor is handled on egress path, not ingress
+         * If received on ingress, it's an internal error
+         */
         XLOG(
             ERR,
             "Received UpdateDescriptor on ingress path - should not happen");
@@ -965,9 +977,9 @@ void FiberBgpPeer::processOpenMsg(const BgpOpenMsg& msg) {
     case BgpSessionState::OPEN_SENT: {
       openMsgTimer_.reset();
 
-      //
-      // Process remote information
-      //
+      /*
+       * Process remote information
+       */
       /*
        * RFC 6793 carries the ASN in the AS4 capability when present;
        * otherwise the two-byte ASN comes from the OPEN header.
@@ -1022,19 +1034,21 @@ void FiberBgpPeer::processOpenMsg(const BgpOpenMsg& msg) {
 
       peeringState_.remoteBgpId = *msg.bgpID();
       peeringState_.remoteAs = remoteAs;
-      //
-      // negotiate capability mismatch
-      //
+      /*
+       * negotiate capability mismatch
+       */
       peeringState_.remoteCapabilities = *msg.capabilities();
       peeringState_.negotiatedCapabilities =
           negotiateCapabilities(caps_, *msg.capabilities());
 
       // Set peeringState with received information
       peeringState_.remoteHoldTime = std::chrono::seconds(*msg.holdTime());
-      // Note that holdTime/keepAliveTime cannot be a non-zero value less than
-      // 3s/1s at this point, respectively. remoteHoldTime verification is done
-      // in BgpMessageParser and peeringParams_.holdTime verification is done at
-      // the start of run().
+      /*
+       * Note that holdTime/keepAliveTime cannot be a non-zero value less than
+       * 3s/1s at this point, respectively. remoteHoldTime verification is done
+       * in BgpMessageParser and peeringParams_.holdTime verification is done at
+       * the start of run().
+       */
       peeringState_.holdTime =
           std::min(peeringState_.remoteHoldTime, peeringParams_.holdTime);
       peeringState_.keepAliveTime = peeringState_.holdTime / 3;

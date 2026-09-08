@@ -230,8 +230,10 @@ std::vector<BgpPrefix> parseMpNlri(
     // the value to return
     std::vector<BgpPrefix> bgpPrefixes;
 
-    // NLRI with label stack (rfc3107)
-    // Parse tuples of <length, label_stack, prefix>
+    /*
+     * NLRI with label stack (rfc3107)
+     * Parse tuples of <length, label_stack, prefix>
+     */
     while (cursor.length()) {
       folly::CIDRNetwork prefix;
       std::vector<int32_t> labels;
@@ -380,9 +382,9 @@ std::vector<BgpAttrAsPathSegment> parseAsPathAttr(
   return asPath;
 }
 
-//
-// UpdateMsgParsingState methods
-//
+/*
+ * UpdateMsgParsingState methods
+ */
 
 void UpdateMsgParsingState::parseV4Withdrawn(
     Cursor& updateMsgCursor,
@@ -448,14 +450,16 @@ void UpdateMsgParsingState::checkPathAttributeFlag(
     BgpAttrCode attrType,
     std::string attrBeingParsed) {
   const auto& kv = kBgpAttr_Codes_TO_FLAGS.find(attrType);
-  // Ignore the fourth high-order bit and the 3-rd high-order bit.
-  // An attribute can have either extended length or not.
-  // If an attribute can be extended, then the fourth high-order bit
-  // can be either 0 or 1. Otherwise, it can only be 0.
-  // For the 3-rd high-order bit, optional transitive attributes can set it
-  // to be 0 or 1. For other attributes, it can only be 0.
-  // Furthermore, the lower-order four bits of the Attribute Flags octet are
-  // unused.  They MUST be zero when sent and MUST be ignored when received.
+  /*
+   * Ignore the fourth high-order bit and the 3-rd high-order bit.
+   * An attribute can have either extended length or not.
+   * If an attribute can be extended, then the fourth high-order bit
+   * can be either 0 or 1. Otherwise, it can only be 0.
+   * For the 3-rd high-order bit, optional transitive attributes can set it
+   * to be 0 or 1. For other attributes, it can only be 0.
+   * Furthermore, the lower-order four bits of the Attribute Flags octet are
+   * unused.  They MUST be zero when sent and MUST be ignored when received.
+   */
   attrFlags = attrFlags & 0xc0;
   if (kv != kBgpAttr_Codes_TO_FLAGS.cend() && kv->second != attrFlags) {
     // Attribute flag is wrong
@@ -554,13 +558,17 @@ void UpdateMsgParsingState::parsePathAttributes(
       // handle situation where we have an invalid attribute length (very large)
       rawAttrLen = attrBodyLen < paCursor.length()
           ? rawAttrLen
-          // rawAttrStart will be pointing to attrType
-          // +1 attrType, is added later
-          // + lengthSize, add back what we read
+          /*
+           * rawAttrStart will be pointing to attrType
+           * +1 attrType, is added later
+           * + lengthSize, add back what we read
+           */
           : (paCursor.length() + lengthSize + 1);
 
-      // need to turn attrFlags to hex string in case we need to send a
-      // notification
+      /*
+       * need to turn attrFlags to hex string in case we need to send a
+       * notification
+       */
       std::stringstream attrFlagsInHex;
       attrFlagsInHex << std::hex << attrFlags;
       // This field contains attr flag, type code,length and value
@@ -745,8 +753,10 @@ void UpdateMsgParsingState::parsePathAttributes(
               // check for extended nexthop encoding capability
               const bool extNhEncoding =
                   capa.extNHEncodingCapabilities()->size() > 0;
-              // If extended nexthop encoding not enabled, Size of nexthop must
-              // be 4
+              /*
+               * If extended nexthop encoding not enabled, Size of nexthop must
+               * be 4
+               */
               if (!extNhEncoding && nextHopLen != 4) {
                 throw BgpUpdateMsgException(
                     BgpNotifUpdateMsgErrSubCode::BN_UM_OPTIONAL_ATTR_ERROR,
@@ -805,9 +815,11 @@ void UpdateMsgParsingState::parsePathAttributes(
             case BgpUpdateAfi::AFI_IPv6: {
               // Read length of nexthop
               auto nextHopLen = attrBodyCursor.read<uint8_t>();
-              // Read nexthop (Size of nexthop can be 16 or 32). We just need
-              // to read first 16 bytes as it always contains globally routable
-              // nexthop
+              /*
+               * Read nexthop (Size of nexthop can be 16 or 32). We just need
+               * to read first 16 bytes as it always contains globally routable
+               * nexthop
+               */
               if (nextHopLen != 16 && nextHopLen != 32) {
                 throw BgpUpdateMsgException(
                     BgpNotifUpdateMsgErrSubCode::BN_UM_OPTIONAL_ATTR_ERROR,
@@ -939,9 +951,11 @@ void UpdateMsgParsingState::parsePathAttributes(
         break;
         case BgpAttrCode::BGP_ATTR_EXTENDED_COMMUNITIES: {
           while (attrBodyCursor.length()) {
-            // Read 8 bytes into two word segments. The structure of Extended
-            // communities is complicated and we only want to have blacklisting
-            // matching functionality on EXT_COMMUNITIES attribute.
+            /*
+             * Read 8 bytes into two word segments. The structure of Extended
+             * communities is complicated and we only want to have blacklisting
+             * matching functionality on EXT_COMMUNITIES attribute.
+             */
             BgpAttrExtCommunity extCom;
 
             extCom.firstWord() = attrBodyCursor.readBE<uint32_t>();
@@ -1193,8 +1207,10 @@ void parseBgpCapabilities(Cursor cursor, BgpCapabilities& capa) {
             afi = subCursor.readBE<uint16_t>();
             safi = subCursor.read<uint8_t>();
             sor = subCursor.read<uint8_t>();
-            // if we receive anything not falls in enum range, set it to
-            // UNKOWN(0)
+            /*
+             * if we receive anything not falls in enum range, set it to
+             * UNKOWN(0)
+             */
             if (apache::thrift::util::enumName(
                     static_cast<BgpAddPathSendRec>(sor)) == nullptr) {
               XLOGF(
@@ -1225,9 +1241,11 @@ void parseBgpCapabilities(Cursor cursor, BgpCapabilities& capa) {
         // RFC 5549 Sec. 4
         case (uint8_t)BgpCapability::CAPA_EXT_NH_ENCODING: {
           if (cLen % 6) {
-            // Capability value field will be a list of 6 octets <afi, safi,
-            // nhAfi> Note here the safi is of 2 octets that is different from
-            // other cases
+            /*
+             * Capability value field will be a list of 6 octets <afi, safi,
+             * nhAfi> Note here the safi is of 2 octets that is different from
+             * other cases
+             */
             throw BgpOpenMsgException(
                 BgpNotifOpenMsgErrSubCode::BN_OM_UNSPECIFIC,
                 std::string(),

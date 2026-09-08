@@ -38,13 +38,13 @@ template <typename T>
 class Queue;
 }
 
-//
-// Read-only view of the queue. Multiple of these can exist,
-// they effectively ref-count the underlying Queue. This is
-// suppoed to be produced by calling getReader() on RWQueue.
-// Copying this object simply copies underlying pointer, but
-// keep the underlying queue the same.
-//
+/*
+ * Read-only view of the queue. Multiple of these can exist,
+ * they effectively ref-count the underlying Queue. This is
+ * suppoed to be produced by calling getReader() on RWQueue.
+ * Copying this object simply copies underlying pointer, but
+ * keep the underlying queue the same.
+ */
 template <typename T>
 class RQueue {
  public:
@@ -60,9 +60,9 @@ class RQueue {
       : queue_{std::move(queue)} {}
   ~RQueue() = default;
 
-  //
-  // See documentation in detail::Queue
-  //
+  /*
+   * See documentation in detail::Queue
+   */
 
   std::optional<T> get() noexcept {
     CHECK(queue_);
@@ -96,10 +96,10 @@ class RQueue {
     return RQueue(queue_);
   }
 
-  //
-  // TODO: those need to be private, need to figure out proper friending here
-  // transformQueue needs those to put back values in RQueue (unread)
-  //
+  /*
+   * TODO: those need to be private, need to figure out proper friending here
+   * transformQueue needs those to put back values in RQueue (unread)
+   */
   bool putNullFront() noexcept {
     CHECK(queue_);
     return queue_->putNullFront();
@@ -111,8 +111,10 @@ class RQueue {
   }
 
  private:
-  // non-copyable. use is expected to call getReader()
-  // on RWQueue to obtain additional readers.
+  /*
+   * non-copyable. use is expected to call getReader()
+   * on RWQueue to obtain additional readers.
+   */
   RQueue(RQueue const&) = delete;
   RQueue& operator=(RQueue const&) = delete;
 
@@ -120,12 +122,12 @@ class RQueue {
   const std::shared_ptr<detail::Queue<T>> queue_;
 };
 
-//
-// Write-only view to the queue. Similar to RQueue<T>, supposed
-// to be produced by calling getWriter() on RWQueue. Notice that
-// copying this objcect create another view of the same underlying
-// queue, not new queue.
-//
+/*
+ * Write-only view to the queue. Similar to RQueue<T>, supposed
+ * to be produced by calling getWriter() on RWQueue. Notice that
+ * copying this objcect create another view of the same underlying
+ * queue, not new queue.
+ */
 template <typename T>
 class WQueue {
  public:
@@ -139,9 +141,9 @@ class WQueue {
       : queue_{std::move(queue)} {}
   ~WQueue() = default;
 
-  //
-  // See documentation in detail::Queue
-  //
+  /*
+   * See documentation in detail::Queue
+   */
 
   bool put(T&& value) noexcept {
     CHECK(queue_);
@@ -189,8 +191,10 @@ class WQueue {
   }
 
  private:
-  // non-copyable. use getWriter() on RWQueue to obtain
-  // a new writer for the queue.
+  /*
+   * non-copyable. use getWriter() on RWQueue to obtain
+   * a new writer for the queue.
+   */
   WQueue(WQueue const&) = delete;
   WQueue& operator=(WQueue const&) = delete;
 
@@ -198,13 +202,13 @@ class WQueue {
   const std::shared_ptr<detail::Queue<T>> queue_;
 };
 
-//
-// RW view of the queue. Relies on Queue hidden underneath
-// a shared_ptr. This allows the same Queue to be shared
-// by multiple front-end wrapper objects. As long as at least
-// one of them is alive the queue is live and ready to take/emit
-// data out.
-//
+/*
+ * RW view of the queue. Relies on Queue hidden underneath
+ * a shared_ptr. This allows the same Queue to be shared
+ * by multiple front-end wrapper objects. As long as at least
+ * one of them is alive the queue is live and ready to take/emit
+ * data out.
+ */
 template <typename T>
 class RWQueue {
  public:
@@ -222,9 +226,9 @@ class RWQueue {
       : queue_{std::move(queue)} {}
   ~RWQueue() = default;
 
-  //
-  // See documentation in detail::Queue
-  //
+  /*
+   * See documentation in detail::Queue
+   */
 
   std::optional<T> get() noexcept {
     CHECK(queue_);
@@ -288,8 +292,10 @@ class RWQueue {
     queue_->close();
   }
 
-  // get reader for this queue, may be called multiple times
-  // wraps this into shared_ptr
+  /*
+   * get reader for this queue, may be called multiple times
+   * wraps this into shared_ptr
+   */
   RQueue<T> getReader() noexcept {
     return RQueue<T>(queue_);
   }
@@ -314,11 +320,11 @@ class RWQueue {
 };
 
 namespace detail {
-//
-// Simple bounded queue, supports multiple producers/consumers
-// All operations must happen within single thread, there is no
-// thread safety logic
-//
+/*
+ * Simple bounded queue, supports multiple producers/consumers
+ * All operations must happen within single thread, there is no
+ * thread safety logic
+ */
 template <typename T>
 class Queue {
  public:
@@ -375,38 +381,38 @@ class Queue {
     }
   }
 
-  //
-  // put new value on the queue, block if we exceed queue message capacity
-  //
+  /*
+   * put new value on the queue, block if we exceed queue message capacity
+   */
   bool put(T&& value) noexcept(std::is_nothrow_move_constructible<T>::value) {
     return putImpl([this, &value]() {
       queue_.emplace_back(std::optional<T>(std::forward<T>(value)));
     });
   }
 
-  //
-  // Put a null value in the the queue. This could be used by the
-  // consumers as a signal to terminate.
-  //
+  /*
+   * Put a null value in the the queue. This could be used by the
+   * consumers as a signal to terminate.
+   */
   bool putNull() noexcept {
     return putImpl([this]() { queue_.emplace_back(std::optional<T>()); });
   }
 
-  //
-  // This is a signal to stop the queue immediately. The consumer
-  // that will wake up will swallow the poisonous pill immediately
-  // Notice that we skip the waiting limit, this operation basically
-  // violates all ordering.
-  //
+  /*
+   * This is a signal to stop the queue immediately. The consumer
+   * that will wake up will swallow the poisonous pill immediately
+   * Notice that we skip the waiting limit, this operation basically
+   * violates all ordering.
+   */
   bool putNullFront() noexcept {
     return putImpl(
         [this]() { queue_.emplace_front(std::optional<T>()); },
         false /* waitForPut */);
   }
 
-  //
-  // Put a value at the head of the queue, bypassing capacity constraints
-  //
+  /*
+   * Put a value at the head of the queue, bypassing capacity constraints
+   */
   bool putFront(T&& value) noexcept(
       std::is_nothrow_move_constructible<T>::value) {
     return putImpl(
@@ -416,11 +422,11 @@ class Queue {
         false /* waitForPut */);
   }
 
-  //
-  // Get next value from the queue, wait if not available
-  // The consumers are served in FIFO order, later joiners
-  // join the line
-  //
+  /*
+   * Get next value from the queue, wait if not available
+   * The consumers are served in FIFO order, later joiners
+   * join the line
+   */
   std::optional<T> get() noexcept(
       std::is_nothrow_move_constructible<T>::value) {
     if (closed_) {
@@ -476,8 +482,10 @@ class Queue {
   Queue(Queue const&) = delete;
   Queue& operator=(Queue const&) = delete;
 
-  // capacity limit: we would start queueing publishers
-  // when we hit this
+  /*
+   * capacity limit: we would start queueing publishers
+   * when we hit this
+   */
   const uint64_t capacity_{0};
 
   void wakeNext() {
@@ -487,8 +495,10 @@ class Queue {
     }
   }
 
-  // lock_ might be unlocked for wait, and then later acquired
-  // so always check closed_ after waitForPut
+  /*
+   * lock_ might be unlocked for wait, and then later acquired
+   * so always check closed_ after waitForPut
+   */
   void waitForPut(std::unique_lock<folly::fibers::TimedMutex>& g) {
     // no limit for capacity
     if (!capacity_) {
@@ -527,9 +537,11 @@ class Queue {
       publishers_.front()->post();
     }
 
-    // wake up the next consumer - this is important
-    // because otherwise there may be no one else
-    // to wake them up
+    /*
+     * wake up the next consumer - this is important
+     * because otherwise there may be no one else
+     * to wake them up
+     */
     if (!queue_.empty() && !consumers_.empty()) {
       consumers_.front()->post();
     }
@@ -572,9 +584,11 @@ class Queue {
     return true;
   }
 
-  // this can only be set once, via close() call. After this, all get()
-  // operations on queue will return Null, and all put() will never block
-  // and retun false
+  /*
+   * this can only be set once, via close() call. After this, all get()
+   * operations on queue will return Null, and all put() will never block
+   * and retun false
+   */
   std::atomic<bool> closed_{false};
 
   folly::fibers::TimedMutex lock_;
@@ -594,12 +608,12 @@ class Queue {
 
 } // namespace detail
 
-//
-// The logic is useful for merging single producer/single consumer queues.
-// It assumes the producers would put NULL in the queue when they finish.
-// This could apply to multiple producer/consumer queues, but normally
-// the merger assumes its the only one consuming the multiple inputs
-//
+/*
+ * The logic is useful for merging single producer/single consumer queues.
+ * It assumes the producers would put NULL in the queue when they finish.
+ * This could apply to multiple producer/consumer queues, but normally
+ * the merger assumes its the only one consuming the multiple inputs
+ */
 template <typename Iterator, typename T, template <typename> class Queue>
 void mergeQueues(Iterator first, Iterator last, Queue<T>& queue) {
   static_assert(
@@ -623,22 +637,24 @@ void mergeQueues(Iterator first, Iterator last, Queue<T>& queue) {
     });
   }
 
-  // wait for all queues to drain, then put null in the queue we returned
-  // to the caller
+  /*
+   * wait for all queues to drain, then put null in the queue we returned
+   * to the caller
+   */
   folly::fibers::collectAll(workers.begin(), workers.end());
   queue.putNull();
 }
 
-//
-// Helpers to implement static queue merge
-//
+/*
+ * Helpers to implement static queue merge
+ */
 namespace detail {
 
-//
-// Generate code applying function F to all elements of tuple.
-// Blatantly stolen from:
-// http://codereview.stackexchange.com/questions/51407/
-//
+/*
+ * Generate code applying function F to all elements of tuple.
+ * Blatantly stolen from:
+ * http://codereview.stackexchange.com/questions/51407/
+ */
 template <typename Tuple, typename F, std::size_t... Indices>
 void for_each_impl(Tuple&& tuple, F&& f, std::index_sequence<Indices...>) {
   using swallow = int[];
@@ -661,12 +677,12 @@ void for_each(Tuple&& tuple, F&& f) {
 
 } // namespace detail
 
-//
-// Merge N queues, generate merging code at compile time
-// (actual merging happens at runtime). Nice benefit -
-// you can merge queues of element types T1, T2, T3...
-// into queue with type std::variant<T1, T2, T3>
-//
+/*
+ * Merge N queues, generate merging code at compile time
+ * (actual merging happens at runtime). Nice benefit -
+ * you can merge queues of element types T1, T2, T3...
+ * into queue with type std::variant<T1, T2, T3>
+ */
 template <
     typename... InputQueues,
     typename Combined = std::variant<typename InputQueues::ElementT...>,
@@ -692,10 +708,10 @@ void mergeQueuesStatic(Queue<Combined>& output, InputQueues... inputs) {
   output.putNull();
 }
 
-//
-// Timer is set with a given duration. It would be re-set,
-// or stopped. After stopping it needs to explicitly re-start,
-//
+/*
+ * Timer is set with a given duration. It would be re-set,
+ * or stopped. After stopping it needs to explicitly re-start,
+ */
 template <typename T>
 class Timer {
  public:
@@ -715,10 +731,10 @@ class Timer {
     return queue_.getReader();
   }
 
-  //
-  // Run the wait loop, wake up on timeout or
-  // when time has been explicitly stopped
-  //
+  /*
+   * Run the wait loop, wake up on timeout or
+   * when time has been explicitly stopped
+   */
   void run() {
     // Don't allow concurrent run() invocation.
     if (isRunnable_ > 0) {
@@ -745,13 +761,15 @@ class Timer {
     isRunnable_ = 0;
   }
 
-  //
-  // Stop the run loop - notify the waiter
-  //
+  /*
+   * Stop the run loop - notify the waiter
+   */
   void stop() {
-    // notify consumer regardless
-    // this is here to prevent run function is never called but
-    // we have a consumer loop running
+    /*
+     * notify consumer regardless
+     * this is here to prevent run function is never called but
+     * we have a consumer loop running
+     */
     queue_.putNull();
     if (timer_) {
       timer_->cancelTimeout();
@@ -762,16 +780,16 @@ class Timer {
     baton_.post();
   }
 
-  //
-  // Abort and re-start current waiting
-  //
+  /*
+   * Abort and re-start current waiting
+   */
   void reset() {
     reset(period_);
   }
 
-  //
-  // Abort and re-start with new time period
-  //
+  /*
+   * Abort and re-start with new time period
+   */
   void reset(std::chrono::steady_clock::duration period) {
     if (timer_) {
       timer_->cancelTimeout();

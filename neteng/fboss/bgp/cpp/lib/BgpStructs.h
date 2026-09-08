@@ -32,8 +32,10 @@ namespace constants {
 constexpr uint16_t kBgpPort = 179;
 } // namespace constants
 
-// Length of BgpMessage header
-// 19 = Marker: 16 + Length: 2 + Type: 1
+/*
+ * Length of BgpMessage header
+ * 19 = Marker: 16 + Length: 2 + Type: 1
+ */
 const size_t kBgpMsgHeaderLen = 19;
 
 // Maximum allowed length of BGP Message
@@ -42,13 +44,17 @@ const size_t kMaxBgpMsgLen = 4096;
 // Maximum allowed number of messages before task yiedling
 const size_t kMsgBatchSizeToYield{10};
 
-// Minimum length of BGP UPDATE Message
-// Inlcudes 16B (marker), 2B (length), 1B (type),
-// 2B (withdrawn routes length), 2B (total path attribute length).
+/*
+ * Minimum length of BGP UPDATE Message
+ * Inlcudes 16B (marker), 2B (length), 1B (type),
+ * 2B (withdrawn routes length), 2B (total path attribute length).
+ */
 const size_t kMinBgpUpdateMsgLen = 23;
 
-// Maximum length of withdrawn routes + path attrs + nlri info in BGP Update
-// message
+/*
+ * Maximum length of withdrawn routes + path attrs + nlri info in BGP Update
+ * message
+ */
 const size_t kMaxBgpUpdateVarLen = kMaxBgpMsgLen - kMinBgpUpdateMsgLen;
 
 // 17 = v6 prefix len: 1 + prefix: 16
@@ -198,16 +204,20 @@ const std::map<BgpAttrOrigin, std::string> kBgpAttrOrigin_VALUES_TO_NAMES = {
     {BgpAttrOrigin::BGP_ORIGIN_INCOMPLETE, "INCOMPLETE"},
 };
 
-// Ideally we would have liked all thrift structures like BgpAttributes
-// named BgpAttributesT, so that C++ structs could be without any suffix.
-// Thrift structures are used in lot of places, so naming cpp structs with
-// C suffix
+/*
+ * Ideally we would have liked all thrift structures like BgpAttributes
+ * named BgpAttributesT, so that C++ structs could be without any suffix.
+ * Thrift structures are used in lot of places, so naming cpp structs with
+ * C suffix
+ */
 struct BgpAttrAsPathSegmentC {
-  // As per RFC 6996, for 2-byte ASNs, the private ASN range is 64512 to
-  // 65534 inclusive.  We don't have to worry about 65535 because we will
-  // never get that in our AS path (it is reserved for well-known
-  // communities, see RFC 7300 for more info).  For two-byte ASNs, we treat
-  // any number below 64512 as a public ASN.
+  /*
+   * As per RFC 6996, for 2-byte ASNs, the private ASN range is 64512 to
+   * 65534 inclusive.  We don't have to worry about 65535 because we will
+   * never get that in our AS path (it is reserved for well-known
+   * communities, see RFC 7300 for more info).  For two-byte ASNs, we treat
+   * any number below 64512 as a public ASN.
+   */
   static const uint32_t BGP_PRIVATE_AS_START = 64512;
 
   // Only one of them will have elements in one path segment
@@ -335,10 +345,12 @@ struct BgpAttrCommunityC {
     return fmt::format("{:d}:{:d}", asn, value);
   }
 
-  // Create a BgpAttrCommunity from passed in commStr param.
-  // Valid arguments are either a well-known community name or
-  // a 32bit integer string or a ASN:NN formatted string where both
-  // ASN and NN are 16bit integers
+  /*
+   * Create a BgpAttrCommunity from passed in commStr param.
+   * Valid arguments are either a well-known community name or
+   * a 32bit integer string or a ASN:NN formatted string where both
+   * ASN and NN are 16bit integers
+   */
   static std::optional<BgpAttrCommunityC> createBgpAttrCommunity(
       const std::string& comm);
 
@@ -564,8 +576,10 @@ struct BgpAttrExtCommunityC {
     LINK_BW_COMMUNITY_SUBTYPE = 0x4,
   };
 
-  // Ctor:: construct the right type of extended-community from the
-  // raw values passed in.
+  /*
+   * Ctor:: construct the right type of extended-community from the
+   * raw values passed in.
+   */
   explicit BgpAttrExtCommunityC(uint32_t rawValHigh, uint32_t rawValLow);
   explicit BgpAttrExtCommunityC(
       const BgpExtCommunityLinkBandWidthTypeC& lbwComm)
@@ -635,8 +649,10 @@ struct BgpAttributesC {
   uint16_t weight{0};
 
   inline bool operator==(const BgpAttributesC& other) const {
-    // Ordered to compare easy elements and bailout quick
-    // Is there any easier way to compare? Should we store/compare hash.
+    /*
+     * Ordered to compare easy elements and bailout quick
+     * Is there any easier way to compare? Should we store/compare hash.
+     */
     return (this->origin == other.origin) && (this->med == other.med) &&
         (this->isMedSet == other.isMedSet) &&
         (this->localPref == other.localPref) &&
@@ -672,8 +688,10 @@ struct BgpPathC {
   std::optional<std::unordered_map<std::string, int64_t>> topologyInfo;
 
   inline bool operator==(const BgpPathC& other) const {
-    // Ordered to compare easy elements and bailout quick
-    // Is there any easier way to compare? Should we store/compare hash.
+    /*
+     * Ordered to compare easy elements and bailout quick
+     * Is there any easier way to compare? Should we store/compare hash.
+     */
     return (this->attrs == other.attrs) && (this->nexthop == other.nexthop) &&
         (this->topologyInfo == other.topologyInfo);
   }

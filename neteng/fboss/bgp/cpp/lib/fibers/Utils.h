@@ -42,56 +42,56 @@ constexpr long kDefaultJitterCapMs = 1000;
 
 int64_t getCurrentTimeMs();
 
-//
-// Must be invoked inside fiber; returns the event
-// base currently used by the fiber manager
-//
+/*
+ * Must be invoked inside fiber; returns the event
+ * base currently used by the fiber manager
+ */
 folly::EventBase* getFiberEventBase();
 
-//
-// Suspend calling fiber for given duration using AsyncTimeout
-//
+/*
+ * Suspend calling fiber for given duration using AsyncTimeout
+ */
 void fiberSleepFor(std::chrono::milliseconds duration);
 
-//
-// Get FiberManager options with custom setting
-//
+/*
+ * Get FiberManager options with custom setting
+ */
 folly::fibers::FiberManager::Options getFiberManagerOptions(
     const uint32_t stackSizeKB = 32);
 
-//
-// Use for converting IPv4 mapped IPv6 address to IPv4 for display
-//
+/*
+ * Use for converting IPv4 mapped IPv6 address to IPv4 for display
+ */
 std::string getAddressStr(folly::SocketAddress addr);
 
-//
-// Generate a jitter value in range (-jitterMax, +jitterMax]
-// where jitterMax = min(capMs, timeMs * jitterPercent / 100)
-// Uses folly::Random for proper entropy-based seeding.
-//
+/*
+ * Generate a jitter value in range (-jitterMax, +jitterMax]
+ * where jitterMax = min(capMs, timeMs * jitterPercent / 100)
+ * Uses folly::Random for proper entropy-based seeding.
+ */
 long generateJitter(
     long timeMs,
     long jitterPercent = kDefaultJitterPercent,
     long capMs = kDefaultJitterCapMs);
 
-//
-// True if the address is IPv6 (not IPv4 and not IPv4-mapped IPv6).
-//
+/*
+ * True if the address is IPv6 (not IPv4 and not IPv4-mapped IPv6).
+ */
 inline bool isV6Peer(const folly::IPAddress& addr) {
   return !(addr.isV4() || addr.isIPv4Mapped());
 }
 
-//
-// Build base socket option map for BGP sessions.
-// Sets TOS/TCLASS to CS6, optionally disables jumbo frames.
-//
+/*
+ * Build base socket option map for BGP sessions.
+ * Sets TOS/TCLASS to CS6, optionally disables jumbo frames.
+ */
 folly::SocketOptionMap getSockOptions(bool isV6, bool disableJumboFrame);
 
-//
-// Build GTSM (RFC 5082) socket option map.
-// Sets outbound TTL to 255 and minimum acceptable inbound TTL.
-// Returns empty map if ttlSecurityHops is nullopt.
-//
+/*
+ * Build GTSM (RFC 5082) socket option map.
+ * Sets outbound TTL to 255 and minimum acceptable inbound TTL.
+ * Returns empty map if ttlSecurityHops is nullopt.
+ */
 folly::SocketOptionMap getGtsmSockOptions(
     bool isV6,
     std::optional<int32_t> ttlSecurityHops);

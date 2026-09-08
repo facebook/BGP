@@ -24,19 +24,23 @@
 
 namespace facebook::nettools::bgplib {
 
-// The DeDuplicator class tracks a set of shared_ptr objects. When get() is
-// called with a new shared_ptr, if an equivalent object, as per the ==()
-// operator of the underlying object, is already being tracked, then a
-// shared_ptr for the tracked object is returned. Otherwise the new object is
-// added to the tracker.
-//
-// This class is thread-safe. The caller needs to ensure thread-safe handling of
-// the returned shared_ptrs.
+/*
+ * The DeDuplicator class tracks a set of shared_ptr objects. When get() is
+ * called with a new shared_ptr, if an equivalent object, as per the ==()
+ * operator of the underlying object, is already being tracked, then a
+ * shared_ptr for the tracked object is returned. Otherwise the new object is
+ * added to the tracker.
+ *
+ * This class is thread-safe. The caller needs to ensure thread-safe handling of
+ * the returned shared_ptrs.
+ */
 template <typename T>
 class DeDuplicator {
  public:
-  // Returns a shared_ptr for an equivalent tracked object. If the input object
-  // is not tracked, it is added to the set of tracked objects.
+  /*
+   * Returns a shared_ptr for an equivalent tracked object. If the input object
+   * is not tracked, it is added to the set of tracked objects.
+   */
   std::shared_ptr<const T> get(std::shared_ptr<T> object) {
     if (!object) {
       // Special logic for nullptr -> skip the cache, just return
@@ -61,24 +65,30 @@ class DeDuplicator {
   void clear() {
     tracked_.withWLock([&](folly::F14FastSet<Wrapper, Hash, Compare>& tracked) {
       folly::F14FastSet<Wrapper, Hash, Compare> empty;
-      // we use swap instead of clear to make sure that we shrink
-      // the capacity accordingly. This is important for unit tests
-      // especially the stress tests to avoid test cases affecting
-      // the memory footprint of the next test cases.
+      /*
+       * we use swap instead of clear to make sure that we shrink
+       * the capacity accordingly. This is important for unit tests
+       * especially the stress tests to avoid test cases affecting
+       * the memory footprint of the next test cases.
+       */
       tracked.swap(empty);
     });
   }
 
-  // Clean up the cache by removing objects that are not referenced by any
-  // clients.
-  // Currently clean is a tight loop. We would need to reduce the entries
-  // processed each time when we scale
+  /*
+   * Clean up the cache by removing objects that are not referenced by any
+   * clients.
+   * Currently clean is a tight loop. We would need to reduce the entries
+   * processed each time when we scale
+   */
   void clean() {
     tracked_.withWLock([&](folly::F14FastSet<Wrapper, Hash, Compare>& tracked) {
       for (auto it = tracked.begin(); it != tracked.end();) {
-        // Doing this is safe only because
-        //  1. No entity holds a reference to the *it.
-        //  2. No entity creates a weak_ptr from *it.
+        /*
+         * Doing this is safe only because
+         *  1. No entity holds a reference to the *it.
+         *  2. No entity creates a weak_ptr from *it.
+         */
         if (it->object.use_count() == 1) {
           it = tracked.erase(it);
         } else {
@@ -123,11 +133,13 @@ template <typename T>
 concept sortableContainer =
     requires(T item) { std::sort(item.begin(), item.end()); };
 
-// The DeDuplicatedAttribute class holds a deduplicated ptr to the object
-// and a singleton pointer deDuplicator_ to the deduplicator
-// To use the class, we need to initialize the static variable in a cpp file.
-// the communitive variable could be provided to indicate that the attribute is
-// a container with commutative items
+/*
+ * The DeDuplicatedAttribute class holds a deduplicated ptr to the object
+ * and a singleton pointer deDuplicator_ to the deduplicator
+ * To use the class, we need to initialize the static variable in a cpp file.
+ * the communitive variable could be provided to indicate that the attribute is
+ * a container with commutative items
+ */
 template <typename T, bool commutative = false>
 class DeDuplicatedAttribute {
  public:
@@ -194,9 +206,11 @@ class DeDuplicatedAttribute {
     return bool(ptr_);
   }
 
-  // get the attribute if ptr_ is not nullptr
-  // otherwise, get an empty copy
-  // the empty copy should be default constructible
+  /*
+   * get the attribute if ptr_ is not nullptr
+   * otherwise, get an empty copy
+   * the empty copy should be default constructible
+   */
   const T& get() const
     requires std::constructible_from<T>
   {

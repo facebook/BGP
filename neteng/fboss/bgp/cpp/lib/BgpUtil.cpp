@@ -121,8 +121,10 @@ BgpUpdate2 toBgpUpdate2(const BgpUpdate& update, bool toSerialize) {
       *update2.mpAnnounced() = nlri;
     }
   } else {
-    // v4
-    // TODO: retire v4Withdrawn and v4Announced once client gets migrated.
+    /*
+     * v4
+     * TODO: retire v4Withdrawn and v4Announced once client gets migrated.
+     */
     if (*update.type() == BgpUpdateType::BU_WITHDRAW) {
       update2.v4Withdrawn()->push_back(pfix);
       if (!toSerialize) {
@@ -142,10 +144,11 @@ BgpUpdate2 toBgpUpdate2(const BgpUpdate& update, bool toSerialize) {
 
 std::vector<BgpUpdate> toBgpUpdate(const BgpUpdate2& update2) {
   std::vector<BgpUpdate> updates{};
-  // Since prefix can be populated in V4Announced2 or V4Withdraw2
-  // along with V4Announced or V4Withdraw. We need to check both for backward
-  // compatibility. Ex: https://fburl.com/code/u83fwceg
-  //
+  /*
+   * Since prefix can be populated in V4Announced2 or V4Withdraw2
+   * along with V4Announced or V4Withdraw. We need to check both for backward
+   * compatibility. Ex: https://fburl.com/code/u83fwceg
+   */
   bool useV4Withdraw2 = true;
   bool useV4Announced2 = true;
   for (const auto& prefix : *update2.v4Withdrawn()) {
@@ -270,13 +273,15 @@ std::vector<BgpUpdate> toBgpUpdate(
   }
 }
 
-// Create a shared pointer using update.attrs
-// Converts from thrift struture to CPP structure for optimal storage and
-// performance
-// NOTE: As BgpUpdate2 can have both V4/V6 nexthop, currently we are returning
-//       only V4 nexthop filled. We need to see if we want to return a vector
-//       or pair if both V4 and V6 nexthops are present or let user request
-//       which nexthop must be filled.
+/*
+ * Create a shared pointer using update.attrs
+ * Converts from thrift struture to CPP structure for optimal storage and
+ * performance
+ * NOTE: As BgpUpdate2 can have both V4/V6 nexthop, currently we are returning
+ *       only V4 nexthop filled. We need to see if we want to return a vector
+ *       or pair if both V4 and V6 nexthops are present or let user request
+ *       which nexthop must be filled.
+ */
 std::shared_ptr<BgpAttributesC> BgpUpdate2toBgpAttributesC(
     const BgpUpdate2& update) {
   return bgpAttributesToBgpAttributesC(*update.attrs());
@@ -335,9 +340,11 @@ std::shared_ptr<BgpAttributesC> bgpAttributesToBgpAttributesC(
   }
   attrsC->communities = std::move(communitiesC);
 
-  // bgplib::BgpAttributes stores originatorId and clusterList in network byte
-  // order, but bgplib::BgpAttributesC stores them in host byte order like other
-  // fields.
+  /*
+   * bgplib::BgpAttributes stores originatorId and clusterList in network byte
+   * order, but bgplib::BgpAttributesC stores them in host byte order like other
+   * fields.
+   */
   attrsC->originatorId = ntohl(*attrs.originatorId());
 
   BgpAttrClusterListC clusterListC;
@@ -409,9 +416,11 @@ std::shared_ptr<BgpPathC> bgpAttributesToBgpPathC(const BgpAttributes& attrs) {
   }
   attrsC.communities = std::move(communitiesC);
 
-  // bgplib::BgpAttributes stores originatorId and clusterList in network byte
-  // order, but bgplib::BgpAttributesC stores them in host byte order like other
-  // fields.
+  /*
+   * bgplib::BgpAttributes stores originatorId and clusterList in network byte
+   * order, but bgplib::BgpAttributesC stores them in host byte order like other
+   * fields.
+   */
   attrsC.originatorId = ntohl(*attrs.originatorId());
 
   BgpAttrClusterListC clusterListC;
@@ -433,8 +442,10 @@ std::shared_ptr<BgpPathC> bgpAttributesToBgpPathC(const BgpAttributes& attrs) {
   return pathC;
 }
 
-// Populate BgpUpdate2.attrs from BgpAttributesC
-// Note: User has to fill all other fields in BgpUpdate2
+/*
+ * Populate BgpUpdate2.attrs from BgpAttributesC
+ * Note: User has to fill all other fields in BgpUpdate2
+ */
 BgpUpdate2 BgpAttributesCtoBgpUpdate2(
     std::shared_ptr<const BgpAttributesC> attrs) {
   CHECK(attrs != nullptr) << "Passed attrs null pointer";
@@ -753,10 +764,12 @@ const std::map<std::vector<std::string>, std::string> findCommunities(
     }
   }
 
-  // Each community alias can have a maximum of two communities
-  // mapped in it's community set. In this case, we want to
-  // compute the minimum number of combinations possible by taking the length
-  // of our list to the fixed maximum lengh of the community set: 2.
+  /*
+   * Each community alias can have a maximum of two communities
+   * mapped in it's community set. In this case, we want to
+   * compute the minimum number of combinations possible by taking the length
+   * of our list to the fixed maximum lengh of the community set: 2.
+   */
   for (int i = std::min((int)communityList.size(), 2); i > 0; --i) {
     const auto communityCombinations = getCombinations(communityList, i);
     for (const auto& combination : communityCombinations) {

@@ -27,9 +27,9 @@ using folly::fibers::Promise;
 
 namespace {
 
-//
-// Wrapper class to handle the connect callback
-//
+/*
+ * Wrapper class to handle the connect callback
+ */
 class ConnectCallback : public folly::AsyncSocket::ConnectCallback {
  public:
   explicit ConnectCallback(std::shared_ptr<folly::AsyncSocket> socket)
@@ -47,9 +47,9 @@ class ConnectCallback : public folly::AsyncSocket::ConnectCallback {
   // this promise is used to pass the result to the caller
   std::optional<Promise<void>> promise_;
 
-  //
-  // ConnectCallbcack implementation
-  //
+  /*
+   * ConnectCallbcack implementation
+   */
   void connectSuccess() noexcept override {
     XLOG(DBG5, "connectSuccess()");
     socket_->cancelConnect();
@@ -63,18 +63,20 @@ class ConnectCallback : public folly::AsyncSocket::ConnectCallback {
   }
 };
 
-//
-// Wrapper class to handle the read callbacks
-//
+/*
+ * Wrapper class to handle the read callbacks
+ */
 class ReadCallback : public folly::AsyncSocket::ReadCallback,
                      public folly::AsyncTimeout {
  public:
-  // we need to pass the socket into ReadCallback so we can clear the callback
-  // pointer in the socket, thus preventing multiple callbacks from happening
-  // in one run of event loop. This may happen, for example, when one fiber
-  // writes and immediately closes the socket - this would cause the async
-  // socket to call readDataAvailable and readEOF in sequence, causing the
-  // promise to be fulfilled twice (oops!)
+  /*
+   * we need to pass the socket into ReadCallback so we can clear the callback
+   * pointer in the socket, thus preventing multiple callbacks from happening
+   * in one run of event loop. This may happen, for example, when one fiber
+   * writes and immediately closes the socket - this would cause the async
+   * socket to call readDataAvailable and readEOF in sequence, causing the
+   * promise to be fulfilled twice (oops!)
+   */
   ReadCallback(
       std::shared_ptr<folly::AsyncSocket> socket,
       folly::IOBuf* buf,
@@ -104,16 +106,20 @@ class ReadCallback : public folly::AsyncSocket::ReadCallback,
   // the read buffer we store to hand off to callback - obtained from user
   folly::IOBuf* const buf_;
 
-  // how much to consume in a single read. We cannot use IOBuf's capacity
-  // since it might be slightly higher than requested value.
+  /*
+   * how much to consume in a single read. We cannot use IOBuf's capacity
+   * since it might be slightly higher than requested value.
+   */
   const uint64_t maxLen_{0};
 
-  //
-  // ReadCallback methods
-  //
+  /*
+   * ReadCallback methods
+   */
 
-  // this is called right before readDataAvailable(), always
-  // in the same sequence
+  /*
+   * this is called right before readDataAvailable(), always
+   * in the same sequence
+   */
   void getReadBuffer(void** buf, size_t* len) override {
     XLOGF(DBG5, "getReadBuffer, allowing len: {}", buf_->capacity());
     *buf = buf_->writableData();
@@ -145,9 +151,9 @@ class ReadCallback : public folly::AsyncSocket::ReadCallback,
     promise_->setException(ex);
   }
 
-  //
-  // AsyncTimeout method
-  //
+  /*
+   * AsyncTimeout method
+   */
   void timeoutExpired() noexcept override {
     XLOG(DBG5, "timeout expired");
 
@@ -161,9 +167,9 @@ class ReadCallback : public folly::AsyncSocket::ReadCallback,
   }
 };
 
-//
-// Wrapper class to handle the write callbacks
-//
+/*
+ * Wrapper class to handle the write callbacks
+ */
 class WriteCallback : public folly::AsyncSocket::WriteCallback {
  public:
   WriteCallback() = default;
@@ -177,18 +183,20 @@ class WriteCallback : public folly::AsyncSocket::WriteCallback {
   // the promise to pass result back to the caller
   std::optional<Promise<void>> promise_;
 
-  //
-  // Methods of WriteCallback
-  //
+  /*
+   * Methods of WriteCallback
+   */
   void writeSuccess() noexcept override {
     XLOG(DBG5, "writeSuccess");
     promise_->setValue();
   }
 
-  // TODO: right now we do not differentiate partial failures - e.g.
-  // when some bytes were sent and some not. This is pretty rare,
-  // but may happen. Right now we would throw exception on any error,
-  // even if some data made it through
+  /*
+   * TODO: right now we do not differentiate partial failures - e.g.
+   * when some bytes were sent and some not. This is pretty rare,
+   * but may happen. Right now we would throw exception on any error,
+   * even if some data made it through
+   */
   void writeErr(
       size_t bytesWritten,
       const folly::AsyncSocketException& ex) noexcept override {
@@ -221,9 +229,9 @@ uint64_t FiberSocketBufferCallback::getLastBufferedTimeMs() const {
   return lastBufferedTimeMs_;
 }
 
-//
-// Public API
-//
+/*
+ * Public API
+ */
 FiberSocket::FiberSocket()
     : socket_{folly::AsyncSocket::newSocket(getFiberEventBase())},
       closed_(true) {}
@@ -366,8 +374,10 @@ folly::Expected<folly::Unit, FiberSocketError> FiberSocket::connect(
   }
 }
 
-// IO methods. Notice all of those are invoked inside event loop, so
-// we can safely modify all other objects accessed inside the same loop
+/*
+ * IO methods. Notice all of those are invoked inside event loop, so
+ * we can safely modify all other objects accessed inside the same loop
+ */
 folly::Expected<std::unique_ptr<folly::IOBuf>, FiberSocketError>
 FiberSocket::read(
     uint64_t maxSize,
@@ -435,8 +445,10 @@ void FiberSocket::close() noexcept {
   if (closed_) {
     return;
   }
-  // socket_ might be null if this object has
-  // been moved from
+  /*
+   * socket_ might be null if this object has
+   * been moved from
+   */
   if (socket_) {
     socket_->close();
   }
@@ -447,8 +459,10 @@ void FiberSocket::closeWithReset() noexcept {
   if (closed_) {
     return;
   }
-  // socket_ might be null if this object has
-  // been moved from
+  /*
+   * socket_ might be null if this object has
+   * been moved from
+   */
   if (socket_) {
     socket_->closeWithReset();
   }

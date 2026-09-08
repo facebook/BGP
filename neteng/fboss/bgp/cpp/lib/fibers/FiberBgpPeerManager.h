@@ -219,9 +219,11 @@ struct BgpPeerActiveConnectInfo {
       return std::chrono::duration_cast<std::chrono::milliseconds>(
           connTimeParams.getMinRetryTimeout());
     }
-    // When no error is reported or success is just reported,
-    // getTimeRemainingUntilRetry returns 0, but we want nextRetryTime
-    // to be be minRetryTimeout.
+    /*
+     * When no error is reported or success is just reported,
+     * getTimeRemainingUntilRetry returns 0, but we want nextRetryTime
+     * to be be minRetryTimeout.
+     */
     auto nextRetryTime = connectBackoff->getTimeRemainingUntilRetry();
     if (!nextRetryTime.count()) {
       nextRetryTime = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -261,9 +263,11 @@ struct BgpPeerActiveConnectInfo {
 using ObservableEventT = std::
     variant<FiberBgpPeer::ObservableStateT, FiberBgpPeer::ObservableMessageT>;
 
-// Stores state to do with currently established TCP connection
-// For a Bgp peer, there can be multiple TCP sessions till collision resolution.
-// Active here means ACTIVE_PASSIVE connection
+/*
+ * Stores state to do with currently established TCP connection
+ * For a Bgp peer, there can be multiple TCP sessions till collision resolution.
+ * Active here means ACTIVE_PASSIVE connection
+ */
 struct BgpPeerActiveSessionInfo {
   /*
    * This is the entrace point to zoom into the per-peer view.
@@ -324,45 +328,55 @@ struct BgpPeerActiveSessionInfo {
 
 struct BgpSessionInfo; // forward declaration of struct BgpSessionInfo
 
-// Stores state of BGP session and associated TCP connection
-// Includes BgpPeerActiveConnectInfo and BgpPeerActiveSessionInfo, things that
-// we manage/create when socket is connected or peer is added. Note that they
-// can be nullptr, (if both, the entry will be removed).
-// When a peer is added (either static or dynamic),
-//  activeConnectInfo will be created to acitvely connect the peer,
-//  activeSessionInfo will be null until the socket is connected.
-// If a passive connect is established on a different peer port, a new
-// BgpConnectionInfo will be created for that port but with a null
-// activeConnectInfo.
+/*
+ * Stores state of BGP session and associated TCP connection
+ * Includes BgpPeerActiveConnectInfo and BgpPeerActiveSessionInfo, things that
+ * we manage/create when socket is connected or peer is added. Note that they
+ * can be nullptr, (if both, the entry will be removed).
+ * When a peer is added (either static or dynamic),
+ *  activeConnectInfo will be created to acitvely connect the peer,
+ *  activeSessionInfo will be null until the socket is connected.
+ * If a passive connect is established on a different peer port, a new
+ * BgpConnectionInfo will be created for that port but with a null
+ * activeConnectInfo.
+ */
 struct BgpConnectionInfo {
   // nullptr if it's a passive connection
   std::shared_ptr<BgpPeerActiveConnectInfo> activeConnectInfo;
   // nullptr if lose connection
   std::shared_ptr<BgpPeerActiveSessionInfo> activeSessionInfo;
 
-  // empty weak_ptr if there has never been an established BGP session on this
-  // connectionInfo
+  /*
+   * empty weak_ptr if there has never been an established BGP session on this
+   * connectionInfo
+   */
   std::weak_ptr<BgpSessionInfo> lastSessionInfo{
       std::weak_ptr<BgpSessionInfo>()};
 };
 
-// Stores state of a BGP session
-// created after BGP session established, keeps tracking session status
-// afterwards
+/*
+ * Stores state of a BGP session
+ * created after BGP session established, keeps tracking session status
+ * afterwards
+ */
 struct BgpSessionInfo {
   BgpSessionInfo() : versionNumber(std::make_shared<VersionNumber>()) {}
 
   // Pointer to associated connectionInfo, nullptr when session is down
   std::shared_ptr<BgpConnectionInfo> connectionInfo;
-  // Pointer to associated activeSessionInfo, nullptr indicates session is not
-  // in established state, while connectionInfo->activeSessionInfo is there as
-  // long as socket is still alive
+  /*
+   * Pointer to associated activeSessionInfo, nullptr indicates session is not
+   * in established state, while connectionInfo->activeSessionInfo is there as
+   * long as socket is still alive
+   */
   std::shared_ptr<BgpPeerActiveSessionInfo> establishedSessionInfo;
   // BGP session established time
   std::chrono::steady_clock::time_point establishedTime;
-  // Track successive flaps using incarnation or version number
-  // This counter monotonically increases for each transition from
-  // established --> terminate or terminate --> established
+  /*
+   * Track successive flaps using incarnation or version number
+   * This counter monotonically increases for each transition from
+   * established --> terminate or terminate --> established
+   */
   std::shared_ptr<VersionNumber> versionNumber;
   // Set only when session goes down from ESTABLISHED state
   std::optional<ResetReason> lastResetReason;
@@ -372,26 +386,34 @@ struct BgpSessionInfo {
   std::chrono::steady_clock::time_point lastResetTime;
 };
 
-// Stores state to do with a given Bgp peer.
-// Created for each configured static peer or dynamic peer.
+/*
+ * Stores state to do with a given Bgp peer.
+ * Created for each configured static peer or dynamic peer.
+ */
 struct BgpPeerInfoInternal {
   bgp::PeeringParams peeringParams;
 
-  // BgpConnectionInfo per port, each created when the static peer is added or
-  // when the TCP connection is established.
+  /*
+   * BgpConnectionInfo per port, each created when the static peer is added or
+   * when the TCP connection is established.
+   */
   std::unordered_map<
       uint16_t /* remote port */,
       std::shared_ptr<BgpConnectionInfo>>
       connectionInfos;
-  // BgpEstablishedSessionInfo per remoteBgpId, each created when BGP session is
-  // established. SessionInfo will be kept even after it's down.
+  /*
+   * BgpEstablishedSessionInfo per remoteBgpId, each created when BGP session is
+   * established. SessionInfo will be kept even after it's down.
+   */
   std::
       unordered_map<uint32_t /* remoteBgpId */, std::shared_ptr<BgpSessionInfo>>
           sessionInfos;
 };
 
-// Stores common configuration and a group of established bgp peer sessions
-// related to a dynamic bgp peer group.
+/*
+ * Stores common configuration and a group of established bgp peer sessions
+ * related to a dynamic bgp peer group.
+ */
 struct BgpDynamicPeerGroupInfo {
   bgp::PeeringParams peeringParams; // peerAddr and peerPort are incomplete
   std::set<folly::IPAddress> activePeers;
@@ -470,20 +492,24 @@ class FiberBgpPeerManager
     INVALID_PEER,
   };
 
-  // read and announce InputMessagesT. empty message
-  // terminates this peer
+  /*
+   * read and announce InputMessagesT. empty message
+   * terminates this peer
+   */
   using InputQueueT = bgp::MonitoredRWQueue<InputMessagesT>;
 
-  // Creates FiberBgpPeerManager instance with given config. Automatically
-  // creates fibers to use for TCP connection setup.
-  //
-  //  - If enableMessagesOverNotifyQueue is true, received BGP messages will be
-  //    copied to notifyQueue_.
-  //  - Otherwise, received BGP messages will be copied to peer output queue
-  //    (oqueue_).
-  //
-  // NOTE: if you are using FiberBgpPeerManager as a library, please set
-  // `enableMessagesOverNotifyQueue` to true.
+  /*
+   * Creates FiberBgpPeerManager instance with given config. Automatically
+   * creates fibers to use for TCP connection setup.
+   *
+   *  - If enableMessagesOverNotifyQueue is true, received BGP messages will be
+   *    copied to notifyQueue_.
+   *  - Otherwise, received BGP messages will be copied to peer output queue
+   *    (oqueue_).
+   *
+   * NOTE: if you are using FiberBgpPeerManager as a library, please set
+   * `enableMessagesOverNotifyQueue` to true.
+   */
   FiberBgpPeerManager(
       const bgp::BgpGlobalConfig& config,
       folly::fibers::FiberManager& fm,
@@ -492,9 +518,11 @@ class FiberBgpPeerManager
       bool enableCoroNotifyQueue = false);
 
  protected:
-  // When evb is not provided, refer to the evb_ defined in BgpModuleBase
-  // This allows FiberBgpPeerManager to be run one its own event base thread
-  // Only used by bgp::SessionManager
+  /*
+   * When evb is not provided, refer to the evb_ defined in BgpModuleBase
+   * This allows FiberBgpPeerManager to be run one its own event base thread
+   * Only used by bgp::SessionManager
+   */
   explicit FiberBgpPeerManager(
       const bgp::BgpGlobalConfig& config,
       bool enableMessagesOverNotifyQueue = true,
@@ -504,17 +532,17 @@ class FiberBgpPeerManager
   // Destructor terminates peer connections and kills all fibers.
   virtual ~FiberBgpPeerManager();
 
-  //
-  // Main fiber routine which needs to be run inside a fiber.
-  // This creates child fibers and waits on errorQueue_.
-  // When receiving an error, this stops all child fibers and terminates.
-  //
+  /*
+   * Main fiber routine which needs to be run inside a fiber.
+   * This creates child fibers and waits on errorQueue_.
+   * When receiving an error, this stops all child fibers and terminates.
+   */
   void run() noexcept override;
 
-  //
-  // Initiate shut down process by putting messages to errorQueue_ to indicate
-  // GR (graceful restart) status
-  //
+  /*
+   * Initiate shut down process by putting messages to errorQueue_ to indicate
+   * GR (graceful restart) status
+   */
   void shutdownWithGR(bool gracefulRestart) noexcept;
 
  private:
@@ -522,11 +550,11 @@ class FiberBgpPeerManager
   void stop() noexcept override {}
 
  public:
-  //
-  // Add a peer referenced by peerAddr. Automatically attempts to peer with
-  // the peer. If for any reason the connection stops or is never made, active
-  // retry attempts will be made at an interval of connRetryTimeout_
-  //
+  /*
+   * Add a peer referenced by peerAddr. Automatically attempts to peer with
+   * the peer. If for any reason the connection stops or is never made, active
+   * retry attempts will be made at an interval of connRetryTimeout_
+   */
   folly::Expected<folly::Unit, ErrorCode> addPeer(
       const folly::IPAddress& peerAddr,
       const uint32_t peerAsn,
@@ -566,10 +594,10 @@ class FiberBgpPeerManager
 
   MAKE_CORO_FUNCTION(addPeer)
 
-  //
-  // Add a dynamic peer referenced by peerPrefix.
-  // Automatically establish peer session upon active connection from peer.
-  //
+  /*
+   * Add a dynamic peer referenced by peerPrefix.
+   * Automatically establish peer session upon active connection from peer.
+   */
   folly::Expected<folly::Unit, ErrorCode> addDynamicPeer(
       const folly::CIDRNetwork& peerPrefix,
       const uint32_t peerAsn);
@@ -586,17 +614,21 @@ class FiberBgpPeerManager
       const folly::CIDRNetwork& peerPrefix,
       const bgp::PeeringParams& params);
 
-  // Terminate connection with peer and stop attempting connection,
-  // but keep the peer in the idle state and do not drop it.
+  /*
+   * Terminate connection with peer and stop attempting connection,
+   * but keep the peer in the idle state and do not drop it.
+   */
   virtual folly::Expected<folly::Unit, ErrorCode> shutdownPeer(
       const folly::IPAddress& peerAddr,
       bool peerDelete = false);
 
   MAKE_CORO_FUNCTION(shutdownPeer)
 
-  // If withGR is true, Stop peer with graceful restart
-  // If withGR is false, Terminate connection with peer,
-  // but continue to retry connecting.
+  /*
+   * If withGR is true, Stop peer with graceful restart
+   * If withGR is false, Terminate connection with peer,
+   * but continue to retry connecting.
+   */
   virtual folly::Expected<folly::Unit, ErrorCode> stopPeer(
       const folly::IPAddress& peerAddr,
       bool withGR);
@@ -611,14 +643,18 @@ class FiberBgpPeerManager
   virtual folly::Expected<folly::Unit, ErrorCode>
   stopDynamicPeerWithGracefulRestart(const folly::CIDRNetwork& peerPrefix);
 
-  // Terminate connection with dynamic peer and disallow to accept
-  // incoming connections, keep the peer in the idle state and do not drop it
+  /*
+   * Terminate connection with dynamic peer and disallow to accept
+   * incoming connections, keep the peer in the idle state and do not drop it
+   */
   virtual folly::Expected<folly::Unit, ErrorCode> shutdownDynamicPeer(
       const folly::CIDRNetwork& peerPrefix);
 
-  // Terminate connection with dynamic peer and
-  // allow to accept retried incoming connection,
-  // but not initiate connection
+  /*
+   * Terminate connection with dynamic peer and
+   * allow to accept retried incoming connection,
+   * but not initiate connection
+   */
   virtual folly::Expected<folly::Unit, ErrorCode> startDynamicPeer(
       const folly::CIDRNetwork& peerPrefix);
 
@@ -632,8 +668,10 @@ class FiberBgpPeerManager
 
   MAKE_CORO_FUNCTION(dropPeer)
 
-  // APIs to send BgpUpdate to specified peer. This API is async and will
-  // return immediately after putting message to a queue.
+  /*
+   * APIs to send BgpUpdate to specified peer. This API is async and will
+   * return immediately after putting message to a queue.
+   */
   folly::Expected<folly::Unit, ErrorCode> sendUpdate(
       const BgpPeerId& peerId,
       std::unique_ptr<BgpUpdate2> update) const;
@@ -641,8 +679,10 @@ class FiberBgpPeerManager
       const BgpPeerId& peerId,
       std::vector<std::unique_ptr<BgpUpdate2>>&& updates) const;
 
-  // API to send BGP EndOfRib for v4/v6 to given peerId.
-  // You can only call this API after session is established.
+  /*
+   * API to send BGP EndOfRib for v4/v6 to given peerId.
+   * You can only call this API after session is established.
+   */
   folly::Expected<folly::Unit, ErrorCode> sendEndOfRib(
       const BgpPeerId& peerId) const;
 
@@ -787,20 +827,26 @@ class FiberBgpPeerManager
       std::pair<folly::IPAddress, uint16_t /* port */>,
       FiberBgpPeerManager::ErrorCode>
   getRemoteSocketAddress(FiberSocket& socket) noexcept;
-  // Helper function to add a Peer, this will only check for
-  // duplicate peer configuration in allPeers_
+  /*
+   * Helper function to add a Peer, this will only check for
+   * duplicate peer configuration in allPeers_
+   */
   folly::Expected<folly::Unit, ErrorCode> addPeerHelper(
       const folly::IPAddress& peerAddr,
       const bgp::PeeringParams& peeringParams,
       const ConnTimeParams& connTimeParams = ConnTimeParams(
           std::chrono::milliseconds{0},
           kDefaultConnRetryTimeoutMs));
-  // Helper function to check if there is a duplicate TCP session to the
-  // given remote socket address
+  /*
+   * Helper function to check if there is a duplicate TCP session to the
+   * given remote socket address
+   */
   bool isDuplicateBgpPeerActiveSession(
       const folly::SocketAddress& remoteSocketAddr) const;
-  // Populate BgpPeerActiveSessionInfo and FiberBgpPeer. Start fibers to observe
-  // state changes and received Bgp messages.
+  /*
+   * Populate BgpPeerActiveSessionInfo and FiberBgpPeer. Start fibers to observe
+   * state changes and received Bgp messages.
+   */
   std::shared_ptr<BgpPeerActiveSessionInfo> setupBgpPeerActiveSession(
       std::shared_ptr<BgpPeerInfoInternal> peerInfo,
       FiberSocket&& socket) noexcept;
@@ -833,13 +879,17 @@ class FiberBgpPeerManager
   std::vector<folly::IPAddress> getPeerAddrs(
       const folly::CIDRNetwork& peerPrefix) const noexcept;
 
-  // Start when FiberBgpPeerManager::addPeer() is called and waits on
-  // connect().
+  /*
+   * Start when FiberBgpPeerManager::addPeer() is called and waits on
+   * connect().
+   */
   void setupAndRunActiveConnectFibers(
       std::shared_ptr<BgpPeerActiveConnectInfo> activeConnectInfo) noexcept;
 
-  // Calling connect(), initiate new TCP connection. Start retry timer if
-  // needed.
+  /*
+   * Calling connect(), initiate new TCP connection. Start retry timer if
+   * needed.
+   */
   void activeConnect(
       std::shared_ptr<BgpPeerActiveConnectInfo> activeConnectInfo) noexcept;
 
@@ -851,24 +901,32 @@ class FiberBgpPeerManager
       std::shared_ptr<BgpPeerActiveConnectInfo> activeConnectInfo,
       const std::chrono::milliseconds& nextRetryTime) noexcept;
 
-  // Check if the peer is eligible for connection retry (not shutdown,
-  // peer still exists, manager not shutting down).
+  /*
+   * Check if the peer is eligible for connection retry (not shutdown,
+   * peer still exists, manager not shutting down).
+   */
   bool canRetryConnect(const folly::IPAddress& peerAddr) const noexcept;
 
-  // Report connect backoff error, compute jittered retry time,
-  // and schedule the retry timer.
+  /*
+   * Report connect backoff error, compute jittered retry time,
+   * and schedule the retry timer.
+   */
   void scheduleConnRetryWithBackoff(
       const std::shared_ptr<BgpPeerActiveConnectInfo>&
           activeConnectInfo) noexcept;
 
-  // Schedule an AsyncTimeout on evb_ that spawns a fiber to run
-  // activeConnect() when it fires.
+  /*
+   * Schedule an AsyncTimeout on evb_ that spawns a fiber to run
+   * activeConnect() when it fires.
+   */
   void scheduleConnectTimeout(
       std::shared_ptr<BgpPeerActiveConnectInfo> activeConnectInfo,
       std::chrono::milliseconds delay);
 
-  // Send signal to shutdown to all fibers of FiberBgpPeerManager and
-  // FiberBgpPeers
+  /*
+   * Send signal to shutdown to all fibers of FiberBgpPeerManager and
+   * FiberBgpPeers
+   */
   void shutdownFibers(const bool gracefulRestart) noexcept;
 
   /*
@@ -908,8 +966,10 @@ class FiberBgpPeerManager
       std::shared_ptr<BgpConnectionInfo> connectionInfo,
       const bgp::PeeringParams& peeringParams);
 
-  // Gets active session info from peer
-  // called by getAllPeerInfo and getPeerInfo
+  /*
+   * Gets active session info from peer
+   * called by getAllPeerInfo and getPeerInfo
+   */
   BgpPeerDisplayInfo getActivePeerDisplayInfoHelper(
       std::shared_ptr<BgpConnectionInfo> connectionInfo,
       const bgp::PeeringParams& peeringParams);
@@ -926,8 +986,10 @@ class FiberBgpPeerManager
   // Signal error from any of subfibers
   bgp::MonitoredRWQueue<BgpPeerManagerError> errorQueue_;
 
-  // Used to notify session state changes and received messages to clients
-  // Attention: provide 2 flavors of queues for fiber and coro tasks
+  /*
+   * Used to notify session state changes and received messages to clients
+   * Attention: provide 2 flavors of queues for fiber and coro tasks
+   */
   bgp::MonitoredRWQueue<ObservableEventT> notifyQueue_;
   bgp::MonitoredMPMCQueue<ObservableEventT> notifyCoroQueue_;
 
@@ -941,8 +1003,10 @@ class FiberBgpPeerManager
   folly::EventBase& evb_;
 
  private:
-  // Task id of fiber workers created for each peer.
-  // When shutting down, we wait till all these fibers complete
+  /*
+   * Task id of fiber workers created for each peer.
+   * When shutting down, we wait till all these fibers complete
+   */
   std::unordered_set<int> peerWorkerIds_;
   int peerWorkerId_{0};
   bgp::MonitoredRWQueue<int> stoppedPeerWorkerIdQ_;
@@ -957,9 +1021,11 @@ class FiberBgpPeerManager
       std::shared_ptr<BgpDynamicPeerGroupInfo>>
       dynamicPeerGroups_;
 
-  // Setting that controls which queue (notifyQueue_ or oqueue_) peer received
-  // messages are sent to. Bgp binary sets this to false.
-  // @sa FiberBgpPeerManager() constructor definition.
+  /*
+   * Setting that controls which queue (notifyQueue_ or oqueue_) peer received
+   * messages are sent to. Bgp binary sets this to false.
+   * @sa FiberBgpPeerManager() constructor definition.
+   */
   bool enableMessagesOverNotifyQueue_{true};
 
   // Flag to indicate to push to coro queue

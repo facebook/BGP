@@ -52,8 +52,10 @@ bgplib::BgpAttributes BgpAttributesWrapper::get() const {
 }
 
 void BgpAttributesWrapper::freeFromSet() {
-  // The refernece count is 2 if the BgpAttributes is not used by others:
-  // One reference by the BgpAttributesSmartSet and one by this object.
+  /*
+   * The refernece count is 2 if the BgpAttributes is not used by others:
+   * One reference by the BgpAttributesSmartSet and one by this object.
+   */
   if (attrsPtr_.use_count() == 2 && attrsSetPtr_ != nullptr) {
     attrsSetPtr_->removeEntry(*this);
   }

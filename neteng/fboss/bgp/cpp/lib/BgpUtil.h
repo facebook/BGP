@@ -38,8 +38,10 @@ namespace bgplib {
 extern const std::string kNullMessage;
 
 namespace {
-// This function computes a computation by recursively looking for available
-// samples ahead of an offset.
+/*
+ * This function computes a computation by recursively looking for available
+ * samples ahead of an offset.
+ */
 template <class T>
 void computeCombinations(
     int offset,
@@ -61,15 +63,17 @@ void computeCombinations(
 }
 } // namespace
 
-// This function gets all the combinations of a given container
-// in k number of samples. The return value is a list with all the
-// combinations.
-//
-// Example: container = [1, 2, 3], k = 2
-// The formula to compute combinations C(n, k):
-//    C(n, k) = n! / (k! * (n - k)!) = 3! / (2! * (3 - 2)!) = 3 combinations
-//
-// Result = {[1, 2], [1, 3], [2, 3]}
+/*
+ * This function gets all the combinations of a given container
+ * in k number of samples. The return value is a list with all the
+ * combinations.
+ *
+ * Example: container = [1, 2, 3], k = 2
+ * The formula to compute combinations C(n, k):
+ *    C(n, k) = n! / (k! * (n - k)!) = 3! / (2! * (3 - 2)!) = 3 combinations
+ *
+ * Result = {[1, 2], [1, 3], [2, 3]}
+ */
 template <class T>
 std::vector<std::vector<T>> getCombinations(
     const std::vector<T>& container,
@@ -91,16 +95,20 @@ std::vector<std::vector<T>> getCombinations(
   return combinations;
 }
 
-// This function computes the difference from two vectors by
-// finding the remaning values between the two of them.
-//
-// Reference: http://www.cplusplus.com/reference/algorithm/set_difference/
+/*
+ * This function computes the difference from two vectors by
+ * finding the remaning values between the two of them.
+ *
+ * Reference: http://www.cplusplus.com/reference/algorithm/set_difference/
+ */
 const std::vector<std::string> getCommunityDifference(
     std::vector<std::string> list,
     std::vector<std::string> combination);
 
-// This function performs a DFS over the communities of a neighbor route
-// and finds the name for that given community under a communitySet.
+/*
+ * This function performs a DFS over the communities of a neighbor route
+ * and finds the name for that given community under a communitySet.
+ */
 const std::map<std::vector<std::string>, std::string> findCommunities(
     const std::vector<std::string>& community_list,
     std::map<

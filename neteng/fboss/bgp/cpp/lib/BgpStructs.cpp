@@ -356,12 +356,14 @@ BgpExtCommunityLinkBandWidthTypeC::BgpExtCommunityLinkBandWidthTypeC(
     : BgpExtCommunityAsSpecificExtTypeC(rawValHigh, rawValLow) {}
 
 uint32_t BgpExtCommunityLinkBandWidthTypeC::rawValueHigh(uint16_t asn) {
-  // As per draft-ietf-idr-link-bandwidth:
-  //  - the value of the high-order octet of the extended Type Field is 0x40
-  //    for non-transitive extended communities.
-  //  - the value of the low-order octet of the extended Type Field is 0x04
-  //  - the value of the Global Administrator subfield SHOULD represent the
-  //    Autonomous System of the router
+  /*
+   * As per draft-ietf-idr-link-bandwidth:
+   *  - the value of the high-order octet of the extended Type Field is 0x40
+   *    for non-transitive extended communities.
+   *  - the value of the low-order octet of the extended Type Field is 0x04
+   *  - the value of the Global Administrator subfield SHOULD represent the
+   *    Autonomous System of the router
+   */
   uint8_t lbwType = BgpExtCommunityBaseTypeC::kBgpExtCommASNonTransitiveType;
   uint8_t lbwSubType =
       static_cast<int>(BgpAttrExtCommunityC::BGP_EXT_COMMUNITY_SUBTYPES::
@@ -384,8 +386,10 @@ BgpExtCommunityLinkBandWidthTypeC::BgpExtCommunityLinkBandWidthTypeC(
 }
 
 float BgpExtCommunityLinkBandWidthTypeC::getLBW() const {
-  // Assuming machine has single precision binary32 float architecture.
-  // Ref: IEEE-754-1985 specification
+  /*
+   * Assuming machine has single precision binary32 float architecture.
+   * Ref: IEEE-754-1985 specification
+   */
   union {
     uint32_t intVal;
     float floatVal;
