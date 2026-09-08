@@ -78,8 +78,10 @@ class AdjRibStats {
   }
   void incrementRecvUpdateMsgs();
 
-  // Control-plane count of EoR PDUs received (a distinct PDU from UPDATE);
-  // converges with the socket-layer socket_rx_eor_msgs.
+  /*
+   * Control-plane count of EoR PDUs received (a distinct PDU from UPDATE);
+   * converges with the socket-layer socket_rx_eor_msgs.
+   */
   uint64_t getRecvEndOfRibMsgs() const {
     return recvEndOfRibMsgs;
   }
@@ -132,21 +134,27 @@ class AdjRibStats {
   }
   void incrementSentUpdateMsgs(uint64_t bgpMessageCnt);
 
-  // EoR is a distinct BGP PDU from UPDATE; tracked separately so the
-  // control-plane count converges with the socket-layer txMsgs.endOfRib and
-  // stays out of sentUpdateMsgs (which must converge with txMsgs.update).
+  /*
+   * EoR is a distinct BGP PDU from UPDATE; tracked separately so the
+   * control-plane count converges with the socket-layer txMsgs.endOfRib and
+   * stays out of sentUpdateMsgs (which must converge with txMsgs.update).
+   */
   uint64_t getSentEndOfRibMsgs() const {
     return sentEndOfRibMsgs;
   }
   void incrementSentEndOfRibMsgs(uint64_t bgpMessageCnt);
 
-  // Reset cumulative egress (sent) message counts (update/EoR/announcements/
-  // withdrawals). Does NOT touch the live prefix gauges (postOut...), which
-  // reflect current advertised state rather than deltas.
+  /*
+   * Reset cumulative egress (sent) message counts (update/EoR/announcements/
+   * withdrawals). Does NOT touch the live prefix gauges (postOut...), which
+   * reflect current advertised state rather than deltas.
+   */
   void clearEgressMessageCounts();
 
-  // Reset cumulative ingress (recv) message counts (update/EoR/announcements/
-  // withdrawals). Does NOT touch the live prefix gauges.
+  /*
+   * Reset cumulative ingress (recv) message counts (update/EoR/announcements/
+   * withdrawals). Does NOT touch the live prefix gauges.
+   */
   void clearIngressMessageCounts();
 
   uint64_t getSentAnnouncementsIpv4() const {

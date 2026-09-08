@@ -30,8 +30,10 @@ DEFINE_bool(
 
 namespace facebook::bgp {
 
-// Static inits for received prefix tracking (used by AdjRibIn stats)
-// Note: These are extern declared in AdjRibStats.h and defined here
+/*
+ * Static inits for received prefix tracking (used by AdjRibIn stats)
+ * Note: These are extern declared in AdjRibStats.h and defined here
+ */
 uint32_t totalRcvdPrefixCount = 0;
 uint32_t maxPeerRcvdPrefixCount = 0;
 uint32_t totalAcceptedPrefixCount = 0;

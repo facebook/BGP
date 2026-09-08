@@ -99,9 +99,11 @@ class AdjRibPrefixSet : boost::noncopyable {
         : refCount_(refCount), isGoldenVip_(isGoldenVip) {}
     // The number of reference to the prefix.
     uint64_t refCount_;
-    // Whether it's a golden VIP. Normally this is false.
-    // When safe mode is triggered, ingress dropping and adjrib purging will
-    // start to mark golden vips
+    /*
+     * Whether it's a golden VIP. Normally this is false.
+     * When safe mode is triggered, ingress dropping and adjrib purging will
+     * start to mark golden vips
+     */
     bool isGoldenVip_;
   };
 
@@ -162,16 +164,20 @@ class AdjRibPrefixSet : boost::noncopyable {
   uint64_t totalGoldenVipPrefixesCount_{0};
 };
 
-// Captures the associated prefixes and eor flag which are to be processed
-// upon expiry of this timer (indicated by the expiryTimeStamp).
+/*
+ * Captures the associated prefixes and eor flag which are to be processed
+ * upon expiry of this timer (indicated by the expiryTimeStamp).
+ */
 struct AdjRibOutDelayEntry {
   // Expiry timestamp
   std::chrono::time_point<std::chrono::system_clock> expiryTimeStamp;
 
-  // All prefixes which are to be processed at the end of time delay timer.
-  // Note that a stale prefix might hang around in this list even though
-  // prefix has been purged from AdjRib::deferredUpdates_ list. This happens
-  // if a withdraw is processed while the timer is still in progress.
+  /*
+   * All prefixes which are to be processed at the end of time delay timer.
+   * Note that a stale prefix might hang around in this list even though
+   * prefix has been purged from AdjRib::deferredUpdates_ list. This happens
+   * if a withdraw is processed while the timer is still in progress.
+   */
   std::vector<folly::CIDRNetwork> deferredPrefixes;
 
   // Ctor()
@@ -218,8 +224,10 @@ class AdjRib : boost::noncopyable,
   struct Shutdown {};
   struct EoR {};
   struct EgressEoR {};
-  // Used to notify PeerManagerBase to trigger safe mode, See
-  // http://fburl.com/bgp_safe_mode for more details
+  /*
+   * Used to notify PeerManagerBase to trigger safe mode, See
+   * http://fburl.com/bgp_safe_mode for more details
+   */
   struct TriggerSafeMode {};
   /* Route Refresh from a peer: triggers a shadow-RIB re-dump (RFC 2918).
    * requestedAfi scopes it to the family the request named (§3). The AFI is a
@@ -231,16 +239,18 @@ class AdjRib : boost::noncopyable,
         : requestedAfi(afi) {}
     nettools::bgplib::BgpUpdateAfi requestedAfi;
   };
-  // Message to PeerManagerBase
-  // 1. can be EoR : indicate peer EoR receipt for all negotiated
-  // address families
-  // 2. can be Shutdown : notify PeerManagerBase to shut this peer down
-  // 3. can be EgressEoR : indicate egress EoR sent to peers after
-  // initialization
-  // 4. can be TriggerSafeMode : indicates that the condition for entering safe
-  // mode is met(either total path scale or unique prefix limit is reached)
-  // 5. can be RouteRefreshReceived : indicates a Route Refresh request was
-  // received from this peer (RFC 2918)
+  /*
+   * Message to PeerManagerBase
+   * 1. can be EoR : indicate peer EoR receipt for all negotiated
+   * address families
+   * 2. can be Shutdown : notify PeerManagerBase to shut this peer down
+   * 3. can be EgressEoR : indicate egress EoR sent to peers after
+   * initialization
+   * 4. can be TriggerSafeMode : indicates that the condition for entering safe
+   * mode is met(either total path scale or unique prefix limit is reached)
+   * 5. can be RouteRefreshReceived : indicates a Route Refresh request was
+   * received from this peer (RFC 2918)
+   */
   using MessageToPeerManager = std::
       variant<Shutdown, EoR, EgressEoR, TriggerSafeMode, RouteRefreshReceived>;
   // Used to pass message from adjRib to PeerManagerBase
@@ -406,8 +416,10 @@ class AdjRib : boost::noncopyable,
       bool extNhEncodingCapable = false,
       bool remoteMpExtExist = true) noexcept;
 
-  // Called when session established with a peer (in PeerManagerBase)
-  // to start fibers processing peer messages and Rib messages
+  /*
+   * Called when session established with a peer (in PeerManagerBase)
+   * to start fibers processing peer messages and Rib messages
+   */
   void startMessageProcessingLoop() noexcept;
 
   /*
@@ -598,8 +610,10 @@ class AdjRib : boost::noncopyable,
    *             End   -    AdjRib show functionality
    *******************************************************************************/
 
-  // set route filter statement for this peer
-  // return tuple of (ingressChanged, egressChanged) flags
+  /*
+   * set route filter statement for this peer
+   * return tuple of (ingressChanged, egressChanged) flags
+   */
   std::tuple<bool, bool> setRouteFilterStatement(
       std::shared_ptr<const RouteFilterStatement> stmt,
       std::unique_ptr<RouteFilterLogger> logger = nullptr);
@@ -608,8 +622,10 @@ class AdjRib : boost::noncopyable,
   void setPendingIngressPolicyUpdate(bool ingressChanged);
   void setPendingEgressPolicyUpdate(bool egressChanged);
 
-  // set golden prefix policy for this peer
-  // return if the policy is different from the current one
+  /*
+   * set golden prefix policy for this peer
+   * return if the policy is different from the current one
+   */
   bool setGoldenPrefixPolicy(std::shared_ptr<GoldenPrefixPolicy> policy);
 
   // Helper methods to check pending policy update flags
@@ -695,8 +711,10 @@ class AdjRib : boost::noncopyable,
     stats_.incrementSentWithdrawals();
   }
 
-  // Cumulative detach/rejoin bookkeeping recorded against this peer by the
-  // group (see AdjRibOutGroup::detachPeer / tryAcceptPeersToGroup).
+  /*
+   * Cumulative detach/rejoin bookkeeping recorded against this peer by the
+   * group (see AdjRibOutGroup::detachPeer / tryAcceptPeersToGroup).
+   */
   void incrementTimesDetachedByBlocking() noexcept {
     stats_.incrementTimesDetachedByBlocking();
   }
@@ -830,8 +848,10 @@ class AdjRib : boost::noncopyable,
     return flapCounter_;
   }
 
-  // Emit a structured BGP_PEER_EVENT log line for FSM tracking.
-  // Pass BGP_LOG_SRC() as src to capture the caller's source location.
+  /*
+   * Emit a structured BGP_PEER_EVENT log line for FSM tracking.
+   * Pass BGP_LOG_SRC() as src to capture the caller's source location.
+   */
   void logPeerEvent(const std::string& phase, const std::string& src);
 
   // Get peer IP address of this AdjRib
@@ -965,10 +985,12 @@ class AdjRib : boost::noncopyable,
     return isRouteRefreshNegotiated_;
   }
 
-  // NOTE: These states are modified only by events which peerManager see's.
-  // As terminate event is seen by both adjRib and peerManager, only
-  // peerManager events will trigger this.
-  // There could be lag between events.
+  /*
+   * NOTE: These states are modified only by events which peerManager see's.
+   * As terminate event is seen by both adjRib and peerManager, only
+   * peerManager events will trigger this.
+   * There could be lag between events.
+   */
   void markStateEstablished() noexcept {
     CHECK_EQ(false, isSessionEstablished_);
     isSessionEstablished_ = true;
@@ -1587,8 +1609,10 @@ class AdjRib : boost::noncopyable,
   // Clean up out-dealy related data-structures.
   void cleanUpOutDelay();
 
-  // For a given prefix and policy out message, get postOutAttrs
-  // and the corresponding policy term name. prefix must be in policyOut
+  /*
+   * For a given prefix and policy out message, get postOutAttrs
+   * and the corresponding policy term name. prefix must be in policyOut
+   */
   const std::shared_ptr<routing::AttributesAndPolicy<BgpPath>>
   getPostPolicyOutAttrsAndPolicyFromMessage(
       const folly::CIDRNetwork& prefix,
@@ -1638,9 +1662,11 @@ class AdjRib : boost::noncopyable,
       const folly::CIDRNetwork& prefix,
       uint32_t receivedPathId);
 
-  // Promote a stale entry in-place (optimized GR)
-  // clears the stale bit and decrements the stale entry count.
-  // Used when enableOptimizedGR_ is true.
+  /*
+   * Promote a stale entry in-place (optimized GR)
+   * clears the stale bit and decrements the stale entry count.
+   * Used when enableOptimizedGR_ is true.
+   */
   void promoteStaleRibInEntryIfExistsInPlace(
       const folly::CIDRNetwork& prefix,
       uint32_t receivedPathId);
@@ -1684,21 +1710,25 @@ class AdjRib : boost::noncopyable,
   folly::coro::Task<void> sendRibInWithdrawal(
       const PrefixPathIds& pfxPathIds) noexcept;
 
-  // For a given prefix, preInAttrs, and policy action data, get
-  // postInAttrs after route filter and policy processing. Nullptr will be
-  // returned if route filter or policy blocks the prefix.
-  // Returned attributes are published and adjRibEntry is updated
-  // for postPolicyResult_.
+  /*
+   * For a given prefix, preInAttrs, and policy action data, get
+   * postInAttrs after route filter and policy processing. Nullptr will be
+   * returned if route filter or policy blocks the prefix.
+   * Returned attributes are published and adjRibEntry is updated
+   * for postPolicyResult_.
+   */
   std::shared_ptr<const BgpPath> getPostInRouteFilterAndPolicyAttributes(
       const folly::CIDRNetwork& prefix,
       const std::shared_ptr<BgpPath>& prePolicyAttrs,
       std::shared_ptr<BgpPolicyActionData>& policyActionData,
       folly::not_null<AdjRibEntry*> adjRibEntry);
 
-  // For a given prefix, preInAttrs, and policy action data, get
-  // postInAttrs. Nullptr will be returned if policy blocks the prefix.
-  // Returned attributes are published and adjRibEntry is updated
-  // for postPolicyResult_.
+  /*
+   * For a given prefix, preInAttrs, and policy action data, get
+   * postInAttrs. Nullptr will be returned if policy blocks the prefix.
+   * Returned attributes are published and adjRibEntry is updated
+   * for postPolicyResult_.
+   */
   std::shared_ptr<const BgpPath> getPostInPolicyAttributes(
       const folly::CIDRNetwork& prefix,
       const std::shared_ptr<BgpPath>& prePolicyAttrs,
@@ -1726,43 +1756,57 @@ class AdjRib : boost::noncopyable,
   void processPeerRouteRefresh(
       const nettools::bgplib::BgpRouteRefresh& rr) noexcept;
 
-  // Update attributes after receiving from this peer (nexthop, as-path)
-  // Same shared_ptr will be returned if no changes are needed
+  /*
+   * Update attributes after receiving from this peer (nexthop, as-path)
+   * Same shared_ptr will be returned if no changes are needed
+   */
   std::shared_ptr<BgpPath> updateAttributesIn(
       const std::shared_ptr<BgpPath>& attrs) noexcept;
 
   // Mark all routes learnt from this peer stale
   void markLearntRoutesStale() noexcept;
 
-  // Mark all routes learnt from this peer stale in-place (optimized GR)
-  // a stale bit is set for the entries and total number of stale entries count
-  // is incremented
+  /*
+   * Mark all routes learnt from this peer stale in-place (optimized GR)
+   * a stale bit is set for the entries and total number of stale entries count
+   * is incremented
+   */
   void markLearntRoutesStaleInPlace() noexcept;
 
-  // Cleanup all stale routes — runs collectStaleRoutes()
-  // + pushStaleWithdrawal().
+  /*
+   * Cleanup all stale routes — runs collectStaleRoutes()
+   * + pushStaleWithdrawal().
+   */
   folly::coro::Task<void> cleanupStaleRoutes(
       bool isGrHelperMode = true) noexcept;
 
-  // Split out from cleanupStaleRoutes() so detached timer callbacks can do
-  // the AdjRib state mutation synchronously.
+  /*
+   * Split out from cleanupStaleRoutes() so detached timer callbacks can do
+   * the AdjRib state mutation synchronously.
+   */
   std::optional<RibInWithdrawal> collectStaleRoutes(
       bool isGrHelperMode = true) noexcept;
 
-  // Async push of a previously-collected stale-route withdrawal. Used by the
-  // detached timer callbacks; tracked via pendingRibInPushes_ and drained in
-  // stop() before AdjRib tear-down so this->ribInQ_ access is always valid.
+  /*
+   * Async push of a previously-collected stale-route withdrawal. Used by the
+   * detached timer callbacks; tracked via pendingRibInPushes_ and drained in
+   * stop() before AdjRib tear-down so this->ribInQ_ access is always valid.
+   */
   folly::coro::Task<void> pushStaleWithdrawal(
       RibInWithdrawal withdrawal) noexcept;
 
-  // Helper used by GR timer callbacks to schedule a detached push of a
-  // previously-collected withdrawal.
+  /*
+   * Helper used by GR timer callbacks to schedule a detached push of a
+   * previously-collected withdrawal.
+   */
   void schedulePendingRibInPush(RibInWithdrawal withdrawal) noexcept;
 
-  // Cleanup stale routes in-place (optimized GR)
-  // Iterates over the entries in the tree and clears entries with stale bit set
-  // Uses a two-pass approach since RadixTree doesn't support deletion during
-  // iteration: first collects stale prefixes, then deletes them in batches.
+  /*
+   * Cleanup stale routes in-place (optimized GR)
+   * Iterates over the entries in the tree and clears entries with stale bit set
+   * Uses a two-pass approach since RadixTree doesn't support deletion during
+   * iteration: first collects stale prefixes, then deletes them in batches.
+   */
   folly::coro::Task<void> cleanupStaleRoutesInPlace(
       bool isGrHelperMode = true) noexcept;
 
@@ -2079,12 +2123,14 @@ class AdjRib : boost::noncopyable,
     return ret;
   }
 
-  // create policy action data
-  // currently only captures "link bandwidth" policy data:
-  // - original asn & lbw, peer-bps-configs, aggregatged recv/local weight
-  // etc.
-  //
-  // add more other types of policy-action data
+  /*
+   * create policy action data
+   * currently only captures "link bandwidth" policy data:
+   * - original asn & lbw, peer-bps-configs, aggregatged recv/local weight
+   * etc.
+   *
+   * add more other types of policy-action data
+   */
   inline std::shared_ptr<BgpPolicyActionData> createPolicyActionData(
       const std::shared_ptr<const BgpPath>& attrs,
       const std::optional<size_t> switchId = std::nullopt,
@@ -2102,8 +2148,10 @@ class AdjRib : boost::noncopyable,
         ribPolicyUcmpWeight);
   }
 
-  // Return the post policy attribute, the accept/deny policy term name (if
-  // applicable) and the post policy information
+  /*
+   * Return the post policy attribute, the accept/deny policy term name (if
+   * applicable) and the post policy information
+   */
   std::tuple<std::shared_ptr<const BgpPath>, std::string, PostPolicyInfo>
   getPostPolicyAttributesPolicyTermAndInfo(
       const std::string& policyName,
@@ -2195,10 +2243,12 @@ class AdjRib : boost::noncopyable,
    */
   inline bool shouldExitEarlyOnBackPressure(
       bool tryPullNewChangeItems) const noexcept {
-    // If egressEoR is pending, the packing list constitutes entries from a
-    // full RIB walk and we must send it all with EoR. Otherwise,
-    // sendBgpUpdates may choose to defer sending the packing list in favor
-    // of processing newer items from the changelist.
+    /*
+     * If egressEoR is pending, the packing list constitutes entries from a
+     * full RIB walk and we must send it all with EoR. Otherwise,
+     * sendBgpUpdates may choose to defer sending the packing list in favor
+     * of processing newer items from the changelist.
+     */
     return tryPullNewChangeItems && !egressEoRsPending();
   }
 
@@ -2228,8 +2278,10 @@ class AdjRib : boost::noncopyable,
       const BgpPathWithAfi& attrsWithAfi,
       PrefixSet& prefixPathIds) noexcept;
 
-  // ----------------------- Announcement --------------------------
-  // process RibOutAnnouncement update message
+  /*
+   * ----------------------- Announcement --------------------------
+   * process RibOutAnnouncement update message
+   */
   void processRibOutAnnouncement(
       const RibOutAnnouncement& announcement) noexcept;
 
@@ -2253,8 +2305,10 @@ class AdjRib : boost::noncopyable,
     return rrDumpState_ == RrDumpState::InProgress;
   }
 
-  // Determines if we need to announce this prefix to peer
-  // Considers IBGP, EBGP, Route reflector settings
+  /*
+   * Determines if we need to announce this prefix to peer
+   * Considers IBGP, EBGP, Route reflector settings
+   */
   bool canAnnounce(const RibOutAnnouncementEntry& update) noexcept;
 
   /*
@@ -2272,21 +2326,27 @@ class AdjRib : boost::noncopyable,
       const RibOutAnnouncementEntry& entry,
       bool initialDump) noexcept;
 
-  // Process single prefix best path announcement
-  // update: the update to be processed with multiple prefixes
-  // deferred: is true if the processing is due to out-delay time out.
+  /*
+   * Process single prefix best path announcement
+   * update: the update to be processed with multiple prefixes
+   * deferred: is true if the processing is due to out-delay time out.
+   */
   void processRibAnnouncedEntry(const RibOutAnnouncementEntry& update) noexcept;
 
-  // Try inserting a ribOutEntry based on the prefix and next hop.
-  // Return the existing one if the entry already exists; Otherwise,
-  // create a new one and return it.
+  /*
+   * Try inserting a ribOutEntry based on the prefix and next hop.
+   * Return the existing one if the entry already exists; Otherwise,
+   * create a new one and return it.
+   */
   AdjRibEntry* FOLLY_NULLABLE tryInsertRibOutEntry(
       const folly::CIDRNetwork& prefix,
       const folly::IPAddress& nexthop) noexcept;
 
-  // Get post policy attributes (including CRF filtering)
-  // Look up in the cache - if found just return the result
-  // Else run thru policy and store result in cache.
+  /*
+   * Get post policy attributes (including CRF filtering)
+   * Look up in the cache - if found just return the result
+   * Else run thru policy and store result in cache.
+   */
   const std::shared_ptr<const BgpPath> getPostOutPolicyAttributes(
       const RibOutAnnouncementEntry& update,
       AdjRibEntry* adjRibEntry,
@@ -2308,23 +2368,29 @@ class AdjRib : boost::noncopyable,
 
   bool blockedByIngressRouteFilter(const folly::CIDRNetwork& prefix) const;
 
-  // ----------------------- Out delay --------------------------
-  // Process update for out-delay feature.
-  // Return pair<>.first : whether to continue processing with
-  //                       processRibAnnounced
-  //        pair<>.second: whether a new prefix got deferred or not.
+  /*
+   * ----------------------- Out delay --------------------------
+   * Process update for out-delay feature.
+   * Return pair<>.first : whether to continue processing with
+   *                       processRibAnnounced
+   *        pair<>.second: whether a new prefix got deferred or not.
+   */
   std::pair<bool, bool> processOutDelay(const RibOutAnnouncementEntry& update);
 
   // Starts an async timer for out-delay.
   void programOutDelayTimer() noexcept;
 
-  // ----------------------- Withdrawal --------------------------
-  // process RibOutWithdrawal update message
+  /*
+   * ----------------------- Withdrawal --------------------------
+   * process RibOutWithdrawal update message
+   */
   void processRibOutWithdrawal(const RibOutWithdrawal& withdrawal) noexcept;
 
-  // Handles case where we receive RIB announcement (due to bestpath change)
-  // which cannot be announced. This may lead to implicit withdrawal of prefix
-  // without any explicit withdrawal from RIB
+  /*
+   * Handles case where we receive RIB announcement (due to bestpath change)
+   * which cannot be announced. This may lead to implicit withdrawal of prefix
+   * without any explicit withdrawal from RIB
+   */
   void handleImplicitWithdrawal(
       const folly::CIDRNetwork& prefix,
       const folly::IPAddress& nextHop) noexcept;
@@ -2458,8 +2524,10 @@ class AdjRib : boost::noncopyable,
   bool as4ByteCapable_{true}; /* Negotiated 4-byte ASN capability */
   bool extNhEncodingCapable_{false}; /* Negotiated RFC5549 capability */
 
-  // NOTE: deliberately use reference to share the SAME folly::coro primitive
-  // across multiple DIFF adjribs to schedule corotine task.
+  /*
+   * NOTE: deliberately use reference to share the SAME folly::coro primitive
+   * across multiple DIFF adjribs to schedule corotine task.
+   */
   folly::EventBase& evb_;
   std::optional<folly::coro::CancellableAsyncScope> asyncScope_{std::in_place};
 
@@ -2483,9 +2551,11 @@ class AdjRib : boost::noncopyable,
    */
   MonitoredMPMCQueue<ObservableMessageT>& fromAdjRibQ_;
 
-  // Session Terminate baton. Used to do sequential synchronization between
-  // adjRib and peerManager. Posted when both message processing loops complete.
-  // Latch semantics: passes through between post() and reset().
+  /*
+   * Session Terminate baton. Used to do sequential synchronization between
+   * adjRib and peerManager. Posted when both message processing loops complete.
+   * Latch semantics: passes through between post() and reset().
+   */
   std::shared_ptr<folly::coro::Baton> sessionTerminateBaton_;
 
   // Policy Manager
@@ -2497,8 +2567,10 @@ class AdjRib : boost::noncopyable,
   std::optional<std::string> ingressPolicyName_;
   std::optional<std::string> egressPolicyName_;
 
-  // Policy cache to avoid duplicate policy evaluation
-  // TODO: remove the shared_ptr access to use try_get from folly::Singleton
+  /*
+   * Policy cache to avoid duplicate policy evaluation
+   * TODO: remove the shared_ptr access to use try_get from folly::Singleton
+   */
   std::shared_ptr<AdjRibPolicyCache> policyCache_;
 
   //  Ptr to the AdjRibOutGroup, aka, update-group this adjRib belongs to.
@@ -2564,14 +2636,18 @@ class AdjRib : boost::noncopyable,
   std::shared_ptr<AdjRibOutQueueT> adjRibOutQueue_;
   std::shared_ptr<BoundedAdjRibOutQueueT> boundedAdjRibOutQueue_;
 
-  // Ingress EoR
-  // For each supported address family by peer, we should receive one EoR
-  // This indicates pending EoR afis that are not yet received
+  /*
+   * Ingress EoR
+   * For each supported address family by peer, we should receive one EoR
+   * This indicates pending EoR afis that are not yet received
+   */
   std::set<nettools::bgplib::BgpUpdateAfi> pendingIngressEoRAfis_{};
 
-  // Egress EoR
-  // Flag to indicate whether we have sent eor to peer or not
-  // TODO: This should be two flags if we decide to split v4 and v6 logic
+  /*
+   * Egress EoR
+   * Flag to indicate whether we have sent eor to peer or not
+   * TODO: This should be two flags if we decide to split v4 and v6 logic
+   */
   bool egressEoRsSent_{false};
 
   int64_t eorSentTime_{0};
@@ -2602,9 +2678,11 @@ class AdjRib : boost::noncopyable,
    */
   AttrToPrefixMap attrToPrefixMap_;
 
-  // Rib radix tree for AdjRib supporting recvAddPath capability.
-  // key is prefix, value is a map of {path id: AdjRibEntry}
-  // Each prefix can have multiple path id.
+  /*
+   * Rib radix tree for AdjRib supporting recvAddPath capability.
+   * key is prefix, value is a map of {path id: AdjRibEntry}
+   * Each prefix can have multiple path id.
+   */
   AdjRibPathTree adjRibInPathTree_;
   /*
    * Rib radix tree for AdjRib not supporting recvAddPath capability.
@@ -2616,43 +2694,51 @@ class AdjRib : boost::noncopyable,
    */
   AdjRibLiteTree adjRibInLiteTree_;
 
-  // This is used in GR.
-  //
-  // Rib radix tree. key is prefix, value is a map of {nextHop's IPAddress:
-  // AdjRibEntry}
-  //
-  // When the peer is doing Graceful Restart (GR), as in BGP RFC4724, all
-  // routes learnt from a Restarting peer will be marked as STALE. Hence, in
-  // our BGP++ implementation, all routes in adjRibInPathTree_ will be moved to
-  // adjRibInStale_.
-  //
-  // Path ID may not be consistent between restarts, but it's still used as key
-  // here just to identify individual paths being marked as stale (we can't use
-  // nexthop for this since paths can have same nexthop).
+  /*
+   * This is used in GR.
+   *
+   * Rib radix tree. key is prefix, value is a map of {nextHop's IPAddress:
+   * AdjRibEntry}
+   *
+   * When the peer is doing Graceful Restart (GR), as in BGP RFC4724, all
+   * routes learnt from a Restarting peer will be marked as STALE. Hence, in
+   * our BGP++ implementation, all routes in adjRibInPathTree_ will be moved to
+   * adjRibInStale_.
+   *
+   * Path ID may not be consistent between restarts, but it's still used as key
+   * here just to identify individual paths being marked as stale (we can't use
+   * nexthop for this since paths can have same nexthop).
+   */
   AdjRibPathTree adjRibInStale_;
 
   // Timers
 
-  // Grace-period for allowing peer to re-establish connection.
-  // Previous instance advertised routes are purged if session does not
-  // re-establish within this period. This time-out is declared by peer during
-  // session establishement using GR-capability attr.
+  /*
+   * Grace-period for allowing peer to re-establish connection.
+   * Previous instance advertised routes are purged if session does not
+   * re-establish within this period. This time-out is declared by peer during
+   * session establishement using GR-capability attr.
+   */
   std::chrono::seconds remoteGrRestartTime_;
   std::unique_ptr<folly::AsyncTimeout> remoteGrRestartTimer_;
 
-  // TODO: Make this configurable (preferrably on a per-peer basis).
-  // Amount of time after which all stale routes are cleared. A restarting
-  // peer must readvertise a route (that was announced in previous
-  // incarnation) before expiry of this timer to avoid black-holing of
-  // traffic.
+  /*
+   * TODO: Make this configurable (preferrably on a per-peer basis).
+   * Amount of time after which all stale routes are cleared. A restarting
+   * peer must readvertise a route (that was announced in previous
+   * incarnation) before expiry of this timer to avoid black-holing of
+   * traffic.
+   */
   std::chrono::seconds stalePathTime_{kDefaultStalePathTimeOut};
 
   std::unique_ptr<folly::AsyncTimeout> stalePathTimer_;
 
-  // SemiFutures for in-flight detached pushes of RibInWithdrawal payloads
-  // (from stalePathTimer_ / remoteGrRestartTimer_ callbacks). Drained in stop()
-  // so the AdjRib isn't destroyed while pushes are still suspended on ribInQ_'s
-  // back-pressure semaphore.
+  /*
+   * SemiFutures for in-flight detached pushes of RibInWithdrawal payloads
+   * (from stalePathTimer_ / remoteGrRestartTimer_ callbacks). Drained in stop()
+   * so the AdjRib isn't destroyed while pushes are still suspended on ribInQ_'s
+   * back-pressure semaphore.
+   */
   std::vector<folly::SemiFuture<folly::Unit>> pendingRibInPushes_;
 
   // Stats associated to this AdjRib
@@ -2661,20 +2747,24 @@ class AdjRib : boost::noncopyable,
   // Determines if adjRib is in session established or in terminated state
   bool isSessionEstablished_{false};
 
-  // Specifically in the squence when BGP is re-starting, initial set of peers
-  // expected, to send initial announcement, are the ones that are UP before
-  // initial fib sync-up is done. Any new adjRib created after initial fib
-  // sync, should not be eligible to send those announcements
-  //
-  // On contrast note, any new adjRib created after initial fib sync should be
-  // eligible for RibDumpRequest, where-as initial set of peers should not
+  /*
+   * Specifically in the squence when BGP is re-starting, initial set of peers
+   * expected, to send initial announcement, are the ones that are UP before
+   * initial fib sync-up is done. Any new adjRib created after initial fib
+   * sync, should not be eligible to send those announcements
+   *
+   * On contrast note, any new adjRib created after initial fib sync should be
+   * eligible for RibDumpRequest, where-as initial set of peers should not
+   */
   bool inInitialAnnouncement_{false};
 
-  // Updates which are deferred due to out-delay feature
-  // Note that only a prefix which is learned the 1st time is deferred.
-  // Subsequent updates do not trigger a new deferral. However an update
-  // which is deferred will be overwritten by subsequent updates which arrive
-  // before the deferred time out happens.
+  /*
+   * Updates which are deferred due to out-delay feature
+   * Note that only a prefix which is learned the 1st time is deferred.
+   * Subsequent updates do not trigger a new deferral. However an update
+   * which is deferred will be overwritten by subsequent updates which arrive
+   * before the deferred time out happens.
+   */
   folly::F14NodeMap<folly::CIDRNetwork, RibOutAnnouncementEntry>
       deferredUpdates_;
 
@@ -2703,8 +2793,10 @@ class AdjRib : boost::noncopyable,
       std::greater<AdjRibOutDelayEntry>>
       outDelayPQ_;
 
-  // Whether we should prevent sending update to neighbor
-  // if prefix's AS-path contains neighbor's ASN
+  /*
+   * Whether we should prevent sending update to neighbor
+   * if prefix's AS-path contains neighbor's ASN
+   */
   bool sender_suppress_as_loop_{true};
 
   // whether we should send additioanl paths to the peer
@@ -2823,14 +2915,18 @@ class AdjRib : boost::noncopyable,
   static inline uint64_t policyReEvaluationBatchSize_{
       kPolicyReEvaluationBatchSize};
 
-  // Semaphore to synchronize tree access between policy re-evaluation
-  // and peer message processing
+  /*
+   * Semaphore to synchronize tree access between policy re-evaluation
+   * and peer message processing
+   */
   std::shared_ptr<folly::fibers::Semaphore> treeAccessSemaphore_{
       std::make_shared<folly::fibers::Semaphore>(1)};
 
-  // Flag to enable dynamic policy evaluation.
-  // When enabled, policy re-evaluation for Ingress can be triggered and
-  // synchronized tree access is enforced.
+  /*
+   * Flag to enable dynamic policy evaluation.
+   * When enabled, policy re-evaluation for Ingress can be triggered and
+   * synchronized tree access is enforced.
+   */
   bool enableDynamicPolicyEvaluation_{false};
 
   /*
@@ -2876,8 +2972,10 @@ class AdjRib : boost::noncopyable,
    */
   void signalTreeAccessSemaphore();
 
-// per class placeholder for test code injection
-// only need to be setup once here
+/*
+ * per class placeholder for test code injection
+ * only need to be setup once here
+ */
 #ifdef AdjRib_TEST_FRIENDS
   AdjRib_TEST_FRIENDS
 #endif

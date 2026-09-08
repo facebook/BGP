@@ -87,8 +87,10 @@ std::size_t AdjRibPolicyCache::PolicyCacheMaskedKeyHash::operator()(
   if (policyActionData) {
     seed = folly::hash::hash_combine(seed, policyActionData->hash());
   }
-  // Always hash the partial-drain bit: it reflects a community mutation made
-  // outside policy evaluation and is not captured by the masked attrs above.
+  /*
+   * Always hash the partial-drain bit: it reflects a community mutation made
+   * outside policy evaluation and is not captured by the masked attrs above.
+   */
   seed = folly::hash::hash_combine(seed, std::get<4>(key));
   return seed;
 }
@@ -96,9 +98,11 @@ std::size_t AdjRibPolicyCache::PolicyCacheMaskedKeyHash::operator()(
 bool AdjRibPolicyCache::PolicyCacheMaskedKeyEqualTo::operator()(
     const PolicyCacheMaskedKey& lhs,
     const PolicyCacheMaskedKey& rhs) const {
-  // Check equality of policy attribute mask, which uniquely identifies
-  // the policy. If these are not equal, this implies the lhs and rhs policies
-  // are different.
+  /*
+   * Check equality of policy attribute mask, which uniquely identifies
+   * the policy. If these are not equal, this implies the lhs and rhs policies
+   * are different.
+   */
   if (get<0>(lhs) != std::get<0>(rhs)) {
     return false;
   }
@@ -114,8 +118,10 @@ bool AdjRibPolicyCache::PolicyCacheMaskedKeyEqualTo::operator()(
     return false;
   }
 
-  // Partial-drain state must match: it reflects an out-of-policy community
-  // mutation not captured by the masked attribute comparison below.
+  /*
+   * Partial-drain state must match: it reflects an out-of-policy community
+   * mutation not captured by the masked attribute comparison below.
+   */
   if (std::get<4>(lhs) != std::get<4>(rhs)) {
     return false;
   }
@@ -245,13 +251,15 @@ void AdjRibPolicyCache::addToPolicyCache(
     return;
   }
 
-  // Purge stale entries:
-  // Note this is in addition to LRU eviction. We don't want to hold on to
-  // some share_ptr of BgpPath long after all references to it is gone
-  // just because LRU Cache has a reference to it.
-  // Note that if the attrs we are holding has refcount of 1 that means
-  // cache-entry is the only one referring to this and no prefix is associated
-  // with this.
+  /*
+   * Purge stale entries:
+   * Note this is in addition to LRU eviction. We don't want to hold on to
+   * some share_ptr of BgpPath long after all references to it is gone
+   * just because LRU Cache has a reference to it.
+   * Note that if the attrs we are holding has refcount of 1 that means
+   * cache-entry is the only one referring to this and no prefix is associated
+   * with this.
+   */
   if ((++totalRuns % cacheEvictionRunCount_) == 0) {
     evictFromPolicyCache();
   }

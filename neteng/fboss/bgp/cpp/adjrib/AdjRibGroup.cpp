@@ -42,8 +42,10 @@
 
 namespace facebook::bgp {
 
-// Global cache for policy result strings (shared with AdjRib)
-// This is needed because AdjRibEntry::setPostPolicy() references it
+/*
+ * Global cache for policy result strings (shared with AdjRib)
+ * This is needed because AdjRibEntry::setPostPolicy() references it
+ */
 extern PostPolicyResultCacheT postPolicyResultCache_;
 
 AdjRibOutGroup::~AdjRibOutGroup() {
@@ -635,8 +637,10 @@ void AdjRibOutGroup::walkAndProcessShadowRib(bool sendWithEoR) {
    */
   bool skippedChangeListEntry = false;
 
-  // Walk through all shadow RIB entries
-  // NOTE: this ensures maximum packing without chunk limit.
+  /*
+   * Walk through all shadow RIB entries
+   * NOTE: this ensures maximum packing without chunk limit.
+   */
   for (const auto& [prefix, srEntryPtr] : shadowRibEntries_) {
     // TODO: add cancellable token to make sure this iteration is interruptible
     if (!srEntryPtr) {
@@ -1134,8 +1138,10 @@ void AdjRibOutGroup::processGroupRibWithdraw(
       groupDescriptor_,
       folly::IPAddress::networkToString(prefix));
 
-  // TODO: Out-delay support will be added in future diff
-  // When implemented: check and remove from deferredUpdates_ here
+  /*
+   * TODO: Out-delay support will be added in future diff
+   * When implemented: check and remove from deferredUpdates_ here
+   */
 
   // Get group RIB-OUT entry via radix node iterator
   auto groupOwnerKey = getGroupOwnerKey();
@@ -1179,8 +1185,10 @@ void AdjRibOutGroup::processGroupRibWithdraw(
   adjRibEntry->setPostOutPolicy({});
   stats_.decrementPreOutPrefixCount(prefix.first.isV4());
 
-  // Try to insert withdrawal into packing list
-  // Only withdraw if we previously announced (has postAttr)
+  /*
+   * Try to insert withdrawal into packing list
+   * Only withdraw if we previously announced (has postAttr)
+   */
   auto oldPostAttr = adjRibEntry->getPostAttr();
   if (oldPostAttr) {
     XLOGF_IF(
@@ -1279,8 +1287,10 @@ void AdjRibOutGroup::setEgressEorsPendingSyncPeers() noexcept {
  */
 bool AdjRibOutGroup::canAnnounceForGroup(
     const RibOutAnnouncementEntry& update) noexcept {
-  // Skip same-peer check - that's done per-peer during distribution
-  // because each peer has different peerAddr
+  /*
+   * Skip same-peer check - that's done per-peer during distribution
+   * because each peer has different peerAddr
+   */
 
   /*
    * RFC 1997 well-known community egress filter. Run BEFORE the IBGP
@@ -1313,8 +1323,10 @@ bool AdjRibOutGroup::canAnnounceForGroup(
       return true;
     }
 
-    // Non-RR IBGP peers: only announce eBGP routes, local routes, or RRC routes
-    // Local routes will have addr.isZero()
+    /*
+     * Non-RR IBGP peers: only announce eBGP routes, local routes, or RRC routes
+     * Local routes will have addr.isZero()
+     */
     if (update.peer.sessionType != BgpSessionType::IBGP ||
         update.peer.addr.isZero() || update.peer.isRrClient) {
       XLOGF(
@@ -1411,8 +1423,10 @@ void AdjRibOutGroup::processRibAnnouncedEntryForGroup(
         *peeringParams_, entry, prePolicyAttrs);
   }
 
-  // Get post policy attributes
-  // Policy cache lookup happens inside getPostOutPolicyAttributesAndInfo
+  /*
+   * Get post policy attributes
+   * Policy cache lookup happens inside getPostOutPolicyAttributesAndInfo
+   */
   const auto& [policyCachedAttrs, postPolicyInfo] =
       getPostOutPolicyAttributesAndInfo(
           entry, adjRibEntry, prePolicyAttrs, updatePeerIdStr);
@@ -1443,8 +1457,10 @@ void AdjRibOutGroup::processRibAnnouncedEntryForGroup(
     return;
   }
 
-  // NOTE: Skip nexthop validation at group level
-  // Nexthop is set per-peer at send time, not at group level
+  /*
+   * NOTE: Skip nexthop validation at group level
+   * Nexthop is set per-peer at send time, not at group level
+   */
 
   /*
    * Prefix is permitted from egress policy.
@@ -1460,8 +1476,10 @@ void AdjRibOutGroup::processRibAnnouncedEntryForGroup(
   /* Attributes will not change any more. Publish. */
   postOutAttrsNew->publish();
 
-  // Check if we announced the prefix before
-  // post out is set if the prefix was previously announced
+  /*
+   * Check if we announced the prefix before
+   * post out is set if the prefix was previously announced
+   */
   if (adjRibEntry->getPostAttr()) {
     /*
      * Announce the prefix to group again only if postOut has changed.
@@ -1502,10 +1520,12 @@ void AdjRibOutGroup::processRibAnnouncedEntryForGroup(
 
   auto oldPostAttr = adjRibEntry->getPostAttr();
 
-  // Set the post out
-  // Majority of the cases we update attributes with nexthop/AS-Path changes
-  // or policy changes, but in few cases where there is no change between
-  // preOut and postOut, this deep compare will save memory.
+  /*
+   * Set the post out
+   * Majority of the cases we update attributes with nexthop/AS-Path changes
+   * or policy changes, but in few cases where there is no change between
+   * preOut and postOut, this deep compare will save memory.
+   */
   if (*postOutAttrsNew == *adjRibEntry->getPreOut()) {
     auto preOutPostAttr = adjRibEntry->getPreOut();
     adjRibEntry->setPostAttr(preOutPostAttr);
@@ -1620,9 +1640,11 @@ void AdjRibOutGroup::tryInsertWithdrawal(
     const std::string& notInsertedMsg) noexcept {
   auto oldPostAttr = adjRibEntry->getPostAttr();
   if (oldPostAttr) {
-    // Withdraw the prefix only if we previously announced it to this group
-    // This can happen if attributes change for a prefix and policy based on
-    // new attributes blocks the prefix. Withdraw it from group.
+    /*
+     * Withdraw the prefix only if we previously announced it to this group
+     * This can happen if attributes change for a prefix and policy based on
+     * new attributes blocks the prefix. Withdraw it from group.
+     */
     XLOGF_IF(
         DBG1,
         stats_.getPostOutPrefixCount() == 0,
@@ -1636,8 +1658,10 @@ void AdjRibOutGroup::tryInsertWithdrawal(
 
     auto prefixPathId = std::make_pair(prefix, adjRibEntry->getPathId());
 
-    // Update attrToPrefixMap to move prefixPathId from the previous postAttrs
-    // to the new postAttr (nullptr).
+    /*
+     * Update attrToPrefixMap to move prefixPathId from the previous postAttrs
+     * to the new postAttr (nullptr).
+     */
     tryUpdateAttrToPrefixMapForGroup(
         prefixPathId, oldPostAttr, adjRibEntry->getPostAttr());
 
@@ -1818,8 +1842,10 @@ AdjRibOutGroup::getPostOutPolicyAttributesAndInfo(
     policyResultAttrs = prePolicyAttrs;
   }
 
-  // TODO: Add egress route filter (CRF) check for group level if needed
-  // For now, skip CRF check at group level
+  /*
+   * TODO: Add egress route filter (CRF) check for group level if needed
+   * For now, skip CRF check at group level
+   */
 
   return {policyResultAttrs, postPolicyResultInfo};
 }
@@ -2175,8 +2201,10 @@ AdjRibOutGroup::buildAndSendGroupBgpMessages() noexcept {
         stats_.incrementSentWithdrawals();
       }
 
-      // Distribute to all in-sync peers
-      // This suspends if any peer queue is full (backpressure)
+      /*
+       * Distribute to all in-sync peers
+       * This suspends if any peer queue is full (backpressure)
+       */
       co_await distributeMessageToInSyncPeers(
           update, attr, afi, isNhSetByPolicy);
     }
@@ -2671,8 +2699,10 @@ void AdjRibOutGroup::registerPeer(const std::shared_ptr<AdjRib>& adjRib) {
     /* Set in-sync bitmap bit - peer is ready to receive group dump */
     setSyncBit(bit, adjRib);
   } else {
-    // Group already initialized and running
-    // New peer must catch up independently before joining
+    /*
+     * Group already initialized and running
+     * New peer must catch up independently before joining
+     */
     detachedPeers_.insert(adjRib);
 
     XLOGF(
@@ -2699,8 +2729,10 @@ void AdjRibOutGroup::registerPeer(const std::shared_ptr<AdjRib>& adjRib) {
      */
     adjRib->resetChangeListConsumer();
 
-    // Schedule individual initial dump for this peer
-    // This will be done by PeerManagerBase after registerPeer returns
+    /*
+     * Schedule individual initial dump for this peer
+     * This will be done by PeerManagerBase after registerPeer returns
+     */
   }
 }
 
@@ -3743,9 +3775,11 @@ void AdjRibOutGroup::detachSlowPeer(
     return;
   }
 
-  // If peer is the last synced peer in the group, skip detachment.
-  // Detaching the last synced peer would leave no peers receiving group
-  // updates.
+  /*
+   * If peer is the last synced peer in the group, skip detachment.
+   * Detaching the last synced peer would leave no peers receiving group
+   * updates.
+   */
   if (numInSyncPeers_ <= 1) {
     XLOGF(
         INFO,
@@ -3905,8 +3939,10 @@ void AdjRibOutGroup::checkAndAcceptReadyToJoinPeers() noexcept {
     if (adjRib->isAdjRibFlagSet(AdjRib::IS_DETACHED_FAST_PEER)) {
       dfpPeers.push_back(adjRib);
     } else if (adjRib->isReadyToRejoinGroup()) {
-      // Both consumers are at the end, both packing lists are empty, and
-      // versions match.
+      /*
+       * Both consumers are at the end, both packing lists are empty, and
+       * versions match.
+       */
       dspCandidates.push_back(adjRib);
     } else if (adjRib->getLastSeenRibVersion() > lastSeenRibVersion_) {
       /*
@@ -3950,9 +3986,11 @@ void AdjRibOutGroup::checkAndAcceptReadyToJoinPeers() noexcept {
     auto bit = peer->getGroupBitPosition();
     peer->clearAdjRibFlag(AdjRib::IS_DETACHED_FAST_PEER);
     peer->deactivateDetachedModeProcessing();
-    // Reset block info on rejoin rather than on detach activation, because
-    // block info is used for frequency-based slow peer detection and should
-    // only be reset when the peer rejoins the group with a fresh start.
+    /*
+     * Reset block info on rejoin rather than on detach activation, because
+     * block info is used for frequency-based slow peer detection and should
+     * only be reset when the peer rejoins the group with a fresh start.
+     */
     peer->resetPeerBlockInfo();
     XLOGF(
         DBG1,
@@ -4037,9 +4075,11 @@ void AdjRibOutGroup::testOnlySetDeferDrjAcceptance(
  */
 std::vector<std::shared_ptr<AdjRib>> AdjRibOutGroup::tryAcceptPeersToGroup(
     const std::vector<std::shared_ptr<AdjRib>>& candidatePeers) noexcept {
-  // Split candidates into:
-  //   pathPeers: sendAddPath peers whose entries live in AdjRibPathTree
-  //   litePeers: non-addPath peers whose entries live in AdjRibLiteTree
+  /*
+   * Split candidates into:
+   *   pathPeers: sendAddPath peers whose entries live in AdjRibPathTree
+   *   litePeers: non-addPath peers whose entries live in AdjRibLiteTree
+   */
   std::vector<std::shared_ptr<AdjRib>> pathPeers;
   std::vector<std::shared_ptr<AdjRib>> litePeers;
   for (const auto& peer : candidatePeers) {
@@ -4056,9 +4096,11 @@ std::vector<std::shared_ptr<AdjRib>> AdjRibOutGroup::tryAcceptPeersToGroup(
     }
   }
 
-  // Collapse per-peer RIB-OUT entries back into the group.
-  // DSP entries are compared and corrections queued in the packing list.
-  // Peers with discrepancies have RIB_OUT_DISCREPANCY flag set.
+  /*
+   * Collapse per-peer RIB-OUT entries back into the group.
+   * DSP entries are compared and corrections queued in the packing list.
+   * Peers with discrepancies have RIB_OUT_DISCREPANCY flag set.
+   */
   auto groupOwnerKey = getGroupOwnerKey();
   if (!pathPeers.empty()) {
     collapsePathEntries(groupOwnerKey, pathPeers);
@@ -4119,9 +4161,11 @@ std::vector<std::shared_ptr<AdjRib>> AdjRibOutGroup::tryAcceptPeersToGroup(
     }
 
     peer->deactivateDetachedModeProcessing();
-    // Reset block info on rejoin rather than on detach activation, because
-    // block info is used for frequency-based slow peer detection and should
-    // only be reset when the peer rejoins the group with a fresh start.
+    /*
+     * Reset block info on rejoin rather than on detach activation, because
+     * block info is used for frequency-based slow peer detection and should
+     * only be reset when the peer rejoins the group with a fresh start.
+     */
     peer->resetPeerBlockInfo();
     XLOGF(
         DBG1,
@@ -4212,8 +4256,10 @@ AdjRibEntry* AdjRibOutGroup::copyEntryForOwner(
     const AdjRibEntry* entryToCopy) noexcept {
   auto newEntry = addRibEntry(prefix, effectiveOwnerKey, pathId);
 
-  // Strip RIB-IN-only add-path GR marker bits: a RIB-OUT clone must never
-  // inherit old-path-id ownership or a pending op from the source entry.
+  /*
+   * Strip RIB-IN-only add-path GR marker bits: a RIB-OUT clone must never
+   * inherit old-path-id ownership or a pending op from the source entry.
+   */
   newEntry->flags_ = entryToCopy->flags_ & ~AdjRibEntry::kRibInOnlyFlagsMask;
   newEntry->setPreOut(entryToCopy->getPreOut());
   newEntry->setPostAttr(entryToCopy->getPostAttr());

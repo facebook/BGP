@@ -681,8 +681,10 @@ void AdjRib::buildAndSendBgpMessages(bool sendWithEoR) noexcept {
   }
 
   uint64_t bgpMessageCnt{0};
-  // TODO: Merge withdraw and updates into same message. We need delay timer
-  //       to merge as they come in separate messages.
+  /*
+   * TODO: Merge withdraw and updates into same message. We need delay timer
+   *       to merge as they come in separate messages.
+   */
   auto withdrawPrefixCnt = buildAndQueueWithdrawals(bgpMessageCnt);
   auto announcePrefixCnt = buildAndQueueAnnouncements(bgpMessageCnt);
   if (sendWithEoR) {
@@ -972,9 +974,11 @@ void AdjRib::handleRibAnnouncedEntry(
     return;
   }
 
-  // if processOutDelay returns false we are not deferring the prefix
-  // update due to out-delay. if the prefix is not already deferred
-  // then newEntryDeferred will be set.
+  /*
+   * if processOutDelay returns false we are not deferring the prefix
+   * update due to out-delay. if the prefix is not already deferred
+   * then newEntryDeferred will be set.
+   */
   bool outDelay{false}, newEntryDeferred{false};
   if (!initialDump) {
     std::tie(outDelay, newEntryDeferred) = processOutDelay(entry);
@@ -994,12 +998,16 @@ void AdjRib::scheduleOutDelayTimer(void) noexcept {
     return;
   }
 
-  // Enqueue the new out-delay timer if newEntryDeferred is set from
-  // above.
+  /*
+   * Enqueue the new out-delay timer if newEntryDeferred is set from
+   * above.
+   */
   auto delayTimeStamp = std::chrono::system_clock::now() + outDelay_;
   outDelayPQ_.emplace(delayTimeStamp, std::move(newDeferredPrefixes_));
-  // if timer is running we don't need to do anything.
-  // else fire a new out-delay timer.
+  /*
+   * if timer is running we don't need to do anything.
+   * else fire a new out-delay timer.
+   */
   if (!outDelayTimer_ || !outDelayTimer_->isScheduled()) {
     XLOGF(
         DBG4,
@@ -1016,8 +1024,10 @@ void AdjRib::scheduleOutDelayTimer(void) noexcept {
 }
 
 bool AdjRib::canAnnounce(const RibOutAnnouncementEntry& update) noexcept {
-  // Do not send out to the peer from which we learnt this route
-  // NOTE Here we only use peer Addr, maybe also need to check the bgpId?
+  /*
+   * Do not send out to the peer from which we learnt this route
+   * NOTE Here we only use peer Addr, maybe also need to check the bgpId?
+   */
   if ((update.peer.addr == peeringParams_.peerAddr) &&
       ((!peeringParams_.peerAddr.isLoopback()) ||
        (!peeringParams_.allowLoopbackReflection))) {
@@ -1040,9 +1050,11 @@ bool AdjRib::canAnnounce(const RibOutAnnouncementEntry& update) noexcept {
       return true;
     }
 
-    // Announce eBGP learnt routes, local routes and RR client routes to
-    // non RR peer
-    // Local routes will have addr.isZero()
+    /*
+     * Announce eBGP learnt routes, local routes and RR client routes to
+     * non RR peer
+     * Local routes will have addr.isZero()
+     */
     if (update.peer.sessionType != BgpSessionType::IBGP ||
         update.peer.addr.isZero() || update.peer.isRrClient) {
       XLOGF(
@@ -1100,11 +1112,13 @@ bool AdjRib::canAnnounceEntry(const RibOutAnnouncementEntry& update) noexcept {
 bool AdjRib::suppressLoopedAdvertisements(
     const std::shared_ptr<const facebook::bgp::BgpPath>& attrs) noexcept {
   auto remoteAs = facebook::bgp::AsNum(getRemoteAs());
-  // Determine if remote AS exists in the as path (so that remote would reject
-  // it)
-  // Note: its check is less than hasAsPathLoop it will check confed_as or
-  // global_as depending whether it is confed peer, as it has only one remote_as
-  // Motivation: https://fburl.com/gdoc/4cm17y05
+  /*
+   * Determine if remote AS exists in the as path (so that remote would reject
+   * it)
+   * Note: its check is less than hasAsPathLoop it will check confed_as or
+   * global_as depending whether it is confed peer, as it has only one remote_as
+   * Motivation: https://fburl.com/gdoc/4cm17y05
+   */
   if (isIBgpPeer()) {
     return false;
   }
@@ -1135,17 +1149,19 @@ bool AdjRib::suppressLoopedAdvertisements(
   return false;
 }
 
-// TODO (D6882628): We are applying policy per Rib announcement entry. We can
-// see if we can optimize by trying to group prefixes based on attributes from
-// RIB message and applyPolicy. (If policy applying cost is more than grouping
-// cost) For incremental announcements as rib aggregates messages from multiple
-// peers and accumulates with delay, it may not be worth it. Even for initial
-// dump of route table as we advertise only couple of routes from each RSW,
-// number of routes sharing preOutAttrs with same values is very small,
-// annecdotally < 4. As we create separate shared_ptr for preInAttrs from
-// multiple peers unless we do deep compare/deep hashing we cannot determine
-// which prefixes to group. Overall I feel with current design and deployments
-// it's not worth it.
+/*
+ * TODO (D6882628): We are applying policy per Rib announcement entry. We can
+ * see if we can optimize by trying to group prefixes based on attributes from
+ * RIB message and applyPolicy. (If policy applying cost is more than grouping
+ * cost) For incremental announcements as rib aggregates messages from multiple
+ * peers and accumulates with delay, it may not be worth it. Even for initial
+ * dump of route table as we advertise only couple of routes from each RSW,
+ * number of routes sharing preOutAttrs with same values is very small,
+ * annecdotally < 4. As we create separate shared_ptr for preInAttrs from
+ * multiple peers unless we do deep compare/deep hashing we cannot determine
+ * which prefixes to group. Overall I feel with current design and deployments
+ * it's not worth it.
+ */
 void AdjRib::processRibAnnouncedEntry(
     const RibOutAnnouncementEntry& update) noexcept {
   const std::string updatePeerIdStr =
@@ -1157,18 +1173,22 @@ void AdjRib::processRibAnnouncedEntry(
   adjRibEntry->setPreOut(update.attrs);
   adjRibEntry->setRibVersion(update.ribVersion);
 
-  // apply per-peer-lbw-config for AdvertiseLBW
-  // lbw-policy is applied afterwards, which takes precedence over
-  // per-peer-config
+  /*
+   * apply per-peer-lbw-config for AdvertiseLBW
+   * lbw-policy is applied afterwards, which takes precedence over
+   * per-peer-config
+   */
   auto prePolicyAttrs = update.attrs->clone();
   if (update.isPartialDrain) {
     applyPartialDrainCommunities(prePolicyAttrs);
   }
   updateAdvertiseLbwExtCommunity(update, prePolicyAttrs);
 
-  // Get post policy attributes
-  // Look up in the cache - if found just clone the result
-  // Else run thru policy and store result in cache, clone the cached copy
+  /*
+   * Get post policy attributes
+   * Look up in the cache - if found just clone the result
+   * Else run thru policy and store result in cache, clone the cached copy
+   */
   const auto& [policyCachedAttrs, postPolicyInfo] =
       getPostOutPolicyAttributesAndInfo(
           update, adjRibEntry, prePolicyAttrs, updatePeerIdStr);
@@ -1275,10 +1295,12 @@ void AdjRib::processRibAnnouncedEntry(
 
   auto oldPostAttr = adjRibEntry->getPostAttr();
 
-  // Set the post out
-  // Majority of the cases we update attributes with nexthop/AS-Path changes
-  // or policy changes, but in few cases where there is no change between
-  // preOut and postOut, this deep compare will save memory.
+  /*
+   * Set the post out
+   * Majority of the cases we update attributes with nexthop/AS-Path changes
+   * or policy changes, but in few cases where there is no change between
+   * preOut and postOut, this deep compare will save memory.
+   */
   if (*postOutAttrsNew == *adjRibEntry->getPreOut()) {
     auto preOutPostAttr = adjRibEntry->getPreOut();
     stats_.updateAttributeSizes(preOutPostAttr);
@@ -1294,9 +1316,11 @@ void AdjRib::processRibAnnouncedEntry(
       postPolicyInfo.isNexthopSetByPolicy);
 }
 
-// Try inserting a ribOutEntry based on the prefix and next hop.
-// Return the existing one if the entry already exists; Otherwise,
-// create a new one and return it.
+/*
+ * Try inserting a ribOutEntry based on the prefix and next hop.
+ * Return the existing one if the entry already exists; Otherwise,
+ * create a new one and return it.
+ */
 AdjRibEntry* FOLLY_NULLABLE AdjRib::tryInsertRibOutEntry(
     const folly::CIDRNetwork& prefix,
     const folly::IPAddress& nexthop) noexcept {
@@ -1334,20 +1358,28 @@ AdjRib::getPostOutPolicyAttributesAndInfo(
   std::shared_ptr<const BgpPath> policyResultAttrs{nullptr};
   PostPolicyInfo postPolicyResultInfo;
 
-  // adjRibEntry must not be nullptr
-  // This check allows UT to surface assumption violation early
+  /*
+   * adjRibEntry must not be nullptr
+   * This check allows UT to surface assumption violation early
+   */
   CHECK(adjRibEntry != nullptr);
 
-  // TODO: if policy has no prefix terms we can store a separate cache of
-  //       egress-policy and attrs which can then be applied across all prefixes
-  //       thus saving cache space.
+  /*
+   * TODO: if policy has no prefix terms we can store a separate cache of
+   *       egress-policy and attrs which can then be applied across all prefixes
+   *       thus saving cache space.
+   */
 
-  // Even in presence of local-as policy cache lookup is fine.
-  // Because as-path-update is done on post-policy attrs.
+  /*
+   * Even in presence of local-as policy cache lookup is fine.
+   * Because as-path-update is done on post-policy attrs.
+   */
   if (egressPolicyConfigured()) {
-    // snapshot policyActionData
-    // This captures the original data, before update.attrs is
-    // updated to prePolicyAttrs
+    /*
+     * snapshot policyActionData
+     * This captures the original data, before update.attrs is
+     * updated to prePolicyAttrs
+     */
     auto policyActionData = createPolicyActionData(
         update.attrs,
         update.switchId,
@@ -1375,8 +1407,10 @@ AdjRib::getPostOutPolicyAttributesAndInfo(
   if (policyResultAttrs != nullptr &&
       blockedByEgressRouteFilter(update, updatePeerIdStr)) {
     policyResultAttrs = nullptr;
-    // this prefix was allowed by policy but blocked by crf, we update
-    // PostOutPolicy accordingly
+    /*
+     * this prefix was allowed by policy but blocked by crf, we update
+     * PostOutPolicy accordingly
+     */
     adjRibEntry->setPostOutPolicy("Denied by CRF");
   }
   return {policyResultAttrs, postPolicyResultInfo};
@@ -1488,41 +1522,49 @@ bool AdjRib::blockedByEgressRouteFilter(
   return false;
 }
 
-// Check if the update is to be deferred due to out-delay or not.
-// Whenever a new AdjRibEntry is created for the first time we will apply
-// out-delay. Any subsequent update won't trigger out-delay.
-// Returns true if update is deferred or dropped.
-// Else, return false which invokes processRibAnnouncedEntry on the update
-// to send the update out without any delay.
+/*
+ * Check if the update is to be deferred due to out-delay or not.
+ * Whenever a new AdjRibEntry is created for the first time we will apply
+ * out-delay. Any subsequent update won't trigger out-delay.
+ * Returns true if update is deferred or dropped.
+ * Else, return false which invokes processRibAnnouncedEntry on the update
+ * to send the update out without any delay.
+ */
 std::pair<bool, bool> AdjRib::processOutDelay(
     const RibOutAnnouncementEntry& update) {
   if (outDelay_ == 0s) {
     return std::make_pair<bool, bool>(false, false);
   }
 
-  // if prefix is currently in deferredUpdates_ list just modify it.
-  // Note such a prefix might not have newlyInstalledInLocalRib marked.
+  /*
+   * if prefix is currently in deferredUpdates_ list just modify it.
+   * Note such a prefix might not have newlyInstalledInLocalRib marked.
+   */
   if (deferredUpdates_.erase(update.prefix) > 0) {
     XLOGF(
         DBG3,
         "Modifying already deferred prefix received from Rib for {}: {}",
         getPeerName(),
         folly::IPAddress::networkToString(update.prefix));
-    // Replace the existing update entry and return true to indicate deferred
-    // processing will be in effect. No counter change: erase+emplace is a
-    // replace, net size stays the same.
+    /*
+     * Replace the existing update entry and return true to indicate deferred
+     * processing will be in effect. No counter change: erase+emplace is a
+     * replace, net size stays the same.
+     */
     deferredUpdates_.emplace(update.prefix, update);
     return std::make_pair<bool, bool>(true, false);
   }
-  // if prefix is seen firstime with newlyInstalledInLocalRib marked then add to
-  // deferred list. Also if the entry's RIB install time stamp is within the
-  // outdelay window (i.e. install time is < (currentTime - outdelay)) apply
-  // outdelay.
-  // TODO: The current logic defers the entry for outdelay seconds not the
-  // delta. Technically sepaking delta is the right deferral period but that
-  // compicates the overall timer mgmt logic too much in terms of (potentially)
-  // tracking a timer per entry and later creating multiple timers per batch.
-  // For now I have taken the simpler approach.
+  /*
+   * if prefix is seen firstime with newlyInstalledInLocalRib marked then add to
+   * deferred list. Also if the entry's RIB install time stamp is within the
+   * outdelay window (i.e. install time is < (currentTime - outdelay)) apply
+   * outdelay.
+   * TODO: The current logic defers the entry for outdelay seconds not the
+   * delta. Technically sepaking delta is the right deferral period but that
+   * compicates the overall timer mgmt logic too much in terms of (potentially)
+   * tracking a timer per entry and later creating multiple timers per batch.
+   * For now I have taken the simpler approach.
+   */
   auto curTimeStamp = std::chrono::system_clock::now();
   std::chrono::duration<double> timeDiff =
       curTimeStamp - update.installTimeStamp - outDelay_;
@@ -1586,8 +1628,10 @@ void AdjRib::programOutDelayTimer() noexcept {
     }
     outDelayPQ_.pop();
 
-    // TODO: the cnt does not reflect the real number of prefixes processed as
-    // one entry may contain high number of prefixes. Refactor this.
+    /*
+     * TODO: the cnt does not reflect the real number of prefixes processed as
+     * one entry may contain high number of prefixes. Refactor this.
+     */
     if (!outDelayPQ_.empty() &&
         ++processedCnt >= nettools::bgplib::kMsgBatchSizeToYield) {
       outDelayTimer_->scheduleTimeout(kRescheduleOutDelayTimeoutMs);
@@ -1648,8 +1692,10 @@ void AdjRib::processRibOutWithdrawal(
   }
 }
 
-// Check if we need to withdraw previously announced prefix due to
-// bestpath change and latest prefix/path no longer qualifies for announcing
+/*
+ * Check if we need to withdraw previously announced prefix due to
+ * bestpath change and latest prefix/path no longer qualifies for announcing
+ */
 void AdjRib::handleImplicitWithdrawal(
     const folly::CIDRNetwork& prefix,
     const folly::IPAddress& nextHop) noexcept {
@@ -1677,9 +1723,11 @@ void AdjRib::processRibWithdraw(
     return;
   }
 
-  // Note we remove the prefix from the deferredUpdates_ but don't cancel the
-  // deferred timer. we let the timer run out and ignore any entry that is
-  // not present in the deferredUpdates_ list.
+  /*
+   * Note we remove the prefix from the deferredUpdates_ but don't cancel the
+   * deferred timer. we let the timer run out and ignore any entry that is
+   * not present in the deferredUpdates_ list.
+   */
   if (deferredUpdates_.erase(prefix)) {
     deferredUpdatesSize_--;
     RibStats::decrDeferredUpdatesCount(1);
@@ -1730,9 +1778,11 @@ void AdjRib::tryInsertWithdrawal(
     const std::string& notInsertedMsg) {
   auto oldPostAttr = adjRibEntry->getPostAttr();
   if (oldPostAttr) {
-    // Withdraw the prefix only if we previously announced it to this peer
-    // This can happen if attributes change for a prefix and policy based on
-    // new attributes blocks the prefix. Withdraw it from peer.
+    /*
+     * Withdraw the prefix only if we previously announced it to this peer
+     * This can happen if attributes change for a prefix and policy based on
+     * new attributes blocks the prefix. Withdraw it from peer.
+     */
     XLOGF_IF(
         DBG1,
         stats_.getPostOutPrefixCount() == 0,
@@ -1745,8 +1795,10 @@ void AdjRib::tryInsertWithdrawal(
 
     auto prefixPathId = std::make_pair(prefix, adjRibEntry->getPathId());
 
-    // Update attrToPrefixMap to move prefixPathId from the previous postAttrs
-    // to the new postAttr (nullptr).
+    /*
+     * Update attrToPrefixMap to move prefixPathId from the previous postAttrs
+     * to the new postAttr (nullptr).
+     */
     tryUpdateAttrToPrefixMap(
         prefixPathId, oldPostAttr, adjRibEntry->getPostAttr());
 
@@ -1757,8 +1809,10 @@ void AdjRib::tryInsertWithdrawal(
   }
 }
 
-// Try to delete AdjRibEntry if there is no longer any interest for this prefix
-// i.e. we have withdrawn it and no one is advertising this prefix
+/*
+ * Try to delete AdjRibEntry if there is no longer any interest for this prefix
+ * i.e. we have withdrawn it and no one is advertising this prefix
+ */
 void AdjRib::tryDeleteRibOutEntry(
     const folly::CIDRNetwork& prefix,
     const AdjRibEntry* adjRibEntry,
@@ -1983,9 +2037,11 @@ void AdjRib::transitionPeerUpdateState() noexcept {
 void AdjRib::activateDetachedModeProcessing() {
   XLOGF(INFO, "Peer {}: Activating detached mode processing", getPeerName());
 
-  // Schedule PL drain. DFP/DSP checks happen at end of sendBgpUpdates.
-  // CL consumption will also be pumped through scheduleSendBgpUpdates entry
-  // point by scheduling the packing timers (changeListConsumeTimer_).
+  /*
+   * Schedule PL drain. DFP/DSP checks happen at end of sendBgpUpdates.
+   * CL consumption will also be pumped through scheduleSendBgpUpdates entry
+   * point by scheduling the packing timers (changeListConsumeTimer_).
+   */
   scheduleSendBgpUpdates(false /* tryPullNewChangeItems */);
 }
 

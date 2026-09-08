@@ -291,9 +291,11 @@ struct BgpPathWithAfi {
   bool isNexthopSetByPolicy{false};
 };
 
-// After T228125215, all BgpPaths stored in AdjRibEntry are deduplicated
-// via DeDuplicatedBgpPath, so pointer identity is sufficient for
-// hashing and comparison.
+/*
+ * After T228125215, all BgpPaths stored in AdjRibEntry are deduplicated
+ * via DeDuplicatedBgpPath, so pointer identity is sufficient for
+ * hashing and comparison.
+ */
 struct BgpPathHashWithNull {
   size_t operator()(std::shared_ptr<const BgpPath> const& attr) const {
     return std::hash<const BgpPath*>{}(attr.get());

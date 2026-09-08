@@ -150,9 +150,11 @@ std::shared_ptr<BgpPolicyActionData> createPolicyActionDataCommon(
       switchId, multiPathSize, std::move(lbwActionData));
 }
 
-// Global cache for policy result strings (shared between AdjRib and
-// AdjRibGroup) Each AdjRibEntry contains a postPolicyResult_ string_view that
-// points to the string key in this cache.
+/*
+ * Global cache for policy result strings (shared between AdjRib and
+ * AdjRibGroup) Each AdjRibEntry contains a postPolicyResult_ string_view that
+ * points to the string key in this cache.
+ */
 PostPolicyResultCacheT postPolicyResultCache_;
 
 void tryUpdateAttrToPrefixMapImpl(
@@ -249,9 +251,11 @@ void tryUpdateAttrToPrefixMapImpl(
     auto& prefixes = newPathItr->second;
 
     if (prefixes.contains(prefixPathId)) {
-      // Invariant is that prefixPathId can only be associated to one attr.
-      // We cleaned up the old state, so we should NOT see this prefix again.
-      // If we see it, the invariant is violated and we have inconsistent state.
+      /*
+       * Invariant is that prefixPathId can only be associated to one attr.
+       * We cleaned up the old state, so we should NOT see this prefix again.
+       * If we see it, the invariant is violated and we have inconsistent state.
+       */
       XLOGF(
           WARN,
           "{}Packing list already contains prefix {}",
@@ -716,15 +720,20 @@ uint32_t packPrefixesWithLimitCommon(
   const auto& firstPrefix = prefixPathIds.cbegin()->first;
   const bool isV4 = firstPrefix.first.isV4();
 
-  // Get the maximum prefix length based on whether we have path IDs and address
-  // family
+  /*
+   * Get the maximum prefix length based on whether we have path IDs and address
+   * family
+   */
   const size_t maxPrefixLen =
       nettools::bgplib::BgpMessageSerializer::getMaxPrefixLen(
           sendAddPath, isV4);
 
-  // Compute the prefix limit based on available space and chain length
-  // Formula: (kMaxBgpMsgLen - kBgpMsgHeaderLen - approximateSerializedAttrLen)
-  // * (kMaxSerializedChainLen / maxPrefixLen)
+  /*
+   * Compute the prefix limit based on available space and chain length
+   * Formula:
+   *   (kMaxBgpMsgLen - kBgpMsgHeaderLen - approximateSerializedAttrLen)
+   *     * (kMaxSerializedChainLen / maxPrefixLen)
+   */
   static const int32_t kRemainingBytes =
       nettools::bgplib::kMaxBgpMsgLen - nettools::bgplib::kBgpMsgHeaderLen;
   const uint32_t prefixLimit =

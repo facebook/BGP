@@ -155,9 +155,11 @@ folly::coro::Task<void> AdjRib::processPeerMessageLoop(
   auto overload = folly::overload(
       [this](std::shared_ptr<const BgpUpdate2> const& update)
           -> folly::coro::Task<bool> {
-        // Acquire semaphore before modifying trees.
-        // SCOPE_EXIT guarantees release even if an exception is thrown,
-        // using an internal RAII guard that invokes the lambda on destruction.
+        /*
+         * Acquire semaphore before modifying trees.
+         * SCOPE_EXIT guarantees release even if an exception is thrown,
+         * using an internal RAII guard that invokes the lambda on destruction.
+         */
         co_await waitForTreeAccessSemaphore();
         SCOPE_EXIT {
           signalTreeAccessSemaphore();
@@ -183,8 +185,10 @@ folly::coro::Task<void> AdjRib::processPeerMessageLoop(
       },
       [this](
           FiberBgpPeer::BgpSessionStop sessionStop) -> folly::coro::Task<bool> {
-        // Acquire semaphore before modifying trees (this call can clear stale
-        // routes)
+        /*
+         * Acquire semaphore before modifying trees (this call can clear stale
+         * routes)
+         */
         co_await waitForTreeAccessSemaphore();
         SCOPE_EXIT {
           signalTreeAccessSemaphore();
@@ -370,8 +374,10 @@ uint32_t AdjRib::processPrefixWithPolicy(
     PrefixPathIds& withdrawnPfxPathIds,
     folly::F14NodeMap<std::shared_ptr<const BgpPath>, PrefixPathIds>&
         groupAnnouncedPrefixes) {
-  // Get policy result for this prefix and update adjRibEntry.
-  // Check if attributes need to be updated or we need to filter this prefix
+  /*
+   * Get policy result for this prefix and update adjRibEntry.
+   * Check if attributes need to be updated or we need to filter this prefix
+   */
   auto postInAttrs = getPostInRouteFilterAndPolicyAttributes(
       prefix, postConfigInAttrs, policyActionData, adjRibEntry);
 
@@ -393,8 +399,10 @@ uint32_t AdjRib::maybeAnnouncePrefix(
     folly::F14NodeMap<std::shared_ptr<const BgpPath>, PrefixPathIds>&
         groupAnnouncedPrefixes) {
   if (!postInAttrs && !adjRibEntry->getPostAttr()) {
-    // Policy blocked this prefix and we didn't inform Rib before, so no need
-    // to inform to rib now.
+    /*
+     * Policy blocked this prefix and we didn't inform Rib before, so no need
+     * to inform to rib now.
+     */
     XLOGF(
         DBG3,
         "Ignoring announcement {} from {}. "
@@ -403,9 +411,11 @@ uint32_t AdjRib::maybeAnnouncePrefix(
         getPeerName());
     return 0;
   } else if (!postInAttrs) {
-    // Policy blocked this prefix, but previously it was informed to Rib.
-    // This can happen if attributes change for a prefix and policy based on
-    // new attributes blocks the prefix. Withdraw it from Rib.
+    /*
+     * Policy blocked this prefix, but previously it was informed to Rib.
+     * This can happen if attributes change for a prefix and policy based on
+     * new attributes blocks the prefix. Withdraw it from Rib.
+     */
     XLOGF(
         DBG3,
         "Withdrawing {} from {}. "
@@ -417,10 +427,12 @@ uint32_t AdjRib::maybeAnnouncePrefix(
     adjRibEntry->setPostAttr(postInAttrs);
     return 0;
   } else {
-    // Announce the prefix to Rib only if postIn has changed
-    // We are doing deep compare to avoid notifying rib in cases where
-    // due to policy changes of attributes, we end up with same contents
-    // but different BgpPath shared_ptr
+    /*
+     * Announce the prefix to Rib only if postIn has changed
+     * We are doing deep compare to avoid notifying rib in cases where
+     * due to policy changes of attributes, we end up with same contents
+     * but different BgpPath shared_ptr
+     */
     if (adjRibEntry->getPostAttr() &&
         (adjRibEntry->getPostAttr() != postInAttrs) &&
         (*adjRibEntry->getPostAttr() == *postInAttrs)) {
@@ -475,12 +487,14 @@ folly::coro::Task<void> AdjRib::processPeerAnnounced(
       groupAnnouncedPrefixes;
 
   PrefixPathIds withdrawnPfxPathIds;
-  // route processing as following:
-  // 1. preInAttrs: route prior to config and policy
-  // (processing per-peer-config)
-  // 2. postConfigInAttrs: route after peer-config changes
-  // (processing per-route-policy)
-  // 3. postInAttrs: route after peer-config and policy changes.
+  /*
+   * route processing as following:
+   * 1. preInAttrs: route prior to config and policy
+   * (processing per-peer-config)
+   * 2. postConfigInAttrs: route after peer-config changes
+   * (processing per-route-policy)
+   * 3. postInAttrs: route after peer-config and policy changes.
+   */
   const std::shared_ptr<const BgpPath> preInAttrs = attrs;
 
   auto postConfigInAttrs = updateAttributesIn(attrs);
@@ -515,9 +529,11 @@ folly::coro::Task<void> AdjRib::processPeerAnnounced(
         continue;
       }
 
-      // If it's in safemode and has valid golden policy, increment the PreIn
-      // prefix count. Meanwhile, if it's a Golden VIP, mark the prefix in
-      // AdjRibPrefixSet as golden
+      /*
+       * If it's in safemode and has valid golden policy, increment the PreIn
+       * prefix count. Meanwhile, if it's a Golden VIP, mark the prefix in
+       * AdjRibPrefixSet as golden
+       */
       incrementPreInPrefixCount(prefix, isVipPrefix, isGoldenVipPrefix);
 
       // Add a new AdjRibEntry since we are learning new route.
@@ -527,9 +543,11 @@ folly::coro::Task<void> AdjRib::processPeerAnnounced(
     }
 
     CHECK(adjRibEntry);
-    // Ignoring any updates without any change to attributes
-    // Do we really need this check.
-    // We may stop a storm some day. e.g Update of a unsupported attribute
+    /*
+     * Ignoring any updates without any change to attributes
+     * Do we really need this check.
+     * We may stop a storm some day. e.g Update of a unsupported attribute
+     */
     if (adjRibEntry->getPreIn() &&
         (*(adjRibEntry->getPreIn()) == *preInAttrs)) {
       XLOGF(
@@ -560,19 +578,23 @@ folly::coro::Task<void> AdjRib::processPeerAnnounced(
 void AdjRib::promoteStaleRibInEntryIfExists(
     const folly::CIDRNetwork& prefix,
     uint32_t receivedPathId) {
-  // Check for existing stale RibIn entry for this prefix/pathID for GR. If we
-  // are receiving ADD-PATH as a GR helper, we cannot assume that post-restart
-  // path IDs will correlate with pre-restart ones. However, if an old path ID
-  // is reused, we can treat it as an update and thus need to remove it from
-  // stale entries
+  /*
+   * Check for existing stale RibIn entry for this prefix/pathID for GR. If we
+   * are receiving ADD-PATH as a GR helper, we cannot assume that post-restart
+   * path IDs will correlate with pre-restart ones. However, if an old path ID
+   * is reused, we can treat it as an update and thus need to remove it from
+   * stale entries
+   */
   auto stalePfxMatch = adjRibInStale_.exactMatch(prefix.first, prefix.second);
   // at least one stale entry exist for the prefix
   if (stalePathExist(stalePfxMatch)) {
     auto stalePathMatch = stalePfxMatch.value().find(receivedPathId);
     // stale path exist, move it to adjRib tree
     if (stalePathMatch != stalePfxMatch.value().end()) {
-      // strange behavior can occur if the adjRibEntry we're moving for this
-      // pathId actually has a different pathId, so ensure that's not the case
+      /*
+       * strange behavior can occur if the adjRibEntry we're moving for this
+       * pathId actually has a different pathId, so ensure that's not the case
+       */
       XCHECK(receivedPathId == stalePathMatch->second->getPathId());
       // we stale-path match, move that entry in "in" adjrib tree
       if (recAddPath_) {
@@ -618,9 +640,11 @@ void AdjRib::promoteStaleRibInEntryIfExists(
 void AdjRib::promoteStaleRibInEntryIfExistsInPlace(
     const folly::CIDRNetwork& prefix,
     uint32_t receivedPathId) {
-  // In optimized GR mode, entries stay in place and are marked with a stale
-  // bit. When we receive an update for a stale entry, we simply clear the stale
-  // bit.
+  /*
+   * In optimized GR mode, entries stay in place and are marked with a stale
+   * bit. When we receive an update for a stale entry, we simply clear the stale
+   * bit.
+   */
   AdjRibEntry* adjRibEntry =
       getRibEntry(/*ingress=*/true, prefix, receivedPathId);
 
@@ -646,9 +670,11 @@ folly::coro::Task<void> AdjRib::processPeerWithdrawn(
     uint32_t pathId = recAddPath_ && rigPrefix.pathId() ? *rigPrefix.pathId()
                                                         : kDefaultPathID;
 
-    // We should not ever get a withdrawal for a stale path. But if peer
-    // violates protocol and sends one, treat it as an expedited
-    // purge: move the stale entry to AdjRibIn and process it as usual
+    /*
+     * We should not ever get a withdrawal for a stale path. But if peer
+     * violates protocol and sends one, treat it as an expedited
+     * purge: move the stale entry to AdjRibIn and process it as usual
+     */
     if (enableOptimizedGR_) {
       promoteStaleRibInEntryIfExistsInPlace(prefix, pathId);
     } else {
@@ -666,8 +692,10 @@ void AdjRib::processWithdrawnPrefixRibInEntry(
     PrefixPathIds& pfxPathIds,
     const folly::CIDRNetwork& prefix,
     const uint32_t& pathId) noexcept {
-  // We never learnt this route. Could have been AS loop and
-  // we ignored those updates. Ignoring them.
+  /*
+   * We never learnt this route. Could have been AS loop and
+   * we ignored those updates. Ignoring them.
+   */
   auto adjRibEntry = getRibEntry(/*ingress=*/true, prefix, pathId);
   if (!adjRibEntry) {
     XLOGF(
@@ -722,8 +750,10 @@ folly::coro::Task<void> AdjRib::processPeerUpdate(
       update.v4Withdrawn2()->size() + update.mpWithdrawn()->prefixes()->size());
   stats_.incrementRecvUpdateMsgs();
 
-  // Check both v4 and v6 withdrawn prefixes as v4 and v6 withdrawals can be in
-  // the same update
+  /*
+   * Check both v4 and v6 withdrawn prefixes as v4 and v6 withdrawals can be in
+   * the same update
+   */
   if (!update.v4Withdrawn2()->empty() ||
       !update.mpWithdrawn()->prefixes()->empty()) {
     stats_.incrementRecvWithdrawals();
@@ -795,10 +825,12 @@ folly::coro::Task<void> AdjRib::processPeerUpdate(
 
 folly::coro::Task<void> AdjRib::processPeerEoR(
     const nettools::bgplib::BgpEndOfRib& eor) noexcept {
-  // EoR is piped to AdjRib and then back to PeerManagerBase to make sure
-  // AdjRib has done processing updates from this peer.
-  // Count the received EoR PDU (per AFI) so the control-plane count converges
-  // with the socket-layer socket_rx_eor_msgs.
+  /*
+   * EoR is piped to AdjRib and then back to PeerManagerBase to make sure
+   * AdjRib has done processing updates from this peer.
+   * Count the received EoR PDU (per AFI) so the control-plane count converges
+   * with the socket-layer socket_rx_eor_msgs.
+   */
   stats_.incrementRecvEndOfRibMsgs();
 
   XLOGF(
@@ -886,13 +918,17 @@ void AdjRib::processPeerRouteRefresh(const BgpRouteRefresh& rr) noexcept {
   }
 }
 
-// Update local pref for EBGP routes. Will create new BgpPath if needed
-// else returns the passed attrs unchanged
+/*
+ * Update local pref for EBGP routes. Will create new BgpPath if needed
+ * else returns the passed attrs unchanged
+ */
 std::shared_ptr<BgpPath> AdjRib::updateAttributesIn(
     const std::shared_ptr<BgpPath>& attrs) noexcept {
-  // apply per-peer-config for ReceiveLBW
-  // lbw-policy is applied afterwards, which takes precedence over
-  // per-peer-config
+  /*
+   * apply per-peer-config for ReceiveLBW
+   * lbw-policy is applied afterwards, which takes precedence over
+   * per-peer-config
+   */
   auto attrsLbw = attrs->clone();
   updateReceiveLbwExtCommunity(attrsLbw);
   attrsLbw->publish();
@@ -935,10 +971,12 @@ std::shared_ptr<BgpPath> AdjRib::updateAttributesIn(
   return newAttrs; // Attributes got changed
 }
 
-// Method to mark all routes learnt from a peer as stale
-// TODO: We may want to later break it down as we won't be
-//       able to iterate all routes in one loop. For RSW scales
-//       tight loop should be fine.
+/*
+ * Method to mark all routes learnt from a peer as stale
+ * TODO: We may want to later break it down as we won't be
+ *       able to iterate all routes in one loop. For RSW scales
+ *       tight loop should be fine.
+ */
 void AdjRib::markLearntRoutesStale() noexcept {
   XLOGF(INFO, "Mark learnt routes stale for {}", getPeerName());
 
@@ -948,8 +986,10 @@ void AdjRib::markLearntRoutesStale() noexcept {
   if (recAddPath_) {
     for (auto itr = adjRibInPathTree_.begin(); itr != adjRibInPathTree_.end();
          itr++) {
-      // create empty entry map ( received pathID -> AdjRibEntry ) for prefix in
-      // adjRibInStale_
+      /*
+       * create empty entry map ( received pathID -> AdjRibEntry ) for prefix in
+       * adjRibInStale_
+       */
       folly::F14ValueMap<uint32_t, std::unique_ptr<AdjRibEntry>> entry;
       auto match = adjRibInStale_
                        .insert(itr.ipAddress(), itr.masklen(), std::move(entry))
@@ -972,8 +1012,10 @@ void AdjRib::markLearntRoutesStale() noexcept {
   } else {
     for (auto itr = adjRibInLiteTree_.begin(); itr != adjRibInLiteTree_.end();
          itr++) {
-      // create empty entry map ( received pathID -> AdjRibEntry ) for prefix in
-      // adjRibInStale_
+      /*
+       * create empty entry map ( received pathID -> AdjRibEntry ) for prefix in
+       * adjRibInStale_
+       */
       folly::F14ValueMap<uint32_t, std::unique_ptr<AdjRibEntry>> entry;
       auto match = adjRibInStale_
                        .insert(itr.ipAddress(), itr.masklen(), std::move(entry))
@@ -994,9 +1036,11 @@ void AdjRib::markLearntRoutesStale() noexcept {
   }
 }
 
-// Method to mark all routes learnt from a peer as stale in-place (optimized GR)
-// Instead of moving entries to a separate stale tree, marks them with a stale
-// bit and increments the stale entry counter.
+/*
+ * Method to mark all routes learnt from a peer as stale in-place (optimized GR)
+ * Instead of moving entries to a separate stale tree, marks them with a stale
+ * bit and increments the stale entry counter.
+ */
 void AdjRib::markLearntRoutesStaleInPlace() noexcept {
   XLOGF(INFO, "Mark learnt routes stale in-place for {}", getPeerName());
 
@@ -1093,8 +1137,10 @@ void AdjRib::schedulePendingRibInPush(RibInWithdrawal withdrawal) noexcept {
           pendingRibInPushes_.end(),
           [](auto& f) { return f.isReady(); }),
       pendingRibInPushes_.end());
-  // Tracked in pendingRibInPushes_ and drained in stop() before AdjRib
-  // destruction so the `this` capture stays valid.
+  /*
+   * Tracked in pendingRibInPushes_ and drained in stop() before AdjRib
+   * destruction so the `this` capture stays valid.
+   */
   pendingRibInPushes_.push_back(
       co_withExecutor(&evb_, pushStaleWithdrawal(std::move(withdrawal)))
           .start());
@@ -1107,11 +1153,13 @@ folly::coro::Task<void> AdjRib::cleanupStaleRoutes(
   }
 }
 
-// Clean up stale routes in-place for optimized GR
-// Uses a two-pass approach since RadixTree doesn't support deletion during
-// iteration:
-// Pass 1: Collect all stale entries (prefix + pathId)
-// Pass 2: Process deletions and clear entries
+/*
+ * Clean up stale routes in-place for optimized GR
+ * Uses a two-pass approach since RadixTree doesn't support deletion during
+ * iteration:
+ * Pass 1: Collect all stale entries (prefix + pathId)
+ * Pass 2: Process deletions and clear entries
+ */
 folly::coro::Task<void> AdjRib::cleanupStaleRoutesInPlace(
     bool isGrHelperMode) noexcept {
   // Early exit if no stale entries exist
@@ -1129,8 +1177,10 @@ folly::coro::Task<void> AdjRib::cleanupStaleRoutesInPlace(
       staleEntryCount_,
       getPeerName());
 
-  // Collect stale entries (prefix, pathId) pairs
-  // Reserve approximate capacity to reduce allocations
+  /*
+   * Collect stale entries (prefix, pathId) pairs
+   * Reserve approximate capacity to reduce allocations
+   */
   PrefixPathIds stalePfxPathIds;
   stalePfxPathIds.reserve(staleEntryCount_);
 
@@ -1216,8 +1266,10 @@ folly::coro::Task<void> AdjRib::cleanupStaleRoutesInPlace(
       getPeerName());
 }
 
-// Try to delete AdjRibEntry if there is no longer any interest for this prefix
-// i.e. we have withdrawn it and no one is advertising this prefix
+/*
+ * Try to delete AdjRibEntry if there is no longer any interest for this prefix
+ * i.e. we have withdrawn it and no one is advertising this prefix
+ */
 void AdjRib::tryDeleteRibInEntry(
     const folly::CIDRNetwork& prefix,
     const AdjRibEntry* adjRibEntry,
@@ -1240,8 +1292,10 @@ const AdjRibEntry* FOLLY_NULLABLE AdjRib::getStaleRibInEntry(
 }
 
 bool AdjRib::allowGoldenVip(const folly::CIDRNetwork& network) const {
-  // if the golden VIP already exists, accept the preix, otherwise check whether
-  // having this new prefix will exceeds Golden VIP limit
+  /*
+   * if the golden VIP already exists, accept the preix, otherwise check whether
+   * having this new prefix will exceeds Golden VIP limit
+   */
   const auto [prefixExists, refCount] =
       AdjRibPrefixSet::get()->getRefCount(network);
   auto goldenVipLimit = switchLimitConfig_
@@ -1272,8 +1326,10 @@ bool AdjRib::dropPrefixForOverloadProtection(
   bool exceededSwitchPrefixLimit = false;
   if (const auto totalPathLimit = config.total_path_limit()) {
     if (totalPathCount > *totalPathLimit) {
-      // Switch level total path limit is reached. Reject update and log every 5
-      // seconds.
+      /*
+       * Switch level total path limit is reached. Reject update and log every 5
+       * seconds.
+       */
       XLOGF_EVERY_MS(
           ERR,
           5000,
@@ -1304,10 +1360,12 @@ bool AdjRib::dropPrefixForOverloadProtection(
   switch (*config.overload_protection_mode()) {
     case thrift::OverloadProtectionMode::APPLY_GOLDEN_PREFIX_POLICY:
       if (exceededSwitchPrefixLimit && !isSafeModeOn()) {
-        // Set safe mode on this peer's AdjRib and send TriggerSafeMode to
-        // PeerManagerBase that saves a safe mode file and initiates the rest
-        // of the safe mode purging process.
-        // See http://fburl.com/bgp_safe_mode for more details
+        /*
+         * Set safe mode on this peer's AdjRib and send TriggerSafeMode to
+         * PeerManagerBase that saves a safe mode file and initiates the rest
+         * of the safe mode purging process.
+         * See http://fburl.com/bgp_safe_mode for more details
+         */
         setSafeModeOn();
         XLOG(INFO, "Prefixes/paths over limit. Safe mode on.");
         BgpStats::setIsSafeModeOn(true);
@@ -1507,8 +1565,10 @@ void AdjRib::applyGoldenPrefixPolicy(
     AdjRibPrefixSet::get()->markGoldenVip(prefix);
     return;
   }
-  // Prefix is not allowed by golden prefix policy or golden vip limit, populate
-  // prefixesPathIdToPurge with the prefix and pathId
+  /*
+   * Prefix is not allowed by golden prefix policy or golden vip limit, populate
+   * prefixesPathIdToPurge with the prefix and pathId
+   */
   prefixesPathIdToPurge.emplace(prefix, adjRibEntry->getPathId());
 }
 
@@ -1588,8 +1648,10 @@ folly::coro::Task<void> AdjRib::processAdjRibReEvaluationForSafeMode() {
       }
     }
   } else {
-    // If recAddPath_ is false, iterate through all prefixes in
-    // adjRibInLiteTree_
+    /*
+     * If recAddPath_ is false, iterate through all prefixes in
+     * adjRibInLiteTree_
+     */
     for (auto itr = adjRibInLiteTree_.begin(); itr != adjRibInLiteTree_.end();
          itr++) {
       const folly::CIDRNetwork prefix = {itr.ipAddress(), itr.masklen()};
@@ -1624,8 +1686,10 @@ folly::coro::Task<void> AdjRib::forEachAdjRibInEntry(
   } else {
     // Iterate through active entries
     if (recAddPath_) {
-      // If recAddPath_ is true, iterate through all prefixes in
-      // adjRibInPathTree_
+      /*
+       * If recAddPath_ is true, iterate through all prefixes in
+       * adjRibInPathTree_
+       */
       for (auto itr = adjRibInPathTree_.begin(); itr != adjRibInPathTree_.end();
            itr++) {
         const folly::CIDRNetwork prefix = {itr.ipAddress(), itr.masklen()};
@@ -1637,8 +1701,10 @@ folly::coro::Task<void> AdjRib::forEachAdjRibInEntry(
         }
       }
     } else {
-      // If recAddPath_ is false, iterate through all prefixes in
-      // adjRibInLiteTree_
+      /*
+       * If recAddPath_ is false, iterate through all prefixes in
+       * adjRibInLiteTree_
+       */
       for (auto itr = adjRibInLiteTree_.begin(); itr != adjRibInLiteTree_.end();
            itr++) {
         const folly::CIDRNetwork prefix = {itr.ipAddress(), itr.masklen()};
@@ -1661,8 +1727,10 @@ folly::coro::Task<void> AdjRib::reEvaluateAdjRibEntriesWithUpdatedPolicy(
   folly::F14NodeMap<std::shared_ptr<const BgpPath>, PrefixPathIds>
       groupAnnouncedPrefixes;
 
-  // Counter to track announced prefixes directly instead of iterating every
-  // time
+  /*
+   * Counter to track announced prefixes directly instead of iterating every
+   * time
+   */
   uint32_t announcedPrefixPathIdCount = 0;
 
   // TODO: Add check for RibInQ backpressure before starting re-evaluation
@@ -1708,9 +1776,11 @@ folly::coro::Task<void> AdjRib::reEvaluateAdjRibEntriesWithUpdatedPolicy(
 }
 
 folly::coro::Task<void> AdjRib::processAdjRibReEvaluationForPolicyChange() {
-  // Acquire semaphore to block peer message processing
-  // SCOPE_EXIT guarantees release even if an exception is thrown,
-  // using an internal RAII guard that invokes the lambda on destruction.
+  /*
+   * Acquire semaphore to block peer message processing
+   * SCOPE_EXIT guarantees release even if an exception is thrown,
+   * using an internal RAII guard that invokes the lambda on destruction.
+   */
   co_await waitForTreeAccessSemaphore();
   SCOPE_EXIT {
     signalTreeAccessSemaphore();
@@ -1719,10 +1789,12 @@ folly::coro::Task<void> AdjRib::processAdjRibReEvaluationForPolicyChange() {
   // First process regular (active) entries
   co_await reEvaluateAdjRibEntriesWithUpdatedPolicy();
 
-  // Then process stale entries
-  // TODO: Remove evaluateStale once stale prefixes are identified by
-  // a bit in the existing tree instead of using a separate tree
-  // adjRibInStale_.
+  /*
+   * Then process stale entries
+   * TODO: Remove evaluateStale once stale prefixes are identified by
+   * a bit in the existing tree instead of using a separate tree
+   * adjRibInStale_.
+   */
   co_await reEvaluateAdjRibEntriesWithUpdatedPolicy(true /* evaluateStale */);
 }
 

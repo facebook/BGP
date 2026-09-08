@@ -46,8 +46,10 @@ class AdjRibPolicyCache : boost::noncopyable {
     bool operator==(const PolicyCacheValue& other) const = default;
   };
 
-  // lookup the global policy cache for the passed in prefix and policy
-  // and attrs - if matched return the cached entry
+  /*
+   * lookup the global policy cache for the passed in prefix and policy
+   * and attrs - if matched return the cached entry
+   */
   std::optional<PolicyCacheValue> lookupPolicyCache(
       const std::string& policyName,
       const PolicyAttributesMask* mask,
@@ -190,8 +192,10 @@ class AdjRibPolicyCache : boost::noncopyable {
   uint64_t totalHits_{0};
   uint64_t totalMisses_{0};
 
-// per class placeholder for test code injection
-// only need to be setup once here
+/*
+ * per class placeholder for test code injection
+ * only need to be setup once here
+ */
 #ifdef AdjRibPolicyCache_TEST_FRIENDS
   AdjRibPolicyCache_TEST_FRIENDS
 #endif

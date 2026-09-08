@@ -42,8 +42,10 @@ namespace facebook::bgp {
 folly::Singleton<AdjRibPrefixSet> adjRibPrefixSetSingleton;
 folly::Singleton<AdjRibPolicyCache> adjRibPolicyCacheSingleton;
 
-// Cache of all policy terms is now defined in AdjRibCommon.cpp
-// (shared between AdjRib and AdjRibGroup)
+/*
+ * Cache of all policy terms is now defined in AdjRibCommon.cpp
+ * (shared between AdjRib and AdjRibGroup)
+ */
 extern PostPolicyResultCacheT postPolicyResultCache_;
 
 /******************************************************************************
@@ -65,8 +67,10 @@ void AdjRibPrefixSet::addPrefix(
   }
   // increment the refcount
   match.value().refCount_++;
-  // if prefix exists, we may need to mark the prefix as golden VIP
-  // Note: there is no case that a golden vip will be re-marked as non-golden
+  /*
+   * if prefix exists, we may need to mark the prefix as golden VIP
+   * Note: there is no case that a golden vip will be re-marked as non-golden
+   */
   if (!match.value().isGoldenVip_ && isGoldenVip) {
     match.value().isGoldenVip_ = isGoldenVip;
     totalGoldenVipPrefixesCount_++;
@@ -87,8 +91,10 @@ void AdjRibPrefixSet::delPrefix(const folly::CIDRNetwork& network) {
   // decrement the refcount
   match.value().refCount_--;
 
-  // ref count drops to/below zero. In case we have an unexpected data race,
-  // loose the condition to check < 0 to make sure key is removed.
+  /*
+   * ref count drops to/below zero. In case we have an unexpected data race,
+   * loose the condition to check < 0 to make sure key is removed.
+   */
   if (match.value().refCount_ <= 0) {
     if (match.value().isGoldenVip_) {
       totalGoldenVipPrefixesCount_ = (totalGoldenVipPrefixesCount_ == 0)
@@ -650,8 +656,10 @@ void AdjRib::sessionEstablished(
   std::tie(sendAddPath_, recAddPath_) = getAddPathCapa(addPathCapa);
   pathIdGenerator_ = std::make_unique<PathIdGenerator>(sendAddPath_);
 
-  // to reset ingress eor according to peer annouced capability
-  // peer might only support one address family
+  /*
+   * to reset ingress eor according to peer annouced capability
+   * peer might only support one address family
+   */
   if (isAfiIpv4Negotiated_) {
     pendingIngressEoRAfis_.insert(BgpUpdateAfi::AFI_IPv4);
   }
@@ -693,8 +701,10 @@ void AdjRib::sessionEstablished(
   /* initialize update group key */
   buildAndSetUpdateGroupKey();
 
-  // Reset the baton so the next termination cycle starts fresh.
-  // Must be after session setup completes and before new loops start.
+  /*
+   * Reset the baton so the next termination cycle starts fresh.
+   * Must be after session setup completes and before new loops start.
+   */
   sessionTerminateBaton_->reset();
   logPeerEvent("SESSION_ADJRIB_CREATED", BGP_LOG_SRC());
 }
@@ -761,8 +771,10 @@ bool AdjRib::hasPeerEgressPolicyOverride() const noexcept {
   return peerConfig && peerConfig->hasEgressPolicyOverride;
 }
 
-// Called when session established with a peer (in PeerManagerBase)
-// to start processing peer messages
+/*
+ * Called when session established with a peer (in PeerManagerBase)
+ * to start processing peer messages
+ */
 void AdjRib::startMessageProcessingLoop() noexcept {
   XLOGF(INFO, "Starting AdjRib message processing loop for {}", getPeerName());
   logPeerEvent("SESSION_MSG_PROCESSING_STARTED", BGP_LOG_SRC());
@@ -862,9 +874,11 @@ folly::coro::Task<void> AdjRib::sessionTerminated(
     adjRibInStaleSize_ = 0;
     adjRibInStale_.clear();
 
-    // Note: adjRibOutGroup_ trees are NOT cleared here because they are
-    // shared with other peers. They will be cleared from PeerManagerBase
-    // destructor.
+    /*
+     * Note: adjRibOutGroup_ trees are NOT cleared here because they are
+     * shared with other peers. They will be cleared from PeerManagerBase
+     * destructor.
+     */
 
     deactivateChangeListConsumer();
     ++flapCounter_;
@@ -872,8 +886,10 @@ folly::coro::Task<void> AdjRib::sessionTerminated(
     co_return;
   }
 
-  // If session flap happens again before stale path timer expiry,
-  // we stop the timer before resetting
+  /*
+   * If session flap happens again before stale path timer expiry,
+   * we stop the timer before resetting
+   */
   if (stalePathTimer_) {
     XLOGF(
         INFO,
@@ -1007,10 +1023,12 @@ folly::coro::Task<void> AdjRib::sessionTerminated(
   }
 
   if (!sessionStop.gracefulRestart || (remoteGrRestartTime_ == 0s)) {
-    // BGP won't wait for peer coming back, hence directly purging away
-    // routes. This is because either of the followings:
-    //  1) BGP instance is restarting, aka, gracefulRestart flag is false
-    //  2) This peer does NOT support graceful-restart.
+    /*
+     * BGP won't wait for peer coming back, hence directly purging away
+     * routes. This is because either of the followings:
+     *  1) BGP instance is restarting, aka, gracefulRestart flag is false
+     *  2) This peer does NOT support graceful-restart.
+     */
     co_await cleanupStaleRoutes(sessionStop.gracefulRestart);
     PeerStats::incrTotalPurgeForNonGr();
   } else {
@@ -1067,8 +1085,10 @@ folly::coro::Task<void> AdjRib::cleanupGrState(bool isDaemonShutdown) noexcept {
     stalePathTimer_.reset();
   }
 
-  // Drain any in-flight detached pushes from the timer callbacks before
-  // letting the AdjRib be destroyed.
+  /*
+   * Drain any in-flight detached pushes from the timer callbacks before
+   * letting the AdjRib be destroyed.
+   */
   auto pending = std::exchange(pendingRibInPushes_, {});
   if (!pending.empty()) {
     co_await folly::coro::collectAllRange(std::move(pending));
@@ -1097,8 +1117,10 @@ folly::coro::Task<void> AdjRib::stop() noexcept {
 }
 
 void AdjRib::setPendingIngressPolicyUpdate(bool ingressChanged) {
-  // Check if adjRib has learned any routes yet in the AdjRibIn radix tree or
-  // AdjRibInStale radix tree
+  /*
+   * Check if adjRib has learned any routes yet in the AdjRibIn radix tree or
+   * AdjRibInStale radix tree
+   */
   bool hasLearnedRoutes = adjRibInPathTree_.size() != 0 ||
       adjRibInLiteTree_.size() != 0 || adjRibInStale_.size() != 0;
 
@@ -1109,11 +1131,13 @@ void AdjRib::setPendingIngressPolicyUpdate(bool ingressChanged) {
       ingressChanged,
       hasLearnedRoutes);
 
-  // Only set ingress policy update flag if there are learned routes to
-  // re-evaluate.
-  // There are no learned routes in the following 2 cases:
-  // 1. Newly created AdjRib (no routes to re-evaluate)
-  // 2. Session down without graceful restart peers (no routes to re-evaluate)
+  /*
+   * Only set ingress policy update flag if there are learned routes to
+   * re-evaluate.
+   * There are no learned routes in the following 2 cases:
+   * 1. Newly created AdjRib (no routes to re-evaluate)
+   * 2. Session down without graceful restart peers (no routes to re-evaluate)
+   */
   pendingIngressPolicyUpdate_ = ingressChanged && hasLearnedRoutes;
 }
 
@@ -1124,8 +1148,10 @@ void AdjRib::setPendingEgressPolicyUpdate(bool egressChanged) {
       peeringParams_.description,
       egressChanged);
 
-  // Only set egress flag for peers not in initial announcement
-  // (peers in initial announcement get full dump anyway)
+  /*
+   * Only set egress flag for peers not in initial announcement
+   * (peers in initial announcement get full dump anyway)
+   */
   egressPolicyUpdateRequired_ = egressChanged && !inInitialAnnouncement();
 }
 

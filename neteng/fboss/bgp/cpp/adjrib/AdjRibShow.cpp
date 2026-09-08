@@ -32,10 +32,12 @@ using std::vector;
 
 namespace facebook::bgp {
 
-// As convention we try to avoid returning using 'pass by reference'
-// instead we return the value as return object. But as thrift
-// service passes us reference to map and not expect return
-// to avoid a copy, follow same style we are passing prefixToPath&
+/*
+ * As convention we try to avoid returning using 'pass by reference'
+ * instead we return the value as return object. But as thrift
+ * service passes us reference to map and not expect return
+ * to avoid a copy, follow same style we are passing prefixToPath&
+ */
 void AdjRib::getNetworks(
     std::map<TIpPrefix, TBgpPath>& prefixToPath,
     const RouteFilterType& type) noexcept {
@@ -69,12 +71,14 @@ void AdjRib::getNetworks(
       break;
     case RouteFilterType::PRE_FILTER_ADVERTISED:
     case RouteFilterType::POST_FILTER_ADVERTISED: {
-      // With update groups, an in-sync peer's RIB-OUT entries live under the
-      // group owner key; resolve the entry visible to this peer (peer-owned,
-      // shared group, or omitted) via the version-gated resolver.
-      //
-      // A peer unregistered from its update group (session down) has no
-      // RIB-OUT left to report. See AdjRibOutGroup::unregisterPeer.
+      /*
+       * With update groups, an in-sync peer's RIB-OUT entries live under the
+       * group owner key; resolve the entry visible to this peer (peer-owned,
+       * shared group, or omitted) via the version-gated resolver.
+       *
+       * A peer unregistered from its update group (session down) has no
+       * RIB-OUT left to report. See AdjRibOutGroup::unregisterPeer.
+       */
       if (!adjRibOutGroup_) {
         break;
       }
@@ -158,12 +162,14 @@ void AdjRib::getNetworks2(
       break;
     case RouteFilterType::PRE_FILTER_ADVERTISED:
     case RouteFilterType::POST_FILTER_ADVERTISED: {
-      // With update groups, an in-sync peer's RIB-OUT entries live under the
-      // group owner key; resolve the entry visible to this peer (peer-owned,
-      // shared group, or omitted) via the version-gated resolver.
-      //
-      // A peer unregistered from its update group (session down) has no
-      // RIB-OUT left to report. See AdjRibOutGroup::unregisterPeer.
+      /*
+       * With update groups, an in-sync peer's RIB-OUT entries live under the
+       * group owner key; resolve the entry visible to this peer (peer-owned,
+       * shared group, or omitted) via the version-gated resolver.
+       *
+       * A peer unregistered from its update group (session down) has no
+       * RIB-OUT left to report. See AdjRibOutGroup::unregisterPeer.
+       */
       if (!adjRibOutGroup_) {
         break;
       }

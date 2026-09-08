@@ -32,14 +32,16 @@ extern PostPolicyResultCacheT postPolicyResultCache_;
 
 // Adjacency Rib entry
 struct AdjRibEntry {
-  // Bitmap flags for AdjRibEntry state
-  // Bit 0:    isStale - Marked for session down with GR
-  // Bit 1:    nexthopSetByPolicy - egress SetNexthop action fired (CLI display)
-  // Bit 2:    hasOldPathId - RIB-IN only: oldPathId_ holds a path id this
-  //           entry took over during an add-path graceful restart
-  // Bits 3-4: pendingOp - RIB-IN only: which operation this entry contributes
-  //           when the restart flushes (PendingOp: none | announce | withdraw)
-  // Bits 5-7: Reserved for future use
+  /*
+   * Bitmap flags for AdjRibEntry state
+   * Bit 0:    isStale - Marked for session down with GR
+   * Bit 1:    nexthopSetByPolicy - egress SetNexthop action fired (CLI display)
+   * Bit 2:    hasOldPathId - RIB-IN only: oldPathId_ holds a path id this
+   *           entry took over during an add-path graceful restart
+   * Bits 3-4: pendingOp - RIB-IN only: which operation this entry contributes
+   *           when the restart flushes (PendingOp: none | announce | withdraw)
+   * Bits 5-7: Reserved for future use
+   */
   uint8_t flags_{0};
 
   // Which RIB operation an entry contributes when an add-path restart flushes.
@@ -266,9 +268,11 @@ struct AdjRibEntry {
   uint64_t ribVersion_{0};
 
   void clearPostPolicyResult() {
-    // If there are no AdjRibEntry referencing the postPolicyResult_,
-    // the base use_count() is 1 from existing in the set.
-    // Hence we additionally subtract baseline use_count for pruning.
+    /*
+     * If there are no AdjRibEntry referencing the postPolicyResult_,
+     * the base use_count() is 1 from existing in the set.
+     * Hence we additionally subtract baseline use_count for pruning.
+     */
     if (postPolicyResult_ && (postPolicyResult_.use_count() - 1) == 1) {
       if (postPolicyResultCache_.erase(postPolicyResult_)) {
         RibStats::decrPostPolicyResultCacheCount();
@@ -284,8 +288,10 @@ struct AdjRibEntry {
     postPolicyResult_ = *ret.first;
   }
 
-  // Set the post policy result on AdjRibEntry after
-  // inserting into cache. Prune unused policy terms.
+  /*
+   * Set the post policy result on AdjRibEntry after
+   * inserting into cache. Prune unused policy terms.
+   */
   void setPostPolicy(const std::string& policyName) {
     clearPostPolicyResult();
     setPostPolicyResult(std::make_shared<const std::string>(policyName));

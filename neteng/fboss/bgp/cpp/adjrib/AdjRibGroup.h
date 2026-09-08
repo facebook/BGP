@@ -152,8 +152,10 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
     return AdjRibOutOwnerKey::forGroup(groupId_);
   }
 
-  // Owner map types: map of owner key to AdjRibEntry (or path map of entries).
-  // Owner key identifies whether an entry belongs to a peer or group.
+  /*
+   * Owner map types: map of owner key to AdjRibEntry (or path map of entries).
+   * Owner key identifies whether an entry belongs to a peer or group.
+   */
   using PathOwnerMap = folly::F14ValueMap<
       AdjRibOutOwnerKey,
       folly::F14ValueMap<uint32_t, std::unique_ptr<AdjRibEntry>>,
