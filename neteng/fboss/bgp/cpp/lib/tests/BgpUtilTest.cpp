@@ -90,8 +90,10 @@ TEST(BgpUtil, bgpUpdate2ToBgpUpdateTest) {
 
   // default case
   {
-    // Serialization sequence is v4Withdrawn -> mpWithdrawn -> mpAnnounced ->
-    // v4Announced
+    /*
+     * Serialization sequence is v4Withdrawn -> mpWithdrawn -> mpAnnounced ->
+     * v4Announced
+     */
     auto msgs = BgpMessageSerializer::serializeBgpUpdate2(update2, true);
     EXPECT_EQ(4, msgs->countChainElements());
 
@@ -117,8 +119,10 @@ TEST(BgpUtil, bgpUpdate2ToBgpUpdateTest) {
     auto update2Copy = update2;
     update2Copy.attrs()->localPref() = 100;
 
-    // Serialization sequence is v4Withdrawn -> mpWithdrawn -> mpAnnounced ->
-    // v4Announced
+    /*
+     * Serialization sequence is v4Withdrawn -> mpWithdrawn -> mpAnnounced ->
+     * v4Announced
+     */
     auto msgs = BgpMessageSerializer::serializeBgpUpdate2(update2Copy, true);
     EXPECT_EQ(4, msgs->countChainElements());
 
@@ -363,8 +367,10 @@ TEST(BgpUtil, NegotiateCapabilitiesTest) {
   BgpCapabilities allTrueCapa = setCapa(true);
   BgpCapabilities allFalseCapa = setCapa(false);
 
-  // 1. myCapa all true, peerCapa all false, peer with mp capability
-  // expect result to be all false
+  /*
+   * 1. myCapa all true, peerCapa all false, peer with mp capability
+   * expect result to be all false
+   */
   {
     // peer has mp capability
     *allFalseCapa.mpExtExist() = true;
@@ -377,8 +383,10 @@ TEST(BgpUtil, NegotiateCapabilitiesTest) {
     EXPECT_FALSE(*restult.as4byte());
     EXPECT_FALSE(*restult.gracefulRestart());
   }
-  // 2. myCapa all false, peerCapa all true
-  // expect result to be all false
+  /*
+   * 2. myCapa all false, peerCapa all true
+   * expect result to be all false
+   */
   {
     BgpCapabilities restult = negotiateCapabilities(allFalseCapa, allTrueCapa);
     EXPECT_FALSE(*restult.mpExtV4Unicast());
@@ -389,8 +397,10 @@ TEST(BgpUtil, NegotiateCapabilitiesTest) {
     EXPECT_FALSE(*restult.as4byte());
     EXPECT_FALSE(*restult.gracefulRestart());
   }
-  // 3. myCapa all true, peerCapa all true
-  // expect result to be all True
+  /*
+   * 3. myCapa all true, peerCapa all true
+   * expect result to be all True
+   */
   {
     BgpCapabilities restult = negotiateCapabilities(allTrueCapa, allTrueCapa);
     EXPECT_TRUE(*restult.mpExtV4Unicast());
@@ -401,8 +411,10 @@ TEST(BgpUtil, NegotiateCapabilitiesTest) {
     EXPECT_TRUE(*restult.as4byte());
     EXPECT_TRUE(*restult.gracefulRestart());
   }
-  // 4. myCapa all true, peerCapa all false but without mpExtExist
-  // expect result to be v4 enabled, all other fields are false
+  /*
+   * 4. myCapa all true, peerCapa all false but without mpExtExist
+   * expect result to be v4 enabled, all other fields are false
+   */
   {
     *allFalseCapa.mpExtExist() = false;
     BgpCapabilities restult = negotiateCapabilities(allTrueCapa, allFalseCapa);
@@ -416,8 +428,10 @@ TEST(BgpUtil, NegotiateCapabilitiesTest) {
   }
 }
 
-// This test case is for verifying negotiation result for Extended Next Hop
-// Encoding capabilities. RFC 5549
+/*
+ * This test case is for verifying negotiation result for Extended Next Hop
+ * Encoding capabilities. RFC 5549
+ */
 TEST(BgpUtil, NegotiateExtNHEncodingCapabilities) {
   BgpExtNHEncodingCapability capability1;
   capability1.nlriAfi() = BgpUpdateAfi::AFI_IPv4;

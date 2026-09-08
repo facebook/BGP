@@ -14,58 +14,58 @@
  * limitations under the License.
  */
 
-//
-// E2E test: verifies the full pipeline from thrift BgpConfig -> Config parsing
-// -> PeeringParams (with correct bindAddr/local_addr) -> FiberBgpPeerManager ->
-// passiveConnectLoop local address validation.
-//
-// This test catches the production bug where a remote peer connects to the
-// wrong local IP address and the passive accept path fails to validate it.
-//
-// Test topology (Config_CrossSubnetReject):
-//
-//   thrift::BgpConfig (in-memory)
-//   +------------------------------------------+
-//   | router_id: 127.2.0.1                     |
-//   | listen_addr: 0.0.0.0 (all interfaces)    |
-//   | peers:                                    |
-//   |   peer_addr=127.1.0.1 local_addr=127.2.0.1 (PASSIVE) |
-//   |   peer_addr=127.3.0.2 local_addr=127.3.0.1 (PASSIVE) |
-//   +------------------------------------------+
-//         |
-//         v  Config(thriftConfig) -> getPeeringParamsForPeer()
-//         |
-//   +------------------------------------------+
-//   |  peerMgr1  (routerId=127.2.0.1)          |
-//   |  listens on 0.0.0.0:port1                |
-//   |                                          |
-//   |  Configured peers:                       |
-//   |    127.1.0.1  local_addr=127.2.0.1  PO   |
-//   |    127.3.0.2  local_addr=127.3.0.1  PO   |
-//   +-----+--------------------+---------------+
-//         ^                    ^
-//         |                    |
-//    CORRECT conn         WRONG conn
-//    local=127.2.0.1      local=127.2.0.1
-//    matches config       config expects 127.3.0.1
-//    -> ACCEPT            -> REJECT
-//         |                    |
-//   +-----+------+      +-----+------+
-//   |  peerMgr2  |      |  peerMgr3  |
-//   |  rid=      |      |  rid=      |
-//   |  127.1.0.1 |      |  127.3.0.2 |
-//   |            |      |            |
-//   |  peer:     |      |  peer:     |
-//   |  127.2.0.1 |      |  127.2.0.1 |  <-- connects to wrong addr!
-//   |  bind=     |      |  bind=     |      should be 127.3.0.1
-//   |  127.1.0.1 |      |  127.3.0.2 |
-//   |  AO        |      |  AO        |
-//   +------------+      +------------+
-//
-//   PO = PASSIVE_ONLY, AO = ACTIVE_ONLY
-//   peerMgr3 connects to peerMgr1 at 127.2.0.1 instead of 127.3.0.1,
-//   reproducing the production bug. The fix rejects this connection.
-//
+/*
+ * E2E test: verifies the full pipeline from thrift BgpConfig -> Config parsing
+ * -> PeeringParams (with correct bindAddr/local_addr) -> FiberBgpPeerManager ->
+ * passiveConnectLoop local address validation.
+ *
+ * This test catches the production bug where a remote peer connects to the
+ * wrong local IP address and the passive accept path fails to validate it.
+ *
+ * Test topology (Config_CrossSubnetReject):
+ *
+ *   thrift::BgpConfig (in-memory)
+ *   +------------------------------------------+
+ *   | router_id: 127.2.0.1                     |
+ *   | listen_addr: 0.0.0.0 (all interfaces)    |
+ *   | peers:                                    |
+ *   |   peer_addr=127.1.0.1 local_addr=127.2.0.1 (PASSIVE) |
+ *   |   peer_addr=127.3.0.2 local_addr=127.3.0.1 (PASSIVE) |
+ *   +------------------------------------------+
+ *         |
+ *         v  Config(thriftConfig) -> getPeeringParamsForPeer()
+ *         |
+ *   +------------------------------------------+
+ *   |  peerMgr1  (routerId=127.2.0.1)          |
+ *   |  listens on 0.0.0.0:port1                |
+ *   |                                          |
+ *   |  Configured peers:                       |
+ *   |    127.1.0.1  local_addr=127.2.0.1  PO   |
+ *   |    127.3.0.2  local_addr=127.3.0.1  PO   |
+ *   +-----+--------------------+---------------+
+ *         ^                    ^
+ *         |                    |
+ *    CORRECT conn         WRONG conn
+ *    local=127.2.0.1      local=127.2.0.1
+ *    matches config       config expects 127.3.0.1
+ *    -> ACCEPT            -> REJECT
+ *         |                    |
+ *   +-----+------+      +-----+------+
+ *   |  peerMgr2  |      |  peerMgr3  |
+ *   |  rid=      |      |  rid=      |
+ *   |  127.1.0.1 |      |  127.3.0.2 |
+ *   |            |      |            |
+ *   |  peer:     |      |  peer:     |
+ *   |  127.2.0.1 |      |  127.2.0.1 |  <-- connects to wrong addr!
+ *   |  bind=     |      |  bind=     |      should be 127.3.0.1
+ *   |  127.1.0.1 |      |  127.3.0.2 |
+ *   |  AO        |      |  AO        |
+ *   +------------+      +------------+
+ *
+ *   PO = PASSIVE_ONLY, AO = ACTIVE_ONLY
+ *   peerMgr3 connects to peerMgr1 at 127.2.0.1 instead of 127.3.0.1,
+ *   reproducing the production bug. The fix rejects this connection.
+ */
 
 #include <gtest/gtest.h>
 
@@ -134,19 +134,21 @@ BgpConfig buildTestBgpConfig() {
 
 } // namespace
 
-//
-// E2E test: Build thrift BgpConfig in-memory, pass to Config constructor,
-// verify that local_addr is correctly parsed into PeeringParams.bindAddr,
-// create FiberBgpPeerManager using those PeeringParams, and verify that
-// passive connections to the wrong local address are rejected while correct
-// connections succeed.
-//
+/*
+ * E2E test: Build thrift BgpConfig in-memory, pass to Config constructor,
+ * verify that local_addr is correctly parsed into PeeringParams.bindAddr,
+ * create FiberBgpPeerManager using those PeeringParams, and verify that
+ * passive connections to the wrong local address are rejected while correct
+ * connections succeed.
+ */
 TEST(PassiveConnectConfigE2ETest, Config_CrossSubnetReject) {
   // ---- Step 1: Build thrift config and load via Config constructor ----
   auto thriftConfig = buildTestBgpConfig();
 
-  // ---- Step 2: Load config via in-memory thrift struct (production pipeline)
-  // ----
+  /*
+   * ---- Step 2: Load config via in-memory thrift struct (production pipeline)
+   * ----
+   */
   Config bgpConfig(thriftConfig);
 
   // ---- Step 3: Verify PeeringParams have correct bindAddr ----
@@ -188,8 +190,10 @@ TEST(PassiveConnectConfigE2ETest, Config_CrossSubnetReject) {
   folly::EventBase evb;
   auto& fm = folly::fibers::getFiberManager(evb);
 
-  // peerMgr1: the main router, uses Config's globalConfig (routerId=127.2.0.1)
-  // Listens on 0.0.0.0 (all interfaces) with OS-assigned port
+  /*
+   * peerMgr1: the main router, uses Config's globalConfig (routerId=127.2.0.1)
+   * Listens on 0.0.0.0 (all interfaces) with OS-assigned port
+   */
   auto globalConfig1 = *bgpConfig.getBgpGlobalConfig();
   TestFiberBgpPeerCallback callback1;
   auto peerMgr1 = std::make_shared<TestFiberBgpPeerManager>(
@@ -219,8 +223,10 @@ TEST(PassiveConnectConfigE2ETest, Config_CrossSubnetReject) {
     const auto peerPort2 = peerMgr2->getListenAddress()->getPort();
     const auto peerPort3 = peerMgr3->getListenAddress()->getPort();
 
-    // ---- Add peers to peerMgr1 using PeeringParams from Config ----
-    // Override peerPort to use OS-assigned ports (can't use 179 in tests)
+    /*
+     * ---- Add peers to peerMgr1 using PeeringParams from Config ----
+     * Override peerPort to use OS-assigned ports (can't use 179 in tests)
+     */
     params1.peerPort = peerPort2;
     auto result1 =
         peerMgr1->addPeer(kPeer1Addr, params1, ConnTimeParams(0ms, 0ms));
@@ -233,9 +239,11 @@ TEST(PassiveConnectConfigE2ETest, Config_CrossSubnetReject) {
     ASSERT_FALSE(result2.hasError())
         << "Failed to add peer " << kPeer2Addr.str();
 
-    // ---- peerMgr2: connects to peerMgr1 at 127.2.0.1 (CORRECT) ----
-    // On peerMgr1's accepted socket: remote=127.1.0.1, local=127.2.0.1
-    // configuredLocalAddr for peer 127.1.0.1 = 127.2.0.1 → MATCH → accept
+    /*
+     * ---- peerMgr2: connects to peerMgr1 at 127.2.0.1 (CORRECT) ----
+     * On peerMgr1's accepted socket: remote=127.1.0.1, local=127.2.0.1
+     * configuredLocalAddr for peer 127.1.0.1 = 127.2.0.1 → MATCH → accept
+     */
     PeeringParams remotePeerParams2;
     remotePeerParams2.localAs = kLocalAsn;
     remotePeerParams2.remoteAs = kLocalAsn;
@@ -250,12 +258,14 @@ TEST(PassiveConnectConfigE2ETest, Config_CrossSubnetReject) {
     remotePeerParams2.nexthopV6 = folly::IPAddressV6("::");
     peerMgr2->addPeer(kRouterId, remotePeerParams2, ConnTimeParams(0ms, 0ms));
 
-    // ---- peerMgr3: connects to peerMgr1 at 127.2.0.1 (WRONG config!) ----
-    // This is an intentionally WRONG configuration: peerMgr3 should connect
-    // to 127.3.0.1 but connects to 127.2.0.1 instead.
-    // On peerMgr1's accepted socket: remote=127.3.0.2, local=127.2.0.1
-    // configuredLocalAddr for peer 127.3.0.2 = 127.3.0.1
-    //   → 127.2.0.1 != 127.3.0.1 → REJECT
+    /*
+     * ---- peerMgr3: connects to peerMgr1 at 127.2.0.1 (WRONG config!) ----
+     * This is an intentionally WRONG configuration: peerMgr3 should connect
+     * to 127.3.0.1 but connects to 127.2.0.1 instead.
+     * On peerMgr1's accepted socket: remote=127.3.0.2, local=127.2.0.1
+     * configuredLocalAddr for peer 127.3.0.2 = 127.3.0.1
+     *   → 127.2.0.1 != 127.3.0.1 → REJECT
+     */
     PeeringParams remotePeerParams3;
     remotePeerParams3.localAs = kLocalAsn;
     remotePeerParams3.remoteAs = kLocalAsn;

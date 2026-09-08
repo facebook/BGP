@@ -538,9 +538,9 @@ TEST(BgpMessageParser, BgpUpdateV6EOR) {
   EXPECT_EQ(BgpUpdateSafi::SAFI_UNICAST, *eor.safi());
 }
 
-//
-// UPDATE message errors
-//
+/*
+ * UPDATE message errors
+ */
 class BgpHeaderFixtureInvalidLength
     : public BgpUpdateMessageErrorFixture,
       public testing::WithParamInterface<size_t> {};
@@ -683,8 +683,10 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::Values(kBgpOpenLongOptParamLenNoOpts));
 
 TEST_F(BgpUpdateMessageErrorFixture, WrongAttrFlags) {
-  // the attr flags for BGP_ATTR_ORIGIN is 0x40 (well-known mandatory)
-  // here we set it as 0x80 (optional non-transitive)
+  /*
+   * the attr flags for BGP_ATTR_ORIGIN is 0x40 (well-known mandatory)
+   * here we set it as 0x80 (optional non-transitive)
+   */
   msg[26] = 0x80;
   std::vector<uint8_t> expect = {0x80, 0x01, 0x01, 0x01};
   EXPECT_THROW(
@@ -703,8 +705,10 @@ TEST_F(BgpUpdateMessageErrorFixture, WrongAttrFlags) {
       },
       BgpUpdateMsgException);
 
-  // the attr flags for BGP_ATTR_AS_PATH is 0x40 (well-known mandatory)
-  // here we set it as 0xc0 (optional transitive)
+  /*
+   * the attr flags for BGP_ATTR_AS_PATH is 0x40 (well-known mandatory)
+   * here we set it as 0xc0 (optional transitive)
+   */
   msg[26] = 0x40;
   msg[30] = 0xc0;
   expect = {0xc0, 0x02, 0x06, 0x01, 0x01, 0x00, 0x00, 0x80, 0xa6};
@@ -724,8 +728,10 @@ TEST_F(BgpUpdateMessageErrorFixture, WrongAttrFlags) {
       },
       BgpUpdateMsgException);
 
-  // the attr flags for BGP_ATTR_NEXT_HOP is 0x40 (well-known mandatory)
-  // here we set it as 0x90 (optional non-transitive extended)
+  /*
+   * the attr flags for BGP_ATTR_NEXT_HOP is 0x40 (well-known mandatory)
+   * here we set it as 0x90 (optional non-transitive extended)
+   */
   msg[30] = 0x40;
   msg[39] = 0x90;
   expect = {0x90, 0x03, 0x04, 0x07, 0x06, 0x05, 0x04, 0x40, 0x05, 0x04, 0x00,
@@ -753,8 +759,10 @@ TEST_F(BgpUpdateMessageErrorFixture, WrongAttrFlags) {
       },
       BgpUpdateMsgException);
 
-  // the attr flags for BGP_ATTR_LOCAL_PREF is 0x40 (well-known
-  // mandatory) here we set it as 0xd0 (optional transitive extended)
+  /*
+   * the attr flags for BGP_ATTR_LOCAL_PREF is 0x40 (well-known
+   * mandatory) here we set it as 0xd0 (optional transitive extended)
+   */
   msg[39] = 0x40;
   msg[46] = 0xd0;
   expect = {0xd0, 0x05, 0x04, 0x00, 0x00, 0x00, 0x64, 0x90, 0x0e, 0x00, 0x26,
@@ -781,9 +789,11 @@ TEST_F(BgpUpdateMessageErrorFixture, WrongAttrFlags) {
       },
       BgpUpdateMsgException);
 
-  // the attr flags for BGP_ATTR_MP_REACH_NLRI is 0x90
-  // (optional non-transitive extended), here we set it as 0xd0
-  // (optional transitive extended)
+  /*
+   * the attr flags for BGP_ATTR_MP_REACH_NLRI is 0x90
+   * (optional non-transitive extended), here we set it as 0xd0
+   * (optional transitive extended)
+   */
   msg[46] = 0x40;
   msg[53] = 0xd0;
   expect = {0xd0, 0x0e, 0x00, 0x26, 0x00, 0x02, 0x01, 0x10, 0xfd, 0x00, 0x00,
@@ -806,9 +816,11 @@ TEST_F(BgpUpdateMessageErrorFixture, WrongAttrFlags) {
       },
       BgpUpdateMsgException);
 
-  // the attr flags for BGP_ATTR_AGGREGATOR is 0xc0
-  // (optional transitive without partial bit), here we set it as 0xe0
-  // (optional transitive with partial bit)
+  /*
+   * the attr flags for BGP_ATTR_AGGREGATOR is 0xc0
+   * (optional transitive without partial bit), here we set it as 0xe0
+   * (optional transitive with partial bit)
+   */
   msg[53] = 0x90;
   msg[122] = 0xe0;
   auto buf = folly::IOBuf::wrapBuffer(msg.data(), msg.size());

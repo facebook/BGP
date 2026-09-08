@@ -76,8 +76,10 @@ TEST(DeDuplicatorTests, CRUD) {
   Data* newDataPtr = data2.get();
   // Get the deduped pointer.
   std::shared_ptr<const Data> dedupedData2 = dedup.get(data2);
-  // Verify that the deduped pointer is the same as the original pointer,
-  // not the new pointer.
+  /*
+   * Verify that the deduped pointer is the same as the original pointer,
+   * not the new pointer.
+   */
   EXPECT_THAT(dedupedData2.get(), Eq(dataPtr));
   EXPECT_THAT(dedupedData2.get(), Ne(newDataPtr));
   EXPECT_EQ(dedup.size(), 1);
@@ -126,16 +128,20 @@ TEST(DeDuplicatorTests, TestClean) {
     EXPECT_THAT(dedup.size(), Eq(2));
     // Api under test.
     dedup.clean();
-    // Now the data1's shared_ptr should be deleted, but data2's shared_ptr
-    // should still be present.
+    /*
+     * Now the data1's shared_ptr should be deleted, but data2's shared_ptr
+     * should still be present.
+     */
     EXPECT_THAT(dedup.size(), Eq(1));
   }
   // data2 is out of scope, but the deduped pointer is still in the cache.
   EXPECT_THAT(dedup.size(), Eq(1));
   // Clean the cache.
   dedup.clean();
-  // Now the data2's shared_ptr should be deleted, and the cache should be
-  // empty.
+  /*
+   * Now the data2's shared_ptr should be deleted, and the cache should be
+   * empty.
+   */
   EXPECT_THAT(dedup.size(), Eq(0));
 }
 
@@ -309,8 +315,10 @@ TEST(DeDuplicatedAttributeTests, PreprocessPtrTest) {
 
   EXPECT_EQ(attr1.preprocessPtr(testPtr), testPtr);
 
-  // Data has empty function, so nullptr would be returned when
-  // ptr points to empty data or nullptr
+  /*
+   * Data has empty function, so nullptr would be returned when
+   * ptr points to empty data or nullptr
+   */
   EXPECT_EQ(attr1.preprocessPtr(nullptr), nullptr);
 
   Data emptyData(std::vector<int>{});
@@ -318,10 +326,12 @@ TEST(DeDuplicatedAttributeTests, PreprocessPtrTest) {
 }
 
 TEST(DeDuplicatedAttributeTests, PreprocessPtrCommutativeTest) {
-  // std::vector<int> is sortable, and we could declare a commutative
-  // attribute commutativeAttr for that
-  // In this case, the preprocessPtr would return a pointer to the sorted
-  // data
+  /*
+   * std::vector<int> is sortable, and we could declare a commutative
+   * attribute commutativeAttr for that
+   * In this case, the preprocessPtr would return a pointer to the sorted
+   * data
+   */
 
   DeDuplicatedAttribute<std::vector<int>, true> commutativeAttr;
 

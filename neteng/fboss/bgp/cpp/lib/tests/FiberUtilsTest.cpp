@@ -31,9 +31,11 @@ TEST_F(GenerateJitterTest, ZeroAndNegativeInput) {
 
 // Test that jitter is within expected range for various base times
 TEST_F(GenerateJitterTest, JitterWithinExpectedRange) {
-  // For each base time, jitterMax = min(1000, baseTime * 10 / 100)
-  // Formula: jitterMax - (rand32() % (2 * jitterMax))
-  // Range: (-jitterMax, +jitterMax] i.e. [-jitterMax + 1, +jitterMax]
+  /*
+   * For each base time, jitterMax = min(1000, baseTime * 10 / 100)
+   * Formula: jitterMax - (rand32() % (2 * jitterMax))
+   * Range: (-jitterMax, +jitterMax] i.e. [-jitterMax + 1, +jitterMax]
+   */
 
   struct TestCase {
     long baseTimeMs;

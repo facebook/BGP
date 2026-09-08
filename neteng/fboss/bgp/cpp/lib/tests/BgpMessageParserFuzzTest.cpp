@@ -14,10 +14,12 @@
  * limitations under the License.
  */
 
-// Fuzz harness to be used with Faceraker
-//
-// N.B.: Do not run this natively; instead, run this under the DynamoRIO plugin
-// rake_instrument.
+/*
+ * Fuzz harness to be used with Faceraker
+ *
+ * N.B.: Do not run this natively; instead, run this under the DynamoRIO plugin
+ * rake_instrument.
+ */
 
 #include <gtest/gtest.h>
 

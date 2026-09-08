@@ -33,8 +33,10 @@ namespace facebook::nettools::bgplib {
 enum class ThreadModel {
   // Each producer/consumer runs on its own thread with its own event base
   SEPARATE_THREAD,
-  // All producers run on a single thread, all consumers run on another single
-  // thread
+  /*
+   * All producers run on a single thread, all consumers run on another single
+   * thread
+   */
   SINGLE_THREAD,
   // All producers and consumers run on the same single thread
   ALL_IN_ONE,
@@ -110,13 +112,15 @@ class MPMCQueueBenchmarkFixture {
   std::vector<std::unique_ptr<std::thread>> producerThreads_;
   std::vector<std::unique_ptr<std::thread>> consumerThreads_;
 
-  // ThreadModel determines threading behavior:
-  // SEPARATE_THREAD: producerThreads_.size() == nProducers_ &&
-  //                  consumerThreads_.size() == nConsumers_
-  // SINGLE_THREAD: producerThreads_.size() == 1 &&
-  //                consumerThreads_.size() == 1
-  // ALL_IN_ONE: producerThreads_.size() == 0 &&
-  //             consumerThreads_.size() == 1 (shared with producers)
+  /*
+   * ThreadModel determines threading behavior:
+   * SEPARATE_THREAD: producerThreads_.size() == nProducers_ &&
+   *                  consumerThreads_.size() == nConsumers_
+   * SINGLE_THREAD: producerThreads_.size() == 1 &&
+   *                consumerThreads_.size() == 1
+   * ALL_IN_ONE: producerThreads_.size() == 0 &&
+   *             consumerThreads_.size() == 1 (shared with producers)
+   */
   ThreadModel threadModel_{ThreadModel::SEPARATE_THREAD};
 
   // for test concurrency
@@ -126,8 +130,10 @@ class MPMCQueueBenchmarkFixture {
 
 template <typename QueueType, typename ItemType>
 void MPMCQueueBenchmarkFixture<QueueType, ItemType>::setupThreads() {
-  // Setup consumer threads based on thread model
-  // SEPARATE_THREAD: nConsumers_ threads, SINGLE_THREAD/ALL_IN_ONE: 1 thread
+  /*
+   * Setup consumer threads based on thread model
+   * SEPARATE_THREAD: nConsumers_ threads, SINGLE_THREAD/ALL_IN_ONE: 1 thread
+   */
   int numberOfThreads =
       (threadModel_ == ThreadModel::SEPARATE_THREAD) ? nConsumers_ : 1;
   for (auto i = 0; i < numberOfThreads; i++) {
@@ -144,9 +150,11 @@ void MPMCQueueBenchmarkFixture<QueueType, ItemType>::setupThreads() {
     consumerThreads_.emplace_back(std::move(consumerThread));
   }
 
-  // Setup producer threads based on thread model
-  // SEPARATE_THREAD: nProducers_ threads, SINGLE_THREAD: 1 thread, ALL_IN_ONE:
-  // 0 (reuses consumer thread)
+  /*
+   * Setup producer threads based on thread model
+   * SEPARATE_THREAD: nProducers_ threads, SINGLE_THREAD: 1 thread, ALL_IN_ONE:
+   * 0 (reuses consumer thread)
+   */
   switch (threadModel_) {
     case ThreadModel::SEPARATE_THREAD:
       numberOfThreads = nProducers_;

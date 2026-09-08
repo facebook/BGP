@@ -60,8 +60,10 @@ TEST(CoroSocket, IOAndMessagingExample) {
   ServerSocket css(AsyncServerSocket::newSocket(&evb), std::nullopt, 16);
   auto serverAddr = css.getAsyncServerSocket()->getAddress();
 
-  // client reads from server socket and uses queue to merge in additional
-  // timeout event
+  /*
+   * client reads from server socket and uses queue to merge in additional
+   * timeout event
+   */
   auto client = [](EventBase& evb,
                    SocketAddress const& serverAddr) -> Task<bool> {
     XLOGF(DBG1, "Connecting to {}", serverAddr.describe());
@@ -130,13 +132,13 @@ TEST(CoroSocket, IOAndMessagingExample) {
   EXPECT_TRUE(futClient.value());
 }
 
-//
-// Fibers + coroutines in one event loop
-//
+/*
+ * Fibers + coroutines in one event loop
+ */
 
-//
-// The fixture provides fiber manager and evb for the tests
-//
+/*
+ * The fixture provides fiber manager and evb for the tests
+ */
 class FiberSocketFixture : public ::testing::Test {
  public:
   FiberSocketFixture() = default;
@@ -237,9 +239,11 @@ TEST_F(FiberSocketFixture, ReadWritePair) {
   EXPECT_TRUE(futClient.value());
 }
 
-// TCP client connects to server; the server writes random string.
-// the string is passed from TCP client to ZMQ req/rep socket pair.
-// we read the string from rep socket and compare to original.
+/*
+ * TCP client connects to server; the server writes random string.
+ * the string is passed from TCP client to ZMQ req/rep socket pair.
+ * we read the string from rep socket and compare to original.
+ */
 TEST(CoroSocket, ZmqAndCoroPipeline) {
   EventBase evb;
   fbzmq::Context ctx;

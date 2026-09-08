@@ -104,9 +104,9 @@ std::vector<uint8_t> kMultipleBgpMessagesPlus(kMultipleBgpMessages);
 
 } // namespace
 
-//
-// The fixture provides fiber manager and evb for the tests
-//
+/*
+ * The fixture provides fiber manager and evb for the tests
+ */
 class FiberManagerFixture : public ::testing::Test {
  public:
   FiberManagerFixture() = default;
@@ -114,8 +114,10 @@ class FiberManagerFixture : public ::testing::Test {
 
   void SetUp() override {
     FiberManager::Options options;
-    // this is needed due to nested recursion with large stack
-    // due to installed exception handlers...
+    /*
+     * this is needed due to nested recursion with large stack
+     * due to installed exception handlers...
+     */
     options.stackSize = 64 * 1024;
     manager = std::make_unique<FiberManager>(
         std::make_unique<EventBaseLoopController>(), options);
@@ -144,8 +146,10 @@ class FiberManagerFixture : public ::testing::Test {
   folly::EventBase evb;
 };
 
-// This method chunks any data buffer, sends it to parser and
-// validates that parser has processed the type of packet sent
+/*
+ * This method chunks any data buffer, sends it to parser and
+ * validates that parser has processed the type of packet sent
+ */
 void FiberManagerFixture::chunkSendAndValidate(
     const std::vector<uint8_t>& dataStream,
     uint32_t openCount,
@@ -252,8 +256,10 @@ void FiberManagerFixture::chunkSendAndValidate(
             }
           } while (true);
         });
-    // Start the coroutine immediately so it runs concurrently with the fiber
-    // Convert SemiFuture to Future by attaching to event base
+    /*
+     * Start the coroutine immediately so it runs concurrently with the fiber
+     * Convert SemiFuture to Future by attaching to event base
+     */
     auto semiFuture =
         folly::coro::co_withExecutor(&evb, std::move(coro)).start();
     workers.emplace_back(std::move(semiFuture).via(&evb));
@@ -394,8 +400,10 @@ TEST_F(FiberManagerFixture, VerifyNegotiatedAsSizeIsUsed) {
 
     {
       auto fiber = manager->addTaskFuture([&rcvdQueue]() mutable noexcept {
-        // Set configured capabilities as AS 4 byte.
-        // Peer is capable of only 2 byte AS numbers and sends the same.
+        /*
+         * Set configured capabilities as AS 4 byte.
+         * Peer is capable of only 2 byte AS numbers and sends the same.
+         */
         auto caps = BgpCapabilities();
         caps.as4byte() = true;
         FiberBgpParser bgpParser(caps, rcvdQueue);
@@ -439,8 +447,10 @@ TEST_F(FiberManagerFixture, VerifyNegotiatedAsSizeIsUsed) {
                     switch (updateCnt) {
                       case 1:
                       case 2: {
-                        // first and 2nd updates have 2 AS numbers in AS
-                        // sequence.
+                        /*
+                         * first and 2nd updates have 2 AS numbers in AS
+                         * sequence.
+                         */
                         EXPECT_EQ(2, asPath[0].asSequence()->size());
                         EXPECT_EQ(0xfe4c, asPath[0].asSequence()[0]);
                         EXPECT_EQ(0xfeb0, asPath[0].asSequence()[1]);
@@ -475,8 +485,10 @@ TEST_F(FiberManagerFixture, VerifyNegotiatedAsSizeIsUsed) {
             } while (true);
           });
 
-      // Start the coroutine immediately so it runs concurrently with the fiber
-      // Convert SemiFuture to Future by attaching to event base
+      /*
+       * Start the coroutine immediately so it runs concurrently with the fiber
+       * Convert SemiFuture to Future by attaching to event base
+       */
       auto semiFuture =
           folly::coro::co_withExecutor(&evb, std::move(coro)).start();
       workers.emplace_back(std::move(semiFuture).via(&evb));
@@ -488,12 +500,14 @@ TEST_F(FiberManagerFixture, VerifyNegotiatedAsSizeIsUsed) {
   evb.loop();
 }
 
-// Verify partial packet processing
-// 1. Verify that any type of packet can be received in chunks
-// 2. Verify that any type of packet will be processed immediately when all
-// chunks are received
-// 3. Verify that capacity of the buffer used to keep track of chunks is
-// 0 after processing of all chunks
+/*
+ * Verify partial packet processing
+ * 1. Verify that any type of packet can be received in chunks
+ * 2. Verify that any type of packet will be processed immediately when all
+ * chunks are received
+ * 3. Verify that capacity of the buffer used to keep track of chunks is
+ * 0 after processing of all chunks
+ */
 TEST_F(FiberManagerFixture, FiberBgpParserPartialPacket) {
   manager->addTask([&]() mutable noexcept {
     // Verify for open message

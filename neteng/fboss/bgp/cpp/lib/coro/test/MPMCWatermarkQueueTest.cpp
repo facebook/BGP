@@ -63,8 +63,10 @@ class MPMCWatermarkQueueTest : public ::testing::Test {
 
       // Increment counter for actual objects (not termination signal)
       ++objectsRead_;
-      // We are passing indices as the object, so the number of objects read
-      // should be equal to the value of the item.
+      /*
+       * We are passing indices as the object, so the number of objects read
+       * should be equal to the value of the item.
+       */
       EXPECT_EQ(*item, objectsRead_);
 
       if (taskSleepMs > 0) {
@@ -84,8 +86,10 @@ class MPMCWatermarkQueueTest : public ::testing::Test {
   // Track how many times queue was blocked during test run.
   int blockedCount_ = 0;
 
-  // Track number of objects read (excluding termination signal) during test
-  // run.
+  /*
+   * Track number of objects read (excluding termination signal) during test
+   * run.
+   */
   int objectsRead_ = 0;
 };
 
@@ -165,8 +169,10 @@ TEST_F(MPMCWatermarkQueueTest, SlowConsumerBlocksProducer) {
   int numObjects = 1000;
   int taskSleepMs = 1;
 
-  // Set watermarks to trigger blocking due to highWm being lower than
-  // number of objects.
+  /*
+   * Set watermarks to trigger blocking due to highWm being lower than
+   * number of objects.
+   */
   MPMCWatermarkQueue<std::optional<int>> queue(
       2000 /* capacity */, 100 /* highWm */, 10 /* lowWm */);
 
@@ -264,8 +270,10 @@ TEST_F(MPMCWatermarkQueueTest, ZeroConsumerSleep) {
   producerThread.join();
   consumerThread.join();
 
-  // With zero sleep, consumer should be very fast, likely no blocking
-  // But we don't assert this since it depends on timing
+  /*
+   * With zero sleep, consumer should be very fast, likely no blocking
+   * But we don't assert this since it depends on timing
+   */
 
   // Verify all objects were consumed
   EXPECT_EQ(objectsRead_, numObjects);
@@ -449,8 +457,10 @@ TEST_F(MPMCWatermarkQueueSuspendProducerTest, ZeroConsumerSleep) {
   producerThread.join();
   consumerThread.join();
 
-  // With zero sleep, consumer should be very fast, likely no blocking
-  // But we don't assert this since it depends on timing
+  /*
+   * With zero sleep, consumer should be very fast, likely no blocking
+   * But we don't assert this since it depends on timing
+   */
 
   // Verify all objects were consumed
   EXPECT_EQ(objectsRead_, numObjects);
@@ -583,8 +593,10 @@ class CoroProducerFiberConsumerQueueTest : public MPMCWatermarkQueueTest {
       // Increment counter for actual objects (not termination signal)
       ++objectsRead_;
 
-      // The item enumerates its own idx; so we can use objectsRead_
-      // to check the value of the item on each read.
+      /*
+       * The item enumerates its own idx; so we can use objectsRead_
+       * to check the value of the item on each read.
+       */
       EXPECT_EQ(*item, objectsRead_);
 
       if (taskSleepMs > 0) {
@@ -641,8 +653,10 @@ CO_TEST_F(CoroProducerFiberConsumerQueueTest, SlowConsumerBlocksProducer) {
   int numObjects = 1000;
   int taskSleepMs = 1;
 
-  // Set watermarks to trigger blocking due to highWm being lower than
-  // number of objects.
+  /*
+   * Set watermarks to trigger blocking due to highWm being lower than
+   * number of objects.
+   */
   MPMCWatermarkQueue<std::optional<int>> queue(
       2000 /* capacity */, 100 /* highWm */, 10 /* lowWm */);
 
@@ -696,8 +710,10 @@ class SuspendCoroProducerFiberConsumerQueueTest
 
       ++objectsRead_;
 
-      // The item enumerates its own idx; so we can use objectsRead_
-      // to check the value of the item on each read.
+      /*
+       * The item enumerates its own idx; so we can use objectsRead_
+       * to check the value of the item on each read.
+       */
       EXPECT_EQ(*item, objectsRead_);
 
       if (taskSleepMs > 0) {
@@ -1001,8 +1017,10 @@ TEST_F(MPMCWatermarkQueueTest, StaleTokenFixVerification) {
   EXPECT_TRUE(queue.push(7));
   EXPECT_TRUE(queue.isBlocked());
 
-  // 4. Call waitToPush() in a separate thread.
-  // WITH FIX: It should ignore the stale token and BLOCK.
+  /*
+   * 4. Call waitToPush() in a separate thread.
+   * WITH FIX: It should ignore the stale token and BLOCK.
+   */
 
   std::atomic<bool> done{false};
   std::atomic<bool> result{false};

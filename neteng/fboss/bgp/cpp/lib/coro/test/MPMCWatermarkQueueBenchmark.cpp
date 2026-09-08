@@ -34,9 +34,11 @@ folly::coro::Task<void> BM_MPMCWatermarkQueue_Async(
     uint32_t maxQueueCapacity = 10) {
   folly::BenchmarkSuspender suspender;
 
-  // set the capacity to the min of half of the number of items to be enqueued
-  // by one producer or the maxQueueCapacity, whichever smaller
-  // this ensures backpressure is triggered
+  /*
+   * set the capacity to the min of half of the number of items to be enqueued
+   * by one producer or the maxQueueCapacity, whichever smaller
+   * this ensures backpressure is triggered
+   */
   auto capacity = std::min(itemsPerProducer / 2, maxQueueCapacity);
   auto highWatermark = capacity * 0.8;
   auto lowWatermark = capacity * 0.2;
@@ -83,8 +85,10 @@ void BM_MPMCWatermarkQueue(
       iters, nProducers, nConsumers, itemsPerProducer, threadModel));
 }
 
-// single producer and single consumer run on their corresponding threads
-// the producer sends 10000 items across the queue
+/*
+ * single producer and single consumer run on their corresponding threads
+ * the producer sends 10000 items across the queue
+ */
 BENCHMARK_NAMED_PARAM(
     BM_MPMCWatermarkQueue,
     1_to_1_10000_single_threaded,

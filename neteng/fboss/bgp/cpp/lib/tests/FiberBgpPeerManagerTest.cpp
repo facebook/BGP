@@ -345,8 +345,10 @@ TEST(BgpPeerId, BgpPeerIdWithDescriptionOdsKeyTest) {
 }
 
 TEST(BgpPeerId, BgpPeerIdEqualityTest) {
-  // Expect these three peers to be equal because they have same peerAddr and
-  // remoteBgpId, even though they have different descriptions
+  /*
+   * Expect these three peers to be equal because they have same peerAddr and
+   * remoteBgpId, even though they have different descriptions
+   */
   BgpPeerId bgpPeerId1;
   bgpPeerId1.peerAddr = folly::IPAddress("167.254.0.1");
   bgpPeerId1.remoteBgpId = folly::IPAddressV4("255.1.1.1").toLongHBO();
@@ -371,9 +373,11 @@ TEST(BgpPeerId, BgpPeerIdEqualityTest) {
 }
 
 TEST(BgpPeerId, BgpPeerIdOdsKeyEqualityTest) {
-  // Expect these three peers to have the same ODS key because they have same
-  // the peerAddr and remoteBgpId, even though they have different
-  // descriptions
+  /*
+   * Expect these three peers to have the same ODS key because they have same
+   * the peerAddr and remoteBgpId, even though they have different
+   * descriptions
+   */
   BgpPeerId bgpPeerId1;
   bgpPeerId1.peerAddr = folly::IPAddress("167.254.0.1");
   bgpPeerId1.remoteBgpId = folly::IPAddressV4("255.1.1.1").toLongHBO();
@@ -632,14 +636,16 @@ TEST_F(FiberBgpPeerManagerFixture, MonitoredFiberBgpPeerTest) {
       EXPECT_TRUE(peerMgr2->getMonitoredItem().rlock()->contains(monitorKey));
     }
 
-    // Stop peer from one end. This test exercises the monitoring lifecycle
-    // (key added on session-up, removed on session-down), not graceful
-    // restart. stopPeer() retries connecting for BOTH withGR=true and
-    // withGR=false (see FiberBgpPeerManager.h), so the session reconnects and
-    // re-adds the monitor key; the poll below then only catches a transient
-    // absent window, which races under load. Use shutdownPeer() instead: it
-    // terminates the session AND stops attempting connection, keeping the peer
-    // idle so the monitor key stays removed and the assertion is deterministic.
+    /*
+     * Stop peer from one end. This test exercises the monitoring lifecycle
+     * (key added on session-up, removed on session-down), not graceful
+     * restart. stopPeer() retries connecting for BOTH withGR=true and
+     * withGR=false (see FiberBgpPeerManager.h), so the session reconnects and
+     * re-adds the monitor key; the poll below then only catches a transient
+     * absent window, which races under load. Use shutdownPeer() instead: it
+     * terminates the session AND stops attempting connection, keeping the peer
+     * idle so the monitor key stays removed and the assertion is deterministic.
+     */
     peerMgr2->shutdownPeer(peerAddr2);
 
     // confirm monitored key removed after session goes down
@@ -722,10 +728,10 @@ TEST_F(FiberBgpPeerManagerFixture, StopAcceptFiberLoopTest) {
   SUCCEED();
 }
 
-//
-// Start one peer manger. Test to make sure that connector fiber exits
-// gracefully.
-//
+/*
+ * Start one peer manger. Test to make sure that connector fiber exits
+ * gracefully.
+ */
 TEST_F(FiberBgpPeerManagerFixture, StopConnectFiberLoopTest) {
   auto& fm = fmWrapper.get();
   BgpGlobalConfig bgpGlobalConfig(
@@ -785,9 +791,9 @@ TEST_F(FiberBgpPeerManagerFixture, StopConnectFiberLoopTest) {
   SUCCEED();
 }
 
-//
-// Test Bgp session not coming up unless addPeer() is called on both sides.
-//
+/*
+ * Test Bgp session not coming up unless addPeer() is called on both sides.
+ */
 TEST_F(FiberBgpPeerManagerFixture, BgpSessionNotUpTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -834,9 +840,9 @@ TEST_F(FiberBgpPeerManagerFixture, BgpSessionNotUpTest) {
   EXPECT_FALSE(callback2.isSessionUp(peerId2));
 }
 
-//
-// Test Bgp session coming up if addPeer() is called by both sides.
-//
+/*
+ * Test Bgp session coming up if addPeer() is called by both sides.
+ */
 TEST_F(FiberBgpPeerManagerFixture, BgpSessionUpTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -946,11 +952,11 @@ TEST_F(FiberBgpPeerManagerFixture, BgpSessionUpCoroNotifyQueueTest) {
   EXPECT_NE(state2.state, BgpSessionState::ESTABLISHED);
 }
 
-//
-// Test Bgp session comes up with one peer's server socket enabled
-// and another peer's server socket disabled.
-// Ensure we run properly without creating server socket.
-//
+/*
+ * Test Bgp session comes up with one peer's server socket enabled
+ * and another peer's server socket disabled.
+ * Ensure we run properly without creating server socket.
+ */
 TEST_F(FiberBgpPeerManagerFixture, BgpNoServerTest) {
   auto& fm = fmWrapper.get();
   BgpGlobalConfig bgpGlobalConfig1(
@@ -1080,9 +1086,9 @@ TEST_F(FiberBgpPeerManagerFixture, BgpNoServerTest) {
   EXPECT_EQ(1, callback2.getTerminatedCallbackCount(peerId2));
   EXPECT_FALSE(callback2.isSessionUp(peerId2));
 }
-//
-// Test stopPeer at one end.
-//
+/*
+ * Test stopPeer at one end.
+ */
 TEST_F(FiberBgpPeerManagerFixture, StopPeerAtOneEndTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -1138,10 +1144,10 @@ TEST_F(FiberBgpPeerManagerFixture, StopPeerAtOneEndTest) {
   evb.loop();
 }
 
-//
-// Test that peeringState values are properly reset when FiberBgpPeer stops
-// without GR.
-//
+/*
+ * Test that peeringState values are properly reset when FiberBgpPeer stops
+ * without GR.
+ */
 TEST_F(FiberBgpPeerManagerFixture, PeeringStateResetOnStopTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -1202,10 +1208,10 @@ TEST_F(FiberBgpPeerManagerFixture, PeeringStateResetOnStopTest) {
   evb.loop();
 }
 
-//
-// Test that peeringState values are properly reset when FiberBgpPeer stops
-// with GR (Graceful Restart).
-//
+/*
+ * Test that peeringState values are properly reset when FiberBgpPeer stops
+ * with GR (Graceful Restart).
+ */
 TEST_F(FiberBgpPeerManagerFixture, PeeringStateResetOnStopWithGRTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -1244,14 +1250,16 @@ TEST_F(FiberBgpPeerManagerFixture, PeeringStateResetOnStopWithGRTest) {
     peerMgr1->stopPeer(peerAddr1, true /*withGR*/);
 
     fm.addTask([this, peer1] {
-      // stopPeer(withGR=true) tears the sessions down and then lets them
-      // reconnect, so the managers' isPeerUp state can flap back up and race
-      // the assertions below. Gate on the MONOTONIC terminated callback count
-      // instead: it only ever increases, so reaching 1 proves the session
-      // terminated, and breaking synchronously here (no fiber yield before the
-      // assertions) means a reconnect cannot re-establish in between. The
-      // generous timeout absorbs scheduling latency under parallel load, which
-      // the helper's silent 5s default did not.
+      /*
+       * stopPeer(withGR=true) tears the sessions down and then lets them
+       * reconnect, so the managers' isPeerUp state can flap back up and race
+       * the assertions below. Gate on the MONOTONIC terminated callback count
+       * instead: it only ever increases, so reaching 1 proves the session
+       * terminated, and breaking synchronously here (no fiber yield before the
+       * assertions) means a reconnect cannot re-establish in between. The
+       * generous timeout absorbs scheduling latency under parallel load, which
+       * the helper's silent 5s default did not.
+       */
       auto downStart = std::chrono::steady_clock::now();
       while (std::chrono::steady_clock::now() - downStart <
              std::chrono::seconds(30)) {
@@ -1281,9 +1289,9 @@ TEST_F(FiberBgpPeerManagerFixture, PeeringStateResetOnStopWithGRTest) {
   evb.loop();
 }
 
-//
-// Test stopPeer(GR = true) at one end.
-//
+/*
+ * Test stopPeer(GR = true) at one end.
+ */
 TEST_F(FiberBgpPeerManagerFixture, StopPeerWithGracefulRestartAtOneEndTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -1318,13 +1326,15 @@ TEST_F(FiberBgpPeerManagerFixture, StopPeerWithGracefulRestartAtOneEndTest) {
     peerMgr1->stopPeer(peerAddr1, true /*withGR*/);
 
     fm.addTask([this] {
-      // Gate the GR down phase on the MONOTONIC terminated callback count
-      // rather than the manager's flapping isPeerUp state. stopPeer(withGR)
-      // lets the session reconnect, so a plain isPeerUp wait can miss the
-      // transient down window (or the helper's silent 5s default can expire
-      // under load), racing the down assertions below. Breaking synchronously
-      // once both peers report a termination keeps established at 1 (a TCP+BGP
-      // reconnect cannot complete before the assertions run).
+      /*
+       * Gate the GR down phase on the MONOTONIC terminated callback count
+       * rather than the manager's flapping isPeerUp state. stopPeer(withGR)
+       * lets the session reconnect, so a plain isPeerUp wait can miss the
+       * transient down window (or the helper's silent 5s default can expire
+       * under load), racing the down assertions below. Breaking synchronously
+       * once both peers report a termination keeps established at 1 (a TCP+BGP
+       * reconnect cannot complete before the assertions run).
+       */
       auto downStart = std::chrono::steady_clock::now();
       while (std::chrono::steady_clock::now() - downStart <
              std::chrono::seconds(30)) {
@@ -1343,9 +1353,11 @@ TEST_F(FiberBgpPeerManagerFixture, StopPeerWithGracefulRestartAtOneEndTest) {
       EXPECT_EQ(1, callback2.getTerminatedCallbackCount(peerId2));
       EXPECT_FALSE(callback2.isSessionUp(peerId2));
 
-      // Gate the GR reconnect (up) phase on the MONOTONIC established count
-      // reaching 2 for both peers, again with a generous timeout in place of
-      // the helper's silent 5s default which expired under parallel load.
+      /*
+       * Gate the GR reconnect (up) phase on the MONOTONIC established count
+       * reaching 2 for both peers, again with a generous timeout in place of
+       * the helper's silent 5s default which expired under parallel load.
+       */
       auto upStart = std::chrono::steady_clock::now();
       while (std::chrono::steady_clock::now() - upStart <
              std::chrono::seconds(30)) {
@@ -1374,9 +1386,9 @@ TEST_F(FiberBgpPeerManagerFixture, StopPeerWithGracefulRestartAtOneEndTest) {
   evb.loop();
 }
 
-//
-// Test shutdownPeer at one end.
-//
+/*
+ * Test shutdownPeer at one end.
+ */
 TEST_F(FiberBgpPeerManagerFixture, ShutdownPeerAtOneEndTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -1432,9 +1444,9 @@ TEST_F(FiberBgpPeerManagerFixture, ShutdownPeerAtOneEndTest) {
   evb.loop();
 }
 
-//
-// Test shutdownPeer at both ends.
-//
+/*
+ * Test shutdownPeer at both ends.
+ */
 TEST_F(FiberBgpPeerManagerFixture, ShutdownPeerAtBothEndsTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -1491,9 +1503,9 @@ TEST_F(FiberBgpPeerManagerFixture, ShutdownPeerAtBothEndsTest) {
   evb.loop();
 }
 
-//
-// Test startPeer at one end.
-//
+/*
+ * Test startPeer at one end.
+ */
 TEST_F(FiberBgpPeerManagerFixture, StartPeerAtOneEndTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -1562,9 +1574,9 @@ TEST_F(FiberBgpPeerManagerFixture, StartPeerAtOneEndTest) {
   evb.loop();
 }
 
-//
-// Test startPeer at both end.
-//
+/*
+ * Test startPeer at both end.
+ */
 TEST_F(FiberBgpPeerManagerFixture, StartPeerAtBothEndsTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -1634,9 +1646,9 @@ TEST_F(FiberBgpPeerManagerFixture, StartPeerAtBothEndsTest) {
   evb.loop();
 }
 
-//
-// Test shutdownPeer at both ends and startPeer one by one.
-//
+/*
+ * Test shutdownPeer at both ends and startPeer one by one.
+ */
 TEST_F(FiberBgpPeerManagerFixture, StartPeerOneByOneTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -1686,8 +1698,10 @@ TEST_F(FiberBgpPeerManagerFixture, StartPeerOneByOneTest) {
       // test start peeraddr1
       peerMgr1->startPeer(peerAddr1);
 
-      // sleep for 2 seconds to check that
-      // the shutdowed session remains down
+      /*
+       * sleep for 2 seconds to check that
+       * the shutdowed session remains down
+       */
       fiberSleepFor(2s);
 
       EXPECT_EQ(1, callback1.getEstablishedCallbackCount(peerId1));
@@ -1721,9 +1735,9 @@ TEST_F(FiberBgpPeerManagerFixture, StartPeerOneByOneTest) {
   evb.loop();
 }
 
-//
-// Test dropPeer at one end.
-//
+/*
+ * Test dropPeer at one end.
+ */
 TEST_F(FiberBgpPeerManagerFixture, DropPeerAtOneEndTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -1779,9 +1793,9 @@ TEST_F(FiberBgpPeerManagerFixture, DropPeerAtOneEndTest) {
   evb.loop();
 }
 
-//
-// Test dropPeer at both ends.
-//
+/*
+ * Test dropPeer at both ends.
+ */
 TEST_F(FiberBgpPeerManagerFixture, DropPeerAtBothEndsTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -1837,22 +1851,24 @@ TEST_F(FiberBgpPeerManagerFixture, DropPeerAtBothEndsTest) {
   evb.loop();
 }
 
-//
-// Test DynamicPeer Feature
-//
-// Setup:
-//   peerMgr1 with peerPrefix 127.2.0.0/30, localAddr 127.1.0.1, passive-only
-//   peerMgr2 with peerAddr 127.1.0.1, localAddr 127.2.0.1
-//   peerMgr3 with peerAddr 127.1.0.1, localAddr 127.2.0.2
-//   peerMgr4 with peerAddr 127.1.0.1, localAddr 127.2.0.4
-//
-//  Two sessions, peerMgr1 <> peerMgr2 and peerMgr1 <> peerMgr3, will come up.
-//  peerMgr1 <> peerMgr4 will not come up as 127.2.0.4 is out of peerPrefix
-//  127.2.0.0/30.
-//
+/*
+ * Test DynamicPeer Feature
+ *
+ * Setup:
+ *   peerMgr1 with peerPrefix 127.2.0.0/30, localAddr 127.1.0.1, passive-only
+ *   peerMgr2 with peerAddr 127.1.0.1, localAddr 127.2.0.1
+ *   peerMgr3 with peerAddr 127.1.0.1, localAddr 127.2.0.2
+ *   peerMgr4 with peerAddr 127.1.0.1, localAddr 127.2.0.4
+ *
+ *  Two sessions, peerMgr1 <> peerMgr2 and peerMgr1 <> peerMgr3, will come up.
+ *  peerMgr1 <> peerMgr4 will not come up as 127.2.0.4 is out of peerPrefix
+ *  127.2.0.0/30.
+ */
 TEST_P(BasicAddPeerTest, DynamicPeerTest) {
-  // this is a value parameerized test
-  // test CONFIG_AS_ARGS and CONFIG_AS_PEERING_PARAMS
+  /*
+   * this is a value parameerized test
+   * test CONFIG_AS_ARGS and CONFIG_AS_PEERING_PARAMS
+   */
   const auto& testScope = GetParam();
 
   auto& fm = fmWrapper.get();
@@ -1871,8 +1887,10 @@ TEST_P(BasicAddPeerTest, DynamicPeerTest) {
 
   auto peerPrefix = kR2PfxSlash30; // 127.2.0.0/30
 
-  // test addDynamicPeer(), shutdownDynamicPeer(), startDynamicPeer(),
-  // stopDynamicPeerWithGracefulRestart() and dropPeer()
+  /*
+   * test addDynamicPeer(), shutdownDynamicPeer(), startDynamicPeer(),
+   * stopDynamicPeerWithGracefulRestart() and dropPeer()
+   */
   fm.addTask([&] {
     // peerMgr1 call backs
     EXPECT_EQ(0, callback1.getEstablishedCallbackCount(peerId1));
@@ -2333,8 +2351,10 @@ TEST_F(FiberBgpPeerManagerFixture, NumDynamicPeersTest) {
     peerMgr2->dropPeer(peerAddr2);
     waitTillSessionsGoDown(fm, peerMgr1, {peerId1});
 
-    // peer4 is out of prefix range, will not come up.
-    // peer2 is down.
+    /*
+     * peer4 is out of prefix range, will not come up.
+     * peer2 is down.
+     */
     EXPECT_EQ(1, peerMgr1->numDynamicPeers());
 
     peerMgr2->addPeer(peerAddr2, 100, 100, {kR2Lo1, 0}, peerPort1);
@@ -2514,8 +2534,10 @@ TEST_F(FiberBgpPeerManagerFixture, ExceedsDynamicPeerLimitTest) {
     peerMgr3->addPeer(peerAddr2, 100, 100, {kR2Lo2, 0}, peerPort1);
     peerMgr4->addPeer(peerAddr2, 100, 100, {kR2Lo4, 0}, peerPort1);
 
-    // Neither of the above 2 sessions will come up. kR2Lo2 exceeds max peer
-    // limit and kR2Lo4 is out of dynamic prefix range.
+    /*
+     * Neither of the above 2 sessions will come up. kR2Lo2 exceeds max peer
+     * limit and kR2Lo4 is out of dynamic prefix range.
+     */
     waitTillSessionsComeUp(fm, peerMgr1, {peerId3});
 
     // Still with 1 KR2Lo1 established dynamic peer
@@ -2529,8 +2551,10 @@ TEST_F(FiberBgpPeerManagerFixture, ExceedsDynamicPeerLimitTest) {
     // kR2Lo2 will come up
     waitTillSessionsComeUp(fm, peerMgr1, {peerId3});
 
-    // kR2Lo2 is established, kR2Lo1 is dropped. kR2Lo4 is out of dynamic
-    // prefix range.
+    /*
+     * kR2Lo2 is established, kR2Lo1 is dropped. kR2Lo4 is out of dynamic
+     * prefix range.
+     */
     EXPECT_EQ(1, peerMgr1->numDynamicPeers());
     EXPECT_TRUE(peerMgr1->exceedsDynamicPeerLimit());
 
@@ -2554,18 +2578,18 @@ TEST_F(FiberBgpPeerManagerFixture, ExceedsDynamicPeerLimitTest) {
   evb.loop();
 }
 
-//
-// Test conflict addPeer and addDynamicPeer configuration
-// The one comes later should be dropped.
-//
-// Setup:
-// peerMgr1: addPeer(127.2.0.1) succeed
-//   -> duplicate addPeer(127.2.0.1) fails
-//   -> addDynamicPeer(127.2.0.0/30) fails because it overlaps with 127.2.0.1
-// peerMgr2: addDynamicPeer(127.1.0.0/30) succeed
-//   -> duplicate addDynamicPeer(127.1.0.0/30) fails
-//   -> addPeer(127.1.0.1) fails because it overlaps with 127.1.0.0/30
-//
+/*
+ * Test conflict addPeer and addDynamicPeer configuration
+ * The one comes later should be dropped.
+ *
+ * Setup:
+ * peerMgr1: addPeer(127.2.0.1) succeed
+ *   -> duplicate addPeer(127.2.0.1) fails
+ *   -> addDynamicPeer(127.2.0.0/30) fails because it overlaps with 127.2.0.1
+ * peerMgr2: addDynamicPeer(127.1.0.0/30) succeed
+ *   -> duplicate addDynamicPeer(127.1.0.0/30) fails
+ *   -> addPeer(127.1.0.1) fails because it overlaps with 127.1.0.0/30
+ */
 TEST_F(FiberBgpPeerManagerFixture, AddPeerConflictTest) {
   auto& fm = fmWrapper.get();
   auto peerPrefix1 = kR1PfxSlash30; // 127.1.0.0/30
@@ -2637,11 +2661,11 @@ TEST_F(FiberBgpPeerManagerFixture, AddPeerConflictTest) {
   EXPECT_FALSE(callback2.isSessionUp(peerId2));
 }
 
-//
-// Test IPv4 mapped IPv6 address. Ensure that even though we are listening
-// on "::" we can accept ipv4 connection and process correctly
-// Verify various fields returned by getAllPeerDisplayInfos
-//
+/*
+ * Test IPv4 mapped IPv6 address. Ensure that even though we are listening
+ * on "::" we can accept ipv4 connection and process correctly
+ * Verify various fields returned by getAllPeerDisplayInfos
+ */
 TEST_F(FiberBgpPeerManagerFixture, VerifyV4MappedV6Connection) {
   auto& fm = fmWrapper.get();
   auto peerPrefix1 = kR1PfxSlash30; // 127.1.0.0/30
@@ -2680,9 +2704,11 @@ TEST_F(FiberBgpPeerManagerFixture, VerifyV4MappedV6Connection) {
       // Sleep to see the established time is proper
       fiberSleepFor(10ms);
 
-      // Verify that V4 mapped V6 address is converted to V4
-      // Here we are checking all addresses as proper V4 (not v4 mapped v6)
-      // Verify fields returned by getAllPeerDisplayInfos
+      /*
+       * Verify that V4 mapped V6 address is converted to V4
+       * Here we are checking all addresses as proper V4 (not v4 mapped v6)
+       * Verify fields returned by getAllPeerDisplayInfos
+       */
       auto allPeersInfo = peerMgr2->getAllPeerDisplayInfos();
       EXPECT_EQ(2, allPeersInfo.size());
       auto idleCount = 0;
@@ -2691,8 +2717,10 @@ TEST_F(FiberBgpPeerManagerFixture, VerifyV4MappedV6Connection) {
         auto peerAddr = kv.first;
         auto peerInfo = kv.second;
         EXPECT_FALSE(peerAddr.isIPv4Mapped());
-        // Verify that peerInfo->peeringParams.peerPrefix is applicable only
-        // for the configured prefix neighbor
+        /*
+         * Verify that peerInfo->peeringParams.peerPrefix is applicable only
+         * for the configured prefix neighbor
+         */
         if (peerInfo->state == BgpSessionState::ESTABLISHED) {
           establishedCount++;
           EXPECT_FALSE(peerInfo->peeringParams.peerPrefix);
@@ -2716,9 +2744,11 @@ TEST_F(FiberBgpPeerManagerFixture, VerifyV4MappedV6Connection) {
         EXPECT_EQ(kR2Lo1, peerInfo->localAddr.getIPAddress());
         EXPECT_EQ(kDefaultHoldTime, peerInfo->peeringParams.holdTime);
       }
-      // For every dynamic peer there will be idle peer denoting the
-      // configured prefix, there will be established peer which represents
-      // connected peer (dynamically discovered)
+      /*
+       * For every dynamic peer there will be idle peer denoting the
+       * configured prefix, there will be established peer which represents
+       * connected peer (dynamically discovered)
+       */
       EXPECT_EQ(1, idleCount);
       EXPECT_EQ(1, establishedCount);
 
@@ -2759,9 +2789,9 @@ TEST_F(FiberBgpPeerManagerFixture, VerifyV4MappedV6Connection) {
   EXPECT_FALSE(callback2.isSessionUp(peerId2));
 }
 
-//
-// Test repeating addPeer/dropPeer at one end.
-//
+/*
+ * Test repeating addPeer/dropPeer at one end.
+ */
 TEST_F(FiberBgpPeerManagerFixture, PeerFlapAtOneEndTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -2828,9 +2858,9 @@ TEST_F(FiberBgpPeerManagerFixture, PeerFlapAtOneEndTest) {
   evb.loop();
 }
 
-//
-// Test multiple Bgp session coming up
-//
+/*
+ * Test multiple Bgp session coming up
+ */
 TEST_F(FiberBgpPeerManagerFixture, MultipleBgpSessionTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -2915,9 +2945,9 @@ TEST_F(FiberBgpPeerManagerFixture, MultipleBgpSessionTest) {
   }
 }
 
-//
-// Test if Bgp session comes up after start after delay.
-//
+/*
+ * Test if Bgp session comes up after start after delay.
+ */
 TEST_F(FiberBgpPeerManagerFixture, StartAfterDelayTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -2994,10 +3024,10 @@ TEST_F(FiberBgpPeerManagerFixture, StartAfterDelayTest) {
   EXPECT_FALSE(callback2.isSessionUp(peerId2));
 }
 
-//
-// Test to prefer already-established session in the case of connection
-// collision
-//
+/*
+ * Test to prefer already-established session in the case of connection
+ * collision
+ */
 TEST_F(FiberBgpPeerManagerFixture, PreferAlreadyEstablishedSessionTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -3018,17 +3048,21 @@ TEST_F(FiberBgpPeerManagerFixture, PreferAlreadyEstablishedSessionTest) {
     peerMgr1->addPeer(
         peerAddr1, 100, 100, {kR1Lo1, 0}, peerPort2, ConnTimeParams(0ms, 0ms));
 
-    // wait a little to help session initiated by peerMgr1 comes up first,
-    // In this case we will still prefer peerMgr1 since it established
-    // session first, even its bgp id is smaller than peerMgr2
+    /*
+     * wait a little to help session initiated by peerMgr1 comes up first,
+     * In this case we will still prefer peerMgr1 since it established
+     * session first, even its bgp id is smaller than peerMgr2
+     */
     fiberSleepFor(5ms);
 
     peerMgr2->addPeer(peerAddr2, 100, 100, {kR2Lo1, 0}, peerPort1);
 
     waitTillSessionsComeUp(fm, peerMgr1, {peerId1});
 
-    // confirm that the first established session wins over the other
-    // even though the other is preferred based on bgp id comparison
+    /*
+     * confirm that the first established session wins over the other
+     * even though the other is preferred based on bgp id comparison
+     */
     EXPECT_EQ(1, callback1.getEstablishedCallbackCount(peerId1));
     EXPECT_EQ(0, callback1.getTerminatedCallbackCount(peerId1));
     EXPECT_TRUE(callback1.isSessionUp(peerId1));
@@ -3037,12 +3071,14 @@ TEST_F(FiberBgpPeerManagerFixture, PreferAlreadyEstablishedSessionTest) {
     EXPECT_EQ(0, callback2.getTerminatedCallbackCount(peerId2));
     EXPECT_TRUE(callback2.isSessionUp(peerId2));
 
-    // Note: collision counter verification removed — ThreadCachedServiceData
-    // uses thread-local caching and publishStats() only flushes the calling
-    // thread's cache. Under tsan, the collision increment happens on a fiber
-    // thread whose cache may not be aggregated in time, causing flaky failures.
-    // The behavioral assertions above (established/terminated counts, session
-    // up status) already validate that collision resolution works correctly.
+    /*
+     * Note: collision counter verification removed — ThreadCachedServiceData
+     * uses thread-local caching and publishStats() only flushes the calling
+     * thread's cache. Under tsan, the collision increment happens on a fiber
+     * thread whose cache may not be aggregated in time, causing flaky failures.
+     * The behavioral assertions above (established/terminated counts, session
+     * up status) already validate that collision resolution works correctly.
+     */
 
     // stop
     XLOG(DBG4, "stop Bgp Peer manager 1");
@@ -3200,9 +3236,9 @@ TEST_F(FiberBgpPeerManagerFixture, EgressBackpressureFlagTest) {
   evb.loop();
 }
 
-//
-// Test passive_active to passive_only connection case
-//
+/*
+ * Test passive_active to passive_only connection case
+ */
 TEST_F(FiberBgpPeerManagerFixture, BgpSessionUpPAToPOTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -3233,10 +3269,12 @@ TEST_F(FiberBgpPeerManagerFixture, BgpSessionUpPAToPOTest) {
 
     waitTillSessionsComeUp(fm, peerMgr1, {peerId1});
 
-    // confirm that even peerMgr2 is initiated first, we do not have
-    // connection from peerMgr2 to peerMgr1 because peer1 is added in
-    // PASSIVE_ONLY mode peerMgr2 will only establish a connection initiated
-    // from peerMgr1
+    /*
+     * confirm that even peerMgr2 is initiated first, we do not have
+     * connection from peerMgr2 to peerMgr1 because peer1 is added in
+     * PASSIVE_ONLY mode peerMgr2 will only establish a connection initiated
+     * from peerMgr1
+     */
     EXPECT_EQ(1, callback1.getEstablishedCallbackCount(peerId1));
     EXPECT_EQ(0, callback1.getTerminatedCallbackCount(peerId1));
     EXPECT_TRUE(callback1.isSessionUp(peerId1));
@@ -3266,9 +3304,9 @@ TEST_F(FiberBgpPeerManagerFixture, BgpSessionUpPAToPOTest) {
   EXPECT_FALSE(callback2.isSessionUp(peerId2));
 }
 
-//
-// Test to passive_active to active_only connection case
-//
+/*
+ * Test to passive_active to active_only connection case
+ */
 TEST_F(FiberBgpPeerManagerFixture, BgpSessionUpAOToPATest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -3299,10 +3337,12 @@ TEST_F(FiberBgpPeerManagerFixture, BgpSessionUpAOToPATest) {
 
     waitTillSessionsComeUp(fm, peerMgr1, {peerId1});
 
-    // confirm that even peerMgr2 is initiated first, we do not have
-    // connection from peerMgr2 to peerMgr1 because peer2 is added in
-    // ACTIVE_ONLY mode peerMgr1 will not accept a connection initiated by
-    // peerMgr2
+    /*
+     * confirm that even peerMgr2 is initiated first, we do not have
+     * connection from peerMgr2 to peerMgr1 because peer2 is added in
+     * ACTIVE_ONLY mode peerMgr1 will not accept a connection initiated by
+     * peerMgr2
+     */
     EXPECT_EQ(1, callback1.getEstablishedCallbackCount(peerId1));
     EXPECT_EQ(0, callback1.getTerminatedCallbackCount(peerId1));
     EXPECT_TRUE(callback1.isSessionUp(peerId1));
@@ -3344,8 +3384,10 @@ class MockFiberServerSocket : public FiberServerSocket {
       (noexcept));
 };
 
-// Test that transient socket errors occurring in accept() are handled properly,
-// i.e., the passive connect loop keeps running and the connection is retried.
+/*
+ * Test that transient socket errors occurring in accept() are handled properly,
+ * i.e., the passive connect loop keeps running and the connection is retried.
+ */
 TEST_F(FiberBgpPeerManagerFixture, PeerAcceptErrorTest) {
   auto& fm = fmWrapper.get();
 
@@ -3425,10 +3467,12 @@ TEST_F(FiberBgpPeerManagerFixture, PeerAcceptErrorTest) {
 
     waitTillSessionsComeUp(fm, peerMgr1, {peerId1});
 
-    // confirm that even peerMgr2 is initiated first, we do not have
-    // connection from peerMgr2 to peerMgr1 because peer1 is added in
-    // PASSIVE_ONLY mode peerMgr2 will only establish a connection initiated
-    // from peerMgr1
+    /*
+     * confirm that even peerMgr2 is initiated first, we do not have
+     * connection from peerMgr2 to peerMgr1 because peer1 is added in
+     * PASSIVE_ONLY mode peerMgr2 will only establish a connection initiated
+     * from peerMgr1
+     */
     EXPECT_EQ(1, callback1.getEstablishedCallbackCount(peerId1));
     EXPECT_EQ(0, callback1.getTerminatedCallbackCount(peerId1));
     EXPECT_TRUE(callback1.isSessionUp(peerId1));
@@ -3458,9 +3502,9 @@ TEST_F(FiberBgpPeerManagerFixture, PeerAcceptErrorTest) {
   EXPECT_FALSE(callback2.isSessionUp(peerId2));
 }
 
-//
-// Test active_only to passive_only connection case
-//
+/*
+ * Test active_only to passive_only connection case
+ */
 TEST_F(FiberBgpPeerManagerFixture, BgpSessionUpAOToPOTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -3497,10 +3541,12 @@ TEST_F(FiberBgpPeerManagerFixture, BgpSessionUpAOToPOTest) {
 
     waitTillSessionsComeUp(fm, peerMgr1, {peerId1});
 
-    // confirm that even peerMgr2 is initiated first, we do not have
-    // connection from peerMgr2 to peerMgr1 because peer1 is added in
-    // PASSIVE_ONLY mode peerMgr2 will only establish a connection initiated
-    // from peerMgr1
+    /*
+     * confirm that even peerMgr2 is initiated first, we do not have
+     * connection from peerMgr2 to peerMgr1 because peer1 is added in
+     * PASSIVE_ONLY mode peerMgr2 will only establish a connection initiated
+     * from peerMgr1
+     */
     EXPECT_EQ(1, callback1.getEstablishedCallbackCount(peerId1));
     EXPECT_EQ(0, callback1.getTerminatedCallbackCount(peerId1));
     EXPECT_TRUE(callback1.isSessionUp(peerId1));
@@ -3530,9 +3576,9 @@ TEST_F(FiberBgpPeerManagerFixture, BgpSessionUpAOToPOTest) {
   EXPECT_FALSE(callback2.isSessionUp(peerId2));
 }
 
-//
-// Test to passive_only to passive_only connection case
-//
+/*
+ * Test to passive_only to passive_only connection case
+ */
 TEST_F(FiberBgpPeerManagerFixture, BgpSessionNotUpPOToPOTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -3570,10 +3616,12 @@ TEST_F(FiberBgpPeerManagerFixture, BgpSessionNotUpPOToPOTest) {
     // wait enough for session coming up
     fiberSleepFor(10ms);
 
-    // confirm that even peerMgr2 is initiated first, we do not have
-    // connection from peerMgr2 to peerMgr1 because peer2 is added in
-    // ACTIVE_ONLY mode peerMgr1 will not accept a connection initiated by
-    // peerMgr2
+    /*
+     * confirm that even peerMgr2 is initiated first, we do not have
+     * connection from peerMgr2 to peerMgr1 because peer2 is added in
+     * ACTIVE_ONLY mode peerMgr1 will not accept a connection initiated by
+     * peerMgr2
+     */
     EXPECT_EQ(0, callback1.getEstablishedCallbackCount(peerId1));
     EXPECT_EQ(0, callback1.getTerminatedCallbackCount(peerId1));
     EXPECT_FALSE(callback1.isSessionUp(peerId1));
@@ -3592,9 +3640,9 @@ TEST_F(FiberBgpPeerManagerFixture, BgpSessionNotUpPOToPOTest) {
   evb.loop();
 }
 
-//
-// Test to active_only to active_only connection case
-//
+/*
+ * Test to active_only to active_only connection case
+ */
 TEST_F(FiberBgpPeerManagerFixture, BgpSessionNotUpAOToAOTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -3632,10 +3680,12 @@ TEST_F(FiberBgpPeerManagerFixture, BgpSessionNotUpAOToAOTest) {
     // wait enough for session coming up
     fiberSleepFor(10ms);
 
-    // confirm that even peerMgr2 is initiated first, we do not have
-    // connection from peerMgr2 to peerMgr1 because peer2 is added in
-    // ACTIVE_ONLY mode peerMgr1 will not accept a connection initiated by
-    // peerMgr2
+    /*
+     * confirm that even peerMgr2 is initiated first, we do not have
+     * connection from peerMgr2 to peerMgr1 because peer2 is added in
+     * ACTIVE_ONLY mode peerMgr1 will not accept a connection initiated by
+     * peerMgr2
+     */
     EXPECT_EQ(0, callback1.getEstablishedCallbackCount(peerId1));
     EXPECT_EQ(0, callback1.getTerminatedCallbackCount(peerId1));
     EXPECT_FALSE(callback1.isSessionUp(peerId1));
@@ -3654,11 +3704,11 @@ TEST_F(FiberBgpPeerManagerFixture, BgpSessionNotUpAOToAOTest) {
   evb.loop();
 }
 
-//
-// Test passive_only to passive_active connection retry
-// Verify that connection retry works when peer is shutdown and started
-// Verify by shutdown and starting both sides
-//
+/*
+ * Test passive_only to passive_active connection retry
+ * Verify that connection retry works when peer is shutdown and started
+ * Verify by shutdown and starting both sides
+ */
 TEST_F(FiberBgpPeerManagerFixture, ConnectionRetryPOToPATest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -3764,11 +3814,11 @@ TEST_F(FiberBgpPeerManagerFixture, ConnectionRetryPOToPATest) {
   evb.loop();
 }
 
-//
-// Test passive_active to passive_active connection retry
-// Verify that connection retry works when peer is shutdown and started
-// Verify by shutdown and starting both sides
-//
+/*
+ * Test passive_active to passive_active connection retry
+ * Verify that connection retry works when peer is shutdown and started
+ * Verify by shutdown and starting both sides
+ */
 TEST_F(FiberBgpPeerManagerFixture, ConnectionRetryPAToPATest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -3817,10 +3867,12 @@ TEST_F(FiberBgpPeerManagerFixture, ConnectionRetryPAToPATest) {
       EXPECT_EQ(1, callback2.getTerminatedCallbackCount(peerId2));
       EXPECT_FALSE(callback2.isSessionUp(peerId2));
 
-      // Start passive_active peer
-      // When we start them up, the connection could collide and reconnect
-      // Therefore we need to check relative counts instead of absolute counts
-      // in the following
+      /*
+       * Start passive_active peer
+       * When we start them up, the connection could collide and reconnect
+       * Therefore we need to check relative counts instead of absolute counts
+       * in the following
+       */
       peerMgr1->startPeer(peerAddr1);
       waitTillSessionsComeUp(fm, peerMgr1, {peerId1});
       waitTillSessionsComeUp(fm, peerMgr2, {peerId2});
@@ -3877,9 +3929,11 @@ TEST_F(FiberBgpPeerManagerFixture, ConnectionRetryPAToPATest) {
   evb.loop();
 }
 
-// Start with two peers in with both Passive-Active configuration.  After
-// sessions are up; drop one peer and re-add it with Passive-Only
-// configuration.  Do this on both peers.
+/*
+ * Start with two peers in with both Passive-Active configuration.  After
+ * sessions are up; drop one peer and re-add it with Passive-Only
+ * configuration.  Do this on both peers.
+ */
 TEST_F(FiberBgpPeerManagerFixture, DropAndReaddPOTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -4025,9 +4079,9 @@ TEST_F(FiberBgpPeerManagerFixture, DropAndReaddPOTest) {
   evb.loop();
 }
 
-//
-// Test rapid add and drop peer.
-//
+/*
+ * Test rapid add and drop peer.
+ */
 TEST_F(FiberBgpPeerManagerFixture, ConnectionRetryRapidDropPeerTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -4044,10 +4098,12 @@ TEST_F(FiberBgpPeerManagerFixture, ConnectionRetryRapidDropPeerTest) {
     const auto peerPort1 = peerMgr1->getListenAddress()->getPort();
     const auto peerPort2 = peerMgr2->getListenAddress()->getPort();
 
-    // passive_active session by default
-    // Add and drop this peer multiple times. This ensures that connect fiber
-    // blocks (as peerAddr1 is not yet added) and drop peer will delete the
-    // peer during connect block.
+    /*
+     * passive_active session by default
+     * Add and drop this peer multiple times. This ensures that connect fiber
+     * blocks (as peerAddr1 is not yet added) and drop peer will delete the
+     * peer during connect block.
+     */
     for (int i = 0; i < 100; i++) {
       peerMgr2->addPeer(
           peerAddr2,
@@ -4087,9 +4143,9 @@ TEST_F(FiberBgpPeerManagerFixture, ConnectionRetryRapidDropPeerTest) {
   evb.loop();
 }
 
-//
-// Test if Bgp does exponential backoff for connection retry timer
-//
+/*
+ * Test if Bgp does exponential backoff for connection retry timer
+ */
 TEST_F(FiberBgpPeerManagerFixture, ConnectionRetryExponentialBackoff) {
   auto& fm = fmWrapper.get();
 
@@ -4108,9 +4164,11 @@ TEST_F(FiberBgpPeerManagerFixture, ConnectionRetryExponentialBackoff) {
     const auto minRetryTimeout = 100ms;
     const auto maxRetryTimeout = 1500ms;
 
-    // Dynamically allocate a port via the OS and keep it bound (not listening)
-    // so connections are refused during the backoff phase. The socket is held
-    // to prevent the OS from reassigning the port to other sockets.
+    /*
+     * Dynamically allocate a port via the OS and keep it bound (not listening)
+     * so connections are refused during the backoff phase. The socket is held
+     * to prevent the OS from reassigning the port to other sockets.
+     */
     int tmpSock = ::socket(AF_INET, SOCK_STREAM, 0);
     ASSERT_GE(tmpSock, 0);
     struct sockaddr_in tmpAddr{};
@@ -4139,12 +4197,14 @@ TEST_F(FiberBgpPeerManagerFixture, ConnectionRetryExponentialBackoff) {
         ConnTimeParams(startAfterDelay, minRetryTimeout, maxRetryTimeout),
         TBgpSessionConnectMode::ACTIVE_ONLY);
 
-    // wait till exponential backoff forces fallback to maximum delay
-    // Jitter is ±10% capped at ±1000ms (using generateJitter)
-    // Base backoffs: 100 + 200 + 400 + 800 = 1500ms to reach max
-    // With -10% jitter: fastest ~90 + 180 + 360 + 720 = 1350ms
-    // With +10% jitter: fastest ~110 + 220 + 440 + 880 = 1650ms
-    // Wait 2000ms to ensure we've reached max backoff
+    /*
+     * wait till exponential backoff forces fallback to maximum delay
+     * Jitter is ±10% capped at ±1000ms (using generateJitter)
+     * Base backoffs: 100 + 200 + 400 + 800 = 1500ms to reach max
+     * With -10% jitter: fastest ~90 + 180 + 360 + 720 = 1350ms
+     * With +10% jitter: fastest ~110 + 220 + 440 + 880 = 1650ms
+     * Wait 2000ms to ensure we've reached max backoff
+     */
     fiberSleepFor(2000ms);
 
     // Verify connection attempts happened (at least 4 due to jitter variance)
@@ -4171,8 +4231,10 @@ TEST_F(FiberBgpPeerManagerFixture, ConnectionRetryExponentialBackoff) {
         ConnTimeParams(startAfterDelay),
         TBgpSessionConnectMode::PASSIVE_ONLY);
 
-    // With 10% jitter (generateJitter), max backoff of 1500ms varies between
-    // ~1350-1650ms. Sleep well within that to guarantee we're in backoff.
+    /*
+     * With 10% jitter (generateJitter), max backoff of 1500ms varies between
+     * ~1350-1650ms. Sleep well within that to guarantee we're in backoff.
+     */
     fiberSleepFor(250ms);
 
     // confirm that session did not come up yet (still in backoff)
@@ -4385,8 +4447,10 @@ TEST_F(FiberBgpPeerManagerFixture, BgpSessionEstablishedExponentialBackoff) {
     const auto collisionTimeout = std::chrono::seconds(15);
 
     peerMgr2->startPeer(peerAddr2);
-    // 1st session backoff is 100ms (minSessionRetryTimeout).
-    // Jitter is applied after the backoff decision, so minimum is ~90ms.
+    /*
+     * 1st session backoff is 100ms (minSessionRetryTimeout).
+     * Jitter is applied after the backoff decision, so minimum is ~90ms.
+     */
     fiberSleepFor(25ms);
     EXPECT_FALSE(callback1.isSessionUp(bgpPeerId1));
 
@@ -4506,8 +4570,10 @@ TEST_F(FiberBgpPeerManagerFixture, BgpSessionBackoffResetAfterStableSession) {
     waitTillSessionsComeUp(fm, peerMgr1, {bgpPeerId1});
     waitTillSessionsComeUp(fm, peerMgr2, {bgpPeerId2});
 
-    // Rapidly flap the session 3 times to build up session backoff.
-    // Each flap within the dampen window doubles the backoff.
+    /*
+     * Rapidly flap the session 3 times to build up session backoff.
+     * Each flap within the dampen window doubles the backoff.
+     */
     for (int i = 0; i < 3; i++) {
       peerMgr2->shutdownPeer(peerAddr2);
       waitTillSessionsGoDown(fm, peerMgr1, {bgpPeerId1});
@@ -4518,18 +4584,24 @@ TEST_F(FiberBgpPeerManagerFixture, BgpSessionBackoffResetAfterStableSession) {
       waitTillSessionsComeUp(fm, peerMgr2, {bgpPeerId2}, collisionTimeout);
     }
 
-    // After 3 rapid flaps, session backoff is elevated (400ms+).
-    // Keep the session established beyond the dampen duration.
+    /*
+     * After 3 rapid flaps, session backoff is elevated (400ms+).
+     * Keep the session established beyond the dampen duration.
+     */
     fiberSleepFor(sessionDampenDuration + 200ms);
 
-    // Take the session down. The session was up longer than
-    // dampenDuration, so the backoff resets to minimum.
+    /*
+     * Take the session down. The session was up longer than
+     * dampenDuration, so the backoff resets to minimum.
+     */
     peerMgr2->shutdownPeer(peerAddr2);
     waitTillSessionsGoDown(fm, peerMgr1, {bgpPeerId1});
     waitTillSessionsGoDown(fm, peerMgr2, {bgpPeerId2});
 
-    // Restart the session. It should come up within ~minSessionRetryTimeout
-    // (100ms + jitter) instead of the elevated 800ms+ without the fix.
+    /*
+     * Restart the session. It should come up within ~minSessionRetryTimeout
+     * (100ms + jitter) instead of the elevated 800ms+ without the fix.
+     */
     peerMgr2->startPeer(peerAddr2);
     fiberSleepFor(350ms);
     EXPECT_TRUE(callback1.isSessionUp(bgpPeerId1));
@@ -4626,8 +4698,10 @@ TEST_F(FiberBgpPeerManagerFixture, SendReceiveBgpUpdateEoRTest) {
 
     fiberSleepFor(100ms);
 
-    // given updates will be used to verify the recvUpdates. During parsing,
-    // we will populate v4Announced. So add it back.
+    /*
+     * given updates will be used to verify the recvUpdates. During parsing,
+     * we will populate v4Announced. So add it back.
+     */
     for (auto& update : givenUpdates) {
       for (const auto& rigPfx : *update.v4Announced2()) {
         update.v4Announced()->push_back(*rigPfx.prefix());
@@ -4976,9 +5050,9 @@ TEST_F(FiberBgpPeerManagerFixture, BackpressureNotSupportedTest) {
   EXPECT_DEATH(peerMgr1->sendEndOfRib(r1PeerId1), "");
 }
 
-//
-// Test after shutdown initiation new connections are rejected.
-//
+/*
+ * Test after shutdown initiation new connections are rejected.
+ */
 TEST_F(FiberBgpPeerManagerFixture, BgpSessionAfterShutdown) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -5027,8 +5101,10 @@ TEST_F(FiberBgpPeerManagerFixture, BgpSessionAfterShutdown) {
     XLOG(DBG4, "stop Bgp Peer manager 2");
     peerMgr2->shutdownWithGR(false);
   });
-  // peerMgr2 is in shutdown initiated state.
-  // We should not see the session get established at all.
+  /*
+   * peerMgr2 is in shutdown initiated state.
+   * We should not see the session get established at all.
+   */
   peerMgr2->shutdownInProgress();
   evb.loop();
 
@@ -5041,9 +5117,9 @@ TEST_F(FiberBgpPeerManagerFixture, BgpSessionAfterShutdown) {
   EXPECT_FALSE(callback2.isSessionUp(peerId2));
 }
 
-//
-// Test numResets, lastResetTime
-//
+/*
+ * Test numResets, lastResetTime
+ */
 TEST_F(FiberBgpPeerManagerFixture, ResetTimeAndNumTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -5119,10 +5195,10 @@ TEST_F(FiberBgpPeerManagerFixture, ResetTimeAndNumTest) {
   evb.loop();
 }
 
-//
-// Test lastSessionInfo weak_ptr which is used to keep track of numResets of
-// non-Established sessions introduced in D54921268
-//
+/*
+ * Test lastSessionInfo weak_ptr which is used to keep track of numResets of
+ * non-Established sessions introduced in D54921268
+ */
 TEST_F(FiberBgpPeerManagerFixture, LastSessionInfoWeakPtrTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -5151,8 +5227,10 @@ TEST_F(FiberBgpPeerManagerFixture, LastSessionInfoWeakPtrTest) {
         peerMgr2->getBgpSessionInfo(peerId2).value()->connectionInfo;
     EXPECT_NE(connectionInfo2, nullptr);
 
-    // when the session is ESTABLISHED, the lastSessionInfo should be set to
-    // nullptr
+    /*
+     * when the session is ESTABLISHED, the lastSessionInfo should be set to
+     * nullptr
+     */
     {
       std::shared_ptr<BgpSessionInfo> lastSessionInfo1 =
           connectionInfo1->lastSessionInfo.lock();
@@ -5172,9 +5250,11 @@ TEST_F(FiberBgpPeerManagerFixture, LastSessionInfoWeakPtrTest) {
       EXPECT_FALSE(callback1.isSessionUp(peerId1));
       EXPECT_FALSE(callback2.isSessionUp(peerId2));
 
-      // when the session goes down from ESTABLISHED to IDLE
-      // The connectionInfo and the establishedSessionInfo pointers both
-      // should be set to nullptr
+      /*
+       * when the session goes down from ESTABLISHED to IDLE
+       * The connectionInfo and the establishedSessionInfo pointers both
+       * should be set to nullptr
+       */
       EXPECT_EQ(
           peerMgr1->getBgpSessionInfo(peerId1).value()->connectionInfo,
           nullptr);
@@ -5206,9 +5286,9 @@ TEST_F(FiberBgpPeerManagerFixture, LastSessionInfoWeakPtrTest) {
       }
 
       fm.addTask([this, &fm] {
-        //
-        // Re-establish the session
-        //
+        /*
+         * Re-establish the session
+         */
         peerMgr1->startPeer(peerAddr1);
 
         waitTillSessionsComeUp(fm, peerMgr1, {peerId1});
@@ -5242,10 +5322,10 @@ TEST_F(FiberBgpPeerManagerFixture, LastSessionInfoWeakPtrTest) {
   evb.loop();
 }
 
-//
-// Leverage isPeerVersionValid to ensure that the session number
-// is monotonically increasing among different sessions
-//
+/*
+ * Leverage isPeerVersionValid to ensure that the session number
+ * is monotonically increasing among different sessions
+ */
 TEST_F(FiberBgpPeerManagerFixture, PeerVersionTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -5282,10 +5362,12 @@ TEST_F(FiberBgpPeerManagerFixture, PeerVersionTest) {
       waitTillSessionsComeUp(fm, peerMgr1, {peerId1});
       waitTillSessionsComeUp(fm, peerMgr2, {peerId2});
 
-      // Both peer managers share a global, monotonically increasing version
-      // counter. So one session will have id 0, and the other will have id 1.
-      // The order is nondeterministic, depending on which peer manager
-      // processes the connection first.
+      /*
+       * Both peer managers share a global, monotonically increasing version
+       * counter. So one session will have id 0, and the other will have id 1.
+       * The order is nondeterministic, depending on which peer manager
+       * processes the connection first.
+       */
       EXPECT_NE(
           peerMgr1->isPeerVersionValid(peerId1, 0),
           peerMgr2->isPeerVersionValid(peerId2, 0));
@@ -5358,8 +5440,10 @@ TEST(FiberBgpPeerManagerTest, WriteToNotifyQueueTest) {
   FiberBgpPeerManager peerMgr{
       bgpGlobalConfig, folly::fibers::getFiberManager(evb), evb};
 
-  // Test enableCoroNotifyQueue_ = true
-  // will add to notifyCoroQueue_
+  /*
+   * Test enableCoroNotifyQueue_ = true
+   * will add to notifyCoroQueue_
+   */
   {
     peerMgr.enableCoroNotifyQueue_ = true;
 
@@ -5370,8 +5454,10 @@ TEST(FiberBgpPeerManagerTest, WriteToNotifyQueueTest) {
     EXPECT_EQ(peerMgr.notifyCoroQueue_.size(), 1);
   }
 
-  // Test enableCoroNotifyQueue_ = false
-  // will add to notifyQueue_
+  /*
+   * Test enableCoroNotifyQueue_ = false
+   * will add to notifyQueue_
+   */
   {
     peerMgr.enableCoroNotifyQueue_ = false;
 
@@ -5433,11 +5519,11 @@ TEST(FiberBgpPeerManagerTest, ImmediateShutDownTest) {
   peerMgrThread.join();
 }
 
-//
-// Test that accept loop properly breaks when ACCEPT_STOPPED is received
-// This verifies that closing the server socket triggers the correct error type
-// and the loop terminates as expected
-//
+/*
+ * Test that accept loop properly breaks when ACCEPT_STOPPED is received
+ * This verifies that closing the server socket triggers the correct error type
+ * and the loop terminates as expected
+ */
 TEST_F(FiberBgpPeerManagerFixture, AcceptLoopBreaksOnAcceptStoppedTest) {
   auto& fm = fmWrapper.get();
   TestFiberBgpPeerCallback callback1;
@@ -5450,8 +5536,10 @@ TEST_F(FiberBgpPeerManagerFixture, AcceptLoopBreaksOnAcceptStoppedTest) {
     // Give the accept loop time to start
     fiberSleepFor(100ms);
 
-    // Shutdown the peer manager which should close the server socket
-    // This triggers ACCEPT_STOPPED and should cause the loop to break
+    /*
+     * Shutdown the peer manager which should close the server socket
+     * This triggers ACCEPT_STOPPED and should cause the loop to break
+     */
     XLOG(INFO, "Shutting down peer manager to trigger ACCEPT_STOPPED");
     peerMgr1->shutdownWithGR(false);
 
@@ -5463,17 +5551,19 @@ TEST_F(FiberBgpPeerManagerFixture, AcceptLoopBreaksOnAcceptStoppedTest) {
   // Run the event loop
   evb.loop();
 
-  // If we reach here, the event loop has terminated, which means
-  // the accept loop properly broke on ACCEPT_STOPPED
+  /*
+   * If we reach here, the event loop has terminated, which means
+   * the accept loop properly broke on ACCEPT_STOPPED
+   */
   EXPECT_TRUE(acceptLoopExited.load());
   SUCCEED();
 }
 
-//
-// Test that accept loop continues accepting after session restarts
-// While this doesn't directly inject AsyncSocketException errors, it verifies
-// that the accept loop remains functional across multiple session cycles
-//
+/*
+ * Test that accept loop continues accepting after session restarts
+ * While this doesn't directly inject AsyncSocketException errors, it verifies
+ * that the accept loop remains functional across multiple session cycles
+ */
 TEST_F(FiberBgpPeerManagerFixture, AcceptLoopContinuesAfterSessionCycleTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -5521,24 +5611,24 @@ TEST_F(FiberBgpPeerManagerFixture, AcceptLoopContinuesAfterSessionCycleTest) {
   evb.loop();
 }
 
-//
-// NOTE: Testing that accept loop continues on AsyncSocketException errors
-// is challenging without mocking FiberServerSocket because:
-// 1. AsyncSocketException errors from accept() are rare in normal operation
-// 2. Errors in connection processing (inside .then()) don't trigger
-//    result.hasError()
-// 3. The only reliable way to test would be to inject errors via mocking
-//
-// The correct behavior is documented here for reference:
-// - accept() returns FiberGenericSocketError{ACCEPT_STOPPED} when socket is
-//   closed -> Loop BREAKS (tested above)
-// - accept() returns folly::AsyncSocketException when AsyncSocketException
-// occurs
-//   -> Loop CONTINUES and logs error (not easily testable without mocking)
-//
-// Integration testing or production monitoring would be needed to fully verify
-// the AsyncSocketException handling behavior.
-//
+/*
+ * NOTE: Testing that accept loop continues on AsyncSocketException errors
+ * is challenging without mocking FiberServerSocket because:
+ * 1. AsyncSocketException errors from accept() are rare in normal operation
+ * 2. Errors in connection processing (inside .then()) don't trigger
+ *    result.hasError()
+ * 3. The only reliable way to test would be to inject errors via mocking
+ *
+ * The correct behavior is documented here for reference:
+ * - accept() returns FiberGenericSocketError{ACCEPT_STOPPED} when socket is
+ *   closed -> Loop BREAKS (tested above)
+ * - accept() returns folly::AsyncSocketException when AsyncSocketException
+ * occurs
+ *   -> Loop CONTINUES and logs error (not easily testable without mocking)
+ *
+ * Integration testing or production monitoring would be needed to fully verify
+ * the AsyncSocketException handling behavior.
+ */
 
 INSTANTIATE_TEST_CASE_P(
     AddPeerConfigTest,
@@ -5547,17 +5637,19 @@ INSTANTIATE_TEST_CASE_P(
         BasicAddPeerTestScope::CONFIG_AS_ARGS,
         BasicAddPeerTestScope::CONFIG_AS_PEERING_PARAMS));
 
-//
-// Test that per-peer session-level ODS counters are incremented when
-// BGP messages are sent and received during session establishment.
-//
+/*
+ * Test that per-peer session-level ODS counters are incremented when
+ * BGP messages are sent and received during session establishment.
+ */
 TEST_F(FiberBgpPeerManagerFixture, PerPeerSessionCountersTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
 
   fm.addTask([this, &fm] {
-    // peerIdOdsStr_ is derived from PeeringParams::getUniquePeerId(),
-    // which is empty in the test fixture since peerId is not set.
+    /*
+     * peerIdOdsStr_ is derived from PeeringParams::getUniquePeerId(),
+     * which is empty in the test fixture since peerId is not set.
+     */
     const std::string peerIdOdsStr;
 
     const auto peerPort2 = peerMgr2->getListenAddress()->getPort();
@@ -5576,8 +5668,10 @@ TEST_F(FiberBgpPeerManagerFixture, PerPeerSessionCountersTest) {
 
     auto counters = facebook::fb303::ThreadCachedServiceData::getShared();
 
-    // During session establishment, each side sends OPEN + KEEPALIVE.
-    // Verify per-peer sent counters were incremented.
+    /*
+     * During session establishment, each side sends OPEN + KEEPALIVE.
+     * Verify per-peer sent counters were incremented.
+     */
     auto sentOpenKey = fmt::format(
         facebook::bgp::PeerStats::kPeerMessagesSentOpen,
         facebook::bgp::kEbbPlatform,
@@ -5649,8 +5743,10 @@ TEST_F(FiberBgpPeerManagerFixture, ShutdownDuringActiveBackoff) {
     const auto minRetryTimeout = 100ms;
     const auto maxRetryTimeout = 1500ms;
 
-    // Bind a port but don't listen — connections will be refused,
-    // driving the peer into exponential backoff.
+    /*
+     * Bind a port but don't listen — connections will be refused,
+     * driving the peer into exponential backoff.
+     */
     int tmpSock = ::socket(AF_INET, SOCK_STREAM, 0);
     ASSERT_GE(tmpSock, 0);
     struct sockaddr_in tmpAddr{};
@@ -5686,8 +5782,10 @@ TEST_F(FiberBgpPeerManagerFixture, ShutdownDuringActiveBackoff) {
     auto attemptsBeforeShutdown = peerInfo->at(0).numOfConnectionAttempts;
     EXPECT_GE(attemptsBeforeShutdown, 2);
 
-    // Shutdown the peer while it's in the middle of a backoff wait.
-    // This should cancel the pending AsyncTimeout and set shutdownRequested.
+    /*
+     * Shutdown the peer while it's in the middle of a backoff wait.
+     * This should cancel the pending AsyncTimeout and set shutdownRequested.
+     */
     peerMgr1->shutdownPeer(peerAddr1);
 
     // Wait long enough that another retry would have fired if not cancelled
@@ -5758,18 +5856,24 @@ TEST_F(FiberBgpPeerManagerFixture, RestartPeerAfterShutdownResumesConnect) {
     waitTillSessionsComeUp(fm, peerMgr2, {bgpPeerId2});
     EXPECT_EQ(1, callback1.getEstablishedCallbackCount(bgpPeerId1));
 
-    // Shutdown the active peer — this sets shutdownRequested and
-    // cancels the pending timeout
+    /*
+     * Shutdown the active peer — this sets shutdownRequested and
+     * cancels the pending timeout
+     */
     peerMgr1->shutdownPeer(peerAddr1);
     waitTillSessionsGoDown(fm, peerMgr1, {bgpPeerId1});
     waitTillSessionsGoDown(fm, peerMgr2, {bgpPeerId2});
 
-    // Restart the peer — should reset shutdownRequested and schedule
-    // a new AsyncTimeout for reconnection
+    /*
+     * Restart the peer — should reset shutdownRequested and schedule
+     * a new AsyncTimeout for reconnection
+     */
     peerMgr1->startPeer(peerAddr1);
 
-    // Verify session re-establishes (proves shutdownRequested was reset
-    // and the new timeout fires correctly)
+    /*
+     * Verify session re-establishes (proves shutdownRequested was reset
+     * and the new timeout fires correctly)
+     */
     waitTillSessionsComeUp(fm, peerMgr1, {bgpPeerId1});
     waitTillSessionsComeUp(fm, peerMgr2, {bgpPeerId2});
     EXPECT_EQ(2, callback1.getEstablishedCallbackCount(bgpPeerId1));
@@ -5783,12 +5887,12 @@ TEST_F(FiberBgpPeerManagerFixture, RestartPeerAfterShutdownResumesConnect) {
   evb.loop();
 }
 
-//
-// Test that passive connections with mismatched bindAddr are rejected.
-// peerMgr2 configures its peer (peerAddr2 = 127.1.0.1) with a bindAddr
-// that differs from the actual local address of accepted connections.
-// The session should NOT come up on the passive side.
-//
+/*
+ * Test that passive connections with mismatched bindAddr are rejected.
+ * peerMgr2 configures its peer (peerAddr2 = 127.1.0.1) with a bindAddr
+ * that differs from the actual local address of accepted connections.
+ * The session should NOT come up on the passive side.
+ */
 TEST_F(FiberBgpPeerManagerFixture, PassiveConnectBindAddrMismatchTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -5805,10 +5909,12 @@ TEST_F(FiberBgpPeerManagerFixture, PassiveConnectBindAddrMismatchTest) {
     peerMgr1->addPeer(
         peerAddr1, 100, 100, {kR1Lo1, 0}, peerPort2, ConnTimeParams(0ms, 0ms));
 
-    // peerMgr2 uses PASSIVE_ONLY with a WRONG bindAddr (kR2Lo2 = 127.2.0.2).
-    // peerMgr1 actively connects to 127.2.0.1:port2 (peerAddr1), so the
-    // accepted socket's local address is 127.2.0.1, which does NOT match
-    // kR2Lo2 (127.2.0.2). The passive accept should reject it.
+    /*
+     * peerMgr2 uses PASSIVE_ONLY with a WRONG bindAddr (kR2Lo2 = 127.2.0.2).
+     * peerMgr1 actively connects to 127.2.0.1:port2 (peerAddr1), so the
+     * accepted socket's local address is 127.2.0.1, which does NOT match
+     * kR2Lo2 (127.2.0.2). The passive accept should reject it.
+     */
     peerMgr2->addPeer(
         peerAddr2,
         100,
@@ -5821,13 +5927,17 @@ TEST_F(FiberBgpPeerManagerFixture, PassiveConnectBindAddrMismatchTest) {
     // Wait enough time for connection attempts
     fiberSleepFor(100ms);
 
-    // Session should NOT come up on peerMgr2 because bindAddr mismatch
-    // rejects the passive connection
+    /*
+     * Session should NOT come up on peerMgr2 because bindAddr mismatch
+     * rejects the passive connection
+     */
     EXPECT_EQ(0, callback2.getEstablishedCallbackCount(peerId2));
     EXPECT_FALSE(callback2.isSessionUp(peerId2));
 
-    // Verify the rejection log was emitted — proves the connection was
-    // accepted at TCP level and then dropped by our validation logic
+    /*
+     * Verify the rejection log was emitted — proves the connection was
+     * accepted at TCP level and then dropped by our validation logic
+     */
     bool foundRejectLog = false;
     for (const auto& [msg, cat] : logMessages) {
       if (msg.getMessage().find("Reject tcp connection") != std::string::npos) {
@@ -5846,11 +5956,11 @@ TEST_F(FiberBgpPeerManagerFixture, PassiveConnectBindAddrMismatchTest) {
   evb.loop();
 }
 
-//
-// Test that passive connections are accepted when bindAddr is anyAddress().
-// This verifies backward compatibility: peers without an explicit local_addr
-// should accept connections on any local address.
-//
+/*
+ * Test that passive connections are accepted when bindAddr is anyAddress().
+ * This verifies backward compatibility: peers without an explicit local_addr
+ * should accept connections on any local address.
+ */
 TEST_F(FiberBgpPeerManagerFixture, PassiveConnectAnyBindAddrTest) {
   auto& fm = fmWrapper.get();
   initTwoPeerMgrs(fm);
@@ -5863,9 +5973,11 @@ TEST_F(FiberBgpPeerManagerFixture, PassiveConnectAnyBindAddrTest) {
     peerMgr1->addPeer(
         peerAddr1, 100, 100, {kR1Lo1, 0}, peerPort2, ConnTimeParams(0ms, 0ms));
 
-    // peerMgr2 uses PASSIVE_ONLY with anyAddress() as bindAddr.
-    // The validation check should be skipped entirely, accepting
-    // the connection regardless of local address.
+    /*
+     * peerMgr2 uses PASSIVE_ONLY with anyAddress() as bindAddr.
+     * The validation check should be skipped entirely, accepting
+     * the connection regardless of local address.
+     */
     peerMgr2->addPeer(
         peerAddr2,
         100,
@@ -5891,13 +6003,13 @@ TEST_F(FiberBgpPeerManagerFixture, PassiveConnectAnyBindAddrTest) {
   evb.loop();
 }
 
-//
-// Test cross-subnet connection rejection: peerMgr1 has two peers on different
-// subnets (127.2.x.x and 127.3.x.x). Peer 127.3.0.2 connects to peerMgr1 at
-// the wrong local address (127.2.0.1 instead of 127.3.0.1). The connection
-// should be accepted at TCP level but rejected by bindAddr validation.
-// Meanwhile, peer 127.2.0.1 connecting to the correct local address succeeds.
-//
+/*
+ * Test cross-subnet connection rejection: peerMgr1 has two peers on different
+ * subnets (127.2.x.x and 127.3.x.x). Peer 127.3.0.2 connects to peerMgr1 at
+ * the wrong local address (127.2.0.1 instead of 127.3.0.1). The connection
+ * should be accepted at TCP level but rejected by bindAddr validation.
+ * Meanwhile, peer 127.2.0.1 connecting to the correct local address succeeds.
+ */
 TEST_F(FiberBgpPeerManagerFixture, PassiveConnectCrossSubnetRejectTest) {
   auto& fm = fmWrapper.get();
 
@@ -5906,10 +6018,12 @@ TEST_F(FiberBgpPeerManagerFixture, PassiveConnectCrossSubnetRejectTest) {
   const auto kPeer3BindAddr = folly::IPAddress("127.3.0.1");
   const BgpPeerId peerId3{kPeer3Addr, kPeer3Addr.asV4().toLongHBO()};
 
-  // peerMgr1: main router at 127.2.0.1, listens on :: (all interfaces)
-  // Has two peers configured on different subnets:
-  //   - peer 127.1.0.1 with bindAddr 127.2.0.1 (subnet 127.2.x.x)
-  //   - peer 127.3.0.2 with bindAddr 127.3.0.1 (subnet 127.3.x.x)
+  /*
+   * peerMgr1: main router at 127.2.0.1, listens on :: (all interfaces)
+   * Has two peers configured on different subnets:
+   *   - peer 127.1.0.1 with bindAddr 127.2.0.1 (subnet 127.2.x.x)
+   *   - peer 127.3.0.2 with bindAddr 127.3.0.1 (subnet 127.3.x.x)
+   */
   auto bgpGlobalConfig1 = makeBgpGlobalConfig(kR2Lo1, kR2Lo1);
   peerMgr1 = make_shared<TestFiberBgpPeerManager>(
       bgpGlobalConfig1,
@@ -5952,8 +6066,10 @@ TEST_F(FiberBgpPeerManagerFixture, PassiveConnectCrossSubnetRejectTest) {
     const auto peerPort2 = peerMgr2->getListenAddress()->getPort();
     const auto peerPort3 = peerMgr3->getListenAddress()->getPort();
 
-    // --- Configure peerMgr1 with two peers on different subnets ---
-    // Peer 127.1.0.1 with bindAddr 127.2.0.1 (subnet 127.2.x.x)
+    /*
+     * --- Configure peerMgr1 with two peers on different subnets ---
+     * Peer 127.1.0.1 with bindAddr 127.2.0.1 (subnet 127.2.x.x)
+     */
     peerMgr1->addPeer(
         kR1Lo1, // remote peer = 127.1.0.1
         100,
@@ -5973,10 +6089,12 @@ TEST_F(FiberBgpPeerManagerFixture, PassiveConnectCrossSubnetRejectTest) {
         ConnTimeParams(0ms, 0ms),
         TBgpSessionConnectMode::PASSIVE_ONLY);
 
-    // --- Configure peerMgr2: connects to peerMgr1 at 127.2.0.1 (correct) ---
-    // peerMgr2 connects to 127.2.0.1:peerPort1 (peerMgr1's routerId).
-    // On peerMgr1's accepted socket: remote=127.1.0.1, local=127.2.0.1.
-    // configuredBindAddr for peer 127.1.0.1 = 127.2.0.1 → MATCH → session up.
+    /*
+     * --- Configure peerMgr2: connects to peerMgr1 at 127.2.0.1 (correct) ---
+     * peerMgr2 connects to 127.2.0.1:peerPort1 (peerMgr1's routerId).
+     * On peerMgr1's accepted socket: remote=127.1.0.1, local=127.2.0.1.
+     * configuredBindAddr for peer 127.1.0.1 = 127.2.0.1 → MATCH → session up.
+     */
     peerMgr2->addPeer(
         kR2Lo1, // 127.2.0.1 (peerMgr1's routerId)
         100,
@@ -5986,13 +6104,15 @@ TEST_F(FiberBgpPeerManagerFixture, PassiveConnectCrossSubnetRejectTest) {
         ConnTimeParams(0ms, 0ms),
         TBgpSessionConnectMode::ACTIVE_ONLY);
 
-    // --- Configure peerMgr3: connects to peerMgr1 at WRONG address ---
-    // peerMgr3 binds to 127.3.0.2, connects to 127.2.0.1:peerPort1
-    // instead of connecting to 127.3.0.1:peerPort1.
-    // On peerMgr1's accepted socket: remote=127.3.0.2, local=127.2.0.1.
-    // configuredBindAddr for peer 127.3.0.2 = 127.3.0.1.
-    //   → 127.2.0.1 != 127.3.0.1 → REJECT
-    // This is the exact production bug scenario.
+    /*
+     * --- Configure peerMgr3: connects to peerMgr1 at WRONG address ---
+     * peerMgr3 binds to 127.3.0.2, connects to 127.2.0.1:peerPort1
+     * instead of connecting to 127.3.0.1:peerPort1.
+     * On peerMgr1's accepted socket: remote=127.3.0.2, local=127.2.0.1.
+     * configuredBindAddr for peer 127.3.0.2 = 127.3.0.1.
+     *   → 127.2.0.1 != 127.3.0.1 → REJECT
+     * This is the exact production bug scenario.
+     */
     peerMgr3->addPeer(
         kR2Lo1, // 127.2.0.1 (WRONG - connects to wrong local addr)
         100,
@@ -6002,8 +6122,10 @@ TEST_F(FiberBgpPeerManagerFixture, PassiveConnectCrossSubnetRejectTest) {
         ConnTimeParams(0ms, 0ms),
         TBgpSessionConnectMode::ACTIVE_ONLY);
 
-    // peerMgr2 sees its peer as 127.2.0.1 (peerId1 from the fixture)
-    // peerMgr1 sees its peer as 127.1.0.1 (peerId2 from the fixture)
+    /*
+     * peerMgr2 sees its peer as 127.2.0.1 (peerId1 from the fixture)
+     * peerMgr1 sees its peer as 127.1.0.1 (peerId2 from the fixture)
+     */
     waitTillSessionsComeUp(fm, peerMgr2, {peerId1});
     EXPECT_EQ(1, callback2.getEstablishedCallbackCount(peerId1));
     EXPECT_TRUE(callback2.isSessionUp(peerId1));
@@ -6015,8 +6137,10 @@ TEST_F(FiberBgpPeerManagerFixture, PassiveConnectCrossSubnetRejectTest) {
     // Wait for peerMgr3's connection attempts
     fiberSleepFor(100ms);
 
-    // peerMgr1 should NOT have session up for peer 127.3.0.2
-    // because it connected to the wrong local address (127.2.0.1 vs 127.3.0.1)
+    /*
+     * peerMgr1 should NOT have session up for peer 127.3.0.2
+     * because it connected to the wrong local address (127.2.0.1 vs 127.3.0.1)
+     */
     EXPECT_EQ(0, callback1.getEstablishedCallbackCount(peerId3));
     EXPECT_FALSE(callback1.isSessionUp(peerId3));
 
@@ -6229,8 +6353,10 @@ TEST_F(FiberBgpPeerManagerFixture, ActiveConnectUseAfterFreeViaPeerStart) {
      */
     fiberSleepFor(2000ms);
 
-    // Not crashing is not enough -- the protected connect must also have
-    // succeeded.
+    /*
+     * Not crashing is not enough -- the protected connect must also have
+     * succeeded.
+     */
     expectConnectCompletedOnProtectedSocket(listenFd, aci, inFlight, peerPort);
 
     peerMgr1->shutdownWithGR(false);
@@ -6291,8 +6417,10 @@ TEST_F(
   };
   ASSERT_EQ(0, ::connect(filler, (sockaddr*)&laddr, sizeof(laddr)));
 
-  // The manager needs its own listener so the test can drive an inbound
-  // session through passiveConnectLoop().
+  /*
+   * The manager needs its own listener so the test can drive an inbound
+   * session through passiveConnectLoop().
+   */
   auto config =
       makeBgpGlobalConfig(kR1Lo1, kR1Lo1, folly::SocketAddress("127.0.0.1", 0));
   peerMgr1 = make_shared<TestFiberBgpPeerManager>(config, &callback1, fm, evb);
@@ -6352,8 +6480,10 @@ TEST_F(
     // A resumes onto the destroyed FiberSocket -> ASAN aborts here.
     fiberSleepFor(3000ms);
 
-    // Once guarded, A resumes on its own socket and the connect must have
-    // succeeded.
+    /*
+     * Once guarded, A resumes on its own socket and the connect must have
+     * succeeded.
+     */
     expectConnectCompletedOnProtectedSocket(listenFd, aci, inFlight, peerPort);
 
     peerMgr1->shutdownWithGR(false);

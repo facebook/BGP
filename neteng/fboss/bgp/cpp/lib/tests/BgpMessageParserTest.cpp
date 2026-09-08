@@ -52,8 +52,10 @@ void init() {
 }
 
 TEST(BgpMessageParser, parseNlriPrefixNormal) {
-  // 6.4.3.2/32, first byte is prefix length;
-  // we added extra byte at the end, this should be ignored
+  /*
+   * 6.4.3.2/32, first byte is prefix length;
+   * we added extra byte at the end, this should be ignored
+   */
   std::vector<uint8_t> v4Prefix = {0x20, 0x06, 0x05, 0x04, 0x03, 0x02};
 
   folly::CIDRNetwork prefix;
@@ -78,8 +80,10 @@ TEST(BgpMessageParser, parseNlriPrefixNormal) {
 }
 
 TEST(BgpMessageParser, parseNlriPrefixBroken) {
-  // 6.4.3.2/33, first byte is prefix length;
-  // we added extra byte at the end, this should be ignored
+  /*
+   * 6.4.3.2/33, first byte is prefix length;
+   * we added extra byte at the end, this should be ignored
+   */
   std::vector<uint8_t> v4Prefix = {0x21, 0x06, 0x05, 0x04, 0x03, 0x02};
 
   folly::CIDRNetwork prefix;
@@ -103,13 +107,15 @@ TEST(BgpMessageParser, parseNlriPrefixBroken) {
       BgpUpdateMsgException);
 }
 
-//
-// The following test validates that we actually apply the prefixLength
-// to mask the excessive bits that could be present in the network bytes
-//
+/*
+ * The following test validates that we actually apply the prefixLength
+ * to mask the excessive bits that could be present in the network bytes
+ */
 TEST(BgpMessageParser, parseNlri) {
-  // 3 prefixes, 10.20.{3,2,1}.0 of different lengths: 24, 23, 22
-  // 10.20.1.0/22 is actually 10.20.0.0/22
+  /*
+   * 3 prefixes, 10.20.{3,2,1}.0 of different lengths: 24, 23, 22
+   * 10.20.1.0/22 is actually 10.20.0.0/22
+   */
   std::vector<uint8_t> v4Prefixes = {
       0x18, 0x0a, 0x14, 0x03, 0x17, 0x0a, 0x14, 0x02, 0x16, 0x0a, 0x14, 0x01};
 
@@ -253,9 +259,9 @@ TEST(BgpMessageParser, parseMpLabeledUnicastWithWrongPrefixLength) {
       BgpUpdateMsgException);
 }
 
-//
-// Bgp message header tests
-//
+/*
+ * Bgp message header tests
+ */
 
 class BgpHeaderFixture : public ::testing::Test {
  public:
@@ -314,9 +320,9 @@ TEST_F(BgpHeaderFixture, BgpHeaderWrongLength) {
   });
 }
 
-//
-// KEEPALIVE message test
-//
+/*
+ * KEEPALIVE message test
+ */
 
 class BgpKeepAliveFixture : public ::testing::Test {
  public:
@@ -348,9 +354,9 @@ TEST_F(BgpKeepAliveFixture, BgpKeepAliveWrongLength) {
   });
 }
 
-//
-// OPEN message tests
-//
+/*
+ * OPEN message tests
+ */
 
 class BgpOpenMessageFixture : public ::testing::Test {
  public:
@@ -569,9 +575,9 @@ class BgpOpenMessageFixture : public ::testing::Test {
   };
 };
 
-//
-// Correct OPEN message
-//
+/*
+ * Correct OPEN message
+ */
 TEST_F(BgpOpenMessageFixture, BgpOpenMessageBackwardCompatible) {
   auto openMsg = BgpMessageParser2::parseBgpOpenMsgRaw(
       folly::IOBuf::wrapBufferAsValue(msg.data(), msg.size()));
@@ -661,8 +667,10 @@ TEST_F(BgpOpenMessageFixture, BgpOpenMessageWithAddPath) {
     EXPECT_EQ(err.getSubCode(), BgpNotifOpenMsgErrSubCode::BN_OM_UNSPECIFIC);
   }
 
-  // test if the msg has non-valid Add path capability. In such case,
-  // we will ignore this capability.
+  /*
+   * test if the msg has non-valid Add path capability. In such case,
+   * we will ignore this capability.
+   */
   auto msgWithAddPathWithInvalidCapability = msgWithAddPath;
   msgWithAddPathWithInvalidCapability
       [msgWithAddPathWithInvalidCapability.size() - 1] = 0x05;
@@ -676,8 +684,10 @@ TEST_F(BgpOpenMessageFixture, BgpOpenMessageWithAddPath) {
   EXPECT_EQ(BgpUpdateSafi::SAFI_UNICAST, *addPathCapa[0].safi());
   EXPECT_EQ(*addPathCapa[0].sor(), BgpAddPathSendRec::RECEIVE);
 
-  // change the code to be wrong. in such case, no add path capability should
-  // be observed.
+  /*
+   * change the code to be wrong. in such case, no add path capability should
+   * be observed.
+   */
   auto msgWithAddPathWithWrongCode = msgWithAddPath;
   msgWithAddPathWithWrongCode[msgWithAddPathWithWrongCode.size() - 10] = 0xff;
   auto openMsgInvalidCode = BgpMessageParser2::parseBgpOpenMsgRaw(
@@ -725,9 +735,11 @@ TEST_F(BgpOpenMessageFixture, BgpOpenMessageWithExtNHEncoding) {
 }
 
 TEST_F(BgpOpenMessageFixture, BgpOpenMessageWithExtNHEncodingMalformed) {
-  // In the Malformed msg, we have the length of Extended Next Hop Encoding
-  // capability of 13, that is not a multiple of 6 (2 octets for each nlriAfi,
-  // nlriSafi, nhAfi). We would throw exception upon this case.
+  /*
+   * In the Malformed msg, we have the length of Extended Next Hop Encoding
+   * capability of 13, that is not a multiple of 6 (2 octets for each nlriAfi,
+   * nlriSafi, nhAfi). We would throw exception upon this case.
+   */
   EXPECT_THROW(
       BgpMessageParser2::parseBgpOpenMsgRaw(
           folly::IOBuf::wrapBufferAsValue(
@@ -791,8 +803,10 @@ TEST_F(BgpOpenMessageFixture, BgpOpenMessageWithEnhancedRouteRefresh) {
  * code. Ensure the Enhanced Route Refresh capability is not observed.
  */
 TEST_F(BgpOpenMessageFixture, BgpOpenMessageEnhancedRouteRefreshInvalidCode) {
-  // Create a wrong code for Enhanced route refresh capability. Here, this
-  // capability should not be observed.
+  /*
+   * Create a wrong code for Enhanced route refresh capability. Here, this
+   * capability should not be observed.
+   */
   auto msgWithEnhancedRouteRefreshWrongCode = msgWithEnhancedRouteRefresh;
   msgWithEnhancedRouteRefreshWrongCode
       [msgWithEnhancedRouteRefreshWrongCode.size() - 2] = 0xff;
@@ -844,8 +858,10 @@ TEST_F(BgpOpenMessageFixture, BgpOpenMessageWithRouteRefresh) {
  * Ensure the Route Refresh capability is not observed.
  */
 TEST_F(BgpOpenMessageFixture, BgpOpenMessageRouteRefreshInvalidCode) {
-  // Replace the Route Refresh capability code (0x02) with an invalid code.
-  // The capability should not be observed.
+  /*
+   * Replace the Route Refresh capability code (0x02) with an invalid code.
+   * The capability should not be observed.
+   */
   auto msgWithRouteRefreshWrongCode = msgWithRouteRefresh;
   msgWithRouteRefreshWrongCode[msgWithRouteRefreshWrongCode.size() - 2] = 0xff;
   auto openMsgInvalidCode = BgpMessageParser2::parseBgpOpenMsgRaw(
@@ -876,8 +892,10 @@ TEST_F(BgpOpenMessageFixture, BgpOpenMessageWithRouteRefreshInvalidLength) {
 }
 
 TEST_F(BgpOpenMessageFixture, BgpOpenMessageWithWrongCapabilitySize) {
-  // In the Malformed msg, we have capability length larger than remaining msg
-  // length. We should throw exception upon this case.
+  /*
+   * In the Malformed msg, we have capability length larger than remaining msg
+   * length. We should throw exception upon this case.
+   */
   msg[32] = 0xff;
   EXPECT_THROW(
       BgpMessageParser2::parseBgpOpenMsgRaw(
@@ -886,8 +904,10 @@ TEST_F(BgpOpenMessageFixture, BgpOpenMessageWithWrongCapabilitySize) {
 }
 
 TEST_F(BgpOpenMessageFixture, BgpOpenMessageWithWrongParameterSize) {
-  // In the Malformed msg, we have parameter length larger than remaining msg
-  // length. We should throw exception upon this case.
+  /*
+   * In the Malformed msg, we have parameter length larger than remaining msg
+   * length. We should throw exception upon this case.
+   */
   msg[30] = 0xff;
   EXPECT_THROW(
       BgpMessageParser2::parseBgpOpenMsgRaw(
@@ -1095,9 +1115,9 @@ TEST(BgpMessageParser, OpenWithMultiOptionalParam) {
   EXPECT_TRUE(*grCapa[1].forwardingState());
 }
 
-//
-// NOTIFICATION message tests
-//
+/*
+ * NOTIFICATION message tests
+ */
 
 class NotificationMessageFixture : public ::testing::Test {
  public:
@@ -1154,11 +1174,11 @@ TEST_F(NotificationMessageFixture, BgpNotificationMessageWrongCode) {
       BgpException);
 }
 
-//
-// Group of tests to validate that parsing notification message
-// throws on exceeding subCodes. Since every code has its own
-// range of sub-codes we pair each code value with subCode type
-//
+/*
+ * Group of tests to validate that parsing notification message
+ * throws on exceeding subCodes. Since every code has its own
+ * range of sub-codes we pair each code value with subCode type
+ */
 
 // To use a value as a type
 template <BgpNotifErrCode N>
@@ -1228,9 +1248,9 @@ TYPED_TEST(BgpNotificationMessageTest, WrongSubcode) {
       BgpException);
 }
 
-//
-// ROUTE REFRESH message tests
-//
+/*
+ * ROUTE REFRESH message tests
+ */
 
 class RouteRefreshMessageTestFixture : public ::testing::Test {
  public:
@@ -1302,9 +1322,9 @@ TEST(BgpMessageParser, BgpKeepAliveMessage) {
   SUCCEED();
 }
 
-//
-// UPDATE message tests
-//
+/*
+ * UPDATE message tests
+ */
 
 TEST(BgpMessageParser, BgpUpdateTestAsConfedSegments) {
   std::vector<uint8_t> msg = {
@@ -1792,9 +1812,9 @@ TEST(BgpMessageParser, BgpUpdateV6EOR) {
   EXPECT_EQ(BgpUpdateType::BU_ENDOFRIB, update.type());
 }
 
-//
-// UPDATE message errors
-//
+/*
+ * UPDATE message errors
+ */
 
 TEST_F(BgpUpdateMessageErrorFixture, WrongMsgLength) {
   // set length less than 19 + 4
@@ -1867,8 +1887,10 @@ TEST(BgpMessageParser, BgpUpdateMessageMissingAsPathAttr) {
 }
 
 TEST(BgpMessageParser, BgpUpdateMessageMissingNextHopV4) {
-  // the message below is correct but missing the AsPath
-  // attribute
+  /*
+   * the message below is correct but missing the AsPath
+   * attribute
+   */
   auto msg = kBgpUpdateMessageMissingNextHopV4Msg;
   try {
     BgpMessageParser2::parseBgpUpdateRaw(

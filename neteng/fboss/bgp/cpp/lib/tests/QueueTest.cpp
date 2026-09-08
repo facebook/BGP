@@ -35,9 +35,9 @@ namespace {
 constexpr auto kTimerGracePeriod = std::chrono::milliseconds(20);
 } // namespace
 
-//
-// The fixture provides fiber manager and evb for the tests
-//
+/*
+ * The fixture provides fiber manager and evb for the tests
+ */
 class QueueFixture : public ::testing::Test {
  public:
   QueueFixture() = default;
@@ -57,10 +57,10 @@ class QueueFixture : public ::testing::Test {
   folly::EventBase evb_;
 };
 
-//
-// Queue: single producer, single consumers; trying
-// bounded and unbounded queues, bounded in range 1-8
-//
+/*
+ * Queue: single producer, single consumers; trying
+ * bounded and unbounded queues, bounded in range 1-8
+ */
 TEST_F(QueueFixture, QueuePutGet) {
   for (int i = 0; i < 8; i++) {
     manager_->addTask([i]() mutable {
@@ -90,9 +90,9 @@ TEST_F(QueueFixture, QueuePutGet) {
   evb_.loop();
 }
 
-//
-// Multiple writers, single consumer, unbounded
-//
+/*
+ * Multiple writers, single consumer, unbounded
+ */
 TEST_F(QueueFixture, QueueMultipleWritersSingleConsumer) {
   const int kNumWriters = 1024;
   const int kNumMessages = 256;
@@ -137,11 +137,11 @@ TEST_F(QueueFixture, QueueMultipleWritersSingleConsumer) {
   evb_.loop();
 }
 
-//
-// Multiple writers, single consumer, unbounded; We create
-// N writer threads, and single reader thread. This is to
-// valide Queue will not croak with multiple threads.
-//
+/*
+ * Multiple writers, single consumer, unbounded; We create
+ * N writer threads, and single reader thread. This is to
+ * valide Queue will not croak with multiple threads.
+ */
 TEST(QueueTest, MultipleThreadWritersSingleConsumer) {
   RWQueue<std::string> queue;
 
@@ -197,9 +197,9 @@ TEST(QueueTest, MultipleThreadWritersSingleConsumer) {
   }
 }
 
-//
-// Single writer overflows the queue
-//
+/*
+ * Single writer overflows the queue
+ */
 TEST_F(QueueFixture, QueueOverflow) {
   RWQueue<int> queue(2);
   manager_->addTask([w = queue.getWriter()]() mutable {
@@ -224,9 +224,9 @@ TEST_F(QueueFixture, QueueOverflow) {
   evb_.loop();
 }
 
-//
-// Block multiple readers on queue, wake them up
-//
+/*
+ * Block multiple readers on queue, wake them up
+ */
 TEST_F(QueueFixture, WakeUpReaders) {
   RWQueue<int> queue(1);
   int readerCount{0};
@@ -305,9 +305,9 @@ TEST_F(QueueFixture, QueueCloseWithPublishers) {
   EXPECT_TRUE(queue.empty());
 }
 
-//
-// Block bunch of readers on queue, then close it
-//
+/*
+ * Block bunch of readers on queue, then close it
+ */
 TEST_F(QueueFixture, QueueCloseWithConsumers) {
   RWQueue<int> queue(1);
   int readerCount{0};
@@ -343,9 +343,9 @@ TEST_F(QueueFixture, QueueCloseWithConsumers) {
   EXPECT_TRUE(queue.empty());
 }
 
-//
-// Single writer, multiple consumers
-//
+/*
+ * Single writer, multiple consumers
+ */
 TEST_F(QueueFixture, QueueSingleWriterMultipleConsumers) {
   std::set<std::string> receivedValues;
 
@@ -391,9 +391,9 @@ TEST_F(QueueFixture, QueueSingleWriterMultipleConsumers) {
   evb_.loop();
 }
 
-//
-// Multiple writers, multiple consumers, bounded/unbounded
-//
+/*
+ * Multiple writers, multiple consumers, bounded/unbounded
+ */
 TEST_F(QueueFixture, QueueMultipleWritersMultipleConsumers) {
   for (int k = 0; k < 8; k++) {
     // all of received values
@@ -444,14 +444,16 @@ TEST_F(QueueFixture, QueueMultipleWritersMultipleConsumers) {
   evb_.loop();
 }
 
-//
-// Demonstrate merge operation. Notice that this assumes there
-// only one publisher for each merged queue
-//
+/*
+ * Demonstrate merge operation. Notice that this assumes there
+ * only one publisher for each merged queue
+ */
 TEST_F(QueueFixture, QueueMerge) {
-  // need to keep it in main scope, so that wrapper task
-  // does not call the d-tor. You can optionally pass the
-  // shared-ptr to the fiber that still refer to these queues
+  /*
+   * need to keep it in main scope, so that wrapper task
+   * does not call the d-tor. You can optionally pass the
+   * shared-ptr to the fiber that still refer to these queues
+   */
   std::vector<RWQueue<std::pair<int, int>>> queues;
   manager_->addTask([&queues]() mutable {
     for (int i = 0; i < 64; i++) {
@@ -490,9 +492,9 @@ TEST_F(QueueFixture, QueueMerge) {
   evb_.loop();
 }
 
-//
-// Wait on data or timeout using queue merge
-//
+/*
+ * Wait on data or timeout using queue merge
+ */
 TEST_F(QueueFixture, DataOrTimeout) {
   struct TimeoutEvent {};
   using CombinedType = std::variant<int, TimeoutEvent>;
@@ -517,9 +519,9 @@ TEST_F(QueueFixture, DataOrTimeout) {
 
   manager_->addTask([this]() {
     for (int i = 0; i < 16; i++) {
-      //
-      // this actor will produce timeout events
-      //
+      /*
+       * this actor will produce timeout events
+       */
       RWQueue<CombinedType> timeoutQueue;
       auto timeoutQueueW = timeoutQueue.getWriter();
       addTask([timeoutQueueW = std::move(timeoutQueueW)]() mutable {
@@ -534,16 +536,16 @@ TEST_F(QueueFixture, DataOrTimeout) {
       auto dataQueueR = dataQueue.getReader();
       auto timeoutQueueR = timeoutQueue.getReader();
 
-      //
-      // This is used to merge data and timeouts
-      //
+      /*
+       * This is used to merge data and timeouts
+       */
       std::vector<RQueue<CombinedType>> inputQueues;
       inputQueues.emplace_back(std::move(dataQueueR));
       inputQueues.emplace_back(std::move(timeoutQueueR));
 
-      //
-      // The merging actor and queue
-      //
+      /*
+       * The merging actor and queue
+       */
       RWQueue<CombinedType> mergedQueue;
       addTask([inputQueues = std::move(inputQueues), &mergedQueue]() mutable {
         mergeQueues(inputQueues.begin(), inputQueues.end(), mergedQueue);
@@ -551,10 +553,10 @@ TEST_F(QueueFixture, DataOrTimeout) {
 
       std::set<int> allValues;
 
-      //
-      // The visitor collects values from the merged queue and stores
-      // all of the numeric ones in the set
-      //
+      /*
+       * The visitor collects values from the merged queue and stores
+       * all of the numeric ones in the set
+       */
       auto visitor = CombinedVisitor(
           [&i, &allValues](int const& val) {
             i++;
@@ -563,9 +565,9 @@ TEST_F(QueueFixture, DataOrTimeout) {
           },
           [](TimeoutEvent const&) { XLOG(DBG4, "Got timeout!"); });
 
-      //
-      // this actor consumes data and timeout events
-      //
+      /*
+       * this actor consumes data and timeout events
+       */
       auto consumer =
           manager_->addTaskFuture([&visitor, &mergedQueue]() mutable {
             while (true) {
@@ -577,9 +579,9 @@ TEST_F(QueueFixture, DataOrTimeout) {
             }
           });
 
-      //
-      // This actor produces data
-      //
+      /*
+       * This actor produces data
+       */
       auto dataQueueW = dataQueue.getWriter();
       addTask([dataQueueW = std::move(dataQueueW)]() mutable {
         for (int j = 0; j < 64; j++) {
@@ -601,9 +603,9 @@ TEST_F(QueueFixture, DataOrTimeout) {
   evb_.loop();
 }
 
-//
-// Merging queues at compile time
-//
+/*
+ * Merging queues at compile time
+ */
 TEST_F(QueueFixture, queueMergeStatic) {
   struct TimeoutEvent {};
   using CombinedType = std::variant<int, TimeoutEvent>;
@@ -632,9 +634,9 @@ TEST_F(QueueFixture, queueMergeStatic) {
     // this is the queue where we put merged data
     RWQueue<CombinedType> outputQueue;
 
-    //
-    // this actor will produce timeout events
-    //
+    /*
+     * this actor will produce timeout events
+     */
     auto timeoutQueueW = timeoutQueue.getWriter();
     addTask([timeoutQueueW = std::move(timeoutQueueW)]() mutable {
       for (int i = 0; i < 64; i++) {
@@ -646,10 +648,10 @@ TEST_F(QueueFixture, queueMergeStatic) {
 
     std::set<int> allValues;
 
-    //
-    // The visitor collects values from the merged queue and stores
-    // all of the numeric ones in the set
-    //
+    /*
+     * The visitor collects values from the merged queue and stores
+     * all of the numeric ones in the set
+     */
     auto visitor = CombinedVisitor(
         [&allValues](int const& val) {
           XLOGF(DBG4, "Got value {}", val);
@@ -657,9 +659,9 @@ TEST_F(QueueFixture, queueMergeStatic) {
         },
         [](TimeoutEvent const&) { XLOG(DBG4, "Got timeout!"); });
 
-    //
-    // this actor consumes data and timeout events
-    //
+    /*
+     * this actor consumes data and timeout events
+     */
     auto outputQueueR = outputQueue.getReader();
     auto consumer = manager_->addTaskFuture(
         [&visitor, outputQueueR = std::move(outputQueueR)]() mutable {
@@ -672,9 +674,9 @@ TEST_F(QueueFixture, queueMergeStatic) {
           }
         });
 
-    //
-    // This actor produces data
-    //
+    /*
+     * This actor produces data
+     */
     auto dataQueueW = dataQueue.getWriter();
     addTask([&allValues, dataQueueW = std::move(dataQueueW)]() mutable {
       for (int i = 0; i < 64; i++) {
@@ -684,9 +686,9 @@ TEST_F(QueueFixture, queueMergeStatic) {
       dataQueueW.putNull();
     });
 
-    //
-    // This worker merges queue
-    //
+    /*
+     * This worker merges queue
+     */
     addTask([&outputQueue, &dataQueue, &timeoutQueue]() mutable {
       mergeQueuesStatic(
           outputQueue, dataQueue.getReader(), timeoutQueue.getReader());
@@ -701,9 +703,9 @@ TEST_F(QueueFixture, queueMergeStatic) {
   evb_.loop();
 }
 
-//
-// Test the basic timer logic
-//
+/*
+ * Test the basic timer logic
+ */
 TEST_F(QueueFixture, BasicTimerTest) {
   struct Timeout {};
 
@@ -726,9 +728,9 @@ TEST_F(QueueFixture, BasicTimerTest) {
   evb_.loop();
 }
 
-//
-// Test timer stop logic
-//
+/*
+ * Test timer stop logic
+ */
 TEST_F(QueueFixture, TimerStopTest) {
   struct Timeout {};
 
@@ -750,9 +752,9 @@ TEST_F(QueueFixture, TimerStopTest) {
   evb_.loop();
 }
 
-//
-// Test timer run exists before stop
-//
+/*
+ * Test timer run exists before stop
+ */
 TEST_F(QueueFixture, TimerStopAfterRunComplete) {
   struct Timeout {};
   bool runFiberDone = false;
@@ -781,9 +783,9 @@ TEST_F(QueueFixture, TimerStopAfterRunComplete) {
   ASSERT_TRUE(stopDone);
 }
 
-//
-// Test ticker with multiple call to stop() when run is in progress.
-//
+/*
+ * Test ticker with multiple call to stop() when run is in progress.
+ */
 TEST_F(QueueFixture, TimerMultipleStopDuringRun) {
   struct Timeout {};
 
@@ -808,9 +810,9 @@ TEST_F(QueueFixture, TimerMultipleStopDuringRun) {
 
   evb_.loop();
 }
-//
-// Test timer race condition when stop is called before run
-//
+/*
+ * Test timer race condition when stop is called before run
+ */
 TEST_F(QueueFixture, TimerWaitTillRunningTest) {
   struct Timeout {};
 
@@ -819,8 +821,10 @@ TEST_F(QueueFixture, TimerWaitTillRunningTest) {
   manager_->addTask([&timer] { timer.stop(); });
 
   manager_->addTask([&timer] {
-    // delay before start to mimic race condition issue.
-    // test stop is properly called after we wait till ticker is running
+    /*
+     * delay before start to mimic race condition issue.
+     * test stop is properly called after we wait till ticker is running
+     */
     fiberSleepFor(std::chrono::milliseconds(20));
     timer.run();
     SUCCEED();
@@ -835,9 +839,9 @@ TEST_F(QueueFixture, TimerWaitTillRunningTest) {
   evb_.loop();
 }
 
-//
-// Test timer stop logic when run is never called
-//
+/*
+ * Test timer stop logic when run is never called
+ */
 TEST_F(QueueFixture, TimerStopWithoutRunTest) {
   struct Timeout {};
 
@@ -857,9 +861,9 @@ TEST_F(QueueFixture, TimerStopWithoutRunTest) {
   evb_.loop();
 }
 
-//
-// Test timer reset logic
-//
+/*
+ * Test timer reset logic
+ */
 TEST_F(QueueFixture, TimerResetTest) {
   struct Timeout {};
 
@@ -867,8 +871,10 @@ TEST_F(QueueFixture, TimerResetTest) {
 
   manager_->addTask([&timer] { timer.run(); });
 
-  // the timer should expired in 50 ms, but the other fiber
-  // resets it 30 ms later, so total wait time should be 80ms
+  /*
+   * the timer should expired in 50 ms, but the other fiber
+   * resets it 30 ms later, so total wait time should be 80ms
+   */
   manager_->addTask([&timer] {
     auto start = std::chrono::steady_clock::now();
     auto queue = timer.getQueue();
@@ -889,9 +895,9 @@ TEST_F(QueueFixture, TimerResetTest) {
   evb_.loop();
 }
 
-//
-// Test timer reset to a new time logic
-//
+/*
+ * Test timer reset to a new time logic
+ */
 TEST_F(QueueFixture, TimerResetToNewTimeTest) {
   struct Timeout {};
 
@@ -899,9 +905,11 @@ TEST_F(QueueFixture, TimerResetToNewTimeTest) {
 
   manager_->addTask([&timer] { timer.run(); });
 
-  // the timer should expire in 50 ms, but the other fiber
-  // resets it 30 ms later, to new time of 70 ms
-  // so total wait time should be 100ms
+  /*
+   * the timer should expire in 50 ms, but the other fiber
+   * resets it 30 ms later, to new time of 70 ms
+   * so total wait time should be 100ms
+   */
   manager_->addTask([&timer] {
     auto start = std::chrono::steady_clock::now();
     auto queue = timer.getQueue();
@@ -922,9 +930,9 @@ TEST_F(QueueFixture, TimerResetToNewTimeTest) {
   evb_.loop();
 }
 
-//
-// Test timer reuse logic
-//
+/*
+ * Test timer reuse logic
+ */
 TEST_F(QueueFixture, TimerReuseTest) {
   struct Timeout {};
 
@@ -932,9 +940,11 @@ TEST_F(QueueFixture, TimerReuseTest) {
 
   manager_->addTask([&timer] { timer.run(); });
 
-  // the timer expires in 50 ms, and the other fiber
-  // reschedules it when it expires.
-  // The total wait time should be 100ms.
+  /*
+   * the timer expires in 50 ms, and the other fiber
+   * reschedules it when it expires.
+   * The total wait time should be 100ms.
+   */
   manager_->addTask([&timer] {
     auto start = std::chrono::steady_clock::now();
     auto queue = timer.getQueue();
@@ -956,9 +966,9 @@ TEST_F(QueueFixture, TimerReuseTest) {
   evb_.loop();
 }
 
-//
-// Test the basic timer with 0 sec logic
-//
+/*
+ * Test the basic timer with 0 sec logic
+ */
 TEST_F(QueueFixture, Timerwith0SecTest) {
   struct Timeout {};
 

@@ -43,9 +43,9 @@ static constexpr auto kLargeBlockSize = 1024 * 1024;
 static constexpr auto kNumClients = 128;
 } // namespace
 
-//
-// The fixture provides fiber manager and evb for the tests
-//
+/*
+ * The fixture provides fiber manager and evb for the tests
+ */
 class FiberSocketFixture : public ::testing::Test {
  public:
   FiberSocketFixture() = default;
@@ -65,9 +65,9 @@ class FiberSocketFixture : public ::testing::Test {
   folly::EventBase evb;
 };
 
-//
-// Use socket pair to create socket connection, test single read/write
-//
+/*
+ * Use socket pair to create socket connection, test single read/write
+ */
 TEST_F(FiberSocketFixture, ReadWritePair) {
   // grab the socket pair
   folly::SocketPair sp;
@@ -274,9 +274,9 @@ TEST_F(FiberSocketFixture, BufferCallbackTracksEvents) {
   evb.loop();
 }
 
-//
-// Close socket while trying to read
-//
+/*
+ * Close socket while trying to read
+ */
 TEST_F(FiberSocketFixture, CloseWhileReading) {
   // grab the socket pair
   folly::SocketPair sp;
@@ -287,8 +287,10 @@ TEST_F(FiberSocketFixture, CloseWhileReading) {
         folly::AsyncSocket::newSocket(&evb, folly::NetworkSocket::fromFd(fd1)));
     auto fs1 = std::make_shared<FiberSocket>(as1);
     manager->addTask([fs1]() mutable {
-      // first callback installed before we close
-      // result is folly expected
+      /*
+       * first callback installed before we close
+       * result is folly expected
+       */
       {
         auto result = fs1->read(kBlockSize).then([](auto /*bufRead*/) {});
         EXPECT_TRUE(result.hasValue());
@@ -314,10 +316,10 @@ TEST_F(FiberSocketFixture, CloseWhileReading) {
   evb.loop();
 }
 
-//
-// Create connection, test read timeout (one side reads, another never
-// writes)
-//
+/*
+ * Create connection, test read timeout (one side reads, another never
+ * writes)
+ */
 TEST_F(FiberSocketFixture, ReadTimeout) {
   // grab the socket pair
   folly::SocketPair sp;
@@ -344,10 +346,10 @@ TEST_F(FiberSocketFixture, ReadTimeout) {
   // the fd's will be closed by destructor
 }
 
-//
-// Use a pair of sockets, send random blocks, use 4-byte
-// frame length to communicate this to the other side
-//
+/*
+ * Use a pair of sockets, send random blocks, use 4-byte
+ * frame length to communicate this to the other side
+ */
 TEST_F(FiberSocketFixture, ReadWritePairRandom) {
   // grab the socket pair
   folly::SocketPair sp;
@@ -356,8 +358,10 @@ TEST_F(FiberSocketFixture, ReadWritePairRandom) {
 
   auto as0 = folly::to_shared_ptr(
       folly::AsyncSocket::newSocket(&evb, folly::NetworkSocket::fromFd(fd0)));
-  // notice that we capture socket by copy, so we can retain it for
-  // the duration of both fiber lifetimes
+  /*
+   * notice that we capture socket by copy, so we can retain it for
+   * the duration of both fiber lifetimes
+   */
   manager->addTask([as0]() mutable {
     auto fs0 = FiberSocket(as0);
     // the array to send data
@@ -434,10 +438,10 @@ TEST_F(FiberSocketFixture, ReadWritePairRandom) {
   evb.loop();
 }
 
-//
-// Test socket closing; we send very small blocks here,
-// and do not handle partiar read/writes
-//
+/*
+ * Test socket closing; we send very small blocks here,
+ * and do not handle partiar read/writes
+ */
 TEST_F(FiberSocketFixture, ReadWriteClose) {
   // grab the socket pair
   folly::SocketPair sp;
@@ -482,9 +486,9 @@ TEST_F(FiberSocketFixture, ReadWriteClose) {
   evb.loop();
 }
 
-//
-// Test connection failure.
-//
+/*
+ * Test connection failure.
+ */
 TEST_F(FiberSocketFixture, ConnectFail) {
   // spins new thread, binds port
   folly::ScopedBoundPort ph;
@@ -504,9 +508,9 @@ TEST_F(FiberSocketFixture, ConnectFail) {
   evb.loop();
 }
 
-//
-// Close socket on client causing reset
-//
+/*
+ * Close socket on client causing reset
+ */
 TEST_F(FiberSocketFixture, CloseWithReset) {
   manager->addTask([]() mutable {
     FiberServerSocket serverSocket(std::optional<folly::SocketAddress>(), 256);
@@ -557,9 +561,9 @@ TEST_F(FiberSocketFixture, CloseWithReset) {
   evb.loop();
 }
 
-//
-// Close connection using half-duplex shutdown
-//
+/*
+ * Close connection using half-duplex shutdown
+ */
 TEST_F(FiberSocketFixture, ShutdownWrite) {
   manager->addTask([]() mutable {
     FiberServerSocket serverSocket(std::optional<folly::SocketAddress>(), 256);
@@ -608,21 +612,25 @@ TEST_F(FiberSocketFixture, ShutdownWrite) {
   evb.loop();
 }
 
-//
-// Server-client exchange, single thread, multiple fibers.
-// We run one fiber with acceptor - on each accept we
-// create another fiber that writes into the connection.
-//
-// We also create equal number of fibers for clients using factory methods:
-// makeConnectedSocket() - those read the data published by the server fibers.
-//
+/*
+ * Server-client exchange, single thread, multiple fibers.
+ * We run one fiber with acceptor - on each accept we
+ * create another fiber that writes into the connection.
+ *
+ * We also create equal number of fibers for clients using factory methods:
+ * makeConnectedSocket() - those read the data published by the server fibers.
+ */
 TEST_F(FiberSocketFixture, ClientServerSingleThread) {
-  // create wrapper task that will kick in more tasks afterwards
-  // this is mainly needed because server sockets needs to be
-  // created inside a fiber to grab the reference to fiber manager
+  /*
+   * create wrapper task that will kick in more tasks afterwards
+   * this is mainly needed because server sockets needs to be
+   * created inside a fiber to grab the reference to fiber manager
+   */
   manager->addTask([]() mutable {
-    // hold this in the scope, so we won't close accepting socket
-    // too soon, hence the shared ptr
+    /*
+     * hold this in the scope, so we won't close accepting socket
+     * too soon, hence the shared ptr
+     */
     FiberServerSocket serverSocket(std::optional<folly::SocketAddress>(), 256);
 
     auto serverAddress = serverSocket.getListenAddress();
@@ -632,8 +640,10 @@ TEST_F(FiberSocketFixture, ClientServerSingleThread) {
         serverAddress.getAddressStr(),
         serverAddress.getPort());
 
-    // the server task accepts new connections and then starts another
-    // task that writes a random block of data back
+    /*
+     * the server task accepts new connections and then starts another
+     * task that writes a random block of data back
+     */
     addTask([serverSocket = std::move(serverSocket)]() mutable {
       SCOPE_EXIT {
         serverSocket.close();
@@ -641,8 +651,10 @@ TEST_F(FiberSocketFixture, ClientServerSingleThread) {
       for (int i = 0; i < kNumClients; i++) {
         serverSocket.accept().then([i](auto socket) {
           XLOGF(DBG4, "Accepted {} th connection, starting worker", i);
-          // start new task to handle the data; we are inside fiber, so
-          // we can use implicit call to addTask
+          /*
+           * start new task to handle the data; we are inside fiber, so
+           * we can use implicit call to addTask
+           */
           addTask([i, socket = std::move(socket)]() mutable {
             SCOPE_EXIT {
               socket.close();
@@ -697,21 +709,25 @@ TEST_F(FiberSocketFixture, ClientServerSingleThread) {
   evb.loop();
 }
 
-//
-// Server-client exchange, single thread, multiple fibers.
-// We run one fiber with acceptor - on each accept we
-// create another fiber that writes into the connection.
-//
-// We also create equal number of fibers for clients using FiberSocket() ->
-// connect() - those read the data published by the server fibers.
-//
+/*
+ * Server-client exchange, single thread, multiple fibers.
+ * We run one fiber with acceptor - on each accept we
+ * create another fiber that writes into the connection.
+ *
+ * We also create equal number of fibers for clients using FiberSocket() ->
+ * connect() - those read the data published by the server fibers.
+ */
 TEST_F(FiberSocketFixture, ClientServerSingleThread2) {
-  // create wrapper task that will kick in more tasks afterwards
-  // this is mainly needed because server sockets needs to be
-  // created inside a fiber to grab the reference to fiber manager
+  /*
+   * create wrapper task that will kick in more tasks afterwards
+   * this is mainly needed because server sockets needs to be
+   * created inside a fiber to grab the reference to fiber manager
+   */
   manager->addTask([]() mutable {
-    // hold this in the scope, so we won't close accepting socket
-    // too soon, hence the shared ptr
+    /*
+     * hold this in the scope, so we won't close accepting socket
+     * too soon, hence the shared ptr
+     */
     FiberServerSocket serverSocket(std::optional<folly::SocketAddress>(), 256);
 
     auto serverAddress = serverSocket.getListenAddress();
@@ -721,8 +737,10 @@ TEST_F(FiberSocketFixture, ClientServerSingleThread2) {
         serverAddress.getAddressStr(),
         serverAddress.getPort());
 
-    // the server task accepts new connections and then starts another
-    // task that writes a random block of data back
+    /*
+     * the server task accepts new connections and then starts another
+     * task that writes a random block of data back
+     */
     addTask([serverSocket = std::move(serverSocket)]() mutable {
       SCOPE_EXIT {
         serverSocket.close();
@@ -730,8 +748,10 @@ TEST_F(FiberSocketFixture, ClientServerSingleThread2) {
       for (int i = 0; i < kNumClients; i++) {
         serverSocket.accept().then([i](auto socket) {
           XLOGF(DBG4, "Accepted {} th connection, starting worker", i);
-          // start new task to handle the data; we are inside fiber, so
-          // we can use implicit call to addTask
+          /*
+           * start new task to handle the data; we are inside fiber, so
+           * we can use implicit call to addTask
+           */
           addTask([i, socket = std::move(socket)]() mutable {
             SCOPE_EXIT {
               socket.close();
@@ -785,11 +805,11 @@ TEST_F(FiberSocketFixture, ClientServerSingleThread2) {
   evb.loop();
 }
 
-//
-// This test demonstrates inter-thread communications. It does
-// not directly relate to the async IO, but demonstrates how
-// one can talk among fibers running in different managers
-//
+/*
+ * This test demonstrates inter-thread communications. It does
+ * not directly relate to the async IO, but demonstrates how
+ * one can talk among fibers running in different managers
+ */
 TEST_F(FiberSocketFixture, RemoteTaskExecution) {
   // this is the guy we schedule locally in this thread
   manager->addTask([this]() {
@@ -803,13 +823,15 @@ TEST_F(FiberSocketFixture, RemoteTaskExecution) {
     std::vector<folly::Future<int>> futs;
 
     for (int i = 0; i < 64; i++) {
-      // the below schedules a task in another thread (which
-      // runs fiber manager driven by event base). We collect
-      // all the futures from submitted tasks and then grab
-      // their values. Notice that this pattern is still
-      // synchronous: we "wait" for the result of computation
-      // happening in the other thread in this thread, instead
-      // of letting callback be invoked in another thread...
+      /*
+       * the below schedules a task in another thread (which
+       * runs fiber manager driven by event base). We collect
+       * all the futures from submitted tasks and then grab
+       * their values. Notice that this pattern is still
+       * synchronous: we "wait" for the result of computation
+       * happening in the other thread in this thread, instead
+       * of letting callback be invoked in another thread...
+       */
       auto fut = manager->addTaskRemoteFuture([i]() -> int {
         XLOG(DBG4, "Task invoked");
         return i;
@@ -826,17 +848,19 @@ TEST_F(FiberSocketFixture, RemoteTaskExecution) {
     evb.terminateLoopSoon();
   });
 
-  // this is needed over simple loop() because otherwise the
-  // other thread may submit something AFTER we did loop()
+  /*
+   * this is needed over simple loop() because otherwise the
+   * other thread may submit something AFTER we did loop()
+   */
   evb.loopForever();
   t.join();
 }
 
-//
-// Have on acceptor fiber accepting, reading and closing
-// incoming connections. We want to test that accept happens
-// in the order of arriving connections.
-//
+/*
+ * Have on acceptor fiber accepting, reading and closing
+ * incoming connections. We want to test that accept happens
+ * in the order of arriving connections.
+ */
 TEST_F(FiberSocketFixture, AcceptInOrder) {
   manager->addTask([]() mutable {
     FiberServerSocket serverSocket(
@@ -867,8 +891,10 @@ TEST_F(FiberSocketFixture, AcceptInOrder) {
       serverSocket.close();
     });
 
-    // add clients that connect to the server. Notice that we run all
-    // connections in single fiber to avoid re-ordering by scheduler
+    /*
+     * add clients that connect to the server. Notice that we run all
+     * connections in single fiber to avoid re-ordering by scheduler
+     */
     addTask([serverAddress]() mutable {
       for (int i = 0; i < kNumClients; i++) {
         XLOGF(DBG4, "Adding client number {}", i);
@@ -887,9 +913,9 @@ TEST_F(FiberSocketFixture, AcceptInOrder) {
   evb.loop();
 }
 
-//
-// This is stupid unittest to test binding to a given address
-//
+/*
+ * This is stupid unittest to test binding to a given address
+ */
 TEST_F(FiberSocketFixture, BindToAddr) {
   // bind to "any" port on localhost
   manager->addTask([]() {
@@ -899,8 +925,9 @@ TEST_F(FiberSocketFixture, BindToAddr) {
   evb.loop();
 }
 
-//
-// Test exception handling when getPeerAddress() fails
+/*
+ * Test exception handling when getPeerAddress() fails
+ */
 TEST_F(FiberSocketFixture, FiberSocketWithDisconnectedPeer) {
   manager->addTask([this]() mutable {
     auto mockSocket = std::make_shared<folly::test::MockAsyncSocket>(&evb);
@@ -927,9 +954,9 @@ TEST_F(FiberSocketFixture, FiberSocketWithDisconnectedPeer) {
   evb.loop();
 }
 
-//
-// Test the sleep via AsyncTimeout
-//
+/*
+ * Test the sleep via AsyncTimeout
+ */
 TEST_F(FiberSocketFixture, SleepFor) {
   auto start = std::chrono::steady_clock::now();
   manager->addTask([]() { fiberSleepFor(100ms); });
@@ -943,9 +970,9 @@ TEST_F(FiberSocketFixture, SleepFor) {
       200ms);
 }
 
-//
-// Test that main fiber kills acceptor fiber by closing socket.
-//
+/*
+ * Test that main fiber kills acceptor fiber by closing socket.
+ */
 TEST_F(FiberSocketFixture, KillAcceptorFiber) {
   // main fiber
   manager->addTask([]() mutable {
@@ -983,10 +1010,10 @@ TEST_F(FiberSocketFixture, KillAcceptorFiber) {
   evb.loop();
 }
 
-//
-// Test that main fiber kills connector fiber by passing null msg to input
-// queue.
-//
+/*
+ * Test that main fiber kills connector fiber by passing null msg to input
+ * queue.
+ */
 TEST_F(FiberSocketFixture, KillConnectorFiber) {
   // test setup to handle FiberSocketError
   struct TestFiberSocketErrorVisitor {
@@ -1127,16 +1154,20 @@ TEST_F(FiberSocketFixture, KillConnectorFiber) {
   evb.loop();
 }
 
-//
-// Test that main fiber kills connector fiber by closing socket
-//
+/*
+ * Test that main fiber kills connector fiber by closing socket
+ */
 TEST_F(FiberSocketFixture, KillConnectorFiber2) {
-  // create wrapper task that will kick in more tasks afterwards
-  // this is mainly needed because server sockets needs to be
-  // created inside a fiber to grab the reference to fiber manager
+  /*
+   * create wrapper task that will kick in more tasks afterwards
+   * this is mainly needed because server sockets needs to be
+   * created inside a fiber to grab the reference to fiber manager
+   */
   manager->addTask([]() mutable {
-    // hold this in the scope, so we won't close accepting socket
-    // too soon, hence the shared ptr
+    /*
+     * hold this in the scope, so we won't close accepting socket
+     * too soon, hence the shared ptr
+     */
     FiberServerSocket serverSocket(std::optional<folly::SocketAddress>(), 256);
 
     auto serverAddress = serverSocket.getListenAddress();
@@ -1146,8 +1177,10 @@ TEST_F(FiberSocketFixture, KillConnectorFiber2) {
         serverAddress.getAddressStr(),
         serverAddress.getPort());
 
-    // the server task accepts new connections and then starts another
-    // task that writes a random block of data back
+    /*
+     * the server task accepts new connections and then starts another
+     * task that writes a random block of data back
+     */
     addTask([serverSocket = std::move(serverSocket)]() mutable {
       SCOPE_EXIT {
         serverSocket.close();
@@ -1168,16 +1201,20 @@ TEST_F(FiberSocketFixture, KillConnectorFiber2) {
   evb.loop();
 }
 
-//
-// Call second connect on connect socket
-//
+/*
+ * Call second connect on connect socket
+ */
 TEST_F(FiberSocketFixture, DoubleConnect) {
-  // create wrapper task that will kick in more tasks afterwards
-  // this is mainly needed because server sockets needs to be
-  // created inside a fiber to grab the reference to fiber manager
+  /*
+   * create wrapper task that will kick in more tasks afterwards
+   * this is mainly needed because server sockets needs to be
+   * created inside a fiber to grab the reference to fiber manager
+   */
   manager->addTask([]() mutable {
-    // hold this in the scope, so we won't close accepting socket
-    // too soon, hence the shared ptr
+    /*
+     * hold this in the scope, so we won't close accepting socket
+     * too soon, hence the shared ptr
+     */
     FiberServerSocket serverSocket(std::optional<folly::SocketAddress>(), 256);
 
     auto serverAddress = serverSocket.getListenAddress();
@@ -1187,8 +1224,10 @@ TEST_F(FiberSocketFixture, DoubleConnect) {
         serverAddress.getAddressStr(),
         serverAddress.getPort());
 
-    // the server task accepts new connections and then starts another
-    // task that writes a random block of data back
+    /*
+     * the server task accepts new connections and then starts another
+     * task that writes a random block of data back
+     */
     addTask([serverSocket = std::move(serverSocket)]() mutable {
       SCOPE_EXIT {
         serverSocket.close();

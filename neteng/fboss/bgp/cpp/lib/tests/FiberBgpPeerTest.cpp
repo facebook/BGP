@@ -314,8 +314,10 @@ class FiberBgpPeerFixture : public ::testing::Test {
       const std::shared_ptr<MockFiberBgpPeer>& peer,
       const BgpSessionState targetState,
       const std::chrono::milliseconds duration) {
-    // this function blocks the underlying fiber until the peer reaches the
-    // target state or the function would timeout after duration
+    /*
+     * this function blocks the underlying fiber until the peer reaches the
+     * target state or the function would timeout after duration
+     */
 
     auto& fm = fmWrapper_.get();
     folly::fibers::Baton bt;
@@ -329,8 +331,10 @@ class FiberBgpPeerFixture : public ::testing::Test {
           bt.post();
           return;
         }
-        // check every ms. Don't just yield here or we might get stuck as some
-        // other fibers might depend on time
+        /*
+         * check every ms. Don't just yield here or we might get stuck as some
+         * other fibers might depend on time
+         */
         folly::fibers::yield();
         fiberSleepFor(1ms);
       }
@@ -411,9 +415,11 @@ class FiberBgpPeerFixture : public ::testing::Test {
     routeRefreshMsg1_.safi() = BgpUpdateSafi::SAFI_UNICAST;
   }
 
-  // Establish two peers, and then execute the test logic from lambda
-  // Optionally send updates from either direction before test logic
-  // is executed.
+  /*
+   * Establish two peers, and then execute the test logic from lambda
+   * Optionally send updates from either direction before test logic
+   * is executed.
+   */
   void establishTwoPeersAndTest(
       std::optional<std::function<void()>> testLambda,
       const std::optional<std::shared_ptr<BgpUpdate2>>& updateFromPeer1,
@@ -527,8 +533,10 @@ class FiberBgpPeerFixture : public ::testing::Test {
             auto rcvd_update1 = facebook::bgp::test::boundedBlockingPop(
                 *peer2Output_, "peer2Output_");
 
-            // We will populate both v4Announced and v4Announced2 for backward
-            // compatibility
+            /*
+             * We will populate both v4Announced and v4Announced2 for backward
+             * compatibility
+             */
             if (updateFromPeer1.value()->v4Announced()->empty()) {
               for (const auto& rigPfix :
                    *updateFromPeer1.value()->v4Announced2()) {
@@ -556,8 +564,10 @@ class FiberBgpPeerFixture : public ::testing::Test {
             ObservedMessageProcessor visitor2(*updateFromPeer2);
             auto rcvd_update2 = facebook::bgp::test::boundedBlockingPop(
                 *peer1Output_, "peer1Output_");
-            // We will populate both v4Announced and v4Announced2 for backward
-            // compatibility
+            /*
+             * We will populate both v4Announced and v4Announced2 for backward
+             * compatibility
+             */
             if (updateFromPeer2.value()->v4Announced()->empty()) {
               for (const auto& rigPfix :
                    *updateFromPeer2.value()->v4Announced2()) {
@@ -589,8 +599,10 @@ class FiberBgpPeerFixture : public ::testing::Test {
       const std::optional<std::shared_ptr<BgpUpdate2>>& updateFromPeer1,
       const std::optional<std::shared_ptr<BgpUpdate2>>& updateFromPeer2) {
     auto lambdaVerifyEnhancedRouteRefreshError = [&]() {
-      // Send an invalid route refresh request without SAFI from peer1
-      // Verify if peer1 received a BGP notification with the right error code
+      /*
+       * Send an invalid route refresh request without SAFI from peer1
+       * Verify if peer1 received a BGP notification with the right error code
+       */
       BgpRouteRefresh routeRefreshMsgInvalid;
       routeRefreshMsgInvalid.afi() = BgpUpdateAfi::AFI_IPv6;
       routeRefreshMsgInvalid.msgSubType() =
@@ -665,9 +677,9 @@ class FiberBgpPeerFixture : public ::testing::Test {
       fm.addTask([peer1] { peer1->run(); });
       fm.addTask([peer2] { peer2->run(); });
 
-      //
-      // Observe state changes for both peers
-      //
+      /*
+       * Observe state changes for both peers
+       */
 
       RWQueue<FiberBgpPeer::ObservableStateT> combined;
       fm.addTask([&combined, peer1, peer2]() mutable {
@@ -709,9 +721,11 @@ class FiberBgpPeerFixture : public ::testing::Test {
         EXPECT_EQ(ResetReason::SESSION_ERR, peer2->getResetReason());
         EXPECT_EQ(
             "SESSION_ERR", getResetReasonName(peer2->getResetReason().value()));
-        // There is a race condition whereby peer1 may get socket error before
-        // it gets notification from peer, so check that we get one or the
-        // other.
+        /*
+         * There is a race condition whereby peer1 may get socket error before
+         * it gets notification from peer, so check that we get one or the
+         * other.
+         */
         auto peer1ResetReasonName =
             getResetReasonName(peer1->getResetReason().value());
         XLOGF(INFO, "Reset Reason for Peer1 is {}", peer1ResetReasonName);
@@ -757,11 +771,11 @@ INSTANTIATE_TEST_CASE_P(
         std::make_pair<uint32_t, uint32_t>(1234, 2345)));
 
 TEST_P(BgpPeerSessionEstablishmentFixture, SessionEstablishmentAsn) {
-  //
-  // Try establishing a basic session and make sure
-  // both peers advance to established state
-  // use a mixture of 4 bytes and 2 bytes asn
-  //
+  /*
+   * Try establishing a basic session and make sure
+   * both peers advance to established state
+   * use a mixture of 4 bytes and 2 bytes asn
+   */
   const auto& param = GetParam();
   const auto& peer1LocalAs = std::get<0>(param);
   const auto& peer2LocalAs = std::get<1>(param);
@@ -801,9 +815,9 @@ TEST_P(BgpPeerSessionEstablishmentFixture, SessionEstablishmentAsn) {
     fm.addTask([peer1] { peer1->run(); });
     fm.addTask([peer2] { peer2->run(); });
 
-    //
-    // Observe state changes for both peers
-    //
+    /*
+     * Observe state changes for both peers
+     */
 
     RWQueue<FiberBgpPeer::ObservableStateT> combined;
     fm.addTask([&combined, peer1, peer2]() mutable {
@@ -864,9 +878,9 @@ TEST_F(FiberBgpPeerFixture, LocalAsMismatchedRemoteAsSessionEstablishment) {
   SUCCEED();
 }
 
-//
-// Start one peer, sockets wont connect, expect termination
-//
+/*
+ * Start one peer, sockets wont connect, expect termination
+ */
 TEST_F(FiberBgpPeerFixture, OnePeerStartsNoConnect) {
   auto& fm = fmWrapper_.get();
   auto peer1 = std::make_shared<FiberBgpPeer>(
@@ -885,9 +899,9 @@ TEST_F(FiberBgpPeerFixture, OnePeerStartsNoConnect) {
     // start all fibers
     fm.addTask([peer1] { peer1->run(); });
 
-    //
-    // Observe state changes for both peers
-    //
+    /*
+     * Observe state changes for both peers
+     */
 
     auto queue = peer1->getObserverStateQueue();
     while (true) {
@@ -905,10 +919,12 @@ TEST_F(FiberBgpPeerFixture, OnePeerStartsNoConnect) {
   SUCCEED();
 }
 
-// stop(peerDelete=true) puts BgpSessionStop{peerDelete=true} on errorQueue_;
-// FSM consumes it via processBgpSessionStop and emits the IDLE
-// ObservableStateT with peerDelete propagated. Verifies the FIFO wiring
-// dropPeer -> stop -> errorQueue_ -> IDLE event.
+/*
+ * stop(peerDelete=true) puts BgpSessionStop{peerDelete=true} on errorQueue_;
+ * FSM consumes it via processBgpSessionStop and emits the IDLE
+ * ObservableStateT with peerDelete propagated. Verifies the FIFO wiring
+ * dropPeer -> stop -> errorQueue_ -> IDLE event.
+ */
 TEST_F(FiberBgpPeerFixture, StopPeerDeleteFlagPropagatesToIdleEvent) {
   auto& fm = fmWrapper_.get();
   auto peer1 = std::make_shared<FiberBgpPeer>(
@@ -950,9 +966,9 @@ TEST_F(FiberBgpPeerFixture, StopPeerDeleteFlagPropagatesToIdleEvent) {
       << "peerDelete=true on stop() did not propagate onto the IDLE event";
 }
 
-//
-// Start one peer, sockets connected, expect timeout
-//
+/*
+ * Start one peer, sockets connected, expect timeout
+ */
 TEST_F(FiberBgpPeerFixture, OnePeerStartsWithConnection) {
   auto& fm = fmWrapper_.get();
   auto peer1 = std::make_shared<FiberBgpPeer>(
@@ -986,9 +1002,9 @@ TEST_F(FiberBgpPeerFixture, OnePeerStartsWithConnection) {
   SUCCEED();
 }
 
-//
-// Start two peers, terminate one of them; hold time set to 3 seconds
-//
+/*
+ * Start two peers, terminate one of them; hold time set to 3 seconds
+ */
 TEST_F(FiberBgpPeerFixture, AnnouncementWithSocketErr) {
   auto& fm = fmWrapper_.get();
   auto peer1 = std::make_shared<FiberBgpPeer>(
@@ -1099,8 +1115,10 @@ TEST_F(FiberBgpPeerFixture, AnnouncementWithSocketErr) {
       }
     }
 
-    // Confirm that both advertisement is received and processed before
-    // socket error happened.
+    /*
+     * Confirm that both advertisement is received and processed before
+     * socket error happened.
+     */
     facebook::bgp::test::boundedBlockingPop(*peer2Output_, "peer2Output_");
     facebook::bgp::test::boundedBlockingPop(*peer2Output_, "peer2Output_");
   });
@@ -1109,9 +1127,9 @@ TEST_F(FiberBgpPeerFixture, AnnouncementWithSocketErr) {
   SUCCEED();
 }
 
-//
-// Start two peers, terminate one of them; hold time set to 3 seconds
-//
+/*
+ * Start two peers, terminate one of them; hold time set to 3 seconds
+ */
 TEST_F(FiberBgpPeerFixture, OnePeerTerminates) {
   auto& fm = fmWrapper_.get();
   auto peer1 = std::make_shared<FiberBgpPeer>(
@@ -1140,9 +1158,9 @@ TEST_F(FiberBgpPeerFixture, OnePeerTerminates) {
     fm.addTask([peer1] { peer1->run(); });
     fm.addTask([peer2] { peer2->run(); });
 
-    //
-    // Observe state changes for both peers
-    //
+    /*
+     * Observe state changes for both peers
+     */
     RWQueue<FiberBgpPeer::ObservableStateT> combined;
     fm.addTask([&combined, peer1, peer2]() mutable {
       auto writer = combined.getWriter();
@@ -1181,18 +1199,18 @@ TEST_F(FiberBgpPeerFixture, OnePeerTerminates) {
   SUCCEED();
 }
 
-//
-// Try establishing a basic session and make sure
-// both peers advance to established state.
-// Then, exchange one BgpUpdate2 each other.
-//
+/*
+ * Try establishing a basic session and make sure
+ * both peers advance to established state.
+ * Then, exchange one BgpUpdate2 each other.
+ */
 TEST_F(FiberBgpPeerFixture, ExchangeBgpUpdate) {
   establishTwoPeersAndTest(std::nullopt, update1_, update2_);
 }
 
-//
-// We try establishing a basic session with various hold time configurations.
-//
+/*
+ * We try establishing a basic session with various hold time configurations.
+ */
 TEST_F(FiberBgpPeerFixture, HoldTimeNegotiationTest) {
   auto& fm = fmWrapper_.get();
 
@@ -1209,8 +1227,10 @@ TEST_F(FiberBgpPeerFixture, HoldTimeNegotiationTest) {
   };
 
   {
-    // peer2 is set with hold time 30 sec.
-    // negotiated hold time should be 30 sec.
+    /*
+     * peer2 is set with hold time 30 sec.
+     * negotiated hold time should be 30 sec.
+     */
     PeeringParams params2{
         folly::IPAddress("2.2.2.2"), // peerAddr
         std::nullopt, // peerPrefix
@@ -1253,8 +1273,10 @@ TEST_F(FiberBgpPeerFixture, HoldTimeNegotiationTest) {
     evb_.loop();
   }
   {
-    // peer2 is set with hold time 3 sec.
-    // negotiated hold time should be 3 sec.
+    /*
+     * peer2 is set with hold time 3 sec.
+     * negotiated hold time should be 3 sec.
+     */
     PeeringParams params2{
         folly::IPAddress("2.2.2.2"), // peerAddr
         std::nullopt, // peerPrefix
@@ -1297,8 +1319,10 @@ TEST_F(FiberBgpPeerFixture, HoldTimeNegotiationTest) {
     evb_.loop();
   }
   {
-    // peer2 is set with hold time 2 sec.
-    // session should not come up.
+    /*
+     * peer2 is set with hold time 2 sec.
+     * session should not come up.
+     */
     PeeringParams params2{
         folly::IPAddress("2.2.2.2"), // peerAddr
         std::nullopt, // peerPrefix
@@ -1314,8 +1338,10 @@ TEST_F(FiberBgpPeerFixture, HoldTimeNegotiationTest) {
       std::shared_ptr<MockFiberBgpPeer> peer1, peer2;
       std::tie(peer1, peer2) = startTwoPeers(params1, params2);
 
-      // wait till session comes up, but it won't come up.
-      // as a result, it would stuck on OPEN_SENT after 100ms
+      /*
+       * wait till session comes up, but it won't come up.
+       * as a result, it would stuck on OPEN_SENT after 100ms
+       */
       EXPECT_NE(
           runUntilTargetStateOrTimeout(
               peer1, BgpSessionState::ESTABLISHED, 100ms),
@@ -1342,8 +1368,10 @@ TEST_F(FiberBgpPeerFixture, HoldTimeNegotiationTest) {
     evb_.loop();
   }
   {
-    // peer2 is set with hold time 0 sec.
-    // session should come up.
+    /*
+     * peer2 is set with hold time 0 sec.
+     * session should come up.
+     */
     PeeringParams params2{
         folly::IPAddress("2.2.2.2"), // peerAddr
         std::nullopt, // peerPrefix
@@ -1388,10 +1416,10 @@ TEST_F(FiberBgpPeerFixture, HoldTimeNegotiationTest) {
   SUCCEED();
 }
 
-//
-// We try establishing a basic session with various graceful restart
-// configurations.
-//
+/*
+ * We try establishing a basic session with various graceful restart
+ * configurations.
+ */
 TEST_F(FiberBgpPeerFixture, GRCapabilityTest) {
   auto& fm = fmWrapper_.get();
 
@@ -1488,11 +1516,11 @@ TEST_F(FiberBgpPeerFixture, GRCapabilityTest) {
   SUCCEED();
 }
 
-//
-// When grRestartTime is not configured (nullopt), GR capability TLV must not
-// be advertised. The negotiated result should have gracefulRestart = false,
-// acting as a no-GR-helper.
-//
+/*
+ * When grRestartTime is not configured (nullopt), GR capability TLV must not
+ * be advertised. The negotiated result should have gracefulRestart = false,
+ * acting as a no-GR-helper.
+ */
 TEST_F(FiberBgpPeerFixture, NoGRCapabilityWhenUnconfigured) {
   auto& fm = fmWrapper_.get();
 
@@ -1550,10 +1578,10 @@ TEST_F(FiberBgpPeerFixture, NoGRCapabilityWhenUnconfigured) {
   SUCCEED();
 }
 
-//
-// We try to establish a basic session with Extended Next Hop Encoding
-// capabilities as specified in RFC 5549
-//
+/*
+ * We try to establish a basic session with Extended Next Hop Encoding
+ * capabilities as specified in RFC 5549
+ */
 TEST_F(FiberBgpPeerFixture, ExtNHEncodingCapabilityTest) {
   auto& fm = fmWrapper_.get();
 
@@ -1692,10 +1720,10 @@ TEST_F(FiberBgpPeerFixture, ExtNHEncodingCapabilityTest) {
   SUCCEED();
 }
 
-//
-// We try establishing a basic session with various Add path
-// configurations.
-//
+/*
+ * We try establishing a basic session with various Add path
+ * configurations.
+ */
 TEST_F(FiberBgpPeerFixture, AddPathCapabilityTest) {
   auto& fm = fmWrapper_.get();
 
@@ -2014,9 +2042,9 @@ TEST_F(FiberBgpPeerFixture, AddPathCapabilityTest) {
   SUCCEED();
 }
 
-//
-// Establish a basic session to test Enhanced Route Refresh capability(ERR)
-//
+/*
+ * Establish a basic session to test Enhanced Route Refresh capability(ERR)
+ */
 TEST_F(FiberBgpPeerFixture, EnhancedRouteRefreshCapabilityTest) {
   auto& fm = fmWrapper_.get();
 
@@ -2166,11 +2194,11 @@ TEST_F(FiberBgpPeerFixture, EnhancedRouteRefreshCapabilityTest) {
   SUCCEED();
 }
 
-//
-// Establish a basic session to test Route Refresh capability (RFC 2918).
-// Mirrors EnhancedRouteRefreshCapabilityTest above, exercising the 4-case
-// negotiation matrix: neither / both / one-sided (each direction).
-//
+/*
+ * Establish a basic session to test Route Refresh capability (RFC 2918).
+ * Mirrors EnhancedRouteRefreshCapabilityTest above, exercising the 4-case
+ * negotiation matrix: neither / both / one-sided (each direction).
+ */
 TEST_F(FiberBgpPeerFixture, RouteRefreshCapabilityTest) {
   auto& fm = fmWrapper_.get();
 
@@ -2316,10 +2344,10 @@ TEST_F(FiberBgpPeerFixture, RouteRefreshCapabilityTest) {
   SUCCEED();
 }
 
-//
-// We try establishing a basic session with various address family capability
-// configurations.
-//
+/*
+ * We try establishing a basic session with various address family capability
+ * configurations.
+ */
 TEST_F(FiberBgpPeerFixture, AfiCapabilityNegotiationTest) {
   auto& fm = fmWrapper_.get();
 
@@ -2336,8 +2364,10 @@ TEST_F(FiberBgpPeerFixture, AfiCapabilityNegotiationTest) {
       AfiIpv4Configured(true),
       AfiIpv6Configured(true)};
   {
-    // peer2 is set with ipv4 unicast only
-    // negotiated address family should be only ipv4 unicast
+    /*
+     * peer2 is set with ipv4 unicast only
+     * negotiated address family should be only ipv4 unicast
+     */
     PeeringParams params2{
         folly::IPAddress("2.2.2.2"), // peerAddr
         std::nullopt, // peerPrefix
@@ -2381,8 +2411,10 @@ TEST_F(FiberBgpPeerFixture, AfiCapabilityNegotiationTest) {
     evb_.loop();
   }
   {
-    // peer2 is set with ipv6 unicast only
-    // negotiated address family should be only ipv6 unicast
+    /*
+     * peer2 is set with ipv6 unicast only
+     * negotiated address family should be only ipv6 unicast
+     */
     PeeringParams params2{
         folly::IPAddress("2.2.2.2"), // peerAddr
         std::nullopt, // peerPrefix
@@ -2426,8 +2458,10 @@ TEST_F(FiberBgpPeerFixture, AfiCapabilityNegotiationTest) {
     evb_.loop();
   }
   {
-    // peer2 is set with ipv4/ipv6 unicast
-    // negotiated address family should be ipv4/ipv6 unicast
+    /*
+     * peer2 is set with ipv4/ipv6 unicast
+     * negotiated address family should be ipv4/ipv6 unicast
+     */
     PeeringParams params2{
         folly::IPAddress("2.2.2.2"), // peerAddr
         std::nullopt, // peerPrefix
@@ -2471,8 +2505,10 @@ TEST_F(FiberBgpPeerFixture, AfiCapabilityNegotiationTest) {
     evb_.loop();
   }
   {
-    // peer2 is set with ipv4/ipv6 unicast and ls
-    // negotiated address family should be ipv4/ipv6 unicast and ls
+    /*
+     * peer2 is set with ipv4/ipv6 unicast and ls
+     * negotiated address family should be ipv4/ipv6 unicast and ls
+     */
     PeeringParams params2{
         folly::IPAddress("2.2.2.2"), // peerAddr
         std::nullopt, // peerPrefix
@@ -2585,11 +2621,11 @@ TEST_F(FiberBgpPeerFixture, RejectNlriOfNonNegotiatedAfi) {
   }
 }
 
-//
-// Establish a basic session and make sure both peers advance to established
-// state. After exchange of one BgpUpdate2 and send a notification. Verify
-// that in oQueue we see session stop with graceful restart false.
-//
+/*
+ * Establish a basic session and make sure both peers advance to established
+ * state. After exchange of one BgpUpdate2 and send a notification. Verify
+ * that in oQueue we see session stop with graceful restart false.
+ */
 TEST_F(FiberBgpPeerFixture, GracefulRestartNotificationTest) {
   auto lambdaVerifyGRNotification = [&]() {
     // Send a notification and verify gracefulRestart false
@@ -2645,8 +2681,10 @@ TEST_F(FiberBgpPeerFixture, EnhancedRouteRefreshMessageTest) {
       FLAGS_enable_egress_queue_backpressure);
   auto lastResetKeepAliveTimer = peer1->getLastResetKeepAliveTimer();
   auto lambdaVerifyEnhancedRouteRefresh = [&]() {
-    // Send a route refresh request from peer1
-    // Verify if peer2 is able to receive this
+    /*
+     * Send a route refresh request from peer1
+     * Verify if peer2 is able to receive this
+     */
     if (FLAGS_enable_egress_queue_backpressure) {
       ASSERT_TRUE(peer1BoundedInput_->push(routeRefreshMsg1_));
     } else {
@@ -2702,9 +2740,11 @@ TEST_F(FiberBgpPeerFixture, EnhancedRouteRefreshErrorBeforeUpdatesTest) {
   enhancedRouteRefreshErrorTest(std::nullopt, std::nullopt);
 }
 
-// the UTs in parser only verify we are throwing exceptions with the right
-// subCode, this UT is to pick one and verify we are generating the right
-// notification (doing the exception handling) -- BgpOpenMsgException
+/*
+ * the UTs in parser only verify we are throwing exceptions with the right
+ * subCode, this UT is to pick one and verify we are generating the right
+ * notification (doing the exception handling) -- BgpOpenMsgException
+ */
 TEST_F(FiberBgpPeerFixture, WrongHoldTimeOpenMsgErrorNotificationTest) {
   auto& fm = fmWrapper_.get();
 
@@ -2803,14 +2843,18 @@ TEST_F(FiberBgpPeerFixture, WrongHoldTimeOpenMsgErrorNotificationTest) {
 
   fm.addTask([&] {
     try {
-      // peer2 will get an openMsg from peer1, they all have same size
-      // Read whole length of an Open Message (61 Bytes)
+      /*
+       * peer2 will get an openMsg from peer1, they all have same size
+       * Read whole length of an Open Message (61 Bytes)
+       */
       auto buf = fs1->read(openMsg.size()).value();
       auto open = BgpMessageParser2::parseBgpOpenMsgRaw(
           folly::IOBuf::wrapBufferAsValue(buf->data(), buf->length()));
 
-      // then verified on peer2 side we get a Notification with correct subCode
-      // Read minimum length of a Notification (21 Bytes)
+      /*
+       * then verified on peer2 side we get a Notification with correct subCode
+       * Read minimum length of a Notification (21 Bytes)
+       */
       buf = fs1->read(21).value();
       auto notification = BgpMessageParser2::parseBgpNotificationRaw(
           folly::IOBuf::wrapBufferAsValue(buf->data(), buf->length()));
@@ -2821,8 +2865,10 @@ TEST_F(FiberBgpPeerFixture, WrongHoldTimeOpenMsgErrorNotificationTest) {
               BgpNotifOpenMsgErrSubCode::BN_OM_UNACCEPTABLE_HOLD_TIME),
           *notification.errSubCode());
     } catch (...) {
-      // any reading exception means we did't receive those messages in the
-      // correct order, UT failed
+      /*
+       * any reading exception means we did't receive those messages in the
+       * correct order, UT failed
+       */
       FAIL();
     }
     peer1->stop();
@@ -2845,9 +2891,11 @@ INSTANTIATE_TEST_CASE_P(
         std::make_pair<uint32_t, uint32_t>(65536, 23456), // non-mappable (edge)
         std::make_pair<uint32_t, uint32_t>(1234, 1234))); // mappable
 
-// rfc4893
-// Open Msg's ASN field should be a placeholder (23456) only if the actual ASN
-// is non-mappable (greater than the limit of 2 bytes ASN)
+/*
+ * rfc4893
+ * Open Msg's ASN field should be a placeholder (23456) only if the actual ASN
+ * is non-mappable (greater than the limit of 2 bytes ASN)
+ */
 TEST_P(BgpOpenMsgAsnFieldFixture, OpenMsgAsFieldValue) {
   constexpr size_t openMsgLength{61};
   const auto& param = GetParam();
@@ -2886,8 +2934,10 @@ TEST_P(BgpOpenMsgAsnFieldFixture, OpenMsgAsFieldValue) {
           folly::IOBuf::wrapBufferAsValue(buf->data(), buf->length()));
       EXPECT_EQ(expectedValue, *open.asn());
     } catch (...) {
-      // any reading exception means we did't receive those messages in the
-      // correct order, UT failed
+      /*
+       * any reading exception means we did't receive those messages in the
+       * correct order, UT failed
+       */
       FAIL();
     }
     peer1->stop();
@@ -2896,9 +2946,11 @@ TEST_P(BgpOpenMsgAsnFieldFixture, OpenMsgAsFieldValue) {
   evb_.loop();
 }
 
-// the UTs in parser only verified we are throwing exceptions with the right
-// subCode, this UT is to pick one and verified we are generating the right
-// notification (doing the exception handling) -- BgpHeaderException
+/*
+ * the UTs in parser only verified we are throwing exceptions with the right
+ * subCode, this UT is to pick one and verified we are generating the right
+ * notification (doing the exception handling) -- BgpHeaderException
+ */
 TEST_F(FiberBgpPeerFixture, WrongHeaderLengthNotificationTest) {
   auto& fm = fmWrapper_.get();
 
@@ -2941,14 +2993,18 @@ TEST_F(FiberBgpPeerFixture, WrongHeaderLengthNotificationTest) {
 
   fm.addTask([&] {
     try {
-      // peer2 will get an openMsg from peer1, they all have same size
-      // Read whole length of an Open Message (61 Bytes)
+      /*
+       * peer2 will get an openMsg from peer1, they all have same size
+       * Read whole length of an Open Message (61 Bytes)
+       */
       auto buf = fs1->read(61).value();
       auto open = BgpMessageParser2::parseBgpOpenMsgRaw(
           folly::IOBuf::wrapBufferAsValue(buf->data(), buf->length()));
 
-      // then verified on peer2 side we get a Notification with correct subCode
-      // Read minimum length of a Notification (21 Bytes) + 2 byte of data feild
+      /*
+       * then verified on peer2 side we get a Notification with correct subCode
+       * Read minimum length of a Notification (21 Bytes) + 2 byte of data feild
+       */
       buf = fs1->read(23).value();
       auto notification = BgpMessageParser2::parseBgpNotificationRaw(
           folly::IOBuf::wrapBufferAsValue(buf->data(), buf->length()));
@@ -2959,16 +3015,20 @@ TEST_F(FiberBgpPeerFixture, WrongHeaderLengthNotificationTest) {
           *notification.errSubCode());
       // this will be a short so should be of size 2
       EXPECT_EQ(notification.data()->size(), 2);
-      // also verify it equals 4096 in hex is 1000 -> flip 0010,
-      // 16 in hex is 10 -> flip 0010
+      /*
+       * also verify it equals 4096 in hex is 1000 -> flip 0010,
+       * 16 in hex is 10 -> flip 0010
+       */
       auto errData = htons(16);
       EXPECT_EQ(
           *notification.data(),
           std::string(
               reinterpret_cast<const char*>(&errData), sizeof(errData)));
     } catch (...) {
-      // any reading exception means we did't receive those messages in the
-      // correct order, UT failed
+      /*
+       * any reading exception means we did't receive those messages in the
+       * correct order, UT failed
+       */
       FAIL();
     }
     peer1->stop();
@@ -2980,9 +3040,11 @@ TEST_F(FiberBgpPeerFixture, WrongHeaderLengthNotificationTest) {
 // verify that we can skip checking diffferent ASN
 TEST_F(FiberBgpPeerFixture, ValidateRemoteAsTest) {
   auto& fm = fmWrapper_.get();
-  // create 3 peers
-  // peer1 in AS 1234 and validateRemoteAs = true
-  // peer2 in AS 2345 and validateRemoteAs = false
+  /*
+   * create 3 peers
+   * peer1 in AS 1234 and validateRemoteAs = true
+   * peer2 in AS 2345 and validateRemoteAs = false
+   */
   PeeringParams params2{
       folly::IPAddress("2.2.2.2"), // peerAddr
       std::nullopt, // peerPrefix
@@ -3030,12 +3092,16 @@ TEST_F(FiberBgpPeerFixture, ValidateRemoteAsTest) {
     ASSERT_EQ(peer2->getValidateRemoteAs(), false);
 
     {
-      // becasue peer1 is verifiying asn, it will send a BN_OPEN_MSG_ERR
-      // notification and close socket after the notification is out
+      /*
+       * becasue peer1 is verifiying asn, it will send a BN_OPEN_MSG_ERR
+       * notification and close socket after the notification is out
+       */
       auto msg = facebook::bgp::test::boundedBlockingPop(
           *peer2Output_, "peer2Output_");
-      // On peer2 side, we should get NOTIFICATION and set GR=False.  However,
-      // due to race condition we sometimes get Socket Error, and set GR=True.
+      /*
+       * On peer2 side, we should get NOTIFICATION and set GR=False.  However,
+       * due to race condition we sometimes get Socket Error, and set GR=True.
+       */
       ASSERT_TRUE(std::holds_alternative<FiberBgpPeer::BgpSessionStop>(msg));
       // Uncomment below two lines if we can figure out reason for race
       // auto sessionStop = std::get<FiberBgpPeer::BgpSessionStop>(msg);
@@ -3221,21 +3287,27 @@ TEST_F(FiberBgpPeerFixture, SendNotificationWhenHoldTimerExpiredTest) {
     peer2->keepAliveTimer_.reset();
 
     {
-      // now peer1's holdtimer for peer2 will expire, it will sent a
-      // BN_HOLD_TIMER_EXPIRED notification to peer2
-      // validate peer2 get a notification
+      /*
+       * now peer1's holdtimer for peer2 will expire, it will sent a
+       * BN_HOLD_TIMER_EXPIRED notification to peer2
+       * validate peer2 get a notification
+       */
       auto msg = facebook::bgp::test::boundedBlockingPop(
           *peer2Output_, "peer2Output_");
-      // on peer2 side we are going to get a BgpSessionStop with gr = ture
-      // becasue we still have keepAlive following this notification message,
-      // we actually stopped by the notification error instead of socket error
+      /*
+       * on peer2 side we are going to get a BgpSessionStop with gr = ture
+       * becasue we still have keepAlive following this notification message,
+       * we actually stopped by the notification error instead of socket error
+       */
       ASSERT_TRUE(std::holds_alternative<FiberBgpPeer::BgpSessionStop>(msg));
       auto sessionStop = std::get<FiberBgpPeer::BgpSessionStop>(msg);
       EXPECT_EQ(false, sessionStop.gracefulRestart);
     }
     {
-      // Check peer1 does a non-graceful stop. For holdtime expire we shouldn't
-      // do GR to avoid blackholing of traffic.
+      /*
+       * Check peer1 does a non-graceful stop. For holdtime expire we shouldn't
+       * do GR to avoid blackholing of traffic.
+       */
       auto msg = facebook::bgp::test::boundedBlockingPop(
           *peer1Output_, "peer1Output_");
       ASSERT_TRUE(std::holds_alternative<FiberBgpPeer::BgpSessionStop>(msg));
@@ -3284,8 +3356,10 @@ TEST_F(FiberBgpPeerFixture, NeedToKeepThisPeerTest) {
         folly::SocketAddress("::1", nettools::bgplib::constants::kBgpPort);
     auto& fm = fmWrapper_.get();
     auto peer = std::make_shared<MockFiberBgpPeer>(
-        // ATTN: local address from params is not used here since
-        // getLocalSocketAddress() is overridden in MockFiberBgpPeer
+        /*
+         * ATTN: local address from params is not used here since
+         * getLocalSocketAddress() is overridden in MockFiberBgpPeer
+         */
         params1,
         fm,
         evb_,
@@ -3308,8 +3382,10 @@ TEST_F(FiberBgpPeerFixture, NeedToKeepThisPeerTest) {
         folly::SocketAddress("::1", nettools::bgplib::constants::kBgpPort + 1);
     auto& fm = fmWrapper_.get();
     auto peer = std::make_shared<MockFiberBgpPeer>(
-        // ATTN: local address from params is not used here since
-        // getLocalSocketAddress() is overridden in MockFiberBgpPeer
+        /*
+         * ATTN: local address from params is not used here since
+         * getLocalSocketAddress() is overridden in MockFiberBgpPeer
+         */
         params1,
         fm,
         evb_,
@@ -3332,8 +3408,10 @@ TEST_F(FiberBgpPeerFixture, NeedToKeepThisPeerTest) {
         folly::SocketAddress("::1", nettools::bgplib::constants::kBgpPort);
     auto& fm = fmWrapper_.get();
     auto peer = std::make_shared<MockFiberBgpPeer>(
-        // ATTN: local address from params is not used here since
-        // getLocalSocketAddress() is overridden in MockFiberBgpPeer
+        /*
+         * ATTN: local address from params is not used here since
+         * getLocalSocketAddress() is overridden in MockFiberBgpPeer
+         */
         params2,
         fm,
         evb_,
@@ -3356,8 +3434,10 @@ TEST_F(FiberBgpPeerFixture, NeedToKeepThisPeerTest) {
         folly::SocketAddress("::1", nettools::bgplib::constants::kBgpPort + 1);
     auto& fm = fmWrapper_.get();
     auto peer = std::make_shared<MockFiberBgpPeer>(
-        // ATTN: local address from params is not used here since
-        // getLocalSocketAddress() is overridden in MockFiberBgpPeer
+        /*
+         * ATTN: local address from params is not used here since
+         * getLocalSocketAddress() is overridden in MockFiberBgpPeer
+         */
         params2,
         fm,
         evb_,
@@ -3383,8 +3463,10 @@ TEST_F(FiberBgpPeerFixture, SocketCloseTimerTest) {
   };
   auto& fm = fmWrapper_.get();
   auto peer = std::make_shared<MockFiberBgpPeer>(
-      // ATTN: local address from params is not used here since
-      // getLocalSocketAddress() is overridden in MockFiberBgpPeer
+      /*
+       * ATTN: local address from params is not used here since
+       * getLocalSocketAddress() is overridden in MockFiberBgpPeer
+       */
       params,
       fm,
       evb_,
@@ -3520,8 +3602,10 @@ TEST_F(FiberBgpPeerFixture, SocketSendLoopYieldTest) {
           // stop the other fiber task are processed
           peer->sendQueue_.putNullFront();
 
-          // make sure fiber yield and processed kMsgBatchSizeToYield_
-          // messages with a yielding.
+          /*
+           * make sure fiber yield and processed kMsgBatchSizeToYield_
+           * messages with a yielding.
+           */
           EXPECT_EQ(counters->getCounter(key), kMsgBatchSizeToYield);
           break;
         }
@@ -4025,8 +4109,10 @@ TEST_F(FiberBgpPeerFixture, RcvdQueueBackpressureTest) {
 
   {
     auto fiber = fm.addTaskFuture([&]() {
-      // Start only socket reading - NOT the ingress processing loop yet
-      // This will cause messages to accumulate in rcvdQueue_
+      /*
+       * Start only socket reading - NOT the ingress processing loop yet
+       * This will cause messages to accumulate in rcvdQueue_
+       */
       fm.addTask([peer] { peer->readSocketLoop(); });
 
       // Send enough messages to fill the queue to capacity
@@ -4034,8 +4120,10 @@ TEST_F(FiberBgpPeerFixture, RcvdQueueBackpressureTest) {
         mockSocket->write(serializedMsg->clone());
       }
 
-      // Wait for queue to fill to capacity by polling the queue size
-      // Use fiberSleepFor(0ms) to allow event loop to process socket I/O
+      /*
+       * Wait for queue to fill to capacity by polling the queue size
+       * Use fiberSleepFor(0ms) to allow event loop to process socket I/O
+       */
       while (peer->rcvdQueue_.size() < maxIngressQueueSize) {
         fiberSleepFor(0ms);
       }
@@ -4045,15 +4133,19 @@ TEST_F(FiberBgpPeerFixture, RcvdQueueBackpressureTest) {
       XLOGF(INFO, "rcvdQueue_ size after filling: {}", queueSize);
       EXPECT_EQ(maxIngressQueueSize, queueSize);
 
-      // Now send additional messages and verify parser is blocked
-      // (messages won't be consumed because queue is full)
+      /*
+       * Now send additional messages and verify parser is blocked
+       * (messages won't be consumed because queue is full)
+       */
       const size_t additionalMessages = 3;
       for (size_t i = 0; i < additionalMessages; ++i) {
         mockSocket->write(serializedMsg->clone());
       }
 
-      // Yield multiple times and verify queue size stays at capacity
-      // Use fiberSleepFor(0ms) to allow event loop to run
+      /*
+       * Yield multiple times and verify queue size stays at capacity
+       * Use fiberSleepFor(0ms) to allow event loop to run
+       */
       for (int i = 0; i < 10; ++i) {
         fiberSleepFor(0ms);
         queueSize = peer->rcvdQueue_.size();
@@ -4194,15 +4286,19 @@ TEST_F(FiberBgpPeerFixture, RcvdQueueConsumerScopeTest) {
       folly::Try<FiberBgpParser::BgpMessageT>(BgpKeepAlive{}));
   EXPECT_EQ(1, peer->rcvdQueue_.size()); // Push was dropped
 
-  // Step 3: Start processIngressBgpMessageLoop
-  // This creates a ConsumerScope which should open the queue
+  /*
+   * Step 3: Start processIngressBgpMessageLoop
+   * This creates a ConsumerScope which should open the queue
+   */
   peer->asyncScope_.add(
       co_withExecutor(&evb_, peer->processIngressBgpMessageLoop()));
 
   {
     auto fiber = fm.addTaskFuture([&]() {
-      // Step 4: Verify pushes work now that queue is open (ConsumerScope opened
-      // it)
+      /*
+       * Step 4: Verify pushes work now that queue is open (ConsumerScope opened
+       * it)
+       */
       for (int i = 0; i < 10; ++i) {
         peer->rcvdQueue_.fiberPush(
             folly::Try<FiberBgpParser::BgpMessageT>(BgpKeepAlive{}));
@@ -4276,22 +4372,28 @@ TEST_F(FiberBgpPeerFixture, RcvdQueueConsumerScopeExceptionPathTest) {
       folly::Try<FiberBgpParser::BgpMessageT>(BgpKeepAlive{}));
   EXPECT_EQ(0, peer->rcvdQueue_.size()); // Push was dropped
 
-  // Step 3: Start processIngressBgpMessageLoop
-  // This creates a ConsumerScope which should open the queue
+  /*
+   * Step 3: Start processIngressBgpMessageLoop
+   * This creates a ConsumerScope which should open the queue
+   */
   peer->asyncScope_.add(
       co_withExecutor(&evb_, peer->processIngressBgpMessageLoop()));
 
   {
     auto fiber = fm.addTaskFuture([&]() {
-      // Step 4: Verify pushes work now that queue is open (ConsumerScope opened
-      // it)
+      /*
+       * Step 4: Verify pushes work now that queue is open (ConsumerScope opened
+       * it)
+       */
       peer->rcvdQueue_.fiberPush(
           folly::Try<FiberBgpParser::BgpMessageT>(BgpKeepAlive{}));
       EXPECT_EQ(1, peer->rcvdQueue_.size()); // Push succeeded
 
-      // Step 5: Cancel async scope ABRUPTLY (without sending std::nullopt)
-      // This simulates an exception path - the loop exits via cancellation
-      // and ConsumerScope destructor should close the queue via RAII
+      /*
+       * Step 5: Cancel async scope ABRUPTLY (without sending std::nullopt)
+       * This simulates an exception path - the loop exits via cancellation
+       * and ConsumerScope destructor should close the queue via RAII
+       */
       peer->asyncScope_.requestCancellation();
 
       // Wait for the loop to process cancellation and exit
@@ -4299,8 +4401,10 @@ TEST_F(FiberBgpPeerFixture, RcvdQueueConsumerScopeExceptionPathTest) {
         fiberSleepFor(10ms);
       }
 
-      // Step 6: Verify queue is closed by ConsumerScope destructor
-      // (RAII guarantee - queue closed even on abrupt exit)
+      /*
+       * Step 6: Verify queue is closed by ConsumerScope destructor
+       * (RAII guarantee - queue closed even on abrupt exit)
+       */
       size_t sizeBeforePush = peer->rcvdQueue_.size();
       for (int i = 0; i < 10; ++i) {
         peer->rcvdQueue_.fiberPush(

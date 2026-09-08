@@ -60,8 +60,10 @@ TEST(BackPressuredQueueTest, CopyConstructorTest) {
     queue2.fiberPush(std::move(item));
   }
 
-  // Check size - queue2 should have 10 items (copy constructor only copies
-  // capacity, not data)
+  /*
+   * Check size - queue2 should have 10 items (copy constructor only copies
+   * capacity, not data)
+   */
   EXPECT_EQ(queue2.size(), 10);
 
   // Verify queue1 is unchanged
@@ -85,8 +87,10 @@ TEST(BackPressuredQueueTest, CopyAssignmentTest) {
   // Copy assign to queue2 - should copy capacity from queue2
   queue1 = queue2;
 
-  // Verify capacity was copied by pushing more than queue1's original capacity
-  // would allow without blocking.
+  /*
+   * Verify capacity was copied by pushing more than queue1's original capacity
+   * would allow without blocking.
+   */
   for (int i = 0; i < 10; i++) {
     auto item = i;
     queue1.fiberPush(std::move(item));
@@ -124,8 +128,10 @@ TEST(BackPressuredQueueTest, PushExceptionTest) {
   folly::coro::blockingWait(queue.push(0));
   EXPECT_EQ(queue.size(), 1);
 
-  // Now try to push another item - it should wait on the semaphore
-  // We'll cancel this operation immediately to trigger the exception path
+  /*
+   * Now try to push another item - it should wait on the semaphore
+   * We'll cancel this operation immediately to trigger the exception path
+   */
   folly::CancellationSource cancellationSource;
   // Request cancellation BEFORE starting the push task
   cancellationSource.requestCancellation();
@@ -186,9 +192,11 @@ TEST(BackPressuredQueueTest, NonCancellablePushNoExceptionTest) {
 
   std::atomic<bool> exceptionCaught{false};
 
-  // noncancellable push would block waiting for space, so we need to schedule
-  // two coros: one that does the push (which will block) and one that pops
-  // from the queue to unblock the push
+  /*
+   * noncancellable push would block waiting for space, so we need to schedule
+   * two coros: one that does the push (which will block) and one that pops
+   * from the queue to unblock the push
+   */
   auto nonCancellableTask = [&]() -> folly::coro::Task<void> {
     try {
       co_await folly::coro::co_withCancellation(
@@ -301,8 +309,10 @@ TEST(BackPressuredQueueTest, PopExceptionTest) {
   // Create a queue with capacity 0
   BackPressuredQueue<int> queue(0);
 
-  // Pop from the queue - it should wait on the semaphore
-  // We'll cancel this operation immediately to trigger the exception path
+  /*
+   * Pop from the queue - it should wait on the semaphore
+   * We'll cancel this operation immediately to trigger the exception path
+   */
   folly::CancellationSource cancellationSource;
   // Request cancellation BEFORE starting the push task
   cancellationSource.requestCancellation();
@@ -545,8 +555,10 @@ TEST(BackPressuredQueueTest, CloseReopenTest) {
   queue.open();
   EXPECT_FALSE(queue.closed_);
 
-  // Now push should work again
-  // Start new producers that will be blocked due to back pressure
+  /*
+   * Now push should work again
+   * Start new producers that will be blocked due to back pressure
+   */
   auto producer4 =
       folly::coro::co_withExecutor(&evb, blockedProducer(4)).start();
   auto producer5 =
@@ -681,8 +693,10 @@ class BackPressureTestFixture : public ::testing::Test {
   BackPressuredQueue<int> queue_{kCapacity};
   folly::fibers::Semaphore queueFullSemaphore_{0};
 
-  // Create producer coroutine that pushes items and signals when queue is
-  // full
+  /*
+   * Create producer coroutine that pushes items and signals when queue is
+   * full
+   */
   auto createProducer() {
     return [this]() -> folly::coro::Task<void> {
       for (int i = 0; i < kNumItems; i++) {

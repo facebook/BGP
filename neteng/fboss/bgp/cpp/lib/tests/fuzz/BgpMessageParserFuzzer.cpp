@@ -67,9 +67,11 @@ void parseBgpMessage(const uint8_t* data, size_t len) {
 extern "C" int LLVMFuzzerInitialize(int* argc, char*** argv) {
   (void)argc;
   (void)argv;
-  // Disable logging to prevent I/O-based timeouts during fuzzing.
-  // The timeout was caused by excessive synchronous I/O from logging
-  // error messages while parsing malformed BGP capabilities.
+  /*
+   * Disable logging to prevent I/O-based timeouts during fuzzing.
+   * The timeout was caused by excessive synchronous I/O from logging
+   * error messages while parsing malformed BGP capabilities.
+   */
   folly::LoggerDB::get().setLevel("", folly::LogLevel::FATAL, false);
   return 0;
 }

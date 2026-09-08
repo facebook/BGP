@@ -32,10 +32,12 @@ struct BgpEntry {
   std::shared_ptr<facebook::nettools::bgplib::BgpUpdate2> update;
 };
 
-// BgpUpdate2 has many fields like withdrawn routes, both v4 and v6 related
-// fields which may not exist for every entry etc. Here we are trying to see
-// if we store high order fields in a new struct with a shared pointer to
-// Bgp attributes how much memory will it reduce
+/*
+ * BgpUpdate2 has many fields like withdrawn routes, both v4 and v6 related
+ * fields which may not exist for every entry etc. Here we are trying to see
+ * if we store high order fields in a new struct with a shared pointer to
+ * Bgp attributes how much memory will it reduce
+ */
 struct BgpEntryOpt {
   folly::CIDRNetwork prefix; // v4 or v6 prefix
   folly::IPAddress nexthop; // v4 or v6 nexthop
@@ -44,8 +46,10 @@ struct BgpEntryOpt {
   std::shared_ptr<facebook::nettools::bgplib::BgpAttributes> attrs;
 };
 
-// Optimized structure, which uses all cpp structures instead of thrift
-// NOTE: This does not have attrs before policy, after policy (in/out) etc
+/*
+ * Optimized structure, which uses all cpp structures instead of thrift
+ * NOTE: This does not have attrs before policy, after policy (in/out) etc
+ */
 struct BgpEntryOpt2 {
   folly::CIDRNetwork prefix; // v4 or v6 prefix
   folly::IPAddress nexthop; // v4 or v6 nexthop

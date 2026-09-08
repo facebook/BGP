@@ -41,8 +41,10 @@ DEFINE_uint32(
     10,
     "Bgp message size level in scale of 1-10, 1->487b, 10->4051b (default = "
     "10)");
-// Average as-path length is 4
-// Some data points collected from http://bgp.potaroo.net/index-bgp.html
+/*
+ * Average as-path length is 4
+ * Some data points collected from http://bgp.potaroo.net/index-bgp.html
+ */
 DEFINE_uint32(as_count, 4, "Number of AS's in path (default = 4)");
 DEFINE_uint32(
     community_count,
@@ -56,10 +58,12 @@ DEFINE_uint32(
     cluster_list_count,
     0,
     "Number of cluster list entries in path (default = 0)");
-// Average fib prefixes per as-path 7
-// NOTE: Careful with default values while testing, if we want to test only
-// v4 update or v6 update, we have to set the other prefix count to zero
-// I can not set both to zero as default, we can not make a update packet
+/*
+ * Average fib prefixes per as-path 7
+ * NOTE: Careful with default values while testing, if we want to test only
+ * v4 update or v6 update, we have to set the other prefix count to zero
+ * I can not set both to zero as default, we can not make a update packet
+ */
 DEFINE_uint32(
     v6_prefix_count,
     1,
@@ -82,9 +86,9 @@ using folly::IPAddress;
 using folly::IPAddressV4;
 using folly::IPAddressV6;
 
-//
-// The fixture provides fiber manager and evb for the tests
-//
+/*
+ * The fixture provides fiber manager and evb for the tests
+ */
 class StressTestFixture {
  public:
   StressTestFixture() {
@@ -204,8 +208,10 @@ class StressTestFixture {
 class MemoryTestFixture {
  public:
   MemoryTestFixture() {
-    // Due to as-path prepending it can go high. Average is 4
-    // Max is 57
+    /*
+     * Due to as-path prepending it can go high. Average is 4
+     * Max is 57
+     */
     CHECK_LE(1, FLAGS_as_count) << "as_count must be in [1, 100]";
     CHECK_GE(100, FLAGS_as_count) << "as_count must be in [1, 100]";
 
@@ -217,8 +223,10 @@ class MemoryTestFixture {
     CHECK_GE(20, FLAGS_cluster_list_count)
         << "cluster_list_count must be in [0, 20]";
 
-    // NOTE: Rough maximums, depending on other attributes size
-    // of the update message may exceed maximum packet size.
+    /*
+     * NOTE: Rough maximums, depending on other attributes size
+     * of the update message may exceed maximum packet size.
+     */
     CHECK_GE(200, FLAGS_v6_prefix_count)
         << "v6_prefix_count must be in [0, 200]";
 
@@ -403,8 +411,10 @@ std::shared_ptr<BgpAttributes> buildDynBgpAttributes(
   return attrs;
 }
 
-// Builds dynamic attribute with configurable elements
-// All C++ structs instead of thrift struct
+/*
+ * Builds dynamic attribute with configurable elements
+ * All C++ structs instead of thrift struct
+ */
 std::shared_ptr<BgpAttributesC> buildDynBgpAttributesOpt(
     uint32_t as_count,
     uint32_t community_count,
@@ -459,11 +469,13 @@ std::shared_ptr<BgpAttributesC> buildDynBgpAttributesOpt(
   return attrs;
 }
 
-// NOTE: Run memory tests independently (one at a time)
-// If you run together memory used by previous test cases effects the result
-// Typical values to use as_count=3-5,
-// community_count/ext_community_count=4-10,
-// v4_prefix_count/v6_prefix_count=5-10. Depends on peerings etc
+/*
+ * NOTE: Run memory tests independently (one at a time)
+ * If you run together memory used by previous test cases effects the result
+ * Typical values to use as_count=3-5,
+ * community_count/ext_community_count=4-10,
+ * v4_prefix_count/v6_prefix_count=5-10. Depends on peerings etc
+ */
 static void BM_MemoryUsingBgpUpdate2Test(
     folly::UserCounters& counters,
     uint32_t /* unused */,
@@ -479,9 +491,11 @@ static void BM_MemoryUsingBgpUpdate2Test(
       FLAGS_v6_prefix_count,
       FLAGS_v4_prefix_count);
 
-  // We need to get average over large enough objects to avoid measurement
-  // error associated with other memory allocations, freeing of the test infra
-  // and amoritize vectors etc
+  /*
+   * We need to get average over large enough objects to avoid measurement
+   * error associated with other memory allocations, freeing of the test infra
+   * and amoritize vectors etc
+   */
   size_t msgLen;
 
   memoryTestFixture.verifyAndGetRawUpdateLen(*update, msgLen);
@@ -508,8 +522,10 @@ static void BM_MemoryUsingBgpUpdate2Test(
         FLAGS_cluster_list_count,
         FLAGS_v6_prefix_count,
         FLAGS_v4_prefix_count);
-    // NOTE: If we store BgpUpdate2 then prefix, nexthop will be present
-    // in both BgpUpdate2 and in the prefixTree
+    /*
+     * NOTE: If we store BgpUpdate2 then prefix, nexthop will be present
+     * in both BgpUpdate2 and in the prefixTree
+     */
 
     // Number of prefixes sharing same BgpUpdate2
     for (int j = 0; j < FLAGS_v6_prefix_count; j++) {
@@ -559,8 +575,10 @@ static void BM_MemoryUsingBgpUpdate2Test(
 
 // Run this test independently (one at a time)
 
-// This test uses BgpAttributes as is from thrift definition but avoids
-// overhead related to BgpUpdate2
+/*
+ * This test uses BgpAttributes as is from thrift definition but avoids
+ * overhead related to BgpUpdate2
+ */
 static void BM_MemoryUsingThriftAttrTest(
     folly::UserCounters& counters,
     uint32_t /* unused */,
@@ -576,9 +594,11 @@ static void BM_MemoryUsingThriftAttrTest(
       FLAGS_v6_prefix_count,
       FLAGS_v4_prefix_count);
 
-  // We need to get average over large enough objects to avoid measurement
-  // error associated with other memory allocations, freeing of the test infra
-  // and amoritize vectors etc
+  /*
+   * We need to get average over large enough objects to avoid measurement
+   * error associated with other memory allocations, freeing of the test infra
+   * and amoritize vectors etc
+   */
   size_t msgLen;
 
   memoryTestFixture.verifyAndGetRawUpdateLen(*update, msgLen);
@@ -651,8 +671,10 @@ static void BM_MemoryUsingThriftAttrTest(
   counters["memory_per_update_bytes"] = (end - start) / numOfObjects;
 }
 
-// Run memory tests independently (one at a time)
-// If you run together memory used by previous test cases effects the result
+/*
+ * Run memory tests independently (one at a time)
+ * If you run together memory used by previous test cases effects the result
+ */
 
 // This test uses all C++ structures instead of thrift
 static void BM_MemoryUsingCppAttrTest(
@@ -670,9 +692,11 @@ static void BM_MemoryUsingCppAttrTest(
       FLAGS_v6_prefix_count,
       FLAGS_v4_prefix_count);
 
-  // We need to get average over large enough objects to avoid measurement
-  // error associated with other memory allocations, freeing of the test infra
-  // and amoritize vectors etc
+  /*
+   * We need to get average over large enough objects to avoid measurement
+   * error associated with other memory allocations, freeing of the test infra
+   * and amoritize vectors etc
+   */
   size_t msgLen;
 
   memoryTestFixture.verifyAndGetRawUpdateLen(*update, msgLen);
@@ -745,9 +769,11 @@ static void BM_MemoryUsingCppAttrTest(
   counters["memory_per_update_bytes"] = (end - start) / numOfObjects;
 }
 
-// This is to display various structures sizes for information
-// Doesn't test anything but displays for quick reference and possible
-// optimizations
+/*
+ * This is to display various structures sizes for information
+ * Doesn't test anything but displays for quick reference and possible
+ * optimizations
+ */
 static void BM_MemorySizeTest() {
   XLOG(INFO, "Thrift structs sizes vs cpp");
   XLOG(INFO, "------------------------------");
@@ -801,8 +827,10 @@ static void BM_FullCommunicationTest(
   auto serverEvb = std::make_unique<folly::EventBase>();
 
   FiberManager::Options options;
-  // this is needed due to nested recursion with large stack
-  // due to installed exception handlers...
+  /*
+   * this is needed due to nested recursion with large stack
+   * due to installed exception handlers...
+   */
   options.stackSize = 256 * 1024;
   auto serverManager = std::make_unique<FiberManager>(
       std::make_unique<EventBaseLoopController>(), options);
@@ -1041,22 +1069,26 @@ static void BM_BuildBgpUpdate2Test(
   stressTestFixture.getProcStats(counters, true /* enableLogging */);
 }
 
-// Measure number of fiber context switches per second
-// Stress test with large number of fibers and how many context switches we can
-// achieve (Snake test)
-// NOTE: Test this in opt mode to see accurate results.
-// From strobelight Over 70% of the cost is in baton etc fiber code instead of
-// context switch itself, if it's real required context switch post/wait cost is
-// part of the running itself, but for fairness if we decide to yield much more
-// frequently, the additional cost of baton post, wait etc
-// should be accounted too as part of fairness implementation.
+/*
+ * Measure number of fiber context switches per second
+ * Stress test with large number of fibers and how many context switches we can
+ * achieve (Snake test)
+ * NOTE: Test this in opt mode to see accurate results.
+ * From strobelight Over 70% of the cost is in baton etc fiber code instead of
+ * context switch itself, if it's real required context switch post/wait cost is
+ * part of the running itself, but for fairness if we decide to yield much more
+ * frequently, the additional cost of baton post, wait etc
+ * should be accounted too as part of fairness implementation.
+ */
 
-// Based on tests number of active fibers effect how many context swiches we can
-// achieve, (could be cache performance or fiber scheduling costs etc)
-// With 2 fibers we can achieve 9.5 Million switches
-// With 100 fibers we can achieve 7.7 Million switches
-// With 1000 fibers we can achieve 6.6 Million switches
-// With 10000 fibers we can achieve 2.4 Million switches
+/*
+ * Based on tests number of active fibers effect how many context swiches we can
+ * achieve, (could be cache performance or fiber scheduling costs etc)
+ * With 2 fibers we can achieve 9.5 Million switches
+ * With 100 fibers we can achieve 7.7 Million switches
+ * With 1000 fibers we can achieve 6.6 Million switches
+ * With 10000 fibers we can achieve 2.4 Million switches
+ */
 static void BM_FiberContextSwitch(
     folly::UserCounters& counters,
     uint32_t /* unused */,
@@ -1203,10 +1235,10 @@ static void BM_DeDuplicatorStressTest(
   counters["deduplicate_time"] = deduplicateTime;
 }
 
-//
-// Memory
-// Add memory to user counters
-//
+/*
+ * Memory
+ * Add memory to user counters
+ */
 
 // parameter: numOfObjects
 BENCHMARK_COUNTERS_PARAM(BM_MemoryUsingBgpUpdate2Test, 100);
@@ -1220,20 +1252,22 @@ BENCHMARK_COUNTERS_PARAM(BM_MemoryUsingCppAttrTest, 1000);
 BENCHMARK_COUNTERS_PARAM(BM_MemoryUsingCppAttrTest, 10000);
 BENCHMARK(BM_MemorySizeTest);
 
-//
-// Time
-//
+/*
+ * Time
+ */
 
 // parameter: total_msg_cnt
 BENCHMARK_COUNTERS_PARAM(BM_FullCommunicationTest, 200);
 BENCHMARK_COUNTERS_PARAM(BM_FullCommunicationTest, 2000);
 BENCHMARK_COUNTERS_PARAM(BM_FullCommunicationTest, 20000);
 
-// parameters: numberOfFibers, numberOfFiberSwitches
-// With 2 fibers we can achieve 9.5 Million switches
-// With 100 fibers we can achieve 7.7 Million switches
-// With 1000 fibers we can achieve 6.6 Million switches
-// With 10000 fibers we can achieve 2.4 Million switches
+/*
+ * parameters: numberOfFibers, numberOfFiberSwitches
+ * With 2 fibers we can achieve 9.5 Million switches
+ * With 100 fibers we can achieve 7.7 Million switches
+ * With 1000 fibers we can achieve 6.6 Million switches
+ * With 10000 fibers we can achieve 2.4 Million switches
+ */
 BENCHMARK_COUNTERS_NAMED_PARAM(BM_FiberContextSwitch, 2_9m, 2, 9500000);
 BENCHMARK_COUNTERS_NAMED_PARAM(BM_FiberContextSwitch, 100_7m, 100, 7700000);
 BENCHMARK_COUNTERS_NAMED_PARAM(BM_FiberContextSwitch, 1000_6m, 1000, 6600000);

@@ -98,8 +98,10 @@ TEST(MergeQueueTest, PushMergeReturnsWhetherCoalesced) {
 }
 
 TEST(MergeQueueTest, SecondPushSupersedesFirst) {
-  // A value immediately followed by another in the same slot collapses to the
-  // latest, so the consumer never observes the superseded intermediate.
+  /*
+   * A value immediately followed by another in the same slot collapses to the
+   * latest, so the consumer never observes the superseded intermediate.
+   */
   MergeQueue<int> q;
   constexpr int kSlot = 0;
   q.pushMerge(1, kSlot);
@@ -265,8 +267,10 @@ TEST(MergeQueueTest, RandomSequenceMatchesReference) {
   constexpr int kNumSlots = 4;
   MergeQueue<int> q;
 
-  // Reference model: an ordered list of values with per-slot in-place merge and
-  // purge-clears-all, matching the queue's documented contract.
+  /*
+   * Reference model: an ordered list of values with per-slot in-place merge and
+   * purge-clears-all, matching the queue's documented contract.
+   */
   std::list<int> refOrder;
   std::array<std::optional<std::list<int>::iterator>, kNumSlots> refIters{};
 
@@ -307,8 +311,10 @@ TEST(MergeQueueTest, MultiProducerSingleConsumerNoRace) {
   constexpr int kPerProducer = 2000;
   constexpr int kTotal = kProducers * kPerProducer;
 
-  // Each (producer, i) uses a distinct slot and value, so nothing merges and
-  // exactly kTotal items flow through -- lets us assert an exact permutation.
+  /*
+   * Each (producer, i) uses a distinct slot and value, so nothing merges and
+   * exactly kTotal items flow through -- lets us assert an exact permutation.
+   */
   std::vector<char> seen(kTotal, 0);
   std::thread consumer([&]() {
     for (int i = 0; i < kTotal; ++i) {
@@ -342,9 +348,11 @@ TEST(MergeQueueTest, MultiProducerSingleConsumerNoRace) {
   }
 }
 
-// Many producers merging concurrently into a small shared slot set (TSAN target
-// for concurrent merge). After they finish, at most one node per slot can
-// remain, so the drained count is bounded by the slot count.
+/*
+ * Many producers merging concurrently into a small shared slot set (TSAN target
+ * for concurrent merge). After they finish, at most one node per slot can
+ * remain, so the drained count is bounded by the slot count.
+ */
 TEST(MergeQueueTest, ConcurrentMergesBoundedBySlots) {
   MergeQueue<int> q;
   constexpr int kProducers = 8;

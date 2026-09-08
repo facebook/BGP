@@ -78,9 +78,11 @@ BENCHMARK_NAMED_PARAM(
     16,
     1000);
 
-// single producer and single consumer run on their corresponding threads
-// the producer sends 10000 items across the queue
-// The results should be the same as there is only one producer and one consumer
+/*
+ * single producer and single consumer run on their corresponding threads
+ * the producer sends 10000 items across the queue
+ * The results should be the same as there is only one producer and one consumer
+ */
 BENCHMARK_NAMED_PARAM(
     BM_CoroQueue_MPMC,
     1_to_1_10000_single_threaded,
@@ -95,8 +97,10 @@ BENCHMARK_NAMED_PARAM(
     1,
     10000,
     ThreadModel::SEPARATE_THREAD);
-// when there are multiple producers, running them in parallel or not would have
-// some impact due to inter-thread locking
+/*
+ * when there are multiple producers, running them in parallel or not would have
+ * some impact due to inter-thread locking
+ */
 BENCHMARK_NAMED_PARAM(
     BM_CoroQueue_MPMC,
     16_to_1_10000_single_threaded,

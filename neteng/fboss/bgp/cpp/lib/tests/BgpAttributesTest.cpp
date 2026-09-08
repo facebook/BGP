@@ -100,8 +100,10 @@ TEST(BgpAttributesSmartSet, BgpAttributeStrTestWitHWeight) {
 TEST(BgpAttributesSmartSet, AddRemoveTest) {
   BgpAttributesSmartSet attrSet;
 
-  // bgplib::BgpAttributes has many fields.
-  // Only set med for simplicity.
+  /*
+   * bgplib::BgpAttributes has many fields.
+   * Only set med for simplicity.
+   */
   bgplib::BgpAttributes attrsA;
   attrsA.med() = 10;
   attrsA.isMedSet() = true;
@@ -113,16 +115,20 @@ TEST(BgpAttributesSmartSet, AddRemoveTest) {
   attrsC.isMedSet() = true;
 
   {
-    // Add attrsA
-    // {A} in set
+    /*
+     * Add attrsA
+     * {A} in set
+     */
     auto attrsARef = attrSet.addEntry(attrsA);
     EXPECT_EQ(attrSet.size(), 1);
     EXPECT_TRUE(attrSet.containsEntry(attrsA));
     EXPECT_EQ(*attrsARef.get().med(), 10);
 
     {
-      // Add attrsB
-      // {A, B} in set
+      /*
+       * Add attrsB
+       * {A, B} in set
+       */
       auto attrsBRef = attrSet.addEntry(attrsB);
       EXPECT_EQ(attrSet.size(), 2);
       EXPECT_TRUE(attrSet.containsEntry(attrsA));
@@ -131,9 +137,11 @@ TEST(BgpAttributesSmartSet, AddRemoveTest) {
       EXPECT_EQ(*attrsBRef.get().med(), 20);
 
       {
-        // Add attrsA (again) and attrsC
-        // attrsA already in set, the hash function should handle duplication
-        // {A, B, C} in set
+        /*
+         * Add attrsA (again) and attrsC
+         * attrsA already in set, the hash function should handle duplication
+         * {A, B, C} in set
+         */
         auto attrsARef2 = attrSet.addEntry(attrsA);
         auto attrsCRef = attrSet.addEntry(attrsC);
         EXPECT_EQ(attrSet.size(), 3);
@@ -146,10 +154,12 @@ TEST(BgpAttributesSmartSet, AddRemoveTest) {
         EXPECT_EQ(*attrsCRef.get().med(), 30);
       }
 
-      // Out of the scope of attrsARef2 and attrsCRef
-      // attrsCRef's destructor removed attrsC from the set
-      // attrsA still in set because attrsARef still holds it
-      // {A, B} in set
+      /*
+       * Out of the scope of attrsARef2 and attrsCRef
+       * attrsCRef's destructor removed attrsC from the set
+       * attrsA still in set because attrsARef still holds it
+       * {A, B} in set
+       */
       EXPECT_EQ(attrSet.size(), 2);
       EXPECT_TRUE(attrSet.containsEntry(attrsA));
       EXPECT_TRUE(attrSet.containsEntry(attrsB));
@@ -157,17 +167,21 @@ TEST(BgpAttributesSmartSet, AddRemoveTest) {
       EXPECT_EQ(*attrsBRef.get().med(), 20);
     }
 
-    // Out of the scope of attrsBRef
-    // attrsBRef's destructor removed attrsB from the set
-    // {A} in set
+    /*
+     * Out of the scope of attrsBRef
+     * attrsBRef's destructor removed attrsB from the set
+     * {A} in set
+     */
     EXPECT_EQ(attrSet.size(), 1);
     EXPECT_TRUE(attrSet.containsEntry(attrsA));
     EXPECT_EQ(*attrsARef.get().med(), 10);
   }
 
-  // Out of the scope of attrsARef
-  // attrsARef's destructor removed attrsA from the set
-  // {} in set
+  /*
+   * Out of the scope of attrsARef
+   * attrsARef's destructor removed attrsA from the set
+   * {} in set
+   */
   EXPECT_EQ(attrSet.size(), 0);
 }
 

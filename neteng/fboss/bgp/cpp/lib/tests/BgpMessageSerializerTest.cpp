@@ -238,8 +238,10 @@ TEST(BgpExtendedCommunity, BgpExtCommunityTest) {
     EXPECT_EQ(asComm.str(), "[IPv4SpecificExtType] 1:2:10.10.1.1:4660");
   }
   {
-    // test transitive route target bgp extended community type
-    // with high octet in 0x00, 0x01, 0x02 group
+    /*
+     * test transitive route target bgp extended community type
+     * with high octet in 0x00, 0x01, 0x02 group
+     */
     for (const auto& highOctet : {0x00, 0x01, 0x02}) {
       auto highValue = (highOctet << 24) + 0x020A0A;
       BgpAttrExtCommunityC asComm(highValue, 0x01011234);
@@ -252,8 +254,10 @@ TEST(BgpExtendedCommunity, BgpExtCommunityTest) {
     }
   }
   {
-    // test transitive route orign bgp extended community type
-    // with high octet in 0x00, 0x01, 0x02 group
+    /*
+     * test transitive route orign bgp extended community type
+     * with high octet in 0x00, 0x01, 0x02 group
+     */
     for (const auto& highOctet : {0x00, 0x01, 0x02}) {
       auto highValue = (highOctet << 24) + 0x030A0A;
       BgpAttrExtCommunityC asComm(highValue, 0x01011234);
@@ -266,8 +270,10 @@ TEST(BgpExtendedCommunity, BgpExtCommunityTest) {
     }
   }
   {
-    // Add a community with link-bw value as 30000000 Bytes/sec
-    // which is 0x4be4e1c0 (IEEE binary32 representation).
+    /*
+     * Add a community with link-bw value as 30000000 Bytes/sec
+     * which is 0x4be4e1c0 (IEEE binary32 representation).
+     */
     BgpAttrExtCommunityC lbwComm(0x40041434, 0x4be4e1c0);
     BgpExtCommunityLinkBandWidthTypeC* comm =
         dynamic_cast<BgpExtCommunityLinkBandWidthTypeC*>(lbwComm.attr.get());
@@ -369,8 +375,10 @@ TEST(BgpMessageSerializer, BgpOpenMessageWithExtNHEncodingCapaTest) {
     0x05,
     // Capability Length
     0x0c,
-    // Parameter Value
-    // First tuple <1,1,2>
+    /*
+     * Parameter Value
+     * First tuple <1,1,2>
+     */
     0x00, 0x01, 0x00, 0x01, 0x00, 0x02,
     // Second tuple <1,4,2>
     0x00, 0x01, 0x00, 0x04, 0x00, 0x02,
@@ -1137,8 +1145,10 @@ TEST(BgpMessageSerializer, BgpUpdate2ExtNhEncodingTest) {
   EXPECT_EQ(msg.size(), serMsg->computeChainDataLength());
   EXPECT_TRUE(std::equal(msg.begin(), msg.end(), serMsg->data()));
 
-  // if negotiated capability does not support extended nesthop encoding,
-  // throw
+  /*
+   * if negotiated capability does not support extended nesthop encoding,
+   * throw
+   */
   EXPECT_THROW(
       {
         try {
@@ -1430,8 +1440,10 @@ TEST(BgpMessageSerializer, BgpUpdate2AllTypesTest) {
   *prefix.labels() = {8, 9};
   update.mpWithdrawn()->prefixes()->push_back(prefix);
 
-  // Serialization sequence is v4Withdrawn -> mpWithdrawn -> mpAnnounced ->
-  // v4Announced
+  /*
+   * Serialization sequence is v4Withdrawn -> mpWithdrawn -> mpAnnounced ->
+   * v4Announced
+   */
   auto iobufPtr = BgpMessageSerializer::serializeBgpUpdate2(update, true);
   EXPECT_EQ(4, iobufPtr->countChainElements());
   auto iobuf = iobufPtr.get();
@@ -1598,8 +1610,10 @@ TEST(BgpMessageSerializer, BgpUpdate2AllTypesAddPathTest) {
   *prefix.labels() = {8, 9};
   update.mpWithdrawn()->prefixes()->push_back(prefix);
 
-  // Serialization sequence is v4Withdrawn -> mpWithdrawn -> mpAnnounced ->
-  // v4Announced
+  /*
+   * Serialization sequence is v4Withdrawn -> mpWithdrawn -> mpAnnounced ->
+   * v4Announced
+   */
   auto iobufPtr = BgpMessageSerializer::serializeBgpUpdate2(update, true);
   EXPECT_EQ(4, iobufPtr->countChainElements());
   auto iobuf = iobufPtr.get();
@@ -1662,11 +1676,13 @@ TEST(BgpMessageSerializer, BgpUpdate2LargeV4Test) {
   auto serMsg = BgpMessageSerializer::serializeBgpUpdate2(update, true);
   EXPECT_EQ(4, serMsg->countChainElements());
 
-  // expected length:
-  // 19 + 2 + 4070 + 2 = 4093
-  // 19 + 2 + 330 + 2 = 353
-  // 19 + 2 + 0 + 2 + 1024 + 3045 = 4092
-  // 19 + 2 + 0 + 2 + 1024 + 1355 = 2402
+  /*
+   * expected length:
+   * 19 + 2 + 4070 + 2 = 4093
+   * 19 + 2 + 330 + 2 = 353
+   * 19 + 2 + 0 + 2 + 1024 + 3045 = 4092
+   * 19 + 2 + 0 + 2 + 1024 + 1355 = 2402
+   */
   std::vector<int> expectLen{4093, 353, 4092, 2402};
 
   // capabilities used to parse raw bgp update mesaages
@@ -1687,10 +1703,12 @@ TEST(BgpMessageSerializer, BgpUpdate2LargeV4Test) {
     oneMsg = oneMsg->next();
   }
 
-  // Combine messages back to one:
-  // parsedMsgs[0], parsedMsgs[1] contain v4Withdrawn
-  // parsedMsgs[2], parsedMsgs[3] contain v4Announced
-  // Use parsedMsgs[2] as base since it has all path attrs
+  /*
+   * Combine messages back to one:
+   * parsedMsgs[0], parsedMsgs[1] contain v4Withdrawn
+   * parsedMsgs[2], parsedMsgs[3] contain v4Announced
+   * Use parsedMsgs[2] as base since it has all path attrs
+   */
   auto parsedUpdate = parsedMsgs[2];
   // fill in v4Withdrawn from parsedMsgs[0] and parsedMsgs[1]
   *parsedUpdate.v4Withdrawn() = *parsedMsgs[0].v4Withdrawn();
@@ -1829,10 +1847,12 @@ TEST(BgpMessageSerializer, BgpUpdate2LargeV6Test) {
     oneMsg = oneMsg->next();
   }
 
-  // Combine messages back to one:
-  //    parsedMsgs[0], parsedMsgs[1] contain mpWithdrawn
-  //    parsedMsgs[2], parsedMsgs[3] contain mpAnnounced
-  // Use parsedMsgs[2] as base since it has all path attrs
+  /*
+   * Combine messages back to one:
+   *    parsedMsgs[0], parsedMsgs[1] contain mpWithdrawn
+   *    parsedMsgs[2], parsedMsgs[3] contain mpAnnounced
+   * Use parsedMsgs[2] as base since it has all path attrs
+   */
   auto parsedUpdate = parsedMsgs[2];
   // fill in mpWithdrawn from parsedMsgs[0] and parsedMsgs[1]
   *parsedUpdate.mpWithdrawn() = *parsedMsgs[0].mpWithdrawn();
@@ -1878,8 +1898,10 @@ TEST(BgpMessageSerializer, BgpUpdate2LargeExtendedAttrLenTest) {
   BgpAttrExtCommunity extCommunity;
   *extCommunity.firstWord() = 0x2272a;
   *extCommunity.secondWord() = 0x232f;
-  // 60 * 8 = 480 > 255
-  // this will make extended communities length go over 1 btye
+  /*
+   * 60 * 8 = 480 > 255
+   * this will make extended communities length go over 1 btye
+   */
   for (int i = 0; i < 60; i++) {
     update.attrs()->extCommunities()->push_back(extCommunity);
   }
@@ -1953,8 +1975,10 @@ TEST(BgpMessageSerializer, BgpUpdate2WithoutLocalPref) {
 }
 
 TEST(BgpMessageSerializer, BgpUpdate2ErrorTest) {
-  // CASE 1
-  // Empty NLRI test
+  /*
+   * CASE 1
+   * Empty NLRI test
+   */
   BgpUpdate2 update;
   *update.attrs()->origin() = BgpAttrOrigin::BGP_ORIGIN_EGP;
   BgpAttrAsPathSegment segment;
@@ -1973,8 +1997,10 @@ TEST(BgpMessageSerializer, BgpUpdate2ErrorTest) {
       },
       BgpSerializerException);
 
-  // CASE 2
-  // Invalid AS Path test
+  /*
+   * CASE 2
+   * Invalid AS Path test
+   */
   BgpUpdate2 update2;
   update2.v4Announced()->push_back(
       network::toIPPrefix(folly::IPAddress::createNetwork("6.5.4.3/32")));
@@ -1997,8 +2023,10 @@ TEST(BgpMessageSerializer, BgpUpdate2ErrorTest) {
       },
       BgpSerializerException);
 
-  // CASE 3
-  // Too large as path length when the buffer size is the max bgp message size.
+  /*
+   * CASE 3
+   * Too large as path length when the buffer size is the max bgp message size.
+   */
   BgpUpdate2 update3;
   update3.v4Announced()->push_back(
       network::toIPPrefix(folly::IPAddress::createNetwork("6.5.4.3/32")));
@@ -2015,9 +2043,11 @@ TEST(BgpMessageSerializer, BgpUpdate2ErrorTest) {
       BgpMessageSerializer::serializeBgpUpdate2(update3, true),
       std::out_of_range);
 
-  // CASE 4
-  // Too large as path length with presence of v4Withdrawn and mpWithdrawn.
-  // nothing will be sent in this case.
+  /*
+   * CASE 4
+   * Too large as path length with presence of v4Withdrawn and mpWithdrawn.
+   * nothing will be sent in this case.
+   */
   BgpUpdate2 update4;
   update4.v4Announced()->push_back(
       network::toIPPrefix(folly::IPAddress::createNetwork("6.5.4.3/32")));
@@ -2318,12 +2348,14 @@ TEST(BgpMessageSerializer, BgpUpdate2LargeV4WithPathIdTest) {
   auto serMsg = BgpMessageSerializer::serializeBgpUpdate2(update, true);
   EXPECT_EQ(5, serMsg->countChainElements());
 
-  // expected msg lengths:
-  // 19 + 2 + 4068 + 2 = 4091
-  // 19 + 2 + 3132 + 2 = 3155
-  // 19 + 2 + 0 + 2 + 1024 + 3042 = 4089
-  // 19 + 2 + 0 + 2 + 1024 + 3042 = 4089
-  // 19 + 2 + 0 + 2 + 1024 + 1116 = 2163
+  /*
+   * expected msg lengths:
+   * 19 + 2 + 4068 + 2 = 4091
+   * 19 + 2 + 3132 + 2 = 3155
+   * 19 + 2 + 0 + 2 + 1024 + 3042 = 4089
+   * 19 + 2 + 0 + 2 + 1024 + 3042 = 4089
+   * 19 + 2 + 0 + 2 + 1024 + 1116 = 2163
+   */
   std::vector<int> expectLen{4091, 3155, 4089, 4089, 2163};
 
   // check serilized message length
@@ -2366,11 +2398,13 @@ TEST(BgpMessageSerializer, BgpUpdate2LargeV6WithPathIdTest) {
   auto serMsg = BgpMessageSerializer::serializeBgpUpdate2(update, true);
   EXPECT_EQ(4, serMsg->countChainElements());
 
-  // expected msg lengths:
-  // 19 + 2 + 0 + 2 + (2 + 2 + 3 + (21 * 193)) = 4083
-  // 19 + 2 + 0 + 2 + (2 + 2 + 3 + (21 * 7)) = 177
-  // 19 + 2 + 0 + 2 + (883 + 4 + 21 + (21*150)) = 4081
-  // 19 + 2 + 0 + 2 + (883 + 4 + 21 + (21*50)) = 1981
+  /*
+   * expected msg lengths:
+   * 19 + 2 + 0 + 2 + (2 + 2 + 3 + (21 * 193)) = 4083
+   * 19 + 2 + 0 + 2 + (2 + 2 + 3 + (21 * 7)) = 177
+   * 19 + 2 + 0 + 2 + (883 + 4 + 21 + (21*150)) = 4081
+   * 19 + 2 + 0 + 2 + (883 + 4 + 21 + (21*50)) = 1981
+   */
   std::vector<int> expectLen{4083, 177, 4081, 1981};
 
   // check serilized message length
@@ -2535,12 +2569,16 @@ TEST(BgpMessageSerializer, NexthopOffsetTrackingMultiMessage) {
 
   ASSERT_NE(iobufPtr, nullptr);
 
-  // We expect 2 nexthop offsets: one for mpAnnounced (v6) and one for
-  // v4Announced (v4). mpWithdrawn has no nexthop since it's withdraw-only.
+  /*
+   * We expect 2 nexthop offsets: one for mpAnnounced (v6) and one for
+   * v4Announced (v4). mpWithdrawn has no nexthop since it's withdraw-only.
+   */
   ASSERT_EQ(nexthopOffsets.size(), 2);
 
-  // Serialization order is: mpWithdrawn (buffer 0, no nexthop) ->
-  // mpAnnounced (buffer 1, v6 nexthop) -> v4Announced (buffer 2, v4 nexthop)
+  /*
+   * Serialization order is: mpWithdrawn (buffer 0, no nexthop) ->
+   * mpAnnounced (buffer 1, v6 nexthop) -> v4Announced (buffer 2, v4 nexthop)
+   */
 
   // First nexthop should be v6 in buffer 1 (mpAnnounced)
   auto [bufIdx1, offset1, isV4_1] = nexthopOffsets[0];
@@ -2591,11 +2629,13 @@ TEST(BgpMessageSerializer, BgpUpdate2IPv4WithPathIdsBoundaryTest) {
   update.attrs()->asPath()->push_back(segment);
   *update.v4Nexthop() = network::toBinaryAddress(folly::IPAddress("10.0.0.1"));
 
-  // Path attrs: origin(4) + asPath(~7) + nexthop(7) = ~18 bytes
-  // Available space: 4096 - 19(header) - 2(withdrawn) - 2(attr_len) = 4073
-  // After attrs: 4073 - 18 = 4055 bytes
-  // IPv4 prefix with path ID: 4(pathId) + 1(len) + 4(prefix) = 9 bytes max
-  // Can fit approximately: 4055 / 9 = ~450 prefixes
+  /*
+   * Path attrs: origin(4) + asPath(~7) + nexthop(7) = ~18 bytes
+   * Available space: 4096 - 19(header) - 2(withdrawn) - 2(attr_len) = 4073
+   * After attrs: 4073 - 18 = 4055 bytes
+   * IPv4 prefix with path ID: 4(pathId) + 1(len) + 4(prefix) = 9 bytes max
+   * Can fit approximately: 4055 / 9 = ~450 prefixes
+   */
 
   // Add exactly 450 prefixes to test near-boundary packing
   for (int i = 0; i < 449; i++) {
@@ -2694,9 +2734,11 @@ TEST(BgpMessageSerializer, BgpUpdate2IPv6WithPathIdsBoundaryTest) {
   *update.mpAnnounced()->nexthop() =
       network::toBinaryAddress(folly::IPAddress("2001:db8::1"));
 
-  // IPv6 prefix with path ID: 4(pathId) + 1(len) + 16(prefix) = 21 bytes max
-  // Available space after headers and attrs: ~4050 bytes
-  // Can fit approximately: 4050 / 21 = ~192 prefixes
+  /*
+   * IPv6 prefix with path ID: 4(pathId) + 1(len) + 16(prefix) = 21 bytes max
+   * Available space after headers and attrs: ~4050 bytes
+   * Can fit approximately: 4050 / 21 = ~192 prefixes
+   */
 
   // Add exactly 192 prefixes to test boundary
   for (int i = 0; i < 192; i++) {
@@ -2793,11 +2835,13 @@ TEST(BgpMessageSerializer, BgpUpdate2ExactBoundaryTest) {
   update.attrs()->asPath()->push_back(segment);
   *update.v4Nexthop() = network::toBinaryAddress(folly::IPAddress("1.1.1.1"));
 
-  // Calculate exact number of prefixes to reach close to 4096
-  // Header: 19, withdrawn: 2, attr_len: 2, path_attrs: ~18
-  // Available: 4096 - 19 - 2 - 2 - 18 = 4055
-  // Each prefix with pathId: 9 bytes
-  // Prefixes: 4055 / 9 = 450 (leaving 5 bytes buffer)
+  /*
+   * Calculate exact number of prefixes to reach close to 4096
+   * Header: 19, withdrawn: 2, attr_len: 2, path_attrs: ~18
+   * Available: 4096 - 19 - 2 - 2 - 18 = 4055
+   * Each prefix with pathId: 9 bytes
+   * Prefixes: 4055 / 9 = 450 (leaving 5 bytes buffer)
+   */
 
   for (int i = 0; i < 449; i++) {
     auto prefix =

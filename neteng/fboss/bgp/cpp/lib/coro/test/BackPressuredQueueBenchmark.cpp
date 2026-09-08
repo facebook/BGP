@@ -34,9 +34,11 @@ folly::coro::Task<void> BM_BackPressuredQueue_Async(
     uint32_t maxQueueCapacity = 10) {
   folly::BenchmarkSuspender suspender;
 
-  // Set the capacity to the min of half of the number of items to be enqueued
-  // by one producer or the maxQueueCapacity, whichever is smaller.
-  // This ensures backpressure is triggered during benchmarking.
+  /*
+   * Set the capacity to the min of half of the number of items to be enqueued
+   * by one producer or the maxQueueCapacity, whichever is smaller.
+   * This ensures backpressure is triggered during benchmarking.
+   */
   auto capacity = std::min(itemsPerProducer / 2, maxQueueCapacity);
 
   auto enqueueOp = [](auto& queue,
@@ -73,8 +75,10 @@ void BM_BackPressuredQueue(
       iters, nProducers, nConsumers, itemsPerProducer, threadModel));
 }
 
-// Benchmark: Single producer and single consumer on separate threads
-// Tests basic back pressure behavior with 10000/20000 items
+/*
+ * Benchmark: Single producer and single consumer on separate threads
+ * Tests basic back pressure behavior with 10000/20000 items
+ */
 BENCHMARK_NAMED_PARAM(
     BM_BackPressuredQueue,
     1_to_1_10000_single_threaded,
@@ -88,8 +92,10 @@ BENCHMARK_NAMED_PARAM(
     1,
     20000);
 
-// Benchmark: Single producer and single consumer on the same thread
-// Tests coroutine switching overhead within a single thread
+/*
+ * Benchmark: Single producer and single consumer on the same thread
+ * Tests coroutine switching overhead within a single thread
+ */
 BENCHMARK_NAMED_PARAM(
     BM_BackPressuredQueue,
     1_to_1_10000_all_in_one_thread,
@@ -105,8 +111,10 @@ BENCHMARK_NAMED_PARAM(
     20000,
     ThreadModel::ALL_IN_ONE);
 
-// Benchmark: Multiple producers (16) and single consumer on separate threads
-// Tests back pressure coordination with multiple concurrent producers
+/*
+ * Benchmark: Multiple producers (16) and single consumer on separate threads
+ * Tests back pressure coordination with multiple concurrent producers
+ */
 BENCHMARK_NAMED_PARAM(
     BM_BackPressuredQueue,
     16_to_1_10000_single_threaded,
