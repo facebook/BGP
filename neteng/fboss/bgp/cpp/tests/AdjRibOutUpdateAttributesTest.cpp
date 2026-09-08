@@ -78,8 +78,10 @@ void loadBgpBestpathFeatures(
 
 // Verify attribute changes in case of local-as session.
 TEST_F(AdjRibOutboundFixture, VerifyLocalAsSessionUpdateAttributes) {
-  // Verify that we do not modify the nexthop to self in case of
-  // Confed EBGP without next_hop_self
+  /*
+   * Verify that we do not modify the nexthop to self in case of
+   * Confed EBGP without next_hop_self
+   */
   setupAdjRib(
       kLocalAs2, // Global AS
       kLocalAs3, // Local AS
@@ -116,8 +118,10 @@ TEST_F(AdjRibOutboundFixture, VerifyLocalAsSessionUpdateAttributes) {
     EXPECT_EQ(kAsSeqAsNum, outputAttrs->getAsPath()->at(0).asSequence[1]);
   }
 
-  // Verify that a new as-seq with local-as created for local-origined route
-  // case.
+  /*
+   * Verify that a new as-seq with local-as created for local-origined route
+   * case.
+   */
   {
     auto newAsPath = inputAttrs->getAsPath().get();
     newAsPath.clear();
@@ -163,8 +167,10 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributes) {
     EXPECT_EQ(inputAttrs->getAsPath(), outputAttrs->getAsPath());
   }
   {
-    // Verify that we modify the nexthop to configured nexthop V6 (IBGP
-    // peer)
+    /*
+     * Verify that we modify the nexthop to configured nexthop V6 (IBGP
+     * peer)
+     */
     setupAdjRib(
         kLocalAs1,
         kLocalAs1,
@@ -190,8 +196,10 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributes) {
     EXPECT_FALSE(outputAttrs->isPublished());
   }
   {
-    // Verify that if next_hop_self is not configured, we do not update
-    // nexthop (IBGP)
+    /*
+     * Verify that if next_hop_self is not configured, we do not update
+     * nexthop (IBGP)
+     */
     setupAdjRib(
         kLocalAs1,
         kLocalAs1,
@@ -216,8 +224,10 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributes) {
     EXPECT_EQ(kV4Nexthop2, outputAttrs->getNexthop());
   }
   {
-    // Verify that we modify the nexthop to implicit self in case of EBGP
-    // if no user configured nexthop
+    /*
+     * Verify that we modify the nexthop to implicit self in case of EBGP
+     * if no user configured nexthop
+     */
     setupAdjRib(
         kLocalAs1,
         kLocalAs1,
@@ -249,8 +259,10 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributes) {
     EXPECT_EQ(kLocalAs1, outputAttrs->getAsPath()->at(0).asSequence[0]);
     EXPECT_EQ(kAsSeqAsNum, outputAttrs->getAsPath()->at(0).asSequence[1]);
 
-    // Verify that a new Segment is created if there is no AS segment
-    // i.e. originating local routes to EBGP peer
+    /*
+     * Verify that a new Segment is created if there is no AS segment
+     * i.e. originating local routes to EBGP peer
+     */
     auto newAsPath = inputAttrs->getAsPath().get();
     newAsPath.clear();
     inputAttrs->setAsPath(std::move(newAsPath));
@@ -264,8 +276,10 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributes) {
     EXPECT_EQ(kLocalAs1, outputAttrs->getAsPath()->at(0).asSequence[0]);
   }
   {
-    // Verify that we do not modify the nexthop to self in case of
-    // Confed EBGP without next_hop_self
+    /*
+     * Verify that we do not modify the nexthop to self in case of
+     * Confed EBGP without next_hop_self
+     */
     setupAdjRib(
         kLocalAs1,
         kLocalAs1,
@@ -303,8 +317,10 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributes) {
     EXPECT_EQ(1, outputAttrs->getAsPath()->at(1).asSequence.size());
     EXPECT_EQ(kAsSeqAsNum, outputAttrs->getAsPath()->at(1).asSequence[0]);
 
-    // Verify that a new Segment is created if there is no AS segment
-    // i.e. originating local routes to EBGP peer
+    /*
+     * Verify that a new Segment is created if there is no AS segment
+     * i.e. originating local routes to EBGP peer
+     */
     auto newAsPath = inputAttrs->getAsPath().get();
     newAsPath.clear();
     inputAttrs->setAsPath(newAsPath);
@@ -335,8 +351,10 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributes) {
     EXPECT_EQ(kAsSeqAsNum, outputAttrs->getAsPath()->at(0).asConfedSequence[1]);
   }
   {
-    // Verify that we modify the nexthop to self in case of Confed EBGP with
-    // next_hop_self
+    /*
+     * Verify that we modify the nexthop to self in case of Confed EBGP with
+     * next_hop_self
+     */
     setupAdjRib(
         kLocalAs1,
         kLocalAs1,
@@ -364,8 +382,10 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributes) {
             kV4Prefix1.first.isV4(), outputAttrs)); // local address
     EXPECT_FALSE(outputAttrs->isPublished());
 
-    // Verify AS-PATH is updated (a new segment is created)
-    // Repeat from the test without next_hop_self
+    /*
+     * Verify AS-PATH is updated (a new segment is created)
+     * Repeat from the test without next_hop_self
+     */
     EXPECT_NE(inputAttrs->getAsPath(), outputAttrs->getAsPath());
     EXPECT_EQ(2, outputAttrs->getAsPath()->size());
     EXPECT_EQ(1, outputAttrs->getAsPath()->at(0).asConfedSequence.size());
@@ -401,8 +421,10 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributes) {
     EXPECT_EQ(inputAttrs->getAsPath(), outputAttrs->getAsPath());
   }
   {
-    // Verify that we keep MED in case of EBGP if set by outbound policy and
-    // enableMedComparison is enabled
+    /*
+     * Verify that we keep MED in case of EBGP if set by outbound policy and
+     * enableMedComparison is enabled
+     */
     loadBgpBestpathFeatures(true);
     auto bgpAction = createBgpPolicyMedAction(kMed2);
 
@@ -444,8 +466,10 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributes) {
     EXPECT_THAT(outputAttrs->isPublished(), IsTrue());
   }
   {
-    // Verify that we strip MED in case of EBGP if not set by outbound policy
-    // and enableMedComparison is enabled
+    /*
+     * Verify that we strip MED in case of EBGP if not set by outbound policy
+     * and enableMedComparison is enabled
+     */
     loadBgpBestpathFeatures(true);
     setupAdjRib(
         kLocalAs1,
@@ -500,8 +524,10 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributes) {
     EXPECT_FALSE(outputAttrs->isPublished());
   }
   {
-    // Verify that we add our originatorId and clusterList when advertising
-    // eBgp learnt routes to RRC, IBGP
+    /*
+     * Verify that we add our originatorId and clusterList when advertising
+     * eBgp learnt routes to RRC, IBGP
+     */
     setupAdjRib(
         kLocalAs1,
         kLocalAs1,
@@ -533,8 +559,10 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributes) {
     EXPECT_FALSE(outputAttrs->isPublished());
   }
   {
-    // Verify that we add our originatorId and clusterList when advertising
-    // local routes to RRC, IBGP
+    /*
+     * Verify that we add our originatorId and clusterList when advertising
+     * local routes to RRC, IBGP
+     */
     setupAdjRib(
         kLocalAs1,
         kLocalAs1,
@@ -566,8 +594,10 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributes) {
     EXPECT_FALSE(outputAttrs->isPublished());
   }
   {
-    // Verify that we add peer's originatorId and clusterList when
-    // advertising iBgp learnt routes to RRC, IBGP
+    /*
+     * Verify that we add peer's originatorId and clusterList when
+     * advertising iBgp learnt routes to RRC, IBGP
+     */
     setupAdjRib(
         kLocalAs1,
         kLocalAs1,
@@ -599,8 +629,10 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributes) {
     EXPECT_FALSE(outputAttrs->isPublished());
   }
   {
-    // Verify that we do not modify originatorId if it existed when
-    // advertising iBgp learnt routes to RRC, IBGP
+    /*
+     * Verify that we do not modify originatorId if it existed when
+     * advertising iBgp learnt routes to RRC, IBGP
+     */
     setupAdjRib(
         kLocalAs1,
         kLocalAs1,
@@ -630,8 +662,10 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributes) {
     EXPECT_FALSE(outputAttrs->isPublished());
   }
   {
-    // Verify that we add our originatorId and clusterList when advertising
-    // eBgp learnt routes to RRC, EBGP
+    /*
+     * Verify that we add our originatorId and clusterList when advertising
+     * eBgp learnt routes to RRC, EBGP
+     */
     setupAdjRib(
         kLocalAs1, // AS 1
         kLocalAs1, // AS 1
@@ -663,8 +697,10 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributes) {
     EXPECT_FALSE(outputAttrs->isPublished());
   }
   {
-    // Verify that we add our originatorId and clusterList when advertising
-    // local routes to RRC, EBGP
+    /*
+     * Verify that we add our originatorId and clusterList when advertising
+     * local routes to RRC, EBGP
+     */
     setupAdjRib(
         kLocalAs1,
         kLocalAs1,
@@ -696,8 +732,10 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributes) {
     EXPECT_FALSE(outputAttrs->isPublished());
   }
   {
-    // Verify that we add peer's originatorId and clusterList when
-    // advertising iBgp learnt routes to RRC, EBGP
+    /*
+     * Verify that we add peer's originatorId and clusterList when
+     * advertising iBgp learnt routes to RRC, EBGP
+     */
     setupAdjRib(
         kLocalAs1,
         kLocalAs1,
@@ -729,8 +767,10 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributes) {
     EXPECT_FALSE(outputAttrs->isPublished());
   }
   {
-    // Verify that we strip originatorId and clusterList when advertising
-    // routes to EBGP
+    /*
+     * Verify that we strip originatorId and clusterList when advertising
+     * routes to EBGP
+     */
     setupAdjRib(
         kLocalAs1,
         kLocalAs1,
@@ -757,8 +797,10 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributes) {
     EXPECT_FALSE(outputAttrs->isPublished());
   }
   {
-    // Verify that we strip originatorId and clusterList when advertising
-    // routes to confed EBGP
+    /*
+     * Verify that we strip originatorId and clusterList when advertising
+     * routes to confed EBGP
+     */
     setupAdjRib(
         kLocalAs1,
         kLocalAs1,
@@ -856,8 +898,10 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributes) {
  * same pfx, but different BgpPaths.
  */
 TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributesWithAcceptAllPolicyTest) {
-  // Set up egress policy accept all on AdjRib
-  // isRrClient = false AdjRib
+  /*
+   * Set up egress policy accept all on AdjRib
+   * isRrClient = false AdjRib
+   */
   setupAdjRib(
       setupAcceptAllPolicy(kEgressPolicyName), // policyManager
       kEgressPolicyName,
@@ -869,9 +913,11 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributesWithAcceptAllPolicyTest) {
   // Build two different paths which will be used for the same prefix.
   auto preAttrs1 = std::make_shared<BgpPath>(*buildBgpPathFields(1, 1, 1, 1));
   auto preAttrs2 = std::make_shared<BgpPath>(*buildBgpPathFields(2, 2, 2, 2));
-  // buildBgpPathFields starts asPath sequence from 0.
-  // In this step, remove zeroes from AsPath with localAs, as they will be
-  // replaced in getPostOutPolicyAttributes.
+  /*
+   * buildBgpPathFields starts asPath sequence from 0.
+   * In this step, remove zeroes from AsPath with localAs, as they will be
+   * replaced in getPostOutPolicyAttributes.
+   */
   replaceZerosInAsPath(preAttrs1, adjRib_->peeringParams_.localAs);
   replaceZerosInAsPath(preAttrs2, adjRib_->peeringParams_.localAs);
 
@@ -895,14 +941,18 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributesWithAcceptAllPolicyTest) {
   EXPECT_NE(preAttrs1, postAttrs1);
   EXPECT_NE(preAttrs1, outputAttrs1);
 
-  // preAttrs should have same values as postAttrs and outputAttrs1 and clone
-  // because no policy modification or EBgpPeer, rrClient logic.
+  /*
+   * preAttrs should have same values as postAttrs and outputAttrs1 and clone
+   * because no policy modification or EBgpPeer, rrClient logic.
+   */
   EXPECT_TRUE(*preAttrs1 == *postAttrs1);
   EXPECT_TRUE(*preAttrs1 == *outputAttrs1);
 
-  // For posterity, to check there are no policy caching issues,
-  // create RibOutAnnouncementEntry that has different path preAttrs2
-  // for the same prefix.
+  /*
+   * For posterity, to check there are no policy caching issues,
+   * create RibOutAnnouncementEntry that has different path preAttrs2
+   * for the same prefix.
+   */
   auto update2 = RibOutAnnouncementEntry(
       kV4Prefix1, kPlaceholderPathID, iBgpPeer_, preAttrs2);
   // Expect the adjRibEntry to already exist.
@@ -925,25 +975,33 @@ TEST_F(AdjRibOutboundFixture, VerifyUpdateAttributesWithAcceptAllPolicyTest) {
   EXPECT_NE(preAttrs2, postAttrs2);
   EXPECT_NE(preAttrs2, outputAttrs2);
 
-  // preAttrs should have same values as outputAttrs2 and clone.
-  // because no policy modification or EBgpPeer, rrClient logic.
+  /*
+   * preAttrs should have same values as outputAttrs2 and clone.
+   * because no policy modification or EBgpPeer, rrClient logic.
+   */
   EXPECT_TRUE(*preAttrs2 == *outputAttrs2);
-  // preAttrs2 is different from postAttrs2,
-  // because postAttrs2 is equal to postAttrs1.
+  /*
+   * preAttrs2 is different from postAttrs2,
+   * because postAttrs2 is equal to postAttrs1.
+   */
   EXPECT_FALSE(*preAttrs2 == *postAttrs2);
 
   // Check that the two output attrs are different as sanity check.
   EXPECT_FALSE(*outputAttrs1 == *outputAttrs2);
-  // The two input attrs are considered 'same' under policy
-  // evaluation, so they should have the same postPolicy attrs.
+  /*
+   * The two input attrs are considered 'same' under policy
+   * evaluation, so they should have the same postPolicy attrs.
+   */
   EXPECT_TRUE(*postAttrs1 == *postAttrs2);
 }
 
 TEST_F(AdjRibOutboundFixture, VerifyRemovePrivateAs) {
-  // Define some ASN arrays which we will use as input for our testing.  The
-  // first two have only private ASNs, the third has private ASNs but one
-  // public ASN in the list.  The fourth has all private ASNs, but one is
-  // the ASN of our peer.
+  /*
+   * Define some ASN arrays which we will use as input for our testing.  The
+   * first two have only private ASNs, the third has private ASNs but one
+   * public ASN in the list.  The fourth has all private ASNs, but one is
+   * the ASN of our peer.
+   */
   std::array<uint32_t, 2> seg1Arr = {64512, 65534};
   std::array<uint32_t, 3> seg2Arr = {65000, 65000, 65000};
   std::array<uint32_t, 4> seg3Arr = {65000, 64511, 65000, 65000};
@@ -960,8 +1018,10 @@ TEST_F(AdjRibOutboundFixture, VerifyRemovePrivateAs) {
   asSeq3.asSequence()->assign(seg3Arr.begin(), seg3Arr.end());
   asSeq4.asSequence()->assign(seg4Arr.begin(), seg4Arr.end());
 
-  // Create an asConfedSequence and an asConfedSet from the third array
-  // (which includes a public ASN)
+  /*
+   * Create an asConfedSequence and an asConfedSet from the third array
+   * (which includes a public ASN)
+   */
   BgpAttrAsPathSegment asConfedSeq3;
   BgpAttrAsPathSegment asConfedSet3;
   BgpAttrAsPathSegment asConfedSet4;
@@ -987,12 +1047,14 @@ TEST_F(AdjRibOutboundFixture, VerifyRemovePrivateAs) {
       RouteRefreshNegotiated(false),
       RemovePrivateAsConfigured(true));
 
-  //
-  // First perform some tests with removePrivateAs true
-  //
+  /*
+   * First perform some tests with removePrivateAs true
+   */
   {
-    // Receive input update with single AsSequence segment, all of the ASNs
-    // within being private.
+    /*
+     * Receive input update with single AsSequence segment, all of the ASNs
+     * within being private.
+     */
     std::vector<BgpAttrAsPathSegment> asPath;
     asPath.push_back(asSeq1);
     BgpUpdate2 inputUpdate =
@@ -1016,8 +1078,10 @@ TEST_F(AdjRibOutboundFixture, VerifyRemovePrivateAs) {
     EXPECT_EQ(outputAttrs->getAsPath()->at(0).asSequence[0], kLocalPrivateAs1);
   }
   {
-    // Receive input update with multiple AsSeqence segments, all with
-    // private ASNs.
+    /*
+     * Receive input update with multiple AsSeqence segments, all with
+     * private ASNs.
+     */
     std::vector<BgpAttrAsPathSegment> asPath;
     asPath.push_back(asSeq1);
     asPath.push_back(asSeq2);
@@ -1043,8 +1107,10 @@ TEST_F(AdjRibOutboundFixture, VerifyRemovePrivateAs) {
     EXPECT_EQ(outputAttrs->getAsPath()->at(0).asSequence[0], kLocalPrivateAs1);
   }
   {
-    // Receive input update with multiple AsSequence segments one of which
-    // has a public ASN.
+    /*
+     * Receive input update with multiple AsSequence segments one of which
+     * has a public ASN.
+     */
     std::vector<BgpAttrAsPathSegment> asPath;
     asPath.push_back(asSeq1);
     asPath.push_back(asSeq2);
@@ -1066,8 +1132,10 @@ TEST_F(AdjRibOutboundFixture, VerifyRemovePrivateAs) {
         outputAttrs,
         PostPolicyInfo{});
 
-    // Verify none of the asns stripped.  Additionally, the first segment
-    // should also have our local ASN prepended
+    /*
+     * Verify none of the asns stripped.  Additionally, the first segment
+     * should also have our local ASN prepended
+     */
     EXPECT_EQ(outputAttrs->getAsPath()->size(), 3);
     EXPECT_EQ(
         outputAttrs->getAsPath()->at(0).asSequence.size(), seg1Arr.size() + 1);
@@ -1078,10 +1146,12 @@ TEST_F(AdjRibOutboundFixture, VerifyRemovePrivateAs) {
     EXPECT_EQ(outputAttrs->getAsPath()->at(0).asSequence[0], kLocalPrivateAs1);
   }
   {
-    // Receive input update with two AsSequence segments with all private
-    // ANSs, and one ConfedAsSequence segment with a public ASN.
-    // ConfedAsSequence is at the end of the list.  In BGP terminology, the
-    // two AsSequence segments were added "after" the ConfedAs
+    /*
+     * Receive input update with two AsSequence segments with all private
+     * ANSs, and one ConfedAsSequence segment with a public ASN.
+     * ConfedAsSequence is at the end of the list.  In BGP terminology, the
+     * two AsSequence segments were added "after" the ConfedAs
+     */
     std::vector<BgpAttrAsPathSegment> asPath;
     asPath.push_back(asSeq1);
     asPath.push_back(asSeq2);
@@ -1104,18 +1174,22 @@ TEST_F(AdjRibOutboundFixture, VerifyRemovePrivateAs) {
         outputAttrs,
         PostPolicyInfo{});
 
-    // Verify that we remove the ConfedAsSequence.  Verify that we strip the
-    // other two segments because they were added after the confed segment
-    // and had all private ASNs.  Output should only contain only our local
-    // ASN in its AsPath
+    /*
+     * Verify that we remove the ConfedAsSequence.  Verify that we strip the
+     * other two segments because they were added after the confed segment
+     * and had all private ASNs.  Output should only contain only our local
+     * ASN in its AsPath
+     */
     EXPECT_EQ(outputAttrs->getAsPath()->size(), 1);
     EXPECT_EQ(outputAttrs->getAsPath()->at(0).asSequence.size(), 1);
     EXPECT_EQ(outputAttrs->getAsPath()->at(0).asSequence[0], kLocalPrivateAs1);
   }
   {
-    // Receive input update with two AsSequence segments with all private
-    // ANSs, and one ConfedAsSequence segment with a public ASN.
-    // ConfedAsSequence is in the middle of the list.
+    /*
+     * Receive input update with two AsSequence segments with all private
+     * ANSs, and one ConfedAsSequence segment with a public ASN.
+     * ConfedAsSequence is in the middle of the list.
+     */
     std::vector<BgpAttrAsPathSegment> asPath;
     asPath.push_back(asSeq1);
     asPath.push_back(asConfedSeq3);
@@ -1138,19 +1212,23 @@ TEST_F(AdjRibOutboundFixture, VerifyRemovePrivateAs) {
         outputAttrs,
         PostPolicyInfo{});
 
-    // Verify that we remove all confed segment, also that we remove
-    // the AsSequence segment after all confed portion are removed.
-    // Verify that we prepend our ASN to this segment.
+    /*
+     * Verify that we remove all confed segment, also that we remove
+     * the AsSequence segment after all confed portion are removed.
+     * Verify that we prepend our ASN to this segment.
+     */
     EXPECT_EQ(outputAttrs->getAsPath()->size(), 1);
     EXPECT_EQ(outputAttrs->getAsPath()->at(0).asSequence.size(), 1);
     EXPECT_EQ(outputAttrs->getAsPath()->at(0).asSequence[0], kLocalPrivateAs1);
   }
   {
-    // Receive input update with two AsSequence segments with all private
-    // ANSs, and one ConfedAsSet segment with a public ASN.  ConfedAsSet is
-    // in the head of the list.
-    // In this case confed as will be remove first -> remove private as will
-    // take place and remove the rest private as sequence
+    /*
+     * Receive input update with two AsSequence segments with all private
+     * ANSs, and one ConfedAsSet segment with a public ASN.  ConfedAsSet is
+     * in the head of the list.
+     * In this case confed as will be remove first -> remove private as will
+     * take place and remove the rest private as sequence
+     */
     std::vector<BgpAttrAsPathSegment> asPath;
     asPath.push_back(asConfedSet4);
     asPath.push_back(asSeq1);
@@ -1172,17 +1250,21 @@ TEST_F(AdjRibOutboundFixture, VerifyRemovePrivateAs) {
         outputAttrs,
         PostPolicyInfo{});
 
-    // Verify that we remove all confed segment, also that we remove
-    // the AsSequence segment after all confed portion are removed.
-    // Verify that we prepend our ASN to this segment.
+    /*
+     * Verify that we remove all confed segment, also that we remove
+     * the AsSequence segment after all confed portion are removed.
+     * Verify that we prepend our ASN to this segment.
+     */
     EXPECT_EQ(outputAttrs->getAsPath()->size(), 1);
     EXPECT_EQ(outputAttrs->getAsPath()->at(0).asSequence.size(), 1);
     EXPECT_EQ(outputAttrs->getAsPath()->at(0).asSequence[0], kLocalPrivateAs1);
   }
   {
-    // Receive input update with two AsSequence segments and one
-    // ConfedAsSequence (in the middle).  The nearer AsSequence has all
-    // private ANSs, but the farther has a public ASN.
+    /*
+     * Receive input update with two AsSequence segments and one
+     * ConfedAsSequence (in the middle).  The nearer AsSequence has all
+     * private ANSs, but the farther has a public ASN.
+     */
     std::vector<BgpAttrAsPathSegment> asPath;
     asPath.push_back(asSeq1);
     asPath.push_back(asConfedSeq3);
@@ -1205,9 +1287,11 @@ TEST_F(AdjRibOutboundFixture, VerifyRemovePrivateAs) {
         outputAttrs,
         PostPolicyInfo{});
 
-    // Verify that none of the asns in the AsSequences are stripped
-    // (ConfedAsSequence will be stripped).  Verify that local ASN is
-    // prepended to first segment
+    /*
+     * Verify that none of the asns in the AsSequences are stripped
+     * (ConfedAsSequence will be stripped).  Verify that local ASN is
+     * prepended to first segment
+     */
     EXPECT_EQ(outputAttrs->getAsPath()->size(), 2);
     EXPECT_EQ(
         outputAttrs->getAsPath()->at(0).asSequence.size(), seg1Arr.size() + 1);
@@ -1216,8 +1300,10 @@ TEST_F(AdjRibOutboundFixture, VerifyRemovePrivateAs) {
     EXPECT_EQ(outputAttrs->getAsPath()->at(0).asSequence[0], kLocalPrivateAs1);
   }
   {
-    // Receive input update with two AsSequence segments.  All of the ASNs
-    // are private, but one happens to be the ASN of our peer.
+    /*
+     * Receive input update with two AsSequence segments.  All of the ASNs
+     * are private, but one happens to be the ASN of our peer.
+     */
     std::vector<BgpAttrAsPathSegment> asPath;
     asPath.push_back(asSeq1);
     asPath.push_back(asSeq4);
@@ -1243,9 +1329,9 @@ TEST_F(AdjRibOutboundFixture, VerifyRemovePrivateAs) {
     EXPECT_EQ(outputAttrs->getAsPath()->at(0).asSequence[0], kLocalPrivateAs1);
   }
 
-  //
-  // Now perform some tests with removePrivateAs false
-  //
+  /*
+   * Now perform some tests with removePrivateAs false
+   */
   setupAdjRib(
       kLocalPrivateAs1,
       kLocalPrivateAs1,
@@ -1262,8 +1348,10 @@ TEST_F(AdjRibOutboundFixture, VerifyRemovePrivateAs) {
       RemovePrivateAsConfigured(false));
 
   {
-    // Receive input update with single AsSequence segment, all of the ASNs
-    // within being private.
+    /*
+     * Receive input update with single AsSequence segment, all of the ASNs
+     * within being private.
+     */
     std::vector<BgpAttrAsPathSegment> asPath;
     asPath.push_back(asSeq1);
     BgpUpdate2 inputUpdate =
@@ -1281,16 +1369,20 @@ TEST_F(AdjRibOutboundFixture, VerifyRemovePrivateAs) {
         outputAttrs,
         PostPolicyInfo{});
 
-    // Verify that input ASNs are not stripped.  Verify that we prepend our
-    // own ASN to the front of the sequence.
+    /*
+     * Verify that input ASNs are not stripped.  Verify that we prepend our
+     * own ASN to the front of the sequence.
+     */
     EXPECT_EQ(outputAttrs->getAsPath()->size(), 1);
     EXPECT_EQ(
         outputAttrs->getAsPath()->at(0).asSequence.size(), seg1Arr.size() + 1);
     EXPECT_EQ(outputAttrs->getAsPath()->at(0).asSequence[0], kLocalPrivateAs1);
   }
   {
-    // Receive input update with AsSequence and ConfedAsSequence segments.
-    // ConfedAsSequence is at the end of the list.
+    /*
+     * Receive input update with AsSequence and ConfedAsSequence segments.
+     * ConfedAsSequence is at the end of the list.
+     */
     std::vector<BgpAttrAsPathSegment> asPath;
     asPath.push_back(asSeq1);
     asPath.push_back(asSeq2);
@@ -1313,9 +1405,11 @@ TEST_F(AdjRibOutboundFixture, VerifyRemovePrivateAs) {
         outputAttrs,
         PostPolicyInfo{});
 
-    // Verify that ConfedAsSequence segment is removed.  Verify that the
-    // private ASNs in the AsSequence are not stripped.  Verify that we
-    // prepend our own ASN to the front of first sequence.
+    /*
+     * Verify that ConfedAsSequence segment is removed.  Verify that the
+     * private ASNs in the AsSequence are not stripped.  Verify that we
+     * prepend our own ASN to the front of first sequence.
+     */
     EXPECT_EQ(outputAttrs->getAsPath()->size(), 2);
     EXPECT_EQ(
         outputAttrs->getAsPath()->at(0).asSequence.size(), seg1Arr.size() + 1);
@@ -1324,8 +1418,10 @@ TEST_F(AdjRibOutboundFixture, VerifyRemovePrivateAs) {
     EXPECT_EQ(outputAttrs->getAsPath()->at(0).asSequence[0], kLocalPrivateAs1);
   }
   {
-    // Receive input update with AsSequence and ConfedAsSequence segments
-    // ConfedAsSequence is at the beginning of the list.
+    /*
+     * Receive input update with AsSequence and ConfedAsSequence segments
+     * ConfedAsSequence is at the beginning of the list.
+     */
     std::vector<BgpAttrAsPathSegment> asPath;
     asPath.push_back(asConfedSeq3);
     asPath.push_back(asSeq1);
@@ -1348,9 +1444,11 @@ TEST_F(AdjRibOutboundFixture, VerifyRemovePrivateAs) {
         outputAttrs,
         PostPolicyInfo{});
 
-    // Verify that ConfedAsSequence segment is removed.  Verify that the
-    // private ASNs in the AsSequence are not stripped.  Verify that we
-    // prepend our own ASN to the front of first sequence.
+    /*
+     * Verify that ConfedAsSequence segment is removed.  Verify that the
+     * private ASNs in the AsSequence are not stripped.  Verify that we
+     * prepend our own ASN to the front of first sequence.
+     */
     EXPECT_EQ(outputAttrs->getAsPath()->size(), 2);
     EXPECT_EQ(
         outputAttrs->getAsPath()->at(0).asSequence.size(), seg1Arr.size() + 1);
@@ -1359,9 +1457,9 @@ TEST_F(AdjRibOutboundFixture, VerifyRemovePrivateAs) {
     EXPECT_EQ(outputAttrs->getAsPath()->at(0).asSequence[0], kLocalPrivateAs1);
   }
 
-  //
-  // Now perform some IBGP tests with removePrivateAs true
-  //
+  /*
+   * Now perform some IBGP tests with removePrivateAs true
+   */
   setupAdjRib(
       kLocalPrivateAs1,
       kLocalPrivateAs1,
@@ -1378,8 +1476,10 @@ TEST_F(AdjRibOutboundFixture, VerifyRemovePrivateAs) {
       RemovePrivateAsConfigured(true));
 
   {
-    // Receive input update with single AsSequence segment, all of the ASNs
-    // within being private.
+    /*
+     * Receive input update with single AsSequence segment, all of the ASNs
+     * within being private.
+     */
     std::vector<BgpAttrAsPathSegment> asPath;
     asPath.push_back(asSeq1);
     BgpUpdate2 inputUpdate =
@@ -1397,13 +1497,17 @@ TEST_F(AdjRibOutboundFixture, VerifyRemovePrivateAs) {
         outputAttrs,
         PostPolicyInfo{});
 
-    // Verify that we do not remove any ASNs, even though they are all
-    // private
+    /*
+     * Verify that we do not remove any ASNs, even though they are all
+     * private
+     */
     EXPECT_EQ(outputAttrs->getAsPath(), inputAttrs->getAsPath());
   }
   {
-    // Receive input update with AsSequence and ConfedAsSequence segments.
-    // ConfedAsSequence is at the end of the list.
+    /*
+     * Receive input update with AsSequence and ConfedAsSequence segments.
+     * ConfedAsSequence is at the end of the list.
+     */
     std::vector<BgpAttrAsPathSegment> asPath;
     asPath.push_back(asSeq1);
     asPath.push_back(asSeq2);
@@ -1426,13 +1530,17 @@ TEST_F(AdjRibOutboundFixture, VerifyRemovePrivateAs) {
         outputAttrs,
         PostPolicyInfo{});
 
-    // Verify that we do not remove private ASNs, confed segment, because
-    // this is IBGP
+    /*
+     * Verify that we do not remove private ASNs, confed segment, because
+     * this is IBGP
+     */
     EXPECT_EQ(outputAttrs->getAsPath(), inputAttrs->getAsPath());
   }
   {
-    // Receive input update with AsSequence and ConfedAsSequence segments
-    // ConfedAsSequence is at the beginning of the list.
+    /*
+     * Receive input update with AsSequence and ConfedAsSequence segments
+     * ConfedAsSequence is at the beginning of the list.
+     */
     std::vector<BgpAttrAsPathSegment> asPath;
     asPath.push_back(asConfedSeq3);
     asPath.push_back(asSeq1);
@@ -1455,8 +1563,10 @@ TEST_F(AdjRibOutboundFixture, VerifyRemovePrivateAs) {
         outputAttrs,
         PostPolicyInfo{});
 
-    // Verify that we do not remove private ASNs, confed segment, because
-    // this is IBGP
+    /*
+     * Verify that we do not remove private ASNs, confed segment, because
+     * this is IBGP
+     */
     EXPECT_EQ(outputAttrs->getAsPath(), inputAttrs->getAsPath());
   }
 }
@@ -2015,8 +2125,10 @@ TEST_F(
       kEgressPolicyName,
       false /* sessionEstablished */,
       true /* sendAddPath */);
-  // setupAdjRib only applies the addPath capability via sessionEstablished;
-  // since we skip session establishment, set sendAddPath_ directly here.
+  /*
+   * setupAdjRib only applies the addPath capability via sessionEstablished;
+   * since we skip session establishment, set sendAddPath_ directly here.
+   */
   adjRib_->sendAddPath_ = true;
   adjRib_->pathIdGenerator_ = std::make_unique<PathIdGenerator>(true);
   adjRib_->egressEoRsSent_ = true;
@@ -2042,8 +2154,10 @@ TEST_F(
     attrs->setCommunities(std::move(seed));
     attrs->publish();
 
-    // Source peer is eBGP so the iBGP egress can announce; canAnnounce
-    // rejects iBGP-to-iBGP routes when isRrClient=false.
+    /*
+     * Source peer is eBGP so the iBGP egress can announce; canAnnounce
+     * rejects iBGP-to-iBGP routes when isRrClient=false.
+     */
     auto path = std::make_shared<ShadowRibRouteInfo>(
         eBgpPeer_, attrs, receivedPathId, /*isPartialDrain=*/true);
     setShadowRibRouteState(path, SHADOWRIBROUTE_IN_UPDATE);
@@ -2055,8 +2169,10 @@ TEST_F(
 
   adjRib_->processShadowRibEntryChange(srEntry);
 
-  // One add-path AdjRibEntry per multipath should now exist in PathTree, each
-  // with post-policy attrs that carry kDrainCommunity (and not kLiveCommunity).
+  /*
+   * One add-path AdjRibEntry per multipath should now exist in PathTree, each
+   * with post-policy attrs that carry kDrainCommunity (and not kLiveCommunity).
+   */
   ASSERT_EQ(
       kNexthops.size(),
       adjRib_->adjRibOutGroup_->getPeerEntriesCountFromPathTree(
@@ -2111,8 +2227,10 @@ TEST_F(
       false /* sendAddPath */);
   adjRib_->pathIdGenerator_ = std::make_unique<PathIdGenerator>(true);
 
-  // RIB-side attrs are NEVER mutated by drain; only the per-peer clone is.
-  // So update.attrs carries kLiveCommunity for BOTH announces.
+  /*
+   * RIB-side attrs are NEVER mutated by drain; only the per-peer clone is.
+   * So update.attrs carries kLiveCommunity for BOTH announces.
+   */
   auto preAttrs = std::make_shared<BgpPath>(*buildBgpPathFields(1, 1, 1, 1));
   replaceZerosInAsPath(preAttrs, adjRib_->peeringParams_.localAs);
   BgpAttrCommunitiesC seed;
@@ -2126,8 +2244,10 @@ TEST_F(
   const auto peerIdStr =
       BgpPeerId(update.peer.addr, update.peer.routerId).str();
 
-  // (1) LIVE announce (isPartialDrain=false): no drain attach -> populates
-  //     the policy cache keyed with isPartialDrain=false.
+  /*
+   * (1) LIVE announce (isPartialDrain=false): no drain attach -> populates
+   *     the policy cache keyed with isPartialDrain=false.
+   */
   {
     update.isPartialDrain = false;
     auto prePolicyAttrs = update.attrs->clone();
@@ -2139,16 +2259,20 @@ TEST_F(
     EXPECT_FALSE(hasCommunity(comms, kDrainCommunity));
   }
 
-  // (2) DRAIN announce, same prefix (isPartialDrain=true): drain attach on the
-  //     clone, then the same getPostOutPolicyAttributes path -> cache lookup.
-  //     The isPartialDrain flag is what reaches the cache key, mirroring the
-  //     production sequence in AdjRib::processRibAnnouncedEntry.
+  /*
+   * (2) DRAIN announce, same prefix (isPartialDrain=true): drain attach on the
+   *     clone, then the same getPostOutPolicyAttributes path -> cache lookup.
+   *     The isPartialDrain flag is what reaches the cache key, mirroring the
+   *     production sequence in AdjRib::processRibAnnouncedEntry.
+   */
   {
     update.isPartialDrain = true;
     auto prePolicyAttrs = update.attrs->clone();
     applyPartialDrainCommunities(prePolicyAttrs);
-    // Sanity: the input to the policy step genuinely carries the drain
-    // community (so any failure below is the cache, not the attach).
+    /*
+     * Sanity: the input to the policy step genuinely carries the drain
+     * community (so any failure below is the cache, not the attach).
+     */
     ASSERT_TRUE(
         hasCommunity(prePolicyAttrs->getCommunities().get(), kDrainCommunity));
 

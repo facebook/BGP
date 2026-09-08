@@ -107,8 +107,10 @@ TEST_F(RibPolicyIndexTest, CommunityIndexHitMiss) {
       100, 200, routing_policy::MatchValueLogicOperator::EQUAL);
   TCommunityListMatch communityList = createTCommunityListMatch(
       {communityMatch}, routing_policy::BooleanOperator::OR);
-  // Empty prefix set so only community matching decides (a non-empty set would
-  // make both entries match via matchPrefix, bypassing the community path).
+  /*
+   * Empty prefix set so only community matching decides (a non-empty set would
+   * make both entries match via matchPrefix, bypassing the community path).
+   */
   TRibRouteMatcher matcher = createTRibRouteMatcher({}, communityList);
 
   TRouteAttributeActions actions;
@@ -126,9 +128,11 @@ TEST_F(RibPolicyIndexTest, CommunityIndexHitMiss) {
   RouteAttributePolicy raPolicy(policy);
   RouteAttributePolicy::RibChange change;
 
-  // Index is always on. entry1 (comm1) matches the statement; entry2 (comm1,
-  // shared interned community-set) should hit the community index and also
-  // match. Both return the correct statement name for the shared community-set.
+  /*
+   * Index is always on. entry1 (comm1) matches the statement; entry2 (comm1,
+   * shared interned community-set) should hit the community index and also
+   * match. Both return the correct statement name for the shared community-set.
+   */
   bool result1 = raPolicy.overwriteRouteAttributes(entry1, change);
   bool result2 = raPolicy.overwriteRouteAttributes(entry2, change);
 
@@ -168,9 +172,11 @@ TEST_F(RibPolicyIndexTest, CommunityIndexNewPrefixCorrectness) {
   RouteAttributePolicy raPolicy(policy);
   RouteAttributePolicy::RibChange change;
 
-  // Index is always on. entry1 (comm1) populates the community index on miss.
-  // entry2 (same comm1, distinct prefix) hits the index without rescanning and
-  // resolves to the same statement. Correctness: both match.
+  /*
+   * Index is always on. entry1 (comm1) populates the community index on miss.
+   * entry2 (same comm1, distinct prefix) hits the index without rescanning and
+   * resolves to the same statement. Correctness: both match.
+   */
   bool result1 = raPolicy.overwriteRouteAttributes(entry1, change);
   bool result2 = raPolicy.overwriteRouteAttributes(entry2, change);
 
@@ -235,9 +241,11 @@ TEST_F(RibPolicyIndexTest, UcmpWeightIndexDeterminism) {
   RouteAttributePolicy::RibChange change1;
   RouteAttributePolicy::RibChange change2;
 
-  // Weight index is always on. Two fresh policies (each with a cold index)
-  // applied to identical entries must match and produce identical UCMP weights
-  // -- the indexed action is deterministic and semantics-preserving.
+  /*
+   * Weight index is always on. Two fresh policies (each with a cold index)
+   * applied to identical entries must match and produce identical UCMP weights
+   * -- the indexed action is deterministic and semantics-preserving.
+   */
   auto entry1 = entry;
   bool result1 = raPolicy1.overwriteRouteAttributes(entry1, change1);
 
@@ -249,8 +257,10 @@ TEST_F(RibPolicyIndexTest, UcmpWeightIndexDeterminism) {
   EXPECT_EQ(entry1.getRibPolicyUcmpWeight(), entry2.getRibPolicyUcmpWeight());
 }
 
-// STATEMENT MATCHING: Two distinct community statements with distinct LBW
-// actions
+/*
+ * STATEMENT MATCHING: Two distinct community statements with distinct LBW
+ * actions
+ */
 TEST_F(RibPolicyIndexTest, DistinctCommunityStatementsCorrectLbw) {
   auto prefix1 = folly::IPAddress::createNetwork("1.1.1.0/24");
   auto prefix2 = folly::IPAddress::createNetwork("2.2.2.0/24");
@@ -659,8 +669,10 @@ TEST_F(RibPolicyIndexTest, UcmpDivideWeightsByMatchingPathCount) {
   EXPECT_EQ(50, weights->at(nh2));
 }
 
-// WEIGHTS: Strict match flag (apply_all_actions_or_fallback_to_ecmp=true)
-// bails when multipath count != action count
+/*
+ * WEIGHTS: Strict match flag (apply_all_actions_or_fallback_to_ecmp=true)
+ * bails when multipath count != action count
+ */
 TEST_F(RibPolicyIndexTest, UcmpStrictMatchFlag) {
   auto prefix = folly::IPAddress::createNetwork("1.1.1.0/24");
 
@@ -718,8 +730,10 @@ TEST_F(RibPolicyIndexTest, UcmpStrictMatchFlag) {
   EXPECT_EQ(7, weights->at(nh2));
 }
 
-// WEIGHTS: All-nexthops-must-match: bail if any nexthop's path matches no
-// action
+/*
+ * WEIGHTS: All-nexthops-must-match: bail if any nexthop's path matches no
+ * action
+ */
 TEST_F(RibPolicyIndexTest, UcmpAllNexthopsMustMatch) {
   auto prefix = folly::IPAddress::createNetwork("1.1.1.0/24");
 
@@ -740,8 +754,10 @@ TEST_F(RibPolicyIndexTest, UcmpAllNexthopsMustMatch) {
 
   TRibRouteMatcher routeMatcher = createTRibRouteMatcher({prefix});
 
-  // Single action: community 100:1 -> weight 10
-  // path1 matches, path2 doesn't
+  /*
+   * Single action: community 100:1 -> weight 10
+   * path1 matches, path2 doesn't
+   */
   TBgpPathMatcher pathMatcher;
   TBgpCommunityMatch communityMatch = createTBgpCommunityMatch(
       100, 1, routing_policy::MatchValueLogicOperator::EQUAL);
@@ -953,8 +969,10 @@ TEST_F(RibPolicyIndexTest, RouteChurnSameAttrsCorrect) {
   EXPECT_EQ(entry2.getRibPolicyUcmpWeight(), 1000);
 }
 
-// STALENESS: Route churn with different attrs (different prefixes to avoid
-// prefix cache)
+/*
+ * STALENESS: Route churn with different attrs (different prefixes to avoid
+ * prefix cache)
+ */
 TEST_F(RibPolicyIndexTest, RouteChurnDifferentAttrsCorrect) {
   auto prefix1 = folly::IPAddress::createNetwork("1.1.1.0/24");
   auto prefix2 = folly::IPAddress::createNetwork("2.2.2.0/24");
@@ -1140,11 +1158,13 @@ TEST_F(RibPolicyIndexTest, ScaleManyCommunityStatementsIndexReuse) {
   }
 }
 
-// DEFENSIVE: moveIndices() swaps the community index (community-set ->
-// statement NAME) into a new policy on an expiration-only change, assuming the
-// name set is unchanged. If that contract is ever violated, a community-index
-// hit must degrade to no-match instead of throwing std::out_of_range and
-// aborting the RIB walk.
+/*
+ * DEFENSIVE: moveIndices() swaps the community index (community-set ->
+ * statement NAME) into a new policy on an expiration-only change, assuming the
+ * name set is unchanged. If that contract is ever violated, a community-index
+ * hit must degrade to no-match instead of throwing std::out_of_range and
+ * aborting the RIB walk.
+ */
 TEST_F(RibPolicyIndexTest, CommunityIndexStaleStatementTreatedAsNoMatch) {
   auto prefix = folly::IPAddress::createNetwork("1.1.1.0/24");
   auto comm = std::make_pair<uint16_t, uint16_t>(100, 200);
@@ -1178,23 +1198,29 @@ TEST_F(RibPolicyIndexTest, CommunityIndexStaleStatementTreatedAsNoMatch) {
   newPolicyThrift.statements()->emplace("stmtNew", stmt);
   RouteAttributePolicy newPolicy(newPolicyThrift);
 
-  // Contract violation: swap in the community index keyed to the now-absent
-  // "stmtOld". The new policy's match cache stays empty, so a lookup must go
-  // through the swapped-in community index.
+  /*
+   * Contract violation: swap in the community index keyed to the now-absent
+   * "stmtOld". The new policy's match cache stays empty, so a lookup must go
+   * through the swapped-in community index.
+   */
   newPolicy.moveIndices(oldPolicy);
 
-  // Same path -> same interned community-set -> hits the swapped-in index
-  // entry.
+  /*
+   * Same path -> same interned community-set -> hits the swapped-in index
+   * entry.
+   */
   auto newEntry = createRibEntryWithPaths(prefix, {path});
   RouteAttributePolicy::RibChange newChange;
   EXPECT_FALSE(newPolicy.overwriteRouteAttributes(newEntry, newChange));
   EXPECT_FALSE(newEntry.getRibPolicyUcmpWeight().has_value());
 }
 
-// DEFENSIVE: moveCache() migrates the prefix match cache (prefix -> statement
-// NAME) alongside moveIndices() on the same expiration-only path. A positive
-// cache hit for a statement absent from the new policy must degrade to no-match
-// instead of throwing std::out_of_range.
+/*
+ * DEFENSIVE: moveCache() migrates the prefix match cache (prefix -> statement
+ * NAME) alongside moveIndices() on the same expiration-only path. A positive
+ * cache hit for a statement absent from the new policy must degrade to no-match
+ * instead of throwing std::out_of_range.
+ */
 TEST_F(RibPolicyIndexTest, MatchCacheStaleStatementTreatedAsNoMatch) {
   auto prefix = folly::IPAddress::createNetwork("1.1.1.0/24");
   auto comm = std::make_pair<uint16_t, uint16_t>(100, 200);
@@ -1215,8 +1241,10 @@ TEST_F(RibPolicyIndexTest, MatchCacheStaleStatementTreatedAsNoMatch) {
   stmt.matcher() = matcher;
   stmt.actions() = actions;
 
-  // Old policy names the statement "stmtOld"; populate its match cache
-  // (prefix -> "stmtOld").
+  /*
+   * Old policy names the statement "stmtOld"; populate its match cache
+   * (prefix -> "stmtOld").
+   */
   TRouteAttributePolicy oldPolicyThrift;
   oldPolicyThrift.statements()->emplace("stmtOld", stmt);
   RouteAttributePolicy oldPolicy(oldPolicyThrift);
@@ -1229,8 +1257,10 @@ TEST_F(RibPolicyIndexTest, MatchCacheStaleStatementTreatedAsNoMatch) {
   newPolicyThrift.statements()->emplace("stmtNew", stmt);
   RouteAttributePolicy newPolicy(newPolicyThrift);
 
-  // Contract violation: swap in the match cache keyed to the now-absent
-  // "stmtOld", forcing the positive cache-hit path.
+  /*
+   * Contract violation: swap in the match cache keyed to the now-absent
+   * "stmtOld", forcing the positive cache-hit path.
+   */
   newPolicy.moveCache(oldPolicy);
 
   auto newEntry = createRibEntryWithPaths(prefix, {path});
@@ -1247,9 +1277,11 @@ TEST_F(RibPolicyIndexTest, RejectsMatcherWithBothPrefixAndCommunity) {
   TCommunityListMatch communityList = createTCommunityListMatch(
       {communityMatch}, routing_policy::BooleanOperator::OR);
 
-  // A route matcher must carry exactly one matcher; specifying both a prefix
-  // set and a community list is rejected -- use two separate statements
-  // instead.
+  /*
+   * A route matcher must carry exactly one matcher; specifying both a prefix
+   * set and a community list is rejected -- use two separate statements
+   * instead.
+   */
   TRibRouteMatcher matcher = createTRibRouteMatcher({prefix}, communityList);
   EXPECT_THROW(RibPolicyRouteMatcher{matcher}, BgpError);
 }

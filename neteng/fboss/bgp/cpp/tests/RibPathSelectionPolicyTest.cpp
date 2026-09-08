@@ -108,10 +108,12 @@ TEST_F(RibFixtureAddPathTestSuite, PathSelectionReadOnlyTest) {
   // criteria min nexthop = 2, default min nexthop = 3
   auto tPathSelector = createTPathSlectorWithOneMatcher(tMatcher, 2, 3);
 
-  // setup:
-  // next hop update for prefix
-  // rib policy set for prefix
-  // sendInitialPathComputation to turn rib into write mode
+  /*
+   * setup:
+   * next hop update for prefix
+   * rib policy set for prefix
+   * sendInitialPathComputation to turn rib into write mode
+   */
 
   auto ribFuture = rib_->getRibPrepareFibProgrammingFuture();
   // send route from localPeer_
@@ -137,13 +139,17 @@ TEST_F(RibFixtureAddPathTestSuite, PathSelectionReadOnlyTest) {
   EXPECT_NE(rib_->ribEntries_.end(), ribEntryIter);
   const auto& ribEntry = ribEntryIter->second;
 
-  // RibPolicy will be applied after EOR is received. Since we only have one
-  // path here, both min nexthop criteria will be violated and we receive no
-  // path. As a result, no fib programming should be triggered in this case
+  /*
+   * RibPolicy will be applied after EOR is received. Since we only have one
+   * path here, both min nexthop criteria will be violated and we receive no
+   * path. As a result, no fib programming should be triggered in this case
+   */
   EXPECT_EQ(nullptr, ribEntry.getBestPath());
 
-  // Right after EOR, a fullSync will be issued and there is only one
-  // route in fibBatchList_
+  /*
+   * Right after EOR, a fullSync will be issued and there is only one
+   * route in fibBatchList_
+   */
   EXPECT_EQ(1, rib_->fibItems.size());
 }
 
@@ -173,8 +179,10 @@ TEST_P(RibFixtureAddPathTestSuite, PathSelectionIdenticalPolicyTest) {
   sendAnnouncement(prefixBatch, localPeer_, attr);
   sendInitialPathComputation();
 
-  // Ensure that we have finished the route installation to investigate only
-  // the results from sendRibPolicySet
+  /*
+   * Ensure that we have finished the route installation to investigate only
+   * the results from sendRibPolicySet
+   */
   ribFuture.wait();
 
   ribFuture = rib_->getRibPrepareFibProgrammingFuture();
@@ -226,8 +234,10 @@ TEST_P(RibFixtureAddPathTestSuite, PathSelectionReplaceTest) {
   sendAnnouncement(prefixBatch, localPeer_, attr);
   sendInitialPathComputation();
 
-  // Ensure that we have finished the route installation to investigate only
-  // the results from sendRibPolicySet
+  /*
+   * Ensure that we have finished the route installation to investigate only
+   * the results from sendRibPolicySet
+   */
   ribFuture.wait();
 
   ribFuture = rib_->getRibPrepareFibProgrammingFuture();
@@ -241,8 +251,10 @@ TEST_P(RibFixtureAddPathTestSuite, PathSelectionReplaceTest) {
   // push a different rib policy
   ribFuture = rib_->getRibPrepareFibProgrammingFuture();
 
-  // change the min nexthop = 1 for the centralized criteria
-  // send the different rib policy over
+  /*
+   * change the min nexthop = 1 for the centralized criteria
+   * send the different rib policy over
+   */
   sendPathSelectionPolicySet(
       createTPathSelectionPolicyWithPathSelector({kV6Prefix1}, tPathSelector2));
   rib_->waitForPathSelectionPolicyUpdate();
@@ -285,8 +297,10 @@ TEST_P(RibFixtureAddPathTestSuite, PathSelectionExpirationTest) {
   sendAnnouncement(prefixBatch, localPeer_, attr);
   sendInitialPathComputation();
 
-  // Ensure that we have finished the route installation to investigate only
-  // the results from sendRibPolicySet
+  /*
+   * Ensure that we have finished the route installation to investigate only
+   * the results from sendRibPolicySet
+   */
   ribFuture.wait();
 
   ribFuture = rib_->getRibPrepareFibProgrammingFuture();
@@ -350,8 +364,10 @@ TEST_P(RibFixtureAddPathTestSuite, PathSelectionMultipleUpdateTest) {
   sendAnnouncement(prefixBatch2, localPeer_, attr);
   sendInitialPathComputation();
 
-  // Ensure that we have finished the route installation to investigate only
-  // the results from sendRibPolicySet
+  /*
+   * Ensure that we have finished the route installation to investigate only
+   * the results from sendRibPolicySet
+   */
   ribFuture.wait();
 
   ribFuture = rib_->getRibPrepareFibProgrammingFuture();
@@ -391,14 +407,18 @@ TEST_P(RibFixtureAddPathTestSuite, PathSelectionMultipleUpdateTest) {
     {
       // For kV6Prefix1
       auto& item = activePathSelectionCriteria[0];
-      // Match the criteria, no criteria matched
-      // BGP native min nexhop filtered out all the paths
+      /*
+       * Match the criteria, no criteria matched
+       * BGP native min nexhop filtered out all the paths
+       */
       EXPECT_EQ(item.criteria_list()->size(), 0);
       EXPECT_EQ(*item.bgp_native_path_selection_min_nexthop(), 3);
     }
     {
-      // For kV6Prefix2
-      // Does not match a statement, the resulting TPathSelector is empty
+      /*
+       * For kV6Prefix2
+       * Does not match a statement, the resulting TPathSelector is empty
+       */
       EXPECT_EQ(activePathSelectionCriteria[1], TPathSelector());
     }
   }
@@ -429,8 +449,10 @@ TEST_P(RibFixtureAddPathTestSuite, PathSelectionClearTest) {
   sendAnnouncement(prefixBatch, localPeer_, attr);
   sendInitialPathComputation();
 
-  // Ensure that we have finished the route installation to investigate only
-  // the results from sendRibPolicySet
+  /*
+   * Ensure that we have finished the route installation to investigate only
+   * the results from sendRibPolicySet
+   */
   ribFuture.wait();
 
   ribFuture = rib_->getRibPrepareFibProgrammingFuture();
@@ -491,14 +513,18 @@ TEST_P(
   nettools::bgplib::BgpAttrCommunitiesC communities;
   communities.emplace_back(200, 666);
   auto tMatcher = createCommunityMatch(200, 666, bgp_policy::Origin::EGP);
-  // criteria min nexthop = 2, default min nexthop = 3
-  // centralized criteria does not match as no communities are specified for
-  // paths
+  /*
+   * criteria min nexthop = 2, default min nexthop = 3
+   * centralized criteria does not match as no communities are specified for
+   * paths
+   */
   auto tPathSelector = createTPathSlectorWithOneMatcher(tMatcher, 2, 3);
   tPathSelector.drain_on_min_nexthop_violation() = true;
 
-  // CPS roll out case:
-  // - start with empty FIB
+  /*
+   * CPS roll out case:
+   * - start with empty FIB
+   */
   auto ribFuture = rib_->getRibPrepareFibProgrammingFuture();
   sendInitialPathComputation();
   ribFuture.wait();
@@ -616,8 +642,10 @@ TEST_P(
     EXPECT_EQ(kDefaultPathID, announcement.entries[0].pathIdToSend);
   }
 
-  // CPS roll back case:
-  // - clear rib-policy -> expect announcement to peers (drain → normal)
+  /*
+   * CPS roll back case:
+   * - clear rib-policy -> expect announcement to peers (drain → normal)
+   */
   ribFuture = rib_->getRibPrepareFibProgrammingFuture();
   rib_->clearRibPolicy();
   rib_->waitForRibPolicyClear();
@@ -636,8 +664,10 @@ TEST_P(
     EXPECT_EQ(kDefaultPathID, announcement.entries[0].pathIdToSend);
   }
 
-  // alternatively, we could also clear MNH
-  // we first inject path selector with default MNH 3
+  /*
+   * alternatively, we could also clear MNH
+   * we first inject path selector with default MNH 3
+   */
   ribFuture = rib_->getRibPrepareFibProgrammingFuture();
   sendPathSelectionPolicySet(
       createTPathSelectionPolicyWithPathSelector({kV6Prefix1}, tPathSelector));
@@ -695,13 +725,17 @@ TEST_P(RibFixtureAddPathTestSuite, PathSelectionRollOutBackTest) {
   nettools::bgplib::BgpAttrCommunitiesC communities;
   communities.emplace_back(200, 666);
   auto tMatcher = createCommunityMatch(200, 666, bgp_policy::Origin::EGP);
-  // criteria min nexthop = 2, default min nexthop = 3
-  // centralized criteria does not match as no communities are specified for
-  // paths
+  /*
+   * criteria min nexthop = 2, default min nexthop = 3
+   * centralized criteria does not match as no communities are specified for
+   * paths
+   */
   auto tPathSelector = createTPathSlectorWithOneMatcher(tMatcher, 2, 3);
 
-  // CPS roll out case:
-  // - start with empty FIB
+  /*
+   * CPS roll out case:
+   * - start with empty FIB
+   */
   auto ribFuture = rib_->getRibPrepareFibProgrammingFuture();
   sendInitialPathComputation();
   ribFuture.wait();
@@ -763,8 +797,10 @@ TEST_P(RibFixtureAddPathTestSuite, PathSelectionRollOutBackTest) {
   sendAnnouncement(prefixBatch, eBgpPeer5_, attr);
   ribFuture.wait();
 
-  // rib should be altered by rib policy
-  // The paths will be programmed to FIB
+  /*
+   * rib should be altered by rib policy
+   * The paths will be programmed to FIB
+   */
   EXPECT_EQ(5, ribEntry.getMultipaths().size());
 
   // - same route dropped 3 nexthops -> expect FIB withdrawal
@@ -777,8 +813,10 @@ TEST_P(RibFixtureAddPathTestSuite, PathSelectionRollOutBackTest) {
   // no path available
   EXPECT_EQ(0, ribEntry.getMultipaths().size());
 
-  // CPS roll back case:
-  // - clear rib-policy -> expect FIB installation
+  /*
+   * CPS roll back case:
+   * - clear rib-policy -> expect FIB installation
+   */
   ribFuture = rib_->getRibPrepareFibProgrammingFuture();
   rib_->clearRibPolicy();
   rib_->waitForRibPolicyClear();
@@ -791,8 +829,10 @@ TEST_P(RibFixtureAddPathTestSuite, PathSelectionRollOutBackTest) {
   // The route is installed to fib
   EXPECT_EQ(1, rib_->fibItems.size());
 
-  // alternatively, we could also clear MNH
-  // we first inject path selector with default MNH 3
+  /*
+   * alternatively, we could also clear MNH
+   * we first inject path selector with default MNH 3
+   */
   ribFuture = rib_->getRibPrepareFibProgrammingFuture();
   sendPathSelectionPolicySet(
       createTPathSelectionPolicyWithPathSelector({kV6Prefix1}, tPathSelector));
@@ -829,8 +869,10 @@ TEST_P(RibFixtureAddPathTestSuite, PathSelectionMinAggLbwbpsRelaxTest) {
   nettools::bgplib::BgpAttrCommunitiesC communities;
   communities.emplace_back(200, 666);
   auto tMatcher = createCommunityMatch(200, 666, bgp_policy::Origin::EGP);
-  // Set min aggregate LBW threshold to 30 Gbps with relax mode enabled
-  // Using nullopt for min nexthop params, 30 Gbps threshold, relax=true
+  /*
+   * Set min aggregate LBW threshold to 30 Gbps with relax mode enabled
+   * Using nullopt for min nexthop params, 30 Gbps threshold, relax=true
+   */
   auto tPathSelector = createTPathSlectorWithOneMatcher(
       tMatcher,
       std::nullopt, // criteriaMinNextHop
@@ -838,8 +880,10 @@ TEST_P(RibFixtureAddPathTestSuite, PathSelectionMinAggLbwbpsRelaxTest) {
       static_cast<int64_t>(30 * BpsPerGBps), // 30 Gbps threshold
       true); // relaxMinAggLbwbps
 
-  // CPS roll out case:
-  // - start with empty FIB
+  /*
+   * CPS roll out case:
+   * - start with empty FIB
+   */
   auto ribFuture = rib_->getRibPrepareFibProgrammingFuture();
   sendInitialPathComputation();
   ribFuture.wait();
@@ -870,8 +914,10 @@ TEST_P(RibFixtureAddPathTestSuite, PathSelectionMinAggLbwbpsRelaxTest) {
   // Nothing is programmed to FIB yet
   EXPECT_EQ(0, rib_->fibItems.size());
 
-  // - got route with 2 nexthops, each with 10 Gbps LBW (total 20 Gbps < 30 Gbps
-  // threshold) -> expect route in FIB but no announcement (relax mode)
+  /*
+   * - got route with 2 nexthops, each with 10 Gbps LBW (total 20 Gbps < 30 Gbps
+   * threshold) -> expect route in FIB but no announcement (relax mode)
+   */
   auto attr =
       std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(2, 1, 0, 2));
   attr->setNexthop(kV4Nexthop1);
@@ -897,8 +943,10 @@ TEST_P(RibFixtureAddPathTestSuite, PathSelectionMinAggLbwbpsRelaxTest) {
   // Expect no announcement (aggregate LBW 20 Gbps < 30 Gbps threshold)
   EXPECT_TRUE(ribOutQ_.empty());
 
-  // - same route got updated with 1 more nexthop with 10 Gbps LBW
-  // (total 30 Gbps >= 30 Gbps threshold) -> expect announcement
+  /*
+   * - same route got updated with 1 more nexthop with 10 Gbps LBW
+   * (total 30 Gbps >= 30 Gbps threshold) -> expect announcement
+   */
   ribFuture = rib_->getRibPrepareFibProgrammingFuture();
   sendAnnouncement(prefixBatch, eBgpPeer3_, attr);
   ribFuture.wait();
@@ -935,8 +983,10 @@ TEST_P(RibFixtureAddPathTestSuite, PathSelectionMinAggLbwbpsRelaxTest) {
   // FIB should still have the route (relax mode)
   EXPECT_EQ(1, rib_->fibItems.size());
 
-  // CPS roll back case:
-  // - clear rib-policy -> expect announcement to peers
+  /*
+   * CPS roll back case:
+   * - clear rib-policy -> expect announcement to peers
+   */
   ribFuture = rib_->getRibPrepareFibProgrammingFuture();
   rib_->clearRibPolicy();
   rib_->waitForRibPolicyClear();
@@ -975,8 +1025,10 @@ TEST_P(RibFixtureAddPathTestSuite, PathSelectionMinAggLbwbpsTest) {
       static_cast<int64_t>(30 * BpsPerGBps), // 30 Gbps threshold
       false); // relaxMinAggLbwbps = false
 
-  // CPS roll out case:
-  // - start with empty FIB
+  /*
+   * CPS roll out case:
+   * - start with empty FIB
+   */
   auto ribFuture = rib_->getRibPrepareFibProgrammingFuture();
   sendInitialPathComputation();
   ribFuture.wait();
@@ -1005,8 +1057,10 @@ TEST_P(RibFixtureAddPathTestSuite, PathSelectionMinAggLbwbpsTest) {
 
   EXPECT_EQ(0, rib_->fibItems.size());
 
-  // - got route with 2 nexthops, each with 10 Gbps LBW (total 20 Gbps < 30 Gbps
-  // threshold) -> expect no FIB installation and no announcement
+  /*
+   * - got route with 2 nexthops, each with 10 Gbps LBW (total 20 Gbps < 30 Gbps
+   * threshold) -> expect no FIB installation and no announcement
+   */
   auto attr =
       std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(2, 1, 0, 2));
   attr->setNexthop(kV4Nexthop1);
@@ -1029,8 +1083,10 @@ TEST_P(RibFixtureAddPathTestSuite, PathSelectionMinAggLbwbpsTest) {
   // no route in FIB (not relax mode)
   EXPECT_EQ(0, rib_->fibItems.size());
 
-  // - same route got updated with 1 more nexthop with 10 Gbps LBW
-  // (total 30 Gbps >= 30 Gbps threshold) -> expect FIB install and announcement
+  /*
+   * - same route got updated with 1 more nexthop with 10 Gbps LBW
+   * (total 30 Gbps >= 30 Gbps threshold) -> expect FIB install and announcement
+   */
   ribFuture = rib_->getRibPrepareFibProgrammingFuture();
   sendAnnouncement(prefixBatch, eBgpPeer3_, attr);
   ribFuture.wait();
@@ -1064,8 +1120,10 @@ TEST_P(RibFixtureAddPathTestSuite, PathSelectionMinAggLbwbpsTest) {
     ASSERT_TRUE(std::holds_alternative<RibOutWithdrawal>(msg));
   }
 
-  // CPS roll back case:
-  // - clear rib-policy -> expect FIB installation
+  /*
+   * CPS roll back case:
+   * - clear rib-policy -> expect FIB installation
+   */
   ribFuture = rib_->getRibPrepareFibProgrammingFuture();
   rib_->clearRibPolicy();
   rib_->waitForRibPolicyClear();
@@ -1098,8 +1156,10 @@ TEST_P(RibFixtureAddPathTestSuite, PathSelectionMinAggLbwbpsMissingLbwTest) {
       static_cast<int64_t>(30 * BpsPerGBps), // 30 Gbps threshold
       false); // relaxMinAggLbwbps = false
 
-  // CPS roll out case:
-  // - start with empty FIB
+  /*
+   * CPS roll out case:
+   * - start with empty FIB
+   */
   auto ribFuture = rib_->getRibPrepareFibProgrammingFuture();
   sendInitialPathComputation();
   ribFuture.wait();
@@ -1124,8 +1184,10 @@ TEST_P(RibFixtureAddPathTestSuite, PathSelectionMinAggLbwbpsMissingLbwTest) {
 
   EXPECT_EQ(0, rib_->fibItems.size());
 
-  // - got route with 2 nexthops, NO LBW set on paths
-  // -> should fall back to BGP native path selection, install to FIB
+  /*
+   * - got route with 2 nexthops, NO LBW set on paths
+   * -> should fall back to BGP native path selection, install to FIB
+   */
   auto attr =
       std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(2, 1, 0, 2));
   attr->setNexthop(kV4Nexthop1);
@@ -1187,8 +1249,10 @@ TEST_P(RibFixtureAddPathTestSuite, AnnouncementTest) {
   sendInitialPathComputation();
   fibFuture.wait();
 
-  // Ensure that we have finished the route installation to investigate only
-  // the results from sendPathSelectionPolicySet
+  /*
+   * Ensure that we have finished the route installation to investigate only
+   * the results from sendPathSelectionPolicySet
+   */
   ribFuture.wait();
 
   {
@@ -1208,8 +1272,10 @@ TEST_P(RibFixtureAddPathTestSuite, AnnouncementTest) {
 
   ribFuture = rib_->getRibPrepareFibProgrammingFuture();
 
-  // send rib policy over on prefix 1, which yields no best path due to default
-  // MNH
+  /*
+   * send rib policy over on prefix 1, which yields no best path due to default
+   * MNH
+   */
   sendPathSelectionPolicySet(
       createTPathSelectionPolicyWithPathSelector({kV6Prefix1}, tPathSelector));
   rib_->waitForPathSelectionPolicyUpdate();
@@ -1259,12 +1325,16 @@ TEST_P(RibFixtureAddPathTestSuite, AnnouncementTest) {
 }
 
 TEST_P(RibFixtureAddPathTestSuite, SetGetClearPathSelectionPolicyTest) {
-  // test setPathSelectionPolicy, getPathSelectionPolicy, and
-  // clearPathSelectionPolicy
+  /*
+   * test setPathSelectionPolicy, getPathSelectionPolicy, and
+   * clearPathSelectionPolicy
+   */
   rib_->setFibBatchTime(std::chrono::milliseconds(2));
 
-  // Create the tPathSelectionPolicy and tRibPolicy for testing
-  // Create a RibPolicy to select the path with community 200:666
+  /*
+   * Create the tPathSelectionPolicy and tRibPolicy for testing
+   * Create a RibPolicy to select the path with community 200:666
+   */
   auto tMatcher = createCommunityMatch(200, 666, bgp_policy::Origin::EGP);
   auto tPathSelector = createTPathSlectorWithOneMatcher(tMatcher);
 
@@ -1392,8 +1462,10 @@ TEST_P(RibFsdbAddPathTestSuite, ReplacePathSelectionPolicyTest) {
 
   rib_->setFibBatchTime(std::chrono::milliseconds(2));
 
-  // Create the tPathSelectionPolicy and tRibPolicy for testing
-  // Create a RibPolicy to select the path with community 200:666
+  /*
+   * Create the tPathSelectionPolicy and tRibPolicy for testing
+   * Create a RibPolicy to select the path with community 200:666
+   */
   auto tMatcher = createCommunityMatch(200, 666, bgp_policy::Origin::EGP);
   auto tPathSelector = createTPathSlectorWithOneMatcher(tMatcher);
 
@@ -1445,12 +1517,16 @@ TEST_P(RibFsdbAddPathTestSuite, ReplacePathSelectionPolicyTest) {
         5, ASSERT_EVENTUALLY_TRUE(subscribedPolicy.rlock()->has_value()));
   }
   {
-    // Add path selection policy
-    // It should succeed as we have no path selection policy before
+    /*
+     * Add path selection policy
+     * It should succeed as we have no path selection policy before
+     */
     auto ribFuture = rib_->getRibPrepareFibProgrammingFuture();
-    // We need to run replacePathSelectionPolicy in runInEventBaseThreadAndWait
-    // as we could potentially call schedulePrepareFibProgrammingTimer, which
-    // should be run in the Rib event base thread
+    /*
+     * We need to run replacePathSelectionPolicy in runInEventBaseThreadAndWait
+     * as we could potentially call schedulePrepareFibProgrammingTimer, which
+     * should be run in the Rib event base thread
+     */
     rib_->evb_.runInEventBaseThreadAndWait([&]() {
       rib_->replacePathSelectionPolicy(
           std::make_unique<PathSelectionPolicy>(tPathSelectionPolicy));
@@ -1476,8 +1552,10 @@ TEST_P(RibFsdbAddPathTestSuite, ReplacePathSelectionPolicyTest) {
       rib_->replacePathSelectionPolicy(
           std::make_unique<PathSelectionPolicy>(tPathSelectionPolicy));
     });
-    // the policy is changed, and hence we should trigger fib programming
-    // preparation
+    /*
+     * the policy is changed, and hence we should trigger fib programming
+     * preparation
+     */
     ribFuture.wait();
     EXPECT_NE(rib_->pathSelectionPolicy_, nullptr);
 
@@ -1561,9 +1639,11 @@ TEST_P(RibFsdbAddPathTestSuite, ReplacePathSelectionPolicyForceUpdateTest) {
     EXPECT_FALSE(hasUpdate);
   });
 
-  // Same statements, different (lower) version, with forceUpdate=true - the
-  // version is part of policy equality, so this counts as a content change and
-  // forceUpdate bypasses the version-monotonicity check, so it should update.
+  /*
+   * Same statements, different (lower) version, with forceUpdate=true - the
+   * version is part of policy equality, so this counts as a content change and
+   * forceUpdate bypasses the version-monotonicity check, so it should update.
+   */
   rib_->evb_.runInEventBaseThreadAndWait([&]() {
     auto hasUpdate = rib_->replacePathSelectionPolicy(
         std::make_unique<PathSelectionPolicy>(makePolicy(kV4Prefix1, 50)),
@@ -1585,13 +1665,15 @@ TEST_P(RibFsdbAddPathTestSuite, ReplacePathSelectionPolicyForceUpdateTest) {
 }
 
 TEST_F(RibFixtureCountConfedsInAsPathLen, LongestPathFirstTest) {
-  // Build 3 paths:
-  //  1st: 2 asns in AsSequence, 1 confed in ConfedAsSequence
-  //  2nd: 1 asn, 2 Confeds
-  //  3rd: 0 asn, 4 confeds
-  // With ribPolicy selects all 3 paths as multipaths, verify that :
-  //  * all 3 paths are selected as multipaths
-  //  * 3th should be announced due to longest as + confed path len.
+  /*
+   * Build 3 paths:
+   *  1st: 2 asns in AsSequence, 1 confed in ConfedAsSequence
+   *  2nd: 1 asn, 2 Confeds
+   *  3rd: 0 asn, 4 confeds
+   * With ribPolicy selects all 3 paths as multipaths, verify that :
+   *  * all 3 paths are selected as multipaths
+   *  * 3th should be announced due to longest as + confed path len.
+   */
   auto attrs1 = std::make_shared<facebook::bgp::BgpPath>(
       *buildBgpPathFields(2, 1, 0, 0, 1));
   auto attrs2 = std::make_shared<facebook::bgp::BgpPath>(
@@ -1640,8 +1722,10 @@ TEST_F(RibFixtureCountConfedsInAsPathLen, LongestPathFirstTest) {
   sendInitialPathComputation();
   ribFuture.wait();
 
-  // Without ribPolicy, the result should be the same as
-  // nativeBestPathCompute
+  /*
+   * Without ribPolicy, the result should be the same as
+   * nativeBestPathCompute
+   */
   {
     auto prefix = std::make_unique<std::string>(
         folly::IPAddress::networkToString(kV6Prefix1));

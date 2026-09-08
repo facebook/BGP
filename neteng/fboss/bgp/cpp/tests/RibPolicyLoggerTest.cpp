@@ -49,8 +49,10 @@ TEST(RibPolicyLoggerTest, BasicTest) {
     auto logger = std::make_unique<ScubaRibPolicyLogger>("rsw001", mockScuba);
     EXPECT_LT(0, logger->log(1, 2));
   }
-  // test with prod scuba to verify that creating a logger for
-  // non-existent table and logging to it won't crash
+  /*
+   * test with prod scuba to verify that creating a logger for
+   * non-existent table and logging to it won't crash
+   */
   {
     auto rand32 = folly::Random::rand32();
     auto scuba = std::make_shared<rfe::ScubaData>(

@@ -39,8 +39,10 @@ TEST(UtilsTest, TestlogRouteWithNexthops) {
 
   EXPECT_EQ(outputMessage, expectedMessage);
 
-  // Test case 2: weightedNexthops is not nullptr and all next hops have
-  // non-zero weights
+  /*
+   * Test case 2: weightedNexthops is not nullptr and all next hops have
+   * non-zero weights
+   */
   const folly::IPAddress nh1("10.0.1.1");
   const folly::IPAddress nh2("7.0.1.3");
   const uint32_t weight1 = 53;
@@ -67,8 +69,10 @@ TEST(UtilsTest, TestlogRouteWithNexthops) {
 
   EXPECT_EQ(outputMessage, expectedMessage);
 
-  // Test case 3: weightedNexthops is not nullptr and some next hops have zero
-  // weights
+  /*
+   * Test case 3: weightedNexthops is not nullptr and some next hops have zero
+   * weights
+   */
   const folly::IPAddress nh3("3.98.77.66");
   const uint32_t weight3 = 0;
 
@@ -192,9 +196,11 @@ TEST(UtilsTest, WriteFileAtomicTest) {
   boost::filesystem::remove("some_file.txt");
 }
 
-// we test useLargestFreeInterval with various pathID vectors which are
-// initialized in sorted order for readability, but they should be unordered
-// for testing purposes, hence this convenient helper
+/*
+ * we test useLargestFreeInterval with various pathID vectors which are
+ * initialized in sorted order for readability, but they should be unordered
+ * for testing purposes, hence this convenient helper
+ */
 void shuffle(std::vector<uint32_t>& vec) {
   unsigned seed = 123; // we don't need a different order every run
   std::shuffle(vec.begin(), vec.end(), std::default_random_engine(seed));

@@ -189,8 +189,10 @@ TEST_F(PerPeerGracefulRestartTest, TestPerPeerOverridesPerGroup) {
   auto peeringParams =
       bgpConfig->getPeeringParamsForPeer(*peerConfigIter->second);
 
-  // Should use per-peer graceful restart time (30 seconds), overriding
-  // per-group
+  /*
+   * Should use per-peer graceful restart time (30 seconds), overriding
+   * per-group
+   */
   ASSERT_TRUE(peeringParams.grRestartTime.has_value());
   EXPECT_EQ(peeringParams.grRestartTime->count(), 30);
 }
@@ -233,8 +235,10 @@ TEST_F(PerPeerGracefulRestartTest, TestDisableGracefulRestartPerPeer) {
 TEST_F(
     PerPeerGracefulRestartTest,
     TestBackwardCompatibilityNoGracefulRestartField) {
-  // Test backward compatibility: peer with no graceful_restart_seconds field at
-  // all
+  /*
+   * Test backward compatibility: peer with no graceful_restart_seconds field at
+   * all
+   */
   BgpPeer peer;
   peer.peer_addr() = "10.0.0.2";
   peer.remote_as_4_byte() = 65002;
@@ -247,8 +251,10 @@ TEST_F(
   timers.hold_time_seconds() = 30;
   timers.keep_alive_seconds() = 10;
   timers.out_delay_seconds() = 0;
-  // Note: NOT setting graceful_restart_seconds - this tests backward
-  // compatibility
+  /*
+   * Note: NOT setting graceful_restart_seconds - this tests backward
+   * compatibility
+   */
   peer.bgp_peer_timers() = timers;
 
   config_.peers() = std::vector<BgpPeer>{peer};
@@ -388,8 +394,10 @@ TEST_F(PerPeerGracefulRestartTest, TestMixedConfiguration) {
 }
 
 TEST_F(PerPeerGracefulRestartTest, TestGlobalDisabledWithPerPeerEnabled) {
-  // Test scenario: Global graceful restart disabled, but specific peers enable
-  // it
+  /*
+   * Test scenario: Global graceful restart disabled, but specific peers enable
+   * it
+   */
   config_.graceful_restart_convergence_seconds() = 0; // Disable globally
 
   // Peer with graceful restart enabled despite global disable
@@ -426,9 +434,11 @@ TEST_F(PerPeerGracefulRestartTest, TestGlobalDisabledWithPerPeerEnabled) {
 }
 
 TEST_F(PerPeerGracefulRestartTest, TestNoGRHelperWhenGlobalUnconfigured) {
-  // When graceful_restart_convergence_seconds is not set globally and no
-  // per-peer override exists, grRestartTime should be nullopt so that GR
-  // capability is not advertised (no GR helper behavior).
+  /*
+   * When graceful_restart_convergence_seconds is not set globally and no
+   * per-peer override exists, grRestartTime should be nullopt so that GR
+   * capability is not advertised (no GR helper behavior).
+   */
   BgpConfig config;
   config.router_id() = "10.0.0.1";
   config.local_as_4_byte() = 65001;

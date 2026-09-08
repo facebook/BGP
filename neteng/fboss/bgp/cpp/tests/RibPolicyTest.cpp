@@ -77,8 +77,10 @@ using namespace testing;
  */
 TEST(RibPolicyTest, BasicTest) {
   {
-    // test constructor exceptions
-    // missing rib policy statement
+    /*
+     * test constructor exceptions
+     * missing rib policy statement
+     */
     TRibPolicy tPolicy;
     EXPECT_THROW(RibPolicy{tPolicy}, BgpError);
 
@@ -91,8 +93,10 @@ TEST(RibPolicyTest, BasicTest) {
     EXPECT_THROW(RibPolicy{tPolicy}, BgpError);
   }
   {
-    // test constructor exceptions
-    // invalid regex in route filter policy
+    /*
+     * test constructor exceptions
+     * invalid regex in route filter policy
+     */
     TRouteFilterPolicy tPolicy;
     tPolicy.statements()->emplace(".*eb.*", TRouteFilterStatement());
     // this should work
@@ -350,8 +354,10 @@ TEST(RibPolicyTest, ApplyPolicyTest) {
     EXPECT_FALSE(
         ribEntries.at(kV4Prefix2).getRibPolicyUcmpWeight().has_value());
 
-    // once the policy has been applied, apply same policy again will result
-    // empty change list
+    /*
+     * once the policy has been applied, apply same policy again will result
+     * empty change list
+     */
     std::unordered_set<folly::CIDRNetwork> emptyChange;
     RouteAttributePolicy::RibChange secondRibChange;
     for (auto& [_, ribEntry] : ribEntries) {
@@ -404,8 +410,10 @@ TEST(RibPolicyTest, ApplyPolicyTest) {
     EXPECT_FALSE(
         ribEntries.at(kV4Prefix3).getRibPolicyUcmpWeight().has_value());
 
-    // once the policy has been applied, apply same policy again will result
-    // empty change list
+    /*
+     * once the policy has been applied, apply same policy again will result
+     * empty change list
+     */
     std::unordered_set<folly::CIDRNetwork> emptyChange;
     RouteAttributePolicy::RibChange secondRibChange;
     for (auto& [_, ribEntry] : ribEntries) {
@@ -466,8 +474,10 @@ TEST(RibPolicyTest, ApplyPolicyTest) {
     EXPECT_FALSE(
         ribEntries.at(kV4Prefix3).getRibPolicyUcmpWeight().has_value());
 
-    // once the policy has been applied, apply same policy again will result
-    // empty update list and identical match list
+    /*
+     * once the policy has been applied, apply same policy again will result
+     * empty update list and identical match list
+     */
     std::unordered_set<folly::CIDRNetwork> emptyChange;
     RouteAttributePolicy::RibChange secondRibChange;
     for (auto& [_, ribEntry] : ribEntries) {
@@ -541,8 +551,10 @@ TEST(RibPolicyTest, ApplyPolicyTest) {
     EXPECT_FALSE(
         ribEntries.at(kV4Prefix5).getRibPolicyUcmpWeight().has_value());
 
-    // once the policy has been applied, apply same policy again will result
-    // empty change list
+    /*
+     * once the policy has been applied, apply same policy again will result
+     * empty change list
+     */
     std::unordered_set<folly::CIDRNetwork> emptyChange;
     RouteAttributePolicy::RibChange secondRibChange;
     for (auto& [_, ribEntry] : ribEntries) {
@@ -1032,9 +1044,11 @@ TEST(RibPolicyTest, RibPolicyRouteMatcherTest) {
 
   EXPECT_TRUE(matcher1.toThrift() == tMatcher1);
 
-  // set up two rib entries,
-  // one has prefix kV4Prefix1 and a path of community 200:666
-  // another has prefix kV4Prefix2 and a path of community 100:234
+  /*
+   * set up two rib entries,
+   * one has prefix kV4Prefix1 and a path of community 200:666
+   * another has prefix kV4Prefix2 and a path of community 100:234
+   */
   auto peer = TinyPeerInfo(
       kPeerAddr1, kPeerAsn1, kPeerRouterId1, BgpSessionType::EBGP, false);
   nettools::bgplib::BgpPeerId peerId{peer.addr, peer.routerId};
@@ -1065,16 +1079,20 @@ TEST(RibPolicyTest, RibPolicyRouteMatcherTest) {
   RibEntry entry2(kV4Prefix2);
   entry2.updatePath(peer, attr2, false);
 
-  // Test community match
-  // match community 200:666
+  /*
+   * Test community match
+   * match community 200:666
+   */
   RibPolicyRouteMatcher communityMatcher(createTRibRouteMatcher(
       {}, {createTCommunityListMatch({createTBgpCommunityMatch(200, 666)})}));
 
   EXPECT_TRUE(communityMatcher.match(entry1));
   EXPECT_FALSE(communityMatcher.match(entry2));
 
-  // A matcher must specify either a prefix set or a community list, not both;
-  // "match this prefix OR this community" is expressed as two statements.
+  /*
+   * A matcher must specify either a prefix set or a community list, not both;
+   * "match this prefix OR this community" is expressed as two statements.
+   */
   EXPECT_THROW(
       RibPolicyRouteMatcher(createTRibRouteMatcher(
           {kV4Prefix2},
@@ -1361,16 +1379,20 @@ TEST(RibPolicyTest, GoldenPrefixPolicyMissingSubnetLimitThrowsError) {
   EXPECT_THROW(GoldenPrefixPolicy policy1{tPolicy}, BgpError);
 }
 
-// When there are multiple PrefixListEntries with the same base prefix, they
-// must have the same value for max_allowed_golden_prefix_subnet_count, or BGP
-// will throw an error.
+/*
+ * When there are multiple PrefixListEntries with the same base prefix, they
+ * must have the same value for max_allowed_golden_prefix_subnet_count, or BGP
+ * will throw an error.
+ */
 TEST(RibPolicyTest, GoldenPrefixPolicyInconsistentSubnetLimit) {
   TGoldenPrefixPolicy tPolicy;
   std::vector<routing_policy::PrefixListEntry> prefixListEntries;
 
   auto prefixStr = "1.2.3.4";
-  // Create entries for different subnet mask lengths under the same parent
-  // prefix, with different subnet limits.
+  /*
+   * Create entries for different subnet mask lengths under the same parent
+   * prefix, with different subnet limits.
+   */
   routing_policy::CompareNumericValue compareStruct31;
   compareStruct31.compare_operator() = routing_policy::ComparisonOperator::EQ;
   compareStruct31.value() = 31;
@@ -1441,16 +1463,20 @@ TEST(RibPolicyTest, GoldenPrefixPolicyAllowPrefix) {
   // After recording one subnet, we're still under the limit.
   policy.incrementSubnet(prefix1);
   EXPECT_THAT(policy.getSubnetCounts(), ElementsAre(Pair(ip, 1)));
-  // The policy evaluation counts *unique* subnets, so incrementing the counter
-  // for an existing prefix has no effect on the results.
+  /*
+   * The policy evaluation counts *unique* subnets, so incrementing the counter
+   * for an existing prefix has no effect on the results.
+   */
   policy.incrementSubnet(prefix1);
   EXPECT_THAT(policy.getSubnetCounts(), ElementsAre(Pair(ip, 1)));
   EXPECT_TRUE(policy.allowPrefix(prefix1, attrs));
   EXPECT_TRUE(policy.allowPrefix(prefix2, attrs));
   EXPECT_TRUE(policy.allowPrefix(prefix3, attrs));
 
-  // After recording another subnet, we've reached the limit, so no new subnets
-  // are allowed, only existing ones.
+  /*
+   * After recording another subnet, we've reached the limit, so no new subnets
+   * are allowed, only existing ones.
+   */
   policy.incrementSubnet(prefix2);
   EXPECT_THAT(policy.getSubnetCounts(), ElementsAre(Pair(ip, 2)));
   EXPECT_TRUE(policy.allowPrefix(prefix1, attrs));
@@ -1488,8 +1514,10 @@ TEST(RibPolicyTest, GoldenPrefixPolicyDefaultRoutesTest) {
   EXPECT_TRUE(policy.allowPrefix(prefixV4Default, attrs));
   EXPECT_TRUE(policy.allowPrefix(prefixV6Default, attrs));
 
-  // After /31 subnet is recorded, the limit is exceeded, so the /32 subnet is
-  // not allowed.
+  /*
+   * After /31 subnet is recorded, the limit is exceeded, so the /32 subnet is
+   * not allowed.
+   */
   policy.incrementSubnet(prefix31);
   EXPECT_TRUE(policy.allowPrefix(prefix31, attrs));
   EXPECT_FALSE(policy.allowPrefix(prefix32, attrs));
@@ -1519,8 +1547,10 @@ TEST(RibPolicyTest, GoldenPrefixPolicyOverlappingSubnets) {
   EXPECT_TRUE(policy.allowPrefix(prefix31, attrs));
   EXPECT_TRUE(policy.allowPrefix(prefix32, attrs));
 
-  // After /31 subnet is recorded, the limit is exceeded, so the /32 subnet is
-  // not allowed.
+  /*
+   * After /31 subnet is recorded, the limit is exceeded, so the /32 subnet is
+   * not allowed.
+   */
   policy.incrementSubnet(prefix31);
   EXPECT_TRUE(policy.allowPrefix(prefix31, attrs));
   EXPECT_FALSE(policy.allowPrefix(prefix32, attrs));
@@ -1898,8 +1928,10 @@ TEST_F(RibPolicyFixture, SelectPathDefaultTest) {
   RibPolicy policy{
       createTRibPolicyWithPathSelector({kV4Prefix2}, tPathSelector)};
 
-  // No statement would match, we would use the default multipath selection,
-  // which selects the path of length 2
+  /*
+   * No statement would match, we would use the default multipath selection,
+   * which selects the path of length 2
+   */
   auto overriddenPaths =
       policy.getPathSelectionPolicy()->overrideMultipathSelection(
           *ribEntry_, pathsToOverride_, multipathSelector);
@@ -1920,8 +1952,10 @@ TEST_F(RibPolicyFixtureConfedPeer, SelectPathDefaultTest) {
   RibPolicy policy{
       createTRibPolicyWithPathSelector({kV4Prefix2}, tPathSelector)};
 
-  // No statement would match, we would use the default multipath selection,
-  // which selects the as path length with confed 5
+  /*
+   * No statement would match, we would use the default multipath selection,
+   * which selects the as path length with confed 5
+   */
   auto overriddenPaths =
       policy.getPathSelectionPolicy()->overrideMultipathSelection(
           *ribEntry_, pathsToOverride_, multipathSelectorCountConfeds);
@@ -1972,8 +2006,10 @@ TEST_F(RibPolicyFixture, SelectPathMinLbwBpsMatchTest) {
  * is met, we fall back to native bgp multipath selector.
  */
 TEST_F(RibPolicyFixture, SelectPathCriteriaMinNexthopTest) {
-  // test the min nexthop criteria
-  // Let the statement matches the right prefix
+  /*
+   * test the min nexthop criteria
+   * Let the statement matches the right prefix
+   */
   auto tMatcher = createCommunityMatch(200, 666, bgp_policy::Origin::EGP);
   auto tPathSelector = createTPathSlectorWithOneMatcher(tMatcher, 2);
 
@@ -1984,9 +2020,11 @@ TEST_F(RibPolicyFixture, SelectPathCriteriaMinNexthopTest) {
       policy.getPathSelectionPolicy()->overrideMultipathSelection(
           *ribEntry_, pathsToOverride_, multipathSelector);
 
-  // tCriteria could only get one path, which is less than min nexthop 2
-  // As a result, PathSelector::overrideMultipathSelection will invoke
-  // getBgpNativeMultipathSelector, which selects one path.
+  /*
+   * tCriteria could only get one path, which is less than min nexthop 2
+   * As a result, PathSelector::overrideMultipathSelection will invoke
+   * getBgpNativeMultipathSelector, which selects one path.
+   */
   EXPECT_EQ(overriddenPaths.size(), 1);
   EXPECT_EQ(overriddenPaths.at(0)->getBgpAsPathLen(), 2);
 }
@@ -2009,11 +2047,13 @@ TEST_F(RibPolicyFixture, SelectPathDefaultMinNexthopRelaxTest) {
       policy.getPathSelectionPolicy()->overrideMultipathSelection(
           *ribEntry_, pathsToOverride_, multipathSelector);
 
-  // tCriteria could only get one path, which is less than min nexthop 2
-  // As a result, PathSelector::overrideMultipathSelection will invoke
-  // getBgpNativeMultipathSelector, which selects one path. This path will be
-  // returned as is, but we can query getActivePathSelectionCriteria() to find
-  // out whether bgp native MNH would've rejected this path
+  /*
+   * tCriteria could only get one path, which is less than min nexthop 2
+   * As a result, PathSelector::overrideMultipathSelection will invoke
+   * getBgpNativeMultipathSelector, which selects one path. This path will be
+   * returned as is, but we can query getActivePathSelectionCriteria() to find
+   * out whether bgp native MNH would've rejected this path
+   */
   EXPECT_EQ(overriddenPaths.size(), 1);
   EXPECT_EQ(overriddenPaths.at(0)->getBgpAsPathLen(), 2);
   auto selectors =
@@ -2216,13 +2256,15 @@ TEST_F(RibPolicyFixture, StrictMnhToPartialDrainRollout) {
   EXPECT_TRUE(ribEntry_->getIsPartialDrain());
 }
 
-// PathSelectionPolicy caches one PathSelectionPolicyResult per prefix
-// (PathSelectionPolicy::pathSelectionResults_) and reuses it across calls.
-// PathSelector::overrideMultipathSelection must reset transition fields on
-// every entry so a previous "drain triggered" call cannot leak
-// drainOnMinCapacityThresholdViolation=true into a subsequent call that exits
-// via the centralized-criteria-matched early return — otherwise RibEntry would
-// spuriously activate partial drain even when the prefix is healthy via CPS.
+/*
+ * PathSelectionPolicy caches one PathSelectionPolicyResult per prefix
+ * (PathSelectionPolicy::pathSelectionResults_) and reuses it across calls.
+ * PathSelector::overrideMultipathSelection must reset transition fields on
+ * every entry so a previous "drain triggered" call cannot leak
+ * drainOnMinCapacityThresholdViolation=true into a subsequent call that exits
+ * via the centralized-criteria-matched early return — otherwise RibEntry would
+ * spuriously activate partial drain even when the prefix is healthy via CPS.
+ */
 TEST_F(
     RibPolicyFixture,
     PathSelectorResetsDrainOnMinCapacityThresholdViolationOnReuse) {
@@ -2233,26 +2275,32 @@ TEST_F(
   PathSelector pathSelector(tPathSelector);
   PathSelectionPolicyResult result("stmt1");
 
-  // Phase 1: only attr1 (community 200,666) matches the centralized matcher.
-  // 1 < criteriaMinNexthop=2 -> centralized criteria returns empty -> falls
-  // through to default selector. 2 paths < defaultMinNexthop=3 ->
-  // BGP_FAILED_CPS_MIN_NEXTHOP with drain enabled.
+  /*
+   * Phase 1: only attr1 (community 200,666) matches the centralized matcher.
+   * 1 < criteriaMinNexthop=2 -> centralized criteria returns empty -> falls
+   * through to default selector. 2 paths < defaultMinNexthop=3 ->
+   * BGP_FAILED_CPS_MIN_NEXTHOP with drain enabled.
+   */
   pathSelector.overrideMultipathSelection(
       pathsToOverride_, multipathSelector, result);
   EXPECT_EQ(
       result.outcome,
       PathSelectionPolicyResult::Outcome::BGP_FAILED_CPS_MIN_NEXTHOP);
   EXPECT_TRUE(result.drainOnMinCapacityThresholdViolation);
-  // Threshold captured alongside the drain flag; downstream RibEntry copies
-  // this into mnhThreshold_ for the Thrift accessor to surface. LBW
-  // threshold remains 0 because this is the MNH-violation branch.
+  /*
+   * Threshold captured alongside the drain flag; downstream RibEntry copies
+   * this into mnhThreshold_ for the Thrift accessor to surface. LBW
+   * threshold remains 0 because this is the MNH-violation branch.
+   */
   EXPECT_EQ(3, result.mnhThreshold);
   EXPECT_EQ(0, result.aggLbwBpsThreshold);
 
-  // Phase 2: feed a path set where the centralized criteria succeeds, taking
-  // the early-return branch at the top of overrideMultipathSelection. Find
-  // the path with the matching community and present it twice so the
-  // criteria's minNexthop=2 is satisfied.
+  /*
+   * Phase 2: feed a path set where the centralized criteria succeeds, taking
+   * the early-return branch at the top of overrideMultipathSelection. Find
+   * the path with the matching community and present it twice so the
+   * criteria's minNexthop=2 is satisfied.
+   */
   std::shared_ptr<RouteInfo> matchingPath;
   for (const auto& p : pathsToOverride_) {
     if (p->attrs->getNexthop() == kV4Nexthop1) {
@@ -2268,8 +2316,10 @@ TEST_F(
       matchingPaths, multipathSelector, result);
 
   EXPECT_EQ(result.outcome, PathSelectionPolicyResult::Outcome::CPS);
-  // Without the reset at the top of overrideMultipathSelection, the cached
-  // values from phase 1 leak through and these assertions fail.
+  /*
+   * Without the reset at the top of overrideMultipathSelection, the cached
+   * values from phase 1 leak through and these assertions fail.
+   */
   EXPECT_FALSE(result.drainOnMinCapacityThresholdViolation);
   EXPECT_EQ(0, result.mnhThreshold);
   EXPECT_EQ(0, result.aggLbwBpsThreshold);
@@ -2283,9 +2333,11 @@ TEST_F(
  * an aggregate threshold above 800 GBps to force a violation.
  */
 TEST_F(RibPolicyFixture, PartialDrainOutcomeSetOnLbwViolation) {
-  // Use only attr1 (community 200,666, 800 GBps LBW) so the LBW check has a
-  // path with a concrete LBW value (path2 has no LBW and would short-circuit
-  // the aggregate check to a healthy BGP outcome).
+  /*
+   * Use only attr1 (community 200,666, 800 GBps LBW) so the LBW check has a
+   * path with a concrete LBW value (path2 has no LBW and would short-circuit
+   * the aggregate check to a healthy BGP outcome).
+   */
   std::shared_ptr<RouteInfo> pathWithLbw;
   for (const auto& p : pathsToOverride_) {
     if (p->attrs->getNexthop() == kV4Nexthop1) {
@@ -2295,9 +2347,11 @@ TEST_F(RibPolicyFixture, PartialDrainOutcomeSetOnLbwViolation) {
   }
   ASSERT_NE(pathWithLbw, nullptr);
 
-  // criteriaMinNextHop=2 forces fall-through to the default selector
-  // (1 matching path < 2). bgpNativeMinAggLbwbps=1000 GBps is above the
-  // 800 GBps available, triggering the LBW threshold violation.
+  /*
+   * criteriaMinNextHop=2 forces fall-through to the default selector
+   * (1 matching path < 2). bgpNativeMinAggLbwbps=1000 GBps is above the
+   * 800 GBps available, triggering the LBW threshold violation.
+   */
   auto tMatcher = createCommunityMatch(200, 666, bgp_policy::Origin::EGP);
   auto tPathSelector = createTPathSlectorWithOneMatcher(
       tMatcher,
@@ -2316,9 +2370,11 @@ TEST_F(RibPolicyFixture, PartialDrainOutcomeSetOnLbwViolation) {
       result.outcome,
       PathSelectionPolicyResult::Outcome::BGP_FAILED_CPS_MIN_AGG_LBW);
   EXPECT_TRUE(result.drainOnMinCapacityThresholdViolation);
-  // LBW threshold captured on this branch; mnhThreshold remains 0 so the
-  // RibDC union-build at RPC time emits TMinCapacityThreshold.agg_lbw_bps
-  // rather than .mnh.
+  /*
+   * LBW threshold captured on this branch; mnhThreshold remains 0 so the
+   * RibDC union-build at RPC time emits TMinCapacityThreshold.agg_lbw_bps
+   * rather than .mnh.
+   */
   EXPECT_EQ(static_cast<int64_t>(1000) * BpsPerGBps, result.aggLbwBpsThreshold);
   EXPECT_EQ(0, result.mnhThreshold);
   EXPECT_EQ(multipaths.size(), 1);
@@ -2352,8 +2408,10 @@ TEST_F(RibPolicyFixture, StrictLbwOutcomeWhenPartialDrainDisabled) {
       result.outcome,
       PathSelectionPolicyResult::Outcome::BGP_FAILED_CPS_MIN_AGG_LBW);
   EXPECT_FALSE(result.drainOnMinCapacityThresholdViolation);
-  // Without drain (or relax), the policy returns an empty set so the route
-  // is dropped.
+  /*
+   * Without drain (or relax), the policy returns an empty set so the route
+   * is dropped.
+   */
   EXPECT_EQ(multipaths.size(), 0);
 }
 
@@ -2422,8 +2480,10 @@ std::unique_ptr<RibEntry> makeLbwRibEntry() {
 TEST(RibPolicyLbwDrainTest, PartialDrainRetainsBestpathOnLbwViolation) {
   auto ribEntry = makeLbwRibEntry();
 
-  // criteriaMinNextHop=2 forces fall-through; bgpNativeMinAggLbwbps=1000 GBps
-  // > 800 GBps available -> LBW violation -> drain flag triggers.
+  /*
+   * criteriaMinNextHop=2 forces fall-through; bgpNativeMinAggLbwbps=1000 GBps
+   * > 800 GBps available -> LBW violation -> drain flag triggers.
+   */
   auto tMatcher = createCommunityMatch(200, 666, bgp_policy::Origin::EGP);
   auto tPathSelector = createTPathSlectorWithOneMatcher(
       tMatcher,
@@ -2455,8 +2515,10 @@ TEST(RibPolicyLbwDrainTest, PartialDrainRetainsBestpathOnLbwViolation) {
 TEST(RibPolicyLbwDrainTest, StrictLbwNullifiesBestpath) {
   auto ribEntry = makeLbwRibEntry();
 
-  // drain_on_min_nexthop_violation NOT set: LBW violation -> bestpath null,
-  // route withdrawn.
+  /*
+   * drain_on_min_nexthop_violation NOT set: LBW violation -> bestpath null,
+   * route withdrawn.
+   */
   auto tMatcher = createCommunityMatch(200, 666, bgp_policy::Origin::EGP);
   auto tPathSelector = createTPathSlectorWithOneMatcher(
       tMatcher,
@@ -2629,8 +2691,10 @@ TEST_F(RibPolicyFixture, SelectPathDefaultMinNexthopTest) {
       policy.getPathSelectionPolicy()->overrideMultipathSelection(
           *ribEntry_, pathsToOverride_, multipathSelector);
 
-  // The one path selected by native bgp multipath selector is less than the
-  // min nexthop 3. Therefore, overriddenPaths ends up with no path.
+  /*
+   * The one path selected by native bgp multipath selector is less than the
+   * min nexthop 3. Therefore, overriddenPaths ends up with no path.
+   */
   EXPECT_EQ(overriddenPaths.size(), 0);
 }
 
@@ -2680,8 +2744,10 @@ TEST_F(RibPolicyFixture, OverridePathSelectionTestRelaxDefaultMNH) {
   // Now the best path has length 4
   EXPECT_EQ(ribEntry_->getBestPath()->getBgpAsPathLen(), 4);
 
-  // Meanwhile, since the centralized criteria matches, the additional BGP min
-  // nexthop check will not be triggered
+  /*
+   * Meanwhile, since the centralized criteria matches, the additional BGP min
+   * nexthop check will not be triggered
+   */
   tPathSelector = createTPathSlectorWithOneMatcher(tMatcher, std::nullopt, 4);
 
   auto policy2 = std::make_unique<PathSelectionPolicy>(
@@ -2699,8 +2765,10 @@ TEST_F(RibPolicyFixture, OverridePathSelectionTestRelaxDefaultMNH) {
   EXPECT_FALSE(bestpathChanged);
   EXPECT_FALSE(multipathChanged);
 
-  // On the other hand, the min nexthop check in the matched centralized
-  // criteria would be enforced
+  /*
+   * On the other hand, the min nexthop check in the matched centralized
+   * criteria would be enforced
+   */
   tPathSelector = createTPathSlectorWithOneMatcher(tMatcher, 4, 4);
   tPathSelector.drain_on_min_nexthop_violation() = true;
 
@@ -2724,11 +2792,13 @@ TEST_F(RibPolicyFixture, OverridePathSelectionTestRelaxDefaultMNH) {
   EXPECT_TRUE(ribEntry_->getInstallToFib());
   EXPECT_TRUE(ribEntry_->getIsPartialDrain());
 
-  // Once the path selection policy is removed, the default multipath selection
-  // will be reapplied. Bestpath stays the same (native selector picks same
-  // path), but the partial-drain marker flips from true to false — and
-  // selectBestPath() folds drain transitions into bestpathChanged so the
-  // RibOut announcement machinery re-advertises (drain community removal).
+  /*
+   * Once the path selection policy is removed, the default multipath selection
+   * will be reapplied. Bestpath stays the same (native selector picks same
+   * path), but the partial-drain marker flips from true to false — and
+   * selectBestPath() folds drain transitions into bestpathChanged so the
+   * RibOut announcement machinery re-advertises (drain community removal).
+   */
   std::tie(bestpathChanged, multipathChanged) = RibDC::selectBestPath(
       *ribEntry_,
       multipathSelector,
@@ -2790,8 +2860,10 @@ TEST_F(RibPolicyFixture, OverridePathSelectionTest) {
   // Now the best path has length 4
   EXPECT_EQ(ribEntry_->getBestPath()->getBgpAsPathLen(), 4);
 
-  // Meanwhile, since the centralized criteria matches, the additional BGP min
-  // nexthop check will not be triggered
+  /*
+   * Meanwhile, since the centralized criteria matches, the additional BGP min
+   * nexthop check will not be triggered
+   */
   tPathSelector = createTPathSlectorWithOneMatcher(tMatcher, std::nullopt, 4);
 
   auto policy2 = std::make_unique<PathSelectionPolicy>(
@@ -2809,8 +2881,10 @@ TEST_F(RibPolicyFixture, OverridePathSelectionTest) {
   EXPECT_FALSE(bestpathChanged);
   EXPECT_FALSE(multipathChanged);
 
-  // On the other hand, the min nexthop check in the matched centralized
-  // criteria would be enforced
+  /*
+   * On the other hand, the min nexthop check in the matched centralized
+   * criteria would be enforced
+   */
   tPathSelector = createTPathSlectorWithOneMatcher(tMatcher, 4, 4);
 
   auto policy3 = std::make_unique<PathSelectionPolicy>(
@@ -2827,12 +2901,16 @@ TEST_F(RibPolicyFixture, OverridePathSelectionTest) {
   EXPECT_TRUE(bestpathChanged);
   EXPECT_TRUE(multipathChanged);
 
-  // In this case, no best path could be found as we only have 1 path, which
-  // violates the min nexthop constraint (4)
+  /*
+   * In this case, no best path could be found as we only have 1 path, which
+   * violates the min nexthop constraint (4)
+   */
   EXPECT_EQ(ribEntry_->getBestPath(), nullptr);
 
-  // Once the policy is removed, the default multipath selection will be
-  // reapplied
+  /*
+   * Once the policy is removed, the default multipath selection will be
+   * reapplied
+   */
 
   // Now the bestpath and the multipath should be changed back
   std::tie(bestpathChanged, multipathChanged) = RibDC::selectBestPath(
@@ -2894,8 +2972,10 @@ TEST_F(RibPolicyFixture, PathSelectionPolicyCacheTest) {
     auto overriddenPaths = policy.overrideMultipathSelection(
         *ribEntry_, pathsToOverride_, multipathSelector);
 
-    // Check cache, the prefix should yield some path selection result
-    // with both statement name and active criteria
+    /*
+     * Check cache, the prefix should yield some path selection result
+     * with both statement name and active criteria
+     */
     auto& cachedItem = policy.pathSelectionResults_.at(ribEntry_->getPrefix());
     EXPECT_EQ(cachedItem->getStatementName(), "stmt1");
     EXPECT_NE(cachedItem->activeCriteria, nullptr);
@@ -2929,8 +3009,10 @@ TEST_F(RibPolicyFixture, PathSelectionPolicyCacheTest) {
     auto overriddenPaths = policy.overrideMultipathSelection(
         *ribEntry_, pathsToOverride_, multipathSelector);
 
-    // Check cache, the prefix should yield the path selection result
-    // where the statement is available, but the active criteria is nullptr
+    /*
+     * Check cache, the prefix should yield the path selection result
+     * where the statement is available, but the active criteria is nullptr
+     */
     auto& cachedItem = policy.pathSelectionResults_.at(ribEntry_->getPrefix());
     EXPECT_EQ(cachedItem->getStatementName(), "stmt1");
     EXPECT_EQ(cachedItem->activeCriteria, nullptr);
@@ -2953,8 +3035,10 @@ TEST_F(RibPolicyFixture, PathSelectionPolicyCacheTest) {
     EXPECT_EQ(activePathSelectionCriteria[1].criteria_list()->size(), 0);
   }
 
-  // Test RibPolicy level API
-  // A match should be recorded
+  /*
+   * Test RibPolicy level API
+   * A match should be recorded
+   */
   {
     RibPolicy policy(
         createTRibPolicyWithPathSelector({kV4Prefix1}, tPathSelector));
@@ -2974,8 +3058,10 @@ TEST_F(RibPolicyFixture, PathSelectionPolicyCacheTest) {
         tPathSelector.criteria_list()[0]);
     EXPECT_EQ(activePathSelectionCriteria[1].criteria_list()->size(), 0);
   }
-  // A RibPolicy without PathSelectionPolicy would return no active path
-  // selection criteria when getActivePathSelectionCriteria is called
+  /*
+   * A RibPolicy without PathSelectionPolicy would return no active path
+   * selection criteria when getActivePathSelectionCriteria is called
+   */
   {
     RibPolicy policy(createTRibPolicyLbw({kV4Prefix1}, 1e11L));
 
@@ -2992,9 +3078,11 @@ TEST_F(RibPolicyFixture, PathSelectionPolicyCacheTest) {
  */
 TEST_F(RibPolicyFixture, LbwOnlyDrainFlagPreservedInActiveCriteria) {
   auto tMatcher = createCommunityMatch(200, 666, bgp_policy::Origin::EGP);
-  // criteriaMinNextHop=100 -> the statement matches but the criteria is
-  // unsatisfied, exercising the fall-through (activeCriteria == nullptr) path.
-  // No defaultMinNextHop: only the LBW threshold and drain flag are set.
+  /*
+   * criteriaMinNextHop=100 -> the statement matches but the criteria is
+   * unsatisfied, exercising the fall-through (activeCriteria == nullptr) path.
+   * No defaultMinNextHop: only the LBW threshold and drain flag are set.
+   */
   auto tPathSelector = createTPathSlectorWithOneMatcher(
       tMatcher,
       /*criteriaMinNextHop=*/100,
@@ -3006,8 +3094,10 @@ TEST_F(RibPolicyFixture, LbwOnlyDrainFlagPreservedInActiveCriteria) {
   PathSelectionPolicy policy(
       createTPathSelectionPolicyWithPathSelector({kV4Prefix1}, tPathSelector));
 
-  // Populate the prefix -> statement cache so getActivePathSelectionCriteria
-  // reconstructs from the matched statement.
+  /*
+   * Populate the prefix -> statement cache so getActivePathSelectionCriteria
+   * reconstructs from the matched statement.
+   */
   policy.overrideMultipathSelection(
       *ribEntry_, pathsToOverride_, multipathSelector);
 
@@ -3541,8 +3631,10 @@ TEST(RibPolicyTest, DivideWeightsByMatchingPathCount) {
   EXPECT_TRUE(policy.getRouteAttributePolicy()->overwriteRouteAttributes(
       ribEntry, ribChange));
 
-  // Since there are two paths matching action 1, the weight of each individual
-  // path is halved.
+  /*
+   * Since there are two paths matching action 1, the weight of each individual
+   * path is halved.
+   */
   EXPECT_THAT(
       *ribEntry.getMultipathWeightedNexthops(),
       UnorderedElementsAre(
@@ -3616,11 +3708,13 @@ TEST(RibPolicyTest, DivideWeightsOnlyAmongSelectedNexthops) {
   RibBase::selectBestPath(
       ribEntry, multipathSelector, bestpathSelector, false, 0);
 
-  // Simulate the production scenario where one of the three paths is in
-  // routeInfos_ (visible via getAllPaths()) but is NOT selected for the
-  // multipath set. With the fix, only the 2 selected nexthops contribute
-  // to matchingPathCount, so each gets weight = max(10/2, 1) = 5. Without
-  // the fix the divisor would be 3 and each would get max(10/3, 1) = 3.
+  /*
+   * Simulate the production scenario where one of the three paths is in
+   * routeInfos_ (visible via getAllPaths()) but is NOT selected for the
+   * multipath set. With the fix, only the 2 selected nexthops contribute
+   * to matchingPathCount, so each gets weight = max(10/2, 1) = 5. Without
+   * the fix the divisor would be 3 and each would get max(10/3, 1) = 3.
+   */
   WeightedNexthopMap selectedNexthops;
   selectedNexthops.emplace(kV4Nexthop1, 0);
   selectedNexthops.emplace(kV4Nexthop2, 0);
@@ -3693,8 +3787,10 @@ TEST(RibPolicyTest, RouteAttributePolicyCacheTest) {
   EXPECT_TRUE(cachedItem.has_value());
   EXPECT_EQ(cachedItem->getStatementName(), "stmt1");
 
-  // Second call should use the cache (cache hit)
-  // Since the weight is already set, no update should occur
+  /*
+   * Second call should use the cache (cache hit)
+   * Since the weight is already set, no update should occur
+   */
   RouteAttributePolicy::RibChange ribChange2;
   bool result2 = policy.getRouteAttributePolicy()->overwriteRouteAttributes(
       entry1, ribChange2);
@@ -3822,8 +3918,10 @@ TEST(RibPolicyTest, RouteAttributePolicyMoveCache) {
   EXPECT_TRUE(cache2.at(kV4Prefix1).has_value());
   EXPECT_EQ(cache2.at(kV4Prefix1)->getStatementName(), "stmt1");
   EXPECT_FALSE(cache2.at(kV4Prefix2).has_value());
-  // Note: source cache is in moved-from state after moveCache() and should not
-  // be accessed
+  /*
+   * Note: source cache is in moved-from state after moveCache() and should not
+   * be accessed
+   */
 }
 
 /**
@@ -3928,16 +4026,20 @@ TEST(RibPolicyTest, RouteAttributePolicyNegativeCacheReEval) {
   const auto& cache2 = policy2.getRouteAttributePolicy()->getCache();
   EXPECT_FALSE(cache2.at(kV4Prefix2).has_value());
 
-  // Now call overwriteRouteAttributes - negative cache hit returns false
-  // since we changed the behavior to trust negative cache entries
+  /*
+   * Now call overwriteRouteAttributes - negative cache hit returns false
+   * since we changed the behavior to trust negative cache entries
+   */
   RibEntry entry2New(kV4Prefix2);
   RouteAttributePolicy::RibChange ribChange2;
   bool result2 = policy2.getRouteAttributePolicy()->overwriteRouteAttributes(
       entry2New, ribChange2);
 
-  // Negative cache hit - returns false without re-evaluation
-  // This is the new expected behavior: negative cache entries are trusted
-  // (affected prefixes have their cache entries invalidated during migration)
+  /*
+   * Negative cache hit - returns false without re-evaluation
+   * This is the new expected behavior: negative cache entries are trusted
+   * (affected prefixes have their cache entries invalidated during migration)
+   */
   EXPECT_FALSE(result2);
   EXPECT_EQ(ribChange2.updatedRoutes.size(), 0);
 }
@@ -3969,8 +4071,10 @@ TEST(RibPolicyTest, RouteAttributeStatementExpirationOnlyChange) {
   // Statements differ (different expiration time)
   EXPECT_NE(stmt1, stmt2);
 
-  // Same content, neither expired: changed=true (expiration differs),
-  // needsReEval=false (no content change), matcherChanged=false
+  /*
+   * Same content, neither expired: changed=true (expiration differs),
+   * needsReEval=false (no content change), matcherChanged=false
+   */
   auto reEvalResult = stmt1.needsReEvaluation(stmt2);
   EXPECT_TRUE(reEvalResult.changed);
   EXPECT_FALSE(reEvalResult.needsReEval);
@@ -4028,8 +4132,10 @@ TEST(RibPolicyTest, RouteAttributeStatementBothExpiredIdentical) {
   // Statements are equal
   EXPECT_EQ(stmt1, stmt2);
 
-  // Both expired, identical content and timestamps:
-  // changed=false, needsReEval=false (no spurious re-evaluation)
+  /*
+   * Both expired, identical content and timestamps:
+   * changed=false, needsReEval=false (no spurious re-evaluation)
+   */
   auto result = stmt1.needsReEvaluation(stmt2);
   EXPECT_FALSE(result.changed);
   EXPECT_FALSE(result.needsReEval);

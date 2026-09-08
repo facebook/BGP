@@ -173,8 +173,10 @@ TEST_F(E2EPeerMgrRibTest, SessionFlapDuringRibOperation) {
   BgpPeerId peerId5{kPeerAddr5, kPeerAddr5.asV4().toLongHBO()};
   sendEoRToPeer(peerId5);
 
-  // Route should be re-advertised to Peer5 in initial dump
-  // Don't wait for EoR from peer5 as it would consume the UPDATE
+  /*
+   * Route should be re-advertised to Peer5 in initial dump
+   * Don't wait for EoR from peer5 as it would consume the UPDATE
+   */
   EXPECT_TRUE(verifyRouteAdd("v4", "10.0.0.0", 8, kPeerAddr5, "127.5.0.4"));
 }
 

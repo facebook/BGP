@@ -174,8 +174,10 @@ bgp_policy::AsPathList createAsPathList(
   return asPathList;
 }
 
-// Constructs an ExtCommunity as according to the thrift
-// definition defined in bgp_policy.thrift.
+/*
+ * Constructs an ExtCommunity as according to the thrift
+ * definition defined in bgp_policy.thrift.
+ */
 bgp_policy::ExtCommunity createExtCommunity(
     const uint8_t typeHigh,
     const uint8_t typeLow,
@@ -191,18 +193,24 @@ bgp_policy::ExtCommunity createExtCommunity(
   return extCommunity;
 }
 
-// Constructs a BgpPolicyAction that has ext_communities_action
-// field populated.
+/*
+ * Constructs a BgpPolicyAction that has ext_communities_action
+ * field populated.
+ */
 bgp_policy::BgpPolicyAction createBgpPolicyExtCommunityAction(
     const bgp_policy::BgpAttrChangeActionType routeAction,
     const std::vector<bgp_policy::ExtCommunity>& communities) {
-  // Construct ExtCommunityAction object from list of
-  // ext community definitions.
+  /*
+   * Construct ExtCommunityAction object from list of
+   * ext community definitions.
+   */
   bgp_policy::ExtCommunityAction ecAction;
   ecAction.ext_communities() = communities;
 
-  // action_type is of BgpPolicyActionTypes type, so we are wrapping
-  // @routeAction here.
+  /*
+   * action_type is of BgpPolicyActionTypes type, so we are wrapping
+   * @routeAction here.
+   */
   bgp_policy::BgpPolicyActionTypes actionType;
   actionType.set_route_action(routeAction);
 
@@ -471,8 +479,10 @@ bgp_policy::BgpPolicies createBgpPolicies(
   return bgpPolicies;
 }
 
-// Create a policy, taking vector of terms, vector of community lists,
-// aspathLists, and prefixLists,
+/*
+ * Create a policy, taking vector of terms, vector of community lists,
+ * aspathLists, and prefixLists,
+ */
 bgp_policy::BgpPolicies createBgpPoliciesWithReferences(
     const string& statementName,
     const vector<bgp_policy::BgpPolicyAtomicMatch>& matches,
@@ -706,12 +716,14 @@ bgp_policy::BgpPolicyAction createPolicySetAsPathPrependAction(
 }
 
 std::shared_ptr<PolicyManager> setup3TermPolicy(const std::string& policyName) {
-  // Create a policy with three terms
-  // Term1 match kV4Prefix1, kV4Prefix2 and apply origin action (EGP) & as path
-  // overwrite action as_path_overwrite_list set to {0, 0}, AdjRib will override
-  // 0 asns based on ingress or egress routes;
-  // Term2 match kV4Prefix3 and discard
-  // Term3 match kV4Prefix4 and PERMIT (do not modify any attributes)
+  /*
+   * Create a policy with three terms
+   * Term1 match kV4Prefix1, kV4Prefix2 and apply origin action (EGP) & as path
+   * overwrite action as_path_overwrite_list set to {0, 0}, AdjRib will override
+   * 0 asns based on ingress or egress routes;
+   * Term2 match kV4Prefix3 and discard
+   * Term3 match kV4Prefix4 and PERMIT (do not modify any attributes)
+   */
 
   // Creating TERM1 (match kV4Prefix1, kV4Prefix2 and apply origin action (EGP))
   routing_policy::CompareNumericValue compareStructEQ;
@@ -761,9 +773,11 @@ std::shared_ptr<PolicyManager> setup3TermPolicy(const std::string& policyName) {
 
 std::shared_ptr<PolicyManager> setupDenyIgpOriginAcceptAllPolicy(
     const std::string& policyName) {
-  // Create a policy with two terms
-  // Term1 match origin IGP and deny
-  // Term2 permit all
+  /*
+   * Create a policy with two terms
+   * Term1 match origin IGP and deny
+   * Term2 permit all
+   */
 
   // Creating TERM1 (match origin IGP and DENY)
   const auto& match1 = createOriginMatch(bgp_policy::Origin::IGP);
@@ -784,8 +798,10 @@ std::shared_ptr<PolicyManager> setupDenyIgpOriginAcceptAllPolicy(
 
 std::shared_ptr<PolicyManager> setupAcceptAllPolicy(
     const std::string& policyName) {
-  // Create a policy with one term
-  // Term1 permits all
+  /*
+   * Create a policy with one term
+   * Term1 permits all
+   */
 
   // Creating TERM1 (match all and PERMIT)
   auto term1 = createBgpPolicyTerm("Term1", "", {}, {});
@@ -800,8 +816,10 @@ std::shared_ptr<PolicyManager> setupAcceptAllPolicy(
 
 std::shared_ptr<PolicyManager> setupMatchAllSetOriginIgpPolicy(
     const std::string& policyName) {
-  // Create a policy with one term
-  // Term1 match all, set action origin IGP
+  /*
+   * Create a policy with one term
+   * Term1 match all, set action origin IGP
+   */
 
   // Creating TERM1 (match all set action origin IGP)
   auto actionIgp = createBgpPolicyAction(
@@ -818,8 +836,10 @@ std::shared_ptr<PolicyManager> setupMatchAllSetOriginIgpPolicy(
 
 std::shared_ptr<PolicyManager> setupMatchAllSetCommunityPolicy(
     const std::string& policyName) {
-  // Create a policy with one term
-  // Term1 match all, set action community list
+  /*
+   * Create a policy with one term
+   * Term1 match all, set action community list
+   */
 
   // Creating TERM1 (match all set action to add community)
   auto communityAction = createBgpPolicyCommunityAction(
@@ -835,8 +855,10 @@ std::shared_ptr<PolicyManager> setupMatchAllSetCommunityPolicy(
 
 std::shared_ptr<PolicyManager> setupMatchAllSetMedPolicy(
     const std::string& policyName) {
-  // Create a policy with one term
-  // Term1 match all, set action med
+  /*
+   * Create a policy with one term
+   * Term1 match all, set action med
+   */
 
   // Creating TERM1 (match all set action to add community)
   auto actionSetMed = createBgpPolicyMedAction(kMed);
@@ -851,8 +873,10 @@ std::shared_ptr<PolicyManager> setupMatchAllSetMedPolicy(
 
 std::shared_ptr<PolicyManager> setupMatchAllSetWeightPolicy(
     const std::string& policyName) {
-  // Create a policy with one term
-  // Term1 match all, set action weight
+  /*
+   * Create a policy with one term
+   * Term1 match all, set action weight
+   */
 
   // Creating TERM1 (match all set action to add weight)
   auto actionSetWeight = createBgpPolicyWeightAction(kWeight);
@@ -867,8 +891,10 @@ std::shared_ptr<PolicyManager> setupMatchAllSetWeightPolicy(
 
 std::shared_ptr<PolicyManager> setupMatchEgpOriginSetCommunityPolicy(
     const std::string& policyName) {
-  // Create a policy with one term
-  // Term1 match origin, set action community list
+  /*
+   * Create a policy with one term
+   * Term1 match origin, set action community list
+   */
   auto originMatch = createOriginMatch(bgp_policy::Origin::EGP);
 
   // Creating TERM1 (match EGP origin action to add community)

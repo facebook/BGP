@@ -1007,8 +1007,10 @@ TEST_F(
   EXPECT_TRUE(waitForPeerQueueBlocked(peerId4));
 
   uint64_t peer4VersionBefore = getPeerCachedRibVersion(kPeerAddr4);
-  // peer4 consumed the single startup route (90.0.0.0/8) at RIB version 1
-  // before its queue blocked.
+  /*
+   * peer4 consumed the single startup route (90.0.0.0/8) at RIB version 1
+   * before its queue blocked.
+   */
   EXPECT_EQ(peer4VersionBefore, 1);
 
   /*

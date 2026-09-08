@@ -85,16 +85,20 @@ TEST_F(NexthopCacheTestFixture, DefaultParameterValues) {
       convertFibAgentStatusToNexthopStatus(fibAgentStatusMap);
   cache_->addOrUpdateNextHopStatus(nexthopStatusList);
 
-  // Verify the nexthop was added with default values (igpCost = std::nullopt)
-  // Since the nexthop is unreachable, igpCost should be std::nullopt
+  /*
+   * Verify the nexthop was added with default values (igpCost = std::nullopt)
+   * Since the nexthop is unreachable, igpCost should be std::nullopt
+   */
   auto status = cache_->registerAndGetNexthopStatus(nexthopIp);
   EXPECT_FALSE(status.isReachable());
   EXPECT_FALSE(status.getIgpCost().has_value());
   // Verify isConnected is false for FIB agent nexthops
   EXPECT_THAT(status.isConnected(), Eq(false));
 
-  // Test with a non-existent nexthop - it will create a new entry with default
-  // values
+  /*
+   * Test with a non-existent nexthop - it will create a new entry with default
+   * values
+   */
   folly::IPAddress nonExistentNexhop("2620:0:1cff:dead:bef1:ffff:ffff:2");
   auto nonExistentStatus =
       cache_->registerAndGetNexthopStatus(nonExistentNexhop);
@@ -184,9 +188,11 @@ TEST_F(NexthopCacheTestFixture, AddOrUpdateNexthopStatus) {
   // Step 8: Create a new nexthop IP
   folly::IPAddress newNexthopIp("2620:0:1cff:dead:bef1:ffff:ffff:100");
 
-  // Step 9: Register the new nexthop from RIB (this will mark it as registered
-  // from RIB) Since it doesn't exist in the cache yet, it will create a new
-  // entry
+  /*
+   * Step 9: Register the new nexthop from RIB (this will mark it as registered
+   * from RIB) Since it doesn't exist in the cache yet, it will create a new
+   * entry
+   */
   auto newStatus = cache_->registerAndGetNexthopStatus(newNexthopIp);
   EXPECT_FALSE(newStatus.isReachable());
 
@@ -210,9 +216,11 @@ TEST_F(NexthopCacheTestFixture, AddOrUpdateNexthopStatus) {
   updateCacheAndNotifyRib(
       convertFibAgentStatusToNexthopStatus(fibAgentStatusMap));
 
-  // Step 13: Check if a message was pushed to RibInQ
-  // Since the nexthop was registered from RIB before the update, RibInQ should
-  // get an update
+  /*
+   * Step 13: Check if a message was pushed to RibInQ
+   * Since the nexthop was registered from RIB before the update, RibInQ should
+   * get an update
+   */
   EXPECT_FALSE(ribInQ_.empty());
 
   // Use blockingWait to get the actual message from the Task
@@ -252,8 +260,10 @@ TEST_F(NexthopCacheTestFixture, AddOrUpdateMultipleNexthopsWithMap) {
   fibAgentStatusMap[binaryIp1] = thriftStatus1;
   fibAgentStatusMap[binaryIp2] = thriftStatus2;
 
-  // Add the nexthops to the cache using the
-  // convertFibAgentStatusToNexthopStatus method
+  /*
+   * Add the nexthops to the cache using the
+   * convertFibAgentStatusToNexthopStatus method
+   */
   auto nexthopStatusList3 =
       convertFibAgentStatusToNexthopStatus(fibAgentStatusMap);
   cache_->addOrUpdateNextHopStatus(nexthopStatusList3);
@@ -339,8 +349,10 @@ TEST_F(NexthopCacheTestFixture, UnregisterAndRemoveNexthopStatus) {
   EXPECT_TRUE(reachableNexhopStatus.isReachable());
   EXPECT_FALSE(unreachableNexhopStatus.isReachable());
 
-  // Test 1: Try to remove a reachable nexthop - should not remove it but
-  // unregister it
+  /*
+   * Test 1: Try to remove a reachable nexthop - should not remove it but
+   * unregister it
+   */
   EXPECT_FALSE(cache_->unregisterAndRemoveNexthopStatus(reachableNexhop));
 
   // Verify the reachable nexthop is still in the cache
@@ -352,8 +364,10 @@ TEST_F(NexthopCacheTestFixture, UnregisterAndRemoveNexthopStatus) {
   // Test 2: Remove an unreachable nexthop - should succeed
   EXPECT_TRUE(cache_->unregisterAndRemoveNexthopStatus(unreachableNexhop));
 
-  // Verify the unreachable nexthop was removed from the cache by creating a new
-  // entry with default values
+  /*
+   * Verify the unreachable nexthop was removed from the cache by creating a new
+   * entry with default values
+   */
   auto newUnreachableStatus =
       cache_->registerAndGetNexthopStatus(unreachableNexhop);
   EXPECT_FALSE(newUnreachableStatus.isReachable());
@@ -380,8 +394,10 @@ TEST_F(NexthopCacheTestFixture, UnregisterAndRemoveNexthopStatus) {
   // Now remove the nexthop - should succeed since it's unreachable
   EXPECT_TRUE(cache_->unregisterAndRemoveNexthopStatus(reachableNexhop));
 
-  // Verify the nexthop was removed from the cache and a new entry is created
-  // with default values
+  /*
+   * Verify the nexthop was removed from the cache and a new entry is created
+   * with default values
+   */
   auto newStatus = cache_->registerAndGetNexthopStatus(reachableNexhop);
   EXPECT_FALSE(newStatus.isReachable());
   EXPECT_FALSE(newStatus.getIgpCost().has_value());
@@ -435,8 +451,10 @@ TEST_F(NexthopCacheTestFixture, NhtCacheReachabilityCounters) {
       1, tcData->getCounter(RibStats::kNhtCacheNexthopUnreachable + ".count"));
 }
 
-// --- Neighbor-event resolution support (used by NetlinkWrapper on backbone)
-// ---
+/*
+ * --- Neighbor-event resolution support (used by NetlinkWrapper on backbone)
+ * ---
+ */
 
 TEST_F(NexthopCacheTestFixture, IsRegistered) {
   folly::IPAddress ip("10.0.0.1");
@@ -471,8 +489,10 @@ TEST_F(NexthopCacheTestFixture, GetRegisteredNexthopsInSubnet) {
   auto result = cache_->getRegisteredNexthopsInSubnet(
       folly::IPAddress::createNetwork("10.10.0.0/16"));
 
-  // Only registered nexthops within the v4 /16 are returned; out-of-subnet, v6
-  // (family mismatch), and unregistered nexthops are excluded.
+  /*
+   * Only registered nexthops within the v4 /16 are returned; out-of-subnet, v6
+   * (family mismatch), and unregistered nexthops are excluded.
+   */
   EXPECT_THAT(result, UnorderedElementsAre(inA, inB));
 }
 
@@ -488,8 +508,10 @@ TEST_F(NexthopCacheTestFixture, ClearConnectedStatus) {
   EXPECT_FALSE(cache_->clearConnectedStatus(fibIp).has_value());
   EXPECT_TRUE(cache_->registerAndGetNexthopStatus(fibIp).isReachable());
 
-  // Connected + registered -> reset to unreachable with isConnected unset, and
-  // the cleared status is returned for the caller to notify the RIB.
+  /*
+   * Connected + registered -> reset to unreachable with isConnected unset, and
+   * the cleared status is returned for the caller to notify the RIB.
+   */
   folly::IPAddress connIp("10.0.0.2");
   cache_->addOrUpdateNextHopStatus({NexthopStatus(connIp, true, 1, true)});
   cache_->registerAndGetNexthopStatus(connIp);
@@ -498,16 +520,20 @@ TEST_F(NexthopCacheTestFixture, ClearConnectedStatus) {
   EXPECT_FALSE(cleared->isReachable());
   EXPECT_THAT(cleared->isConnected(), Eq(std::nullopt));
 
-  // After clearing, a non-connected (FIB) source can take over again — the
-  // source-priority rule no longer blocks it.
+  /*
+   * After clearing, a non-connected (FIB) source can take over again — the
+   * source-priority rule no longer blocks it.
+   */
   cache_->addOrUpdateNextHopStatus(
       {NexthopStatus(connIp, true, 7, std::nullopt)});
   auto after = cache_->registerAndGetNexthopStatus(connIp);
   EXPECT_TRUE(after.isReachable());
   EXPECT_EQ(after.getIgpCost().value(), 7);
 
-  // Connected but NOT registered -> still cleared, but nothing returned (no RIB
-  // to notify).
+  /*
+   * Connected but NOT registered -> still cleared, but nothing returned (no RIB
+   * to notify).
+   */
   folly::IPAddress connUnreg("10.0.0.3");
   cache_->addOrUpdateNextHopStatus({NexthopStatus(connUnreg, true, 1, true)});
   EXPECT_FALSE(cache_->clearConnectedStatus(connUnreg).has_value());
@@ -528,8 +554,10 @@ TEST_F(NexthopCacheTestFixture, OnNexthopRegisteredHook) {
   ASSERT_EQ(fired.size(), 1);
   EXPECT_EQ(fired[0], unknownIp);
 
-  // Registering an already-reachable nexthop does NOT fire the hook (BGP has
-  // its answer; no on-demand resolution needed).
+  /*
+   * Registering an already-reachable nexthop does NOT fire the hook (BGP has
+   * its answer; no on-demand resolution needed).
+   */
   folly::IPAddress reachableIp("10.0.0.2");
   cache_->addOrUpdateNextHopStatus({NexthopStatus(reachableIp, true, 1, true)});
   cache_->registerAndGetNexthopStatus(reachableIp);

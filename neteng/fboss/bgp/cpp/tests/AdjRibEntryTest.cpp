@@ -286,8 +286,10 @@ TEST_F(AdjRibEntryFixture, EvictNoStaleEntriesTest) {
 TEST_F(AdjRibEntryFixture, EvictAllStaleEntriesTest) {
   auto tcData = facebook::fb303::ThreadCachedServiceData::get();
 
-  // Create and dedup paths, then let the DeDuplicatedBgpPath wrappers
-  // go out of scope so only the deduplicator cache holds references
+  /*
+   * Create and dedup paths, then let the DeDuplicatedBgpPath wrappers
+   * go out of scope so only the deduplicator cache holds references
+   */
   {
     auto path1 = createBgpPath(2);
     auto path2 = createBgpPath(3);
@@ -387,8 +389,10 @@ TEST_F(AdjRibEntryFixture, DedupAfterAdjRibEntryUsageTest) {
   }
   // path1 and path2 local variables go out of scope here
 
-  // After paths go out of scope, entries should still hold references
-  // via the deduplicator
+  /*
+   * After paths go out of scope, entries should still hold references
+   * via the deduplicator
+   */
   EXPECT_GE(DeDuplicatedBgpPath::deduplicatorSize(), 1);
 
   // Clear one entry's attributes
@@ -460,9 +464,11 @@ TEST_F(AdjRibEntryFixture, DedupWithSharedReferencesTest) {
   DeDuplicatedBgpPath::evictDeletedEntriesFromDeduplicator();
   verifyDeduplicatorSize(1);
 
-  // Drop the last deduped ref but path1 is still alive.
-  // path1 shares the control block with the cache entry
-  // (via const_pointer_cast), so use_count is still > 1.
+  /*
+   * Drop the last deduped ref but path1 is still alive.
+   * path1 shares the control block with the cache entry
+   * (via const_pointer_cast), so use_count is still > 1.
+   */
   deduped1 = DeDuplicatedBgpPath();
 
   // path1 keeps the cache entry alive (shared control block)
@@ -513,16 +519,20 @@ TEST_F(AdjRibEntryFixture, StaleBitAccessorTest) {
   EXPECT_FALSE(entry.isStale());
 }
 
-// Add-path GR old-path-id ownership accessors (flags_ bit 2 +
-// oldPathId_)
+/*
+ * Add-path GR old-path-id ownership accessors (flags_ bit 2 +
+ * oldPathId_)
+ */
 TEST_F(AdjRibEntryFixture, OldPathIdOwnershipAccessors) {
   AdjRibEntry entry(1);
 
   // No old-path-id ownership by default.
   EXPECT_FALSE(entry.hasOldPathId());
 
-  // Presence is tracked by the flag bit, so ids 0 and UINT32_MAX (both valid
-  // path ids) round-trip correctly.
+  /*
+   * Presence is tracked by the flag bit, so ids 0 and UINT32_MAX (both valid
+   * path ids) round-trip correctly.
+   */
   entry.setOldPathId(0);
   EXPECT_TRUE(entry.hasOldPathId());
   EXPECT_EQ(entry.getOldPathId(), 0u);
@@ -531,8 +541,10 @@ TEST_F(AdjRibEntryFixture, OldPathIdOwnershipAccessors) {
   EXPECT_TRUE(entry.hasOldPathId());
   EXPECT_EQ(entry.getOldPathId(), UINT32_MAX);
 
-  // Ownership is independent of the stale bit (guards against a whole-byte
-  // clobber of flags_).
+  /*
+   * Ownership is independent of the stale bit (guards against a whole-byte
+   * clobber of flags_).
+   */
   entry.setStale(true);
   EXPECT_TRUE(entry.hasOldPathId());
   EXPECT_TRUE(entry.isStale());
@@ -556,8 +568,10 @@ TEST_F(AdjRibEntryFixture, PendingOpAccessors) {
   entry.setPendingOp(AdjRibEntry::PendingOp::Withdraw);
   EXPECT_EQ(entry.getPendingOp(), AdjRibEntry::PendingOp::Withdraw);
 
-  // Pending op is independent of the stale / nexthopSetByPolicy / old-path-id
-  // bits packed into the same byte.
+  /*
+   * Pending op is independent of the stale / nexthopSetByPolicy / old-path-id
+   * bits packed into the same byte.
+   */
   entry.setStale(true);
   entry.setNexthopSetByPolicy(true);
   entry.setOldPathId(7);

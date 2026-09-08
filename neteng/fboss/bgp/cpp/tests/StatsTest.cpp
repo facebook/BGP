@@ -525,8 +525,10 @@ TEST(StatsTest, PeerStatsInitCounterTest) {
     auto counters = fb303::ThreadCachedServiceData::getShared();
     EXPECT_EQ(-1, counters->getCounter(PeerStats::kTotalRcvdPrefixes));
     EXPECT_EQ(-1, counters->getCounter(PeerStats::kTotalAcceptedPrefixes));
-    // droppedPrefixes is initialized to 0 (always populated), not -1. See
-    // S676351.
+    /*
+     * droppedPrefixes is initialized to 0 (always populated), not -1. See
+     * S676351.
+     */
     EXPECT_EQ(0, counters->getCounter(PeerStats::kTotalPrefixesDroppedByLimit));
     EXPECT_EQ(-1, counters->getCounter(PeerStats::kTotalSentPrefixes));
     EXPECT_EQ(-1, counters->getCounter(PeerStats::kTotalPaths));
@@ -589,8 +591,10 @@ TEST(StatsTest, NonGracefulPeersTest) {
   BgpStats::initNonGraceful(rsw);
   BgpStats::initNonGraceful(ssw);
 
-  // Dynamic timeseries produces counterName.count
-  // and counterName.count.60. 2 counters x 2 peer groups = 4
+  /*
+   * Dynamic timeseries produces counterName.count
+   * and counterName.count.60. 2 counters x 2 peer groups = 4
+   */
   EXPECT_EQ(4, serviceData->getRegexCounters("bgpd.nonGraceful.*").size());
   EXPECT_EQ(0, serviceData->getCounter(rswCounter));
   EXPECT_EQ(0, serviceData->getCounter(sswCounter));
@@ -985,9 +989,11 @@ TEST(StatsTest, MarkPlannedExitTest) {
   BgpStats::handlePreviousExit();
   EXPECT_EQ(data::get()->getCounter(BgpStats::kPlannedExit), 0);
 
-  // Mark planned exit creates exit-in-progress file,
-  // handle previous exit should emit planned exit counter and remove
-  // exit-in-progress file
+  /*
+   * Mark planned exit creates exit-in-progress file,
+   * handle previous exit should emit planned exit counter and remove
+   * exit-in-progress file
+   */
   BgpStats::markPlannedExit();
   EXPECT_TRUE(boost::filesystem::exists(exit_in_progress_file));
   BgpStats::handlePreviousExit();
@@ -996,9 +1002,11 @@ TEST(StatsTest, MarkPlannedExitTest) {
   // next run of bgpd will have fresh counter
   data::get()->setCounter(BgpStats::kPlannedExit, 0);
 
-  // Handle previous exit now should emit 0 (indicating potential issue),
-  // since in-progress file is gone from previous call. Mark planned exit
-  // creates the in-progress file
+  /*
+   * Handle previous exit now should emit 0 (indicating potential issue),
+   * since in-progress file is gone from previous call. Mark planned exit
+   * creates the in-progress file
+   */
   BgpStats::handlePreviousExit();
   EXPECT_EQ(data::get()->getCounter(BgpStats::kPlannedExit), 0);
   BgpStats::markPlannedExit();
@@ -1428,8 +1436,10 @@ TEST(StatsTest, ClearPeerCountersTest) {
   // Initialize counters via initPeerCounters.
   PeerStats::initPeerCounters(peerIdOdsStr);
 
-  // Counters set elsewhere in production (not via initPeerCounters) are
-  // also expected to be cleared. Set them here to simulate that.
+  /*
+   * Counters set elsewhere in production (not via initPeerCounters) are
+   * also expected to be cleared. Set them here to simulate that.
+   */
   auto postInKey = fmt::format(PeerStats::kPeerPostInPrefixes, peerIdOdsStr);
   auto statusKey = fmt::format(PeerStats::kPeerStatus, peerIdOdsStr);
   tcData.setCounter(postInKey, 7);

@@ -35,10 +35,12 @@ namespace facebook::bgp {
 using namespace facebook::nettools::bgplib;
 using namespace facebook::bgp::thrift;
 
-// Helper function for ConfigManager tests that returns non-optional policy map.
-// ConfigManager's updatePeerPolicies/updatePeerGroupPolicies take non-optional
-// strings because they're about setting policies (not clearing).
-// Empty string means "don't update this direction".
+/*
+ * Helper function for ConfigManager tests that returns non-optional policy map.
+ * ConfigManager's updatePeerPolicies/updatePeerGroupPolicies take non-optional
+ * strings because they're about setting policies (not clearing).
+ * Empty string means "don't update this direction".
+ */
 std::unique_ptr<std::map<
     std::string,
     std::map<facebook::bgp::bgp_policy::DIRECTION, std::string>>>
@@ -175,8 +177,10 @@ TEST_F(ConfigTestFixture, ConfigManagerUpdatePeerPoliciesBasic) {
 
   std::map<std::string, ExpectedPeerPolicy> expectedPolicies = {
       {kPeerAddr3.str(), {"NEW_INGRESS_POLICY", "NEW_EGRESS_POLICY"}},
-      // Egress policy should remain unchanged (staticPeer2_ has its own
-      // policies)
+      /*
+       * Egress policy should remain unchanged (staticPeer2_ has its own
+       * policies)
+       */
       {kPeerAddr4.str(), {"UPDATED_PEER2_INGRESS", kEgressPolicyName}},
   };
 
@@ -214,8 +218,10 @@ TEST_F(ConfigTestFixture, ConfigManagerUpdatePeerPoliciesIngressOnly) {
   for (const auto& peer : peers) {
     if (*peer.peer_addr() == kPeerAddr3.str()) {
       EXPECT_EQ(*peer.ingress_policy_name(), "INGRESS_ONLY_UPDATE");
-      // Egress policy should remain from peer (staticPeer1_ has its own
-      // policies)
+      /*
+       * Egress policy should remain from peer (staticPeer1_ has its own
+       * policies)
+       */
       EXPECT_EQ(*peer.egress_policy_name(), kEgressPolicyName);
       break;
     }
@@ -237,8 +243,10 @@ TEST_F(ConfigTestFixture, ConfigManagerUpdatePeerPoliciesEgressOnly) {
   auto& peers = *updatedConfig->getConfig().peers();
   for (const auto& peer : peers) {
     if (*peer.peer_addr() == kPeerAddr4.str()) {
-      // Ingress policy should remain unchanged (staticPeer2_ has no ingress
-      // policy by default)
+      /*
+       * Ingress policy should remain unchanged (staticPeer2_ has no ingress
+       * policy by default)
+       */
       EXPECT_FALSE(peer.ingress_policy_name().has_value());
       EXPECT_EQ(*peer.egress_policy_name(), "EGRESS_ONLY_UPDATE");
       break;
@@ -308,9 +316,11 @@ TEST_F(ConfigTestFixture, ConfigManagerUpdatePeerGroupPoliciesUpdatesPeers) {
   auto initialConfig = std::make_shared<const Config>(defaultConfig_);
   ConfigManager configManager(initialConfig);
 
-  // Update peer group policy -
-  // only the group config should be updated. Peers inherit via getValue()
-  // resolution in Config constructor.
+  /*
+   * Update peer group policy -
+   * only the group config should be updated. Peers inherit via getValue()
+   * resolution in Config constructor.
+   */
   auto policyMap = createConfigManagerPolicyMap(
       {{"PEERGROUP_RSW_CSW_V4", "PROPAGATED_INGRESS", "PROPAGATED_EGRESS"}});
 
@@ -330,9 +340,11 @@ TEST_F(ConfigTestFixture, ConfigManagerUpdatePeerGroupPoliciesUpdatesPeers) {
   }
   EXPECT_TRUE(foundGroup);
 
-  // Verify peer config fields are NOT modified (no group-to-peer
-  // propagation). Peers inherit group policy via getValue() in Config
-  // constructor.
+  /*
+   * Verify peer config fields are NOT modified (no group-to-peer
+   * propagation). Peers inherit group policy via getValue() in Config
+   * constructor.
+   */
   auto& peers = *updatedConfig->getConfig().peers();
 
   struct ExpectedPeerPolicy {
@@ -386,9 +398,11 @@ TEST_F(ConfigTestFixture, ConfigManagerUpdatePeerGroupPoliciesUpdatesPeers) {
     EXPECT_TRUE(expected.found) << "Peer " << peerAddr << " was not found";
   }
 
-  // Verify resolved policies via getPeerToConfig() (getValue() resolution).
-  // staticPeer3_ (no peer-level policy) should resolve to group's new policy.
-  // staticPeer4_ (has peer-level policy) should keep its explicit policy.
+  /*
+   * Verify resolved policies via getPeerToConfig() (getValue() resolution).
+   * staticPeer3_ (no peer-level policy) should resolve to group's new policy.
+   * staticPeer4_ (has peer-level policy) should keep its explicit policy.
+   */
   auto& peerToConfig = updatedConfig->getPeerToConfig();
 
   auto peer3It = peerToConfig.find(kPeerAddr5);
@@ -415,8 +429,10 @@ TEST_F(ConfigTestFixture, ConfigManagerConfigIntegrityAfterUpdates) {
   auto initialConfig = std::make_shared<const Config>(defaultConfig_);
   ConfigManager configManager(initialConfig);
 
-  // Perform series of updates and verify config integrity using createPolicyMap
-  // helper
+  /*
+   * Perform series of updates and verify config integrity using createPolicyMap
+   * helper
+   */
   auto policyMap = createConfigManagerPolicyMap(
       {{kPeerAddr3.str(), "INTEGRITY_TEST_INGRESS", ""}});
 
@@ -474,8 +490,10 @@ TEST_F(ConfigTestFixture, ConfigManagerThreadSafetySimulation) {
   auto initialConfig = std::make_shared<const Config>(defaultConfig_);
   ConfigManager configManager(initialConfig);
 
-  // Simulate multiple threads accessing and updating config
-  // This is a basic test - in real scenarios you'd use std::thread
+  /*
+   * Simulate multiple threads accessing and updating config
+   * This is a basic test - in real scenarios you'd use std::thread
+   */
 
   // First "thread" updates peer policies using createPolicyMap helper
   auto peerPolicyMap =
@@ -697,8 +715,10 @@ TEST_F(ConfigTestFixture, ConfigManagerVersionIncrementsAfterUpdateConfig) {
   EXPECT_EQ(2, configManager.getConfigVersion());
 }
 
-// Test that version increments even when configFilePath_ is empty (early return
-// path)
+/*
+ * Test that version increments even when configFilePath_ is empty (early return
+ * path)
+ */
 TEST_F(ConfigTestFixture, ConfigManagerVersionIncrementsWithEmptyFilePath) {
   auto initialConfig = std::make_shared<const Config>(defaultConfig_);
   ConfigManager configManager(initialConfig, ""); // Empty config file path
@@ -720,8 +740,10 @@ TEST_F(ConfigTestFixture, ConfigManagerVersionIncrementsWithEmptyFilePath) {
   EXPECT_EQ(2, configManager.getConfigVersion());
 }
 
-// Test that version increments after file write in
-// ConfigManagerFileTestFixture
+/*
+ * Test that version increments after file write in
+ * ConfigManagerFileTestFixture
+ */
 TEST_F(
     ConfigManagerFileTestFixture,
     ConfigManagerVersionIncrementsAfterFileWrite) {
@@ -826,8 +848,10 @@ TEST_F(
  ******************************************************************************/
 
 TEST_F(ConfigTestFixture, HasEgressPolicyOverrideAtStartup) {
-  // Verify that hasEgressPolicyOverride is correctly set from the raw thrift
-  // config at construction time.
+  /*
+   * Verify that hasEgressPolicyOverride is correctly set from the raw thrift
+   * config at construction time.
+   */
   auto config = std::make_shared<const Config>(defaultConfig_);
 
   // staticPeer1_ (kPeerAddr3) has peer-level egress_policy_name set
@@ -844,8 +868,10 @@ TEST_F(ConfigTestFixture, HasEgressPolicyOverrideAtStartup) {
 }
 
 TEST_F(ConfigTestFixture, HasEgressPolicyOverrideAfterSetPeersPolicy) {
-  // After setPeersPolicy (updatePeerPolicies), peers that get an egress
-  // policy set should have hasEgressPolicyOverride = true.
+  /*
+   * After setPeersPolicy (updatePeerPolicies), peers that get an egress
+   * policy set should have hasEgressPolicyOverride = true.
+   */
   auto initialConfig = std::make_shared<const Config>(defaultConfig_);
   ConfigManager configManager(initialConfig, "");
 
@@ -865,8 +891,10 @@ TEST_F(ConfigTestFixture, HasEgressPolicyOverrideAfterSetPeersPolicy) {
 }
 
 TEST_F(ConfigTestFixture, HasEgressPolicyOverrideAfterUnsetPeersPolicy) {
-  // After unsetPeersPolicy, peers that had a peer-level egress policy
-  // should have hasEgressPolicyOverride = false.
+  /*
+   * After unsetPeersPolicy, peers that had a peer-level egress policy
+   * should have hasEgressPolicyOverride = false.
+   */
   auto initialConfig = std::make_shared<const Config>(defaultConfig_);
   ConfigManager configManager(initialConfig, "");
 
@@ -886,8 +914,10 @@ TEST_F(ConfigTestFixture, HasEgressPolicyOverrideAfterUnsetPeersPolicy) {
 }
 
 TEST_F(ConfigTestFixture, HasEgressPolicyOverrideUnchangedByGroupPolicyUpdate) {
-  // Updating peer group policies should NOT change hasEgressPolicyOverride
-  // on any peer — it only reflects peer-level overrides.
+  /*
+   * Updating peer group policies should NOT change hasEgressPolicyOverride
+   * on any peer — it only reflects peer-level overrides.
+   */
   auto initialConfig = std::make_shared<const Config>(defaultConfig_);
   ConfigManager configManager(initialConfig, "");
 
@@ -918,8 +948,10 @@ TEST_F(ConfigTestFixture, HasEgressPolicyOverrideUnchangedByGroupPolicyUpdate) {
  *      START   -   addPeersToConfig Tests                                    *
  ******************************************************************************/
 
-// Verify adding a single peer: count increases, fields are correct, existing
-// peers are preserved, version increments, and config manager returns updated.
+/*
+ * Verify adding a single peer: count increases, fields are correct, existing
+ * peers are preserved, version increments, and config manager returns updated.
+ */
 TEST_F(ConfigTestFixture, AddPeersToConfigBasic) {
   auto initialConfig = std::make_shared<const Config>(defaultConfig_);
   ConfigManager configManager(initialConfig);
@@ -1160,8 +1192,10 @@ TEST_F(ConfigTestFixture, RemovePeersFromConfigNoOps) {
   EXPECT_EQ(config2->getConfig().peers()->size(), initialPeerCount);
 }
 
-// Remove multiple peers (including a peer-group member) and verify the updated
-// config is correct in memory and persisted to disk with a backup.
+/*
+ * Remove multiple peers (including a peer-group member) and verify the updated
+ * config is correct in memory and persisted to disk with a backup.
+ */
 TEST_F(ConfigManagerFileTestFixture, RemovePeersFromConfig) {
   writeInitialConfigToFile();
 
@@ -1170,8 +1204,10 @@ TEST_F(ConfigManagerFileTestFixture, RemovePeersFromConfig) {
 
   auto initialPeerCount = initialConfig->getConfig().peers()->size();
 
-  // Remove two peers at once: staticPeer1_ (kPeerAddr3) and a peer-group
-  // member staticPeer3_ (kPeerAddr5)
+  /*
+   * Remove two peers at once: staticPeer1_ (kPeerAddr3) and a peer-group
+   * member staticPeer3_ (kPeerAddr5)
+   */
   auto updatedConfig =
       configManager.removePeersFromConfig({kPeerAddr3, kPeerAddr5});
 
@@ -1240,8 +1276,10 @@ TEST_F(ConfigManagerFileTestFixture, RemovePeersFromConfig) {
  *      START   -   Split Config Policy Stripping Tests                       *
  ******************************************************************************/
 
-// Test that policy body fields are stripped from written config file in
-// split-config mode (separate policy file via --policy flag)
+/*
+ * Test that policy body fields are stripped from written config file in
+ * split-config mode (separate policy file via --policy flag)
+ */
 TEST_F(ConfigManagerFileTestFixture, SplitConfigPolicyFieldsStrippedFromFile) {
   // Add policy body fields to defaultConfig_
   BgpCommunity community;
@@ -1308,8 +1346,10 @@ TEST_F(ConfigManagerFileTestFixture, SplitConfigPolicyFieldsStrippedFromFile) {
   EXPECT_TRUE(foundUpdatedPeer);
 }
 
-// Test that policy body fields are stripped from written config file in
-// split-config mode (separate policy file via ConfigManager::setPolicyConfig)
+/*
+ * Test that policy body fields are stripped from written config file in
+ * split-config mode (separate policy file via ConfigManager::setPolicyConfig)
+ */
 TEST_F(
     ConfigManagerFileTestFixture,
     SplitConfigPolicyFieldsStrippedInProductionOrder) {
@@ -1337,9 +1377,11 @@ TEST_F(
   writeInitialConfigToFile();
   auto config = std::make_shared<Config>(defaultConfig_);
 
-  // construct the ConfigManager first, load the policy file
-  // afterwards (the reverse of SplitConfigPolicyFieldsStrippedFromFile). The
-  // split-config decision is passed explicitly, mirroring the entrypoints.
+  /*
+   * construct the ConfigManager first, load the policy file
+   * afterwards (the reverse of SplitConfigPolicyFieldsStrippedFromFile). The
+   * split-config decision is passed explicitly, mirroring the entrypoints.
+   */
   ConfigManager configManager(
       config, configFilePath_.string(), /*splitConfigPolicy=*/true);
   config->setPolicyConfigFromFile(policyFilePath.string());

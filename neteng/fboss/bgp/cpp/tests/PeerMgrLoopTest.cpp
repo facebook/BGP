@@ -136,11 +136,13 @@ class PeerManagerLoopTestFixture : public ::testing::Test {
         kGrRestartTime.count();
     thriftConfig.listen_addr() = kLocalAddr1.str();
     thriftConfig.eor_time_s() = 120;
-    // Stress-test will run multiple instance of tests simultaneously.
-    // Binding to a static port is bound to fail in that situation.
-    // Picking a pseudo random port > 1024 based on getpid().
-    // There is a remote possibility this might also result in a collision but
-    // that probability is very very low.
+    /*
+     * Stress-test will run multiple instance of tests simultaneously.
+     * Binding to a static port is bound to fail in that situation.
+     * Picking a pseudo random port > 1024 based on getpid().
+     * There is a remote possibility this might also result in a collision but
+     * that probability is very very low.
+     */
     std::srand((uint16_t)getpid());
     thriftConfig.listen_port() = 1179 + (folly::Random::rand32() % 60000);
 

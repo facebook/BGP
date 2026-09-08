@@ -51,8 +51,10 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Values(true /* addPath */));
 
 TEST_P(RibFixtureAddPathTestSuite, SetGetClearRouteFilterPolicyTest) {
-  // test setRouteFilterPolicy, getRouteFilterPolicy, and
-  // clearRouteFilterPolicy
+  /*
+   * test setRouteFilterPolicy, getRouteFilterPolicy, and
+   * clearRouteFilterPolicy
+   */
   rib_->setFibBatchTime(std::chrono::milliseconds(2));
 
   // Create the tRouteFilterPolicy and tRibPolicy for testing
@@ -209,11 +211,13 @@ TEST_P(RibFsdbAddPathTestSuite, ReplaceRouteFilterPolicyTest) {
         5, ASSERT_EVENTUALLY_TRUE(subscribedPolicy.rlock()->has_value()));
   }
   {
-    // Add route filter policy
-    // It should succeed as we have no policy before
-    // We need to run replaceRouteFilterPolicy in runInEventBaseThreadAndWait
-    // as we could potentially call schedulePrepareFibProgrammingTimer, which
-    // should be run in the Rib event base thread
+    /*
+     * Add route filter policy
+     * It should succeed as we have no policy before
+     * We need to run replaceRouteFilterPolicy in runInEventBaseThreadAndWait
+     * as we could potentially call schedulePrepareFibProgrammingTimer, which
+     * should be run in the Rib event base thread
+     */
     rib_->evb_.runInEventBaseThreadAndWait([&]() {
       rib_->replaceRouteFilterPolicy(
           std::make_unique<RouteFilterPolicy>(tRouteFilterPolicy));
@@ -272,8 +276,10 @@ TEST_P(RibFsdbAddPathTestSuite, ReplaceRouteFilterPolicyForceUpdateTest) {
     EXPECT_FALSE(hasUpdate);
   });
 
-  // Different content, same version, without forceUpdate - should update
-  // (Rib accepts same version if content differs)
+  /*
+   * Different content, same version, without forceUpdate - should update
+   * (Rib accepts same version if content differs)
+   */
   TRouteFilterPolicy differentPolicy = createTRouteFilterPolicy(
       {createTRouteFilterStatement({kV4Prefix2})}, 12345);
   rib_->evb_.runInEventBaseThreadAndWait([&]() {
@@ -292,8 +298,10 @@ TEST_P(RibFsdbAddPathTestSuite, ReplaceRouteFilterPolicyForceUpdateTest) {
     EXPECT_EQ(12345, rib_->routeFilterPolicy_->getVersion());
   });
 
-  // Different content, lower version, with forceUpdate=true - should update
-  // (forceUpdate bypasses version check, content differs so hasUpdate=true)
+  /*
+   * Different content, lower version, with forceUpdate=true - should update
+   * (forceUpdate bypasses version check, content differs so hasUpdate=true)
+   */
   TRouteFilterPolicy forcePolicy = createTRouteFilterPolicy(
       {createTRouteFilterStatement({kV4Prefix1})}, 100);
   rib_->evb_.runInEventBaseThreadAndWait([&]() {
@@ -305,8 +313,10 @@ TEST_P(RibFsdbAddPathTestSuite, ReplaceRouteFilterPolicyForceUpdateTest) {
     EXPECT_EQ(100, rib_->routeFilterPolicy_->getVersion());
   });
 
-  // Same content, same version, with forceUpdate=true - should NOT update
-  // (forceUpdate only bypasses version check, not content check)
+  /*
+   * Same content, same version, with forceUpdate=true - should NOT update
+   * (forceUpdate only bypasses version check, not content check)
+   */
   rib_->evb_.runInEventBaseThreadAndWait([&]() {
     auto hasUpdate = rib_->replaceRouteFilterPolicy(
         std::make_unique<RouteFilterPolicy>(forcePolicy),
@@ -315,8 +325,10 @@ TEST_P(RibFsdbAddPathTestSuite, ReplaceRouteFilterPolicyForceUpdateTest) {
     EXPECT_FALSE(hasUpdate);
   });
 
-  // Same statements, different version, with forceUpdate=true - should update
-  // (operator!= includes version in comparison, so policies are "different")
+  /*
+   * Same statements, different version, with forceUpdate=true - should update
+   * (operator!= includes version in comparison, so policies are "different")
+   */
   TRouteFilterPolicy sameStmtsDiffVersion =
       createTRouteFilterPolicy({createTRouteFilterStatement({kV4Prefix1})}, 50);
   rib_->evb_.runInEventBaseThreadAndWait([&]() {

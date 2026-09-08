@@ -42,8 +42,10 @@ class NeighborWatcherBenchmarkFixture {
         0 /* fsdbPort - not used in benchmark */);
   }
 
-  // Create an interfaceMap with specified number of interfaces and entries per
-  // interface
+  /*
+   * Create an interfaceMap with specified number of interfaces and entries per
+   * interface
+   */
   std::map<int32_t, fboss::state::InterfaceFields> createInterfaceMap(
       size_t numInterfaces,
       size_t entriesPerInterface,
@@ -149,8 +151,10 @@ void BM_ProcessInterfaceMapChanges_AllAdded(uint32_t iters, size_t numEntries) {
   }
 }
 
-// Benchmark processInterfaceMapChanges with all entries deleted (interfaceId
-// removed)
+/*
+ * Benchmark processInterfaceMapChanges with all entries deleted (interfaceId
+ * removed)
+ */
 void BM_ProcessInterfaceMapChanges_AllDeleted(
     uint32_t iters,
     size_t numEntries) {

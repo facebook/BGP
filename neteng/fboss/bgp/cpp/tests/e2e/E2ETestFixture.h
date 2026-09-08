@@ -1504,12 +1504,16 @@ class E2ETestFixture : public ::testing::Test {
   // Legacy v4 NLRI encoding for capability-less peers (thrift config gate)
   bool enableLegacyV4NlriEncoding_ = false;
 
-  // Bounded, backpressured stream subscriber egress (thrift config gate).
-  // std::nullopt leaves the field out of the config.
+  /*
+   * Bounded, backpressured stream subscriber egress (thrift config gate).
+   * std::nullopt leaves the field out of the config.
+   */
   std::optional<bool> enableStreamSubscriberBackpressure_;
 
-  // Update group config override (call setUpdateGroupConfig before
-  // createPeerManager to override slow peer thresholds etc.)
+  /*
+   * Update group config override (call setUpdateGroupConfig before
+   * createPeerManager to override slow peer thresholds etc.)
+   */
   std::optional<thrift::UpdateGroupConfig> updateGroupConfigOverride_;
 
   /*
@@ -1550,9 +1554,11 @@ class E2ETestFixture : public ::testing::Test {
       std::optional<nettools::bgplib::BgpAddPathSendRec>>
       peerAddPathCapabilities_;
 
-  // Per-peer MP-EXT capability flag (set via addPeer with BgpPeerSpec). When
-  // false, the peer's remote (pre-negotiation) MP-EXT bit is modeled as false,
-  // driving legacyV4NlriEncoding in the update-group key.
+  /*
+   * Per-peer MP-EXT capability flag (set via addPeer with BgpPeerSpec). When
+   * false, the peer's remote (pre-negotiation) MP-EXT bit is modeled as false,
+   * driving legacyV4NlriEncoding in the update-group key.
+   */
   std::unordered_map<folly::IPAddress, bool> peerMpExtCapable_;
 
   // Dynamically added local routes (via addLocalRoute)
@@ -1584,9 +1590,11 @@ class E2ETestFixture : public ::testing::Test {
   // Blocked peers (for testing backpressure scenarios)
   std::unordered_set<folly::IPAddress> blockedPeers_;
 
-  // Per-peer view of the routes currently advertised to each peer, populated by
-  // recordDrainedRoutes and keyed by peer id. Converges to each peer's
-  // Adj-RIB-Out as UPDATEs are drained (announce sets, withdraw erases).
+  /*
+   * Per-peer view of the routes currently advertised to each peer, populated by
+   * recordDrainedRoutes and keyed by peer id. Converges to each peer's
+   * Adj-RIB-Out as UPDATEs are drained (announce sets, withdraw erases).
+   */
   std::unordered_map<BgpPeerId, ReceivedRoutes> drainedRoutesByPeer_;
 
   // Default queue sizes for peers (can be overridden via setDefaultQueueSizes)

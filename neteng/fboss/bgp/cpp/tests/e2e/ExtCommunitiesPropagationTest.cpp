@@ -75,8 +75,10 @@ static constexpr uint8_t kLinkBwSubtype =
 static constexpr uint16_t kExtCommAsn = 65001;
 static constexpr uint32_t kRouteTargetValue = 100;
 static constexpr uint32_t kRouteOriginValue = 200;
-// 10.0f as IEEE 754 uint32 — represents 10 bytes/sec LBW (value is arbitrary
-// for propagation tests; only presence/absence matters)
+/*
+ * 10.0f as IEEE 754 uint32 — represents 10 bytes/sec LBW (value is arbitrary
+ * for propagation tests; only presence/absence matters)
+ */
 static constexpr uint32_t kLbwValue = 0x41200000;
 
 // Helper to construct a BgpAttrExtCommunityC from type/subtype/asn/value
@@ -137,9 +139,11 @@ class ExtCommunitiesPropagationTest : public E2ETestFixture {
     if (ecC.isNonTransitiveLinkBandwidthCommunity()) {
       return LBW_NT;
     }
-    // Any remaining non-transitive community is our RO_NT test community.
-    // Note: isRouteOrigin() only recognizes transitive types (type <= 0x02),
-    // so we can't use it for our non-transitive Route Origin (type 0x40).
+    /*
+     * Any remaining non-transitive community is our RO_NT test community.
+     * Note: isRouteOrigin() only recognizes transitive types (type <= 0x02),
+     * so we can't use it for our non-transitive Route Origin (type 0x40).
+     */
     if (!ecC.isTransitive()) {
       return RO_NT;
     }
@@ -172,11 +176,13 @@ class ExtCommunitiesPropagationTest : public E2ETestFixture {
         << "Prefix " << prefix << "/" << (int)prefixLen
         << " not found in announcement";
 
-    // Classify all ext communities in the update.
-    // Note: do NOT use .has_value() on extCommunities() — it's a non-optional
-    // Thrift list field, and has_value() tracks "was explicitly assigned", not
-    // "has elements". getBgpUpdate2() populates via emplace_back which doesn't
-    // set the is_set flag.
+    /*
+     * Classify all ext communities in the update.
+     * Note: do NOT use .has_value() on extCommunities() — it's a non-optional
+     * Thrift list field, and has_value() tracks "was explicitly assigned", not
+     * "has elements". getBgpUpdate2() populates via emplace_back which doesn't
+     * set the is_set flag.
+     */
     uint8_t actualFlags = 0;
     for (const auto& ec : *update.attrs()->extCommunities()) {
       actualFlags |= classifyExtCommunity(ec);
@@ -304,9 +310,11 @@ class ExtCommunitiesPropagationTest : public E2ETestFixture {
   static constexpr const char* kTestAsPath = "65001";
 };
 
-// ==========================================================================
-// SENDER-SIDE TESTS (AdvertiseLinkBandwidth on egress)
-// ==========================================================================
+/*
+ * ==========================================================================
+ * SENDER-SIDE TESTS (AdvertiseLinkBandwidth on egress)
+ * ==========================================================================
+ */
 
 /*
  * EBGP Sender UNCONFIGURED (AdvertiseLinkBandwidth = nullopt)
@@ -375,8 +383,10 @@ TEST_F(ExtCommunitiesPropagationTest, SenderEbgp_Advertise) {
  * Expected post-policy: RT-T, RO-NT, LBW-T, LBW-NT
  */
 TEST_F(ExtCommunitiesPropagationTest, SenderIbgp_Unconfigured) {
-  // Source must be EBGP so the route propagates to IBGP destination
-  // (IBGP→IBGP is filtered without route reflector)
+  /*
+   * Source must be EBGP so the route propagates to IBGP destination
+   * (IBGP→IBGP is filtered without route reflector)
+   */
   setupPeers(makeEbgpSourceSpec(), makeIbgpDestSpec(std::nullopt));
   injectTestRoute(kPeerAddr3);
   verifyOutboundExtCommunities(
@@ -416,20 +426,22 @@ TEST_F(ExtCommunitiesPropagationTest, SenderIbgp_Advertise) {
       kPeerAddr5, kTestPrefix, kTestPrefixLen, RT_T | RO_NT | LBW_NT);
 }
 
-// ==========================================================================
-// RECEIVER-SIDE TESTS (ReceiveLinkBandwidth on ingress)
-// ==========================================================================
-//
-// For receiver tests, the source peer has ReceiveLinkBandwidth configured.
-//
-// EBGP receiver: EBGP source (with rcvLbw) + EBGP dest (no AdvLbw).
-//   EBGP egress strips non-transitive per RFC 4360.
-//
-// IBGP receiver: IBGP source (with rcvLbw) + EBGP dest (BEST_PATH AdvLbw).
-//   IBGP→IBGP is filtered without route reflector, so dest must be EBGP.
-//   Dest uses BEST_PATH so that the ingress rcvLbw effect on LBW-NT is
-//   observable at egress (without AdvLbw, EBGP egress strips all
-//   non-transitive communities, masking the ingress effect).
+/*
+ * ==========================================================================
+ * RECEIVER-SIDE TESTS (ReceiveLinkBandwidth on ingress)
+ * ==========================================================================
+ *
+ * For receiver tests, the source peer has ReceiveLinkBandwidth configured.
+ *
+ * EBGP receiver: EBGP source (with rcvLbw) + EBGP dest (no AdvLbw).
+ *   EBGP egress strips non-transitive per RFC 4360.
+ *
+ * IBGP receiver: IBGP source (with rcvLbw) + EBGP dest (BEST_PATH AdvLbw).
+ *   IBGP→IBGP is filtered without route reflector, so dest must be EBGP.
+ *   Dest uses BEST_PATH so that the ingress rcvLbw effect on LBW-NT is
+ *   observable at egress (without AdvLbw, EBGP egress strips all
+ *   non-transitive communities, masking the ingress effect).
+ */
 
 /*
  * EBGP Receiver UNCONFIGURED (ReceiveLinkBandwidth = nullopt)

@@ -67,8 +67,10 @@ TEST_P(RibFixtureAddPathTestSuite, FromFibMessageLoop) {
   RibBase::selectBestPath(
       entry2, multipathSelector, bestpathSelector, false, 0);
   {
-    // initialise a FibProgrammedMessage with same route in ribEntries
-    // positive test case, adding an announcement after fib is programmed
+    /*
+     * initialise a FibProgrammedMessage with same route in ribEntries
+     * positive test case, adding an announcement after fib is programmed
+     */
     folly::F14NodeMap<
         folly::CIDRNetwork,
         std::shared_ptr<const WeightedNexthopMap>>
@@ -106,8 +108,10 @@ TEST_P(RibFixtureAddPathTestSuite, FromFibMessageLoop) {
     REPEAT_N(5, { EXPECT_EQ(0, ribOutQ_.size()); });
   }
   {
-    // initialise a FibProgrammedMessage with null nexthops
-    // withdrawl, not adding announcement
+    /*
+     * initialise a FibProgrammedMessage with null nexthops
+     * withdrawl, not adding announcement
+     */
     folly::F14NodeMap<
         folly::CIDRNetwork,
         std::shared_ptr<const WeightedNexthopMap>>
@@ -127,8 +131,10 @@ TEST_P(RibFixtureAddPathTestSuite, FromFibMessageLoop) {
     REPEAT_N(5, { EXPECT_EQ(0, ribOutQ_.size()); });
   }
   {
-    // initialise a FibProgrammedMessage with prefix not in ribEntries_
-    // not adding announcement
+    /*
+     * initialise a FibProgrammedMessage with prefix not in ribEntries_
+     * not adding announcement
+     */
     folly::F14NodeMap<
         folly::CIDRNetwork,
         std::shared_ptr<const WeightedNexthopMap>>
@@ -149,8 +155,10 @@ TEST_P(RibFixtureAddPathTestSuite, FromFibMessageLoop) {
     REPEAT_N(5, { EXPECT_EQ(0, ribOutQ_.size()); });
   }
   {
-    // initialise a FibProgrammedMessage with MultipathNexthops() != nexthops
-    // not adding announcement
+    /*
+     * initialise a FibProgrammedMessage with MultipathNexthops() != nexthops
+     * not adding announcement
+     */
     folly::F14NodeMap<
         folly::CIDRNetwork,
         std::shared_ptr<const WeightedNexthopMap>>
@@ -172,8 +180,10 @@ TEST_P(RibFixtureAddPathTestSuite, FromFibMessageLoop) {
   }
 
   {
-    // adding another path for entry. expecting to have both announced for
-    // add path
+    /*
+     * adding another path for entry. expecting to have both announced for
+     * add path
+     */
     auto newAttr = std::make_shared<facebook::bgp::BgpPath>(
         *buildBgpPathFields(4, 4, 4, 4));
     newAttr->setNexthop(kV4Nexthop2);
@@ -181,8 +191,10 @@ TEST_P(RibFixtureAddPathTestSuite, FromFibMessageLoop) {
     entry.updatePath(eBgpPeer2_, newAttr, false);
     RibBase::selectBestPath(
         entry, multipathSelector, bestpathSelector, false, 0);
-    // initialise a FibProgrammedMessage without EoR
-    // positive test case, adding an announcement after fib is programmed
+    /*
+     * initialise a FibProgrammedMessage without EoR
+     * positive test case, adding an announcement after fib is programmed
+     */
     folly::F14NodeMap<
         folly::CIDRNetwork,
         std::shared_ptr<const WeightedNexthopMap>>
@@ -222,9 +234,11 @@ TEST_P(RibFixtureAddPathTestSuite, FromFibMessageLoop) {
     // expect no more announcement
     REPEAT_N(5, { EXPECT_EQ(0, ribOutQ_.size()); });
 
-    // updating bgp attributes (asPathLength) for one of multipath.
-    // as a result the multinexthop is gonna change.
-    // expecting to send one announcement and one withdraw
+    /*
+     * updating bgp attributes (asPathLength) for one of multipath.
+     * as a result the multinexthop is gonna change.
+     * expecting to send one announcement and one withdraw
+     */
     auto newAttr2 = std::make_shared<facebook::bgp::BgpPath>(
         *buildBgpPathFields(5, 4, 4, 4));
     newAttr2->setNexthop(kV4Nexthop2);
@@ -265,9 +279,11 @@ TEST_P(RibFixtureAddPathTestSuite, FromFibMessageLoop) {
     EXPECT_EQ(kDefaultPathID, announcement3.entries[0].pathIdToSend);
     ASSERT_EQ(GetParam() ? 1 : 0, announcement3.addPathEntries.size());
     if (GetParam()) {
-      // the path not withdrawn is re-announced. minId and minId+1 (now
-      // withdrawn) were the previously announced paths, so it must be minId
-      // that's re-announced
+      /*
+       * the path not withdrawn is re-announced. minId and minId+1 (now
+       * withdrawn) were the previously announced paths, so it must be minId
+       * that's re-announced
+       */
       EXPECT_EQ(kMinPathIDToSend, announcement3.addPathEntries[0].pathIdToSend);
       EXPECT_EQ(
           kV4Nexthop1, announcement3.addPathEntries[0].attrs->getNexthop());
@@ -277,9 +293,11 @@ TEST_P(RibFixtureAddPathTestSuite, FromFibMessageLoop) {
     REPEAT_N(5, { EXPECT_EQ(0, ribOutQ_.size()); });
   }
   {
-    // adding another entry for testing because "entry" is announced
-    // initialise a FibProgrammedMessage with send EoR
-    // positive test case, adding an announcement after fib is programmed
+    /*
+     * adding another entry for testing because "entry" is announced
+     * initialise a FibProgrammedMessage with send EoR
+     * positive test case, adding an announcement after fib is programmed
+     */
     folly::F14NodeMap<
         folly::CIDRNetwork,
         std::shared_ptr<const WeightedNexthopMap>>
@@ -312,8 +330,10 @@ TEST_P(RibFixtureAddPathTestSuite, FromFibMessageLoop) {
     EXPECT_EQ(kV6Prefix1, announcement.entries[0].prefix);
     ASSERT_EQ(GetParam() ? 1 : 0, announcement.addPathEntries.size());
     if (GetParam()) {
-      // only one path for ribEntry2 has been sent, hence its allocated pathId
-      // is the min ID
+      /*
+       * only one path for ribEntry2 has been sent, hence its allocated pathId
+       * is the min ID
+       */
       EXPECT_EQ(kMinPathIDToSend, announcement.addPathEntries[0].pathIdToSend);
       EXPECT_EQ(kV6Prefix1, announcement.addPathEntries[0].prefix);
     }
@@ -366,21 +386,27 @@ TEST_F(RibFixture, RibWithdrawalDuringPauseBestPathAndFibProgrammingTest) {
     sendInitialPathComputation();
     fibFuture.wait();
 
-    // Step 2: Send 1 announcement before pause, and again wait for Fib
-    // programming
+    /*
+     * Step 2: Send 1 announcement before pause, and again wait for Fib
+     * programming
+     */
     auto fibFuture2 = fib_->getFibProgramFuture();
     sendAnnouncement(prefixBatch1, iBgpPeer_, attr_);
     fibFuture2.wait();
 
-    // Expect RibInitialAnnouncementStart, first RibOutAnnouncement (no entry
-    // because EOR sent with nothing in Rib), and second RibOutAnnouncement (has
-    // an entry for prefixBatch1)
+    /*
+     * Expect RibInitialAnnouncementStart, first RibOutAnnouncement (no entry
+     * because EOR sent with nothing in Rib), and second RibOutAnnouncement (has
+     * an entry for prefixBatch1)
+     */
     WITH_RETRIES({ ASSERT_EVENTUALLY_EQ(ribOutQ_.size(), 3); });
     // Step 3: Send PauseBestPathAndFibProgramming message to rib
     sendPauseBestPathAndFibProgramming(RibPauseResumeCause::SAFE_MODE);
 
-    // Step 4: Send another announcement to rib during the pause period, the
-    // announcement will be in RIB only
+    /*
+     * Step 4: Send another announcement to rib during the pause period, the
+     * announcement will be in RIB only
+     */
     sendAnnouncement(prefixBatch2, iBgpPeer_, attr_);
 
     // this is the programming triggered by sendInitialPathComputation
@@ -397,14 +423,18 @@ TEST_F(RibFixture, RibWithdrawalDuringPauseBestPathAndFibProgrammingTest) {
     sendResumeBestPathAndFibProgramming(RibPauseResumeCause::SAFE_MODE);
     // this is the programming triggered by sendResumeBestPathAndFibProgramming
     fibFuture3.wait();
-    // Must wait for FIB ack has been received and processed to avoid data race
-    // Expect the 3 from before, plus RibOutWithdrawal (has an entry for
-    // prefixBatch1), and third RibOutAnnouncement (has an entry for
-    // prefixBatch2)
+    /*
+     * Must wait for FIB ack has been received and processed to avoid data race
+     * Expect the 3 from before, plus RibOutWithdrawal (has an entry for
+     * prefixBatch1), and third RibOutAnnouncement (has an entry for
+     * prefixBatch2)
+     */
     WITH_RETRIES({ ASSERT_EVENTUALLY_EQ(ribOutQ_.size(), 5); });
 
-    // Step 6: Verify that the withdrawn prefix is removed from RIB, and the
-    // non-withdrawn prefix remains
+    /*
+     * Step 6: Verify that the withdrawn prefix is removed from RIB, and the
+     * non-withdrawn prefix remains
+     */
     WITH_RETRIES({
       rib_->evb_.runInEventBaseThreadAndWait([&]() {
         ASSERT_EVENTUALLY_TRUE(
@@ -441,8 +471,10 @@ TEST_F(RibFixture, MultiplePauseAndResumeBestPathAndFibProgrammingTest) {
     // Step 2: Send PauseBestPathAndFibProgramming message to rib
     sendPauseBestPathAndFibProgramming(RibPauseResumeCause::SAFE_MODE);
 
-    // Step 3: Send PauseBestPathAndFibProgramming message to rib, this will
-    // be ignored
+    /*
+     * Step 3: Send PauseBestPathAndFibProgramming message to rib, this will
+     * be ignored
+     */
     sendPauseBestPathAndFibProgramming(RibPauseResumeCause::SAFE_MODE);
 
     // Step 4: Send 2 announcements to rib, which won't be programmed to fib
@@ -452,8 +484,10 @@ TEST_F(RibFixture, MultiplePauseAndResumeBestPathAndFibProgrammingTest) {
     WITH_RETRIES(
         { ASSERT_EVENTUALLY_TRUE(isBestPathAndFibProgrammingPaused()); });
   }
-  // Case 2: Send multiple ResumeBestPathAndFibProgramming messages and verify
-  // they are all ignored since best-path and fib programming was not paused
+  /*
+   * Case 2: Send multiple ResumeBestPathAndFibProgramming messages and verify
+   * they are all ignored since best-path and fib programming was not paused
+   */
   {
     // Expect no interuptions to Fib programming or unicast route updates
     EXPECT_CALL(*rib_, prepareFibProgramming_()).Times(1);
@@ -464,16 +498,22 @@ TEST_F(RibFixture, MultiplePauseAndResumeBestPathAndFibProgrammingTest) {
         .Times(1);
     auto fibFuture = fib_->getFibProgramFuture();
 
-    // Step 1: Send ResumeBestPathAndFibProgramming message to rib, this will
-    // not be ignored
+    /*
+     * Step 1: Send ResumeBestPathAndFibProgramming message to rib, this will
+     * not be ignored
+     */
     sendResumeBestPathAndFibProgramming(RibPauseResumeCause::SAFE_MODE);
 
-    // Step 2: Send ResumeBestPathAndFibProgramming message to rib, this will
-    // be ignored
+    /*
+     * Step 2: Send ResumeBestPathAndFibProgramming message to rib, this will
+     * be ignored
+     */
     sendResumeBestPathAndFibProgramming(RibPauseResumeCause::SAFE_MODE);
 
-    // Step 3: Send 2 announcements to Rib. Since there is no attrs updates,
-    // these announcements will be ignored
+    /*
+     * Step 3: Send 2 announcements to Rib. Since there is no attrs updates,
+     * these announcements will be ignored
+     */
     sendAnnouncement(prefixBatch1, iBgpPeer_, attr_);
     sendAnnouncement(prefixBatch2, iBgpPeer_, attr_);
     fibFuture.wait();
@@ -487,8 +527,10 @@ TEST_F(RibFixture, MultiplePauseAndResumeBestPathAndFibProgrammingTest) {
  * thread operations are paused and then resumed with SAFE_MODE
  */
 TEST_F(RibFixture, PauseAndResumeBestPathAndFibProgrammingTest) {
-  // Case 1: Send 1 RibAnnouncement when local Rib thread operations are
-  // paused and 1 RibAnnouncement when it is resumed
+  /*
+   * Case 1: Send 1 RibAnnouncement when local Rib thread operations are
+   * paused and 1 RibAnnouncement when it is resumed
+   */
   auto prefixBatch1 = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
   {
     auto fibFuture = fib_->getFibProgramFuture();
@@ -526,8 +568,10 @@ TEST_F(RibFixture, PauseAndResumeBestPathAndFibProgrammingTest) {
 
     fibFuture.wait();
 
-    // Test expects to see RibInitialAnnouncementStart and both the
-    // announcements
+    /*
+     * Test expects to see RibInitialAnnouncementStart and both the
+     * announcements
+     */
     WITH_RETRIES({ ASSERT_EVENTUALLY_TRUE(ribOutQ_.size() == 4); });
     // RibInitialAnnouncementStart
     auto msg = folly::coro::blockingWait(ribOutQ_.pop());
@@ -556,8 +600,10 @@ TEST_F(RibFixture, PauseAndResumeBestPathAndFibProgrammingTest) {
     // pop last message out
     msg = folly::coro::blockingWait(ribOutQ_.pop());
   }
-  // Case 2: Send 1 RibAnnouncement when local Rib thread operations are
-  // paused and 1 RibWithdrawal when it is resumed
+  /*
+   * Case 2: Send 1 RibAnnouncement when local Rib thread operations are
+   * paused and 1 RibWithdrawal when it is resumed
+   */
   {
     auto fibFuture = fib_->getFibProgramFuture();
 
@@ -592,8 +638,10 @@ TEST_F(RibFixture, PauseAndResumeBestPathAndFibProgrammingTest) {
  */
 TEST_F(RibFixture, DefaultStateAndPauseBestPathAndFibProgrammingTest) {
   auto fibFuture = fib_->getFibProgramFuture();
-  // Step 1: Send 2 announcements and EOR to simulate RIB in steady state
-  // By default, PauseBestPathAndFibProgramming_ is False.
+  /*
+   * Step 1: Send 2 announcements and EOR to simulate RIB in steady state
+   * By default, PauseBestPathAndFibProgramming_ is False.
+   */
   auto prefixBatch1 = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
   auto prefixBatch2 = PrefixPathIds{{kV6Prefix1, kDefaultPathID}};
   auto prefixBatch3 = PrefixPathIds{{kV4Prefix2, kDefaultPathID}};
@@ -611,8 +659,10 @@ TEST_F(RibFixture, DefaultStateAndPauseBestPathAndFibProgrammingTest) {
 
   fibFuture.wait();
 
-  // Test expects to see RibInitialAnnouncementStart and then
-  // only one announcement (One before local RIB thread was paused).
+  /*
+   * Test expects to see RibInitialAnnouncementStart and then
+   * only one announcement (One before local RIB thread was paused).
+   */
   WITH_RETRIES({ ASSERT_EVENTUALLY_TRUE(ribOutQ_.size() == 2); });
   auto msg = folly::coro::blockingWait(ribOutQ_.pop());
   ASSERT_TRUE(std::holds_alternative<RibInitialAnnouncementStart>(msg));
@@ -636,9 +686,11 @@ TEST_F(RibFixture, FibSyncReqWhilePausedTest) {
   auto prefixBatch1 = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
   auto prefixBatch2 = PrefixPathIds{{kV6Prefix1, kDefaultPathID}};
 
-  // Expect prepareFibProgramming called twice:
-  // 1) During initial EOR
-  // 2) During resume (with fullSync due to fibSyncReqPending_)
+  /*
+   * Expect prepareFibProgramming called twice:
+   * 1) During initial EOR
+   * 2) During resume (with fullSync due to fibSyncReqPending_)
+   */
   EXPECT_CALL(*rib_, prepareFibProgramming_()).Times(2);
 
   // Use InSequence to ensure program_ calls happen in the expected order
@@ -677,9 +729,11 @@ TEST_F(RibFixture, FibSyncReqWhilePausedTest) {
   // Verify fibSyncReqPending_ flag is set
   WITH_RETRIES({ ASSERT_EVENTUALLY_TRUE(rib_->fibSyncReqPending_); });
 
-  // Step 5: Resume best path computation and fib programming
-  // This should trigger prepareFibProgramming(true) because fibSyncReqPending_
-  // is set
+  /*
+   * Step 5: Resume best path computation and fib programming
+   * This should trigger prepareFibProgramming(true) because fibSyncReqPending_
+   * is set
+   */
   fibFuture = fib_->getFibProgramFuture();
   sendResumeBestPathAndFibProgramming(RibPauseResumeCause::ROUTE_CHURN);
 
@@ -729,8 +783,10 @@ TEST_F(RibFixture, FibFlushedCounterTest) {
         localEntry, multipathSelector, bestpathSelector, false, 0);
     rib_->ribEntries_.emplace(localPrefix, localEntry);
 
-    // Add a non-local rib entry WITHOUT a path (getAllPathsCnt() == 0)
-    // This simulates a route that has been withdrawn but not yet erased
+    /*
+     * Add a non-local rib entry WITHOUT a path (getAllPathsCnt() == 0)
+     * This simulates a route that has been withdrawn but not yet erased
+     */
     RibEntry nonLocalEntry(kV4Prefix1);
     rib_->ribEntries_.emplace(kV4Prefix1, nonLocalEntry);
   });
@@ -739,11 +795,12 @@ TEST_F(RibFixture, FibFlushedCounterTest) {
   EXPECT_EQ(2, rib_->ribEntries_.size());
   EXPECT_EQ(1, rib_->localRoutes_.size());
 
-  //
-  // Negative case: ribEntries_.size() > localRoutes_.size()
-  // Counter should NOT be incremented
-  //
-  // For SUM-type timeseries stats, read with ".sum" suffix
+  /*
+   * Negative case: ribEntries_.size() > localRoutes_.size()
+   * Counter should NOT be incremented
+   *
+   * For SUM-type timeseries stats, read with ".sum" suffix
+   */
   const std::string kFibFlushedSum =
       std::string(FibStats::kFibFlushed) + ".sum";
   {
@@ -758,8 +815,10 @@ TEST_F(RibFixture, FibFlushedCounterTest) {
                           ->second.getMultipathWeightedNexthops();
     });
 
-    // Create FibProgrammedMessage with only localPrefix
-    // (non-local entry still exists but not in this message)
+    /*
+     * Create FibProgrammedMessage with only localPrefix
+     * (non-local entry still exists but not in this message)
+     */
     folly::F14NodeMap<
         folly::CIDRNetwork,
         std::shared_ptr<const WeightedNexthopMap>>
@@ -783,18 +842,20 @@ TEST_F(RibFixture, FibFlushedCounterTest) {
            "localRoutes_.size()";
   }
 
-  //
-  // Positive case: send withdrawal (nullptr nexthops) for non-local entry
-  // handleFibProgrammedMessage will erase it since getAllPathsCnt() == 0
-  // Counter SHOULD be incremented
-  //
+  /*
+   * Positive case: send withdrawal (nullptr nexthops) for non-local entry
+   * handleFibProgrammedMessage will erase it since getAllPathsCnt() == 0
+   * Counter SHOULD be incremented
+   */
   {
     fb303::ThreadCachedServiceData::get()->publishStats();
     auto beforeCounter =
         fb303::ThreadCachedServiceData::get()->getCounter(kFibFlushedSum);
 
-    // Create FibProgrammedMessage with nullptr nexthops for non-local prefix
-    // (withdrawal). Since entry has getAllPathsCnt() == 0, it will be erased.
+    /*
+     * Create FibProgrammedMessage with nullptr nexthops for non-local prefix
+     * (withdrawal). Since entry has getAllPathsCnt() == 0, it will be erased.
+     */
     folly::F14NodeMap<
         folly::CIDRNetwork,
         std::shared_ptr<const WeightedNexthopMap>>

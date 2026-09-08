@@ -1578,8 +1578,10 @@ TEST_F(
   auto detached = ctx.adjRibs.at(makePeerId(1));
   auto group = ctx.adjRibs.at(makePeerId(0))->getUpdateGroup();
 
-  // Baseline: the deny policy withholds the 50 odd routes, so only the 50 even
-  // routes are advertised to the detached peer.
+  /*
+   * Baseline: the deny policy withholds the 50 odd routes, so only the 50 even
+   * routes are advertised to the detached peer.
+   */
   EXPECT_EQ(
       verifyRibOutEntries(
           ctx,
@@ -1754,8 +1756,10 @@ class UpdateGroupsEgressReEvalTest : public UpdateGroupPolicyReEvalUTBase {
                &evb, [&]() { return ctx.adjRibs.at(id)->getPeerState(); })
         .get();
   }
-  // Whether peer `id`'s AdjRib is a member of `group` (in its bit map), as
-  // opposed to merely having a stale pointer at it.
+  /*
+   * Whether peer `id`'s AdjRib is a member of `group` (in its bit map), as
+   * opposed to merely having a stale pointer at it.
+   */
   bool isMemberOf(
       TestContext& ctx,
       const std::shared_ptr<AdjRibOutGroup>& group,
@@ -1912,8 +1916,10 @@ TEST_F(UpdateGroupsEgressReEvalTest, IgnoresDownPeerDuringEgressReeval) {
   EXPECT_EQ(groupOf(ctx, peer(2)), sourceGroup);
   EXPECT_TRUE(isMemberOf(ctx, sourceGroup, peer(2)));
 
-  // peer 1 (DOWN) was ignored: not a member of either group, not moved into
-  // peer 0's new group, stale pointer/key untouched, still DOWN.
+  /*
+   * peer 1 (DOWN) was ignored: not a member of either group, not moved into
+   * peer 0's new group, stale pointer/key untouched, still DOWN.
+   */
   EXPECT_FALSE(isMemberOf(ctx, sourceGroup, peer(1)));
   EXPECT_FALSE(isMemberOf(ctx, targetGroup, peer(1)));
   EXPECT_NE(groupOf(ctx, peer(1)), targetGroup);
@@ -2006,8 +2012,10 @@ TEST_F(
   // Only peer 0 joined the standing group (peer 3 was already there).
   EXPECT_EQ(existingTarget->getMemberCount(), targetMembersBefore + 1);
 
-  // peer 1 (DOWN) was ignored: not a member of either group, not moved into the
-  // standing target, stale pointer/key untouched, still DOWN.
+  /*
+   * peer 1 (DOWN) was ignored: not a member of either group, not moved into the
+   * standing target, stale pointer/key untouched, still DOWN.
+   */
   EXPECT_FALSE(isMemberOf(ctx, sourceGroup, peer(1)));
   EXPECT_FALSE(isMemberOf(ctx, existingTarget, peer(1)));
   EXPECT_NE(groupOf(ctx, peer(1)), existingTarget);
@@ -2083,8 +2091,10 @@ TEST_F(UpdateGroupsEgressReEvalTest, IgnoresDownPeerDuringEgressReevalRekey) {
   EXPECT_TRUE(isMemberOf(ctx, group, peer(2)));
   EXPECT_TRUE(isMemberOf(ctx, group, peer(3)));
 
-  // peer 1 (DOWN) was ignored: not pulled back into the rekeyed group, key
-  // never rebuilt, still DOWN.
+  /*
+   * peer 1 (DOWN) was ignored: not pulled back into the rekeyed group, key
+   * never rebuilt, still DOWN.
+   */
   EXPECT_FALSE(isMemberOf(ctx, group, peer(1)));
   EXPECT_EQ(groupOf(ctx, peer(1)), downGroupBefore);
   EXPECT_EQ(keyOf(ctx, peer(1)), downKeyBefore);
@@ -2125,12 +2135,14 @@ TEST_F(
   std::optional<bool> bufferedDuringDrain;
   std::shared_ptr<AdjRib> adjRib;
 
-  // Seed a buffered detached-peer RibDumpReq for the sole peer, then park a
-  // task on its (single-member) group's async scope. folly::coro::Baton is not
-  // cancellation-aware, so a cancellation callback posts it: when
-  // maybeDestroyUpdateGroups cancels the scope while draining the destroyed
-  // group, the callback fires and resumes this task at exactly that point,
-  // where it records whether the peer's buffered RibDumpReq is still present.
+  /*
+   * Seed a buffered detached-peer RibDumpReq for the sole peer, then park a
+   * task on its (single-member) group's async scope. folly::coro::Baton is not
+   * cancellation-aware, so a cancellation callback posts it: when
+   * maybeDestroyUpdateGroups cancels the scope while draining the destroyed
+   * group, the callback fires and resumes this task at exactly that point,
+   * where it records whether the peer's buffered RibDumpReq is still present.
+   */
   evb.runInEventBaseThreadAndWait([&]() {
     adjRib = ctx.peerMgr->adjRibs_.at(peer0);
     ctx.peerMgr->pendingRibDumpAdjRibs_.insert(adjRib);
@@ -2162,8 +2174,10 @@ TEST_F(
                            }).get());
   });
 
-  // The buffered RibDumpReq was removed before sessionTerminated suspended in
-  // maybeDestroyUpdateGroups.
+  /*
+   * The buffered RibDumpReq was removed before sessionTerminated suspended in
+   * maybeDestroyUpdateGroups.
+   */
   EXPECT_FALSE(*folly::via(&evb, [&]() { return bufferedDuringDrain; }).get());
 
   tearDown(ctx);
@@ -2218,8 +2232,10 @@ TEST_F(
   markEgressPolicyUpdateRequiredOnEvb(ctx, peers);
   runProcessUpdateGroupsEgressPolicyReevaluationOnEvb(ctx);
 
-  // Original group emptied and was destroyed; all members in one override
-  // group.
+  /*
+   * Original group emptied and was destroyed; all members in one override
+   * group.
+   */
   EXPECT_FALSE(hasUpdateGroupOnEvb(ctx, baseline));
   EXPECT_TRUE(keyOf(peer(0)).peerOverride);
   EXPECT_EQ(memberCountOf(peer(0)), kN);
@@ -2381,8 +2397,10 @@ TEST_F(
   EXPECT_EQ(groupOf(untouched(0)), untouchedGroupBefore);
   EXPECT_EQ(memberCountOf(untouched(0)), kN);
 
-  // The untouched group still advertises Policy0; the changed group
-  // advertises Policy1.
+  /*
+   * The untouched group still advertises Policy0; the changed group
+   * advertises Policy1.
+   */
   expectRibOutForPolicy(ctx, untouched(0), kPolicy0);
   expectRibOutForPolicy(ctx, changed(0), kPolicy1);
 
@@ -2450,8 +2468,10 @@ TEST_F(
   markEgressPolicyUpdateRequiredOnEvb(ctx, peers);
   runProcessUpdateGroupsEgressPolicyReevaluationOnEvb(ctx);
 
-  // One peer group is now backed by two update groups: an override half and a
-  // non-override half.
+  /*
+   * One peer group is now backed by two update groups: an override half and a
+   * non-override half.
+   */
   EXPECT_TRUE(keyOf(peer(0)).peerOverride);
   EXPECT_FALSE(keyOf(peer(kOverride)).peerOverride);
   EXPECT_EQ(memberCountOf(peer(0)), kOverride);
@@ -2470,8 +2490,10 @@ TEST_F(
   markEgressPolicyUpdateRequiredOnEvb(ctx, peers);
   runProcessUpdateGroupsEgressPolicyReevaluationOnEvb(ctx);
 
-  // Correct end state: the two halves merge back into a single group with all
-  // members, matching the original baseline key.
+  /*
+   * Correct end state: the two halves merge back into a single group with all
+   * members, matching the original baseline key.
+   */
   EXPECT_TRUE(keyOf(peer(0)) == baseline);
   EXPECT_TRUE(hasUpdateGroupOnEvb(ctx, baseline));
   EXPECT_EQ(groupOf(peer(0)), groupOf(peer(kOverride)));
@@ -2621,8 +2643,10 @@ TEST_F(
   ASSERT_TRUE(keyOf(peer(0)).peerOverride);
   ASSERT_FALSE(keyOf(peer(kHalf)).peerOverride);
 
-  // Transition: move the peer-group egress to P1 too. The non-override half
-  // becomes {PG, P1, false}; the override half stays {PG, P1, true}.
+  /*
+   * Transition: move the peer-group egress to P1 too. The non-override half
+   * becomes {PG, P1, false}; the override half stays {PG, P1, true}.
+   */
   disableAsyncEgressReEvalOnEvb(ctx);
   updatePeerGroupEgressPolicyOnEvb(ctx, kPg, kPolicy1);
   markEgressPolicyUpdateRequiredOnEvb(ctx, peers);
@@ -2849,8 +2873,10 @@ TEST_F(
     peers.push_back(peer(i));
   }
 
-  // Reach 3 groups: override [0,kThird) onto P1 and [kThird,2*kThird) onto P2;
-  // leave [2*kThird, kN) non-override on P0.
+  /*
+   * Reach 3 groups: override [0,kThird) onto P1 and [kThird,2*kThird) onto P2;
+   * leave [2*kThird, kN) non-override on P0.
+   */
   disableAsyncEgressReEvalOnEvb(ctx);
   for (int i = 0; i < kThird; ++i) {
     updatePeerEgressPolicyOnEvb(ctx, peer(i), kPolicy1);
@@ -2990,8 +3016,10 @@ TEST_F(
     peers.push_back(peer(i));
   }
 
-  // Reach three groups: [0,kThird) override P1, [kThird,2*kThird) override P2,
-  // [2*kThird,kN) non-override P0.
+  /*
+   * Reach three groups: [0,kThird) override P1, [kThird,2*kThird) override P2,
+   * [2*kThird,kN) non-override P0.
+   */
   disableAsyncEgressReEvalOnEvb(ctx);
   for (int i = 0; i < kThird; ++i) {
     updatePeerEgressPolicyOnEvb(ctx, peer(i), kPolicy1);
@@ -3088,8 +3116,10 @@ TEST_F(
   expectRibOutForPolicy(ctx, peer(0), kPolicy2);
   expectRibOutForPolicy(ctx, peer(kHalf), kPolicy1);
 
-  // C: peer-group egress P1 -> P2: non-override half becomes {P2,false}; the
-  // override half is {P2,true} -- same egress, different flag -> stays split.
+  /*
+   * C: peer-group egress P1 -> P2: non-override half becomes {P2,false}; the
+   * override half is {P2,true} -- same egress, different flag -> stays split.
+   */
   disableAsyncEgressReEvalOnEvb(ctx);
   updatePeerGroupEgressPolicyOnEvb(ctx, kPg, kPolicy2);
   markEgressPolicyUpdateRequiredOnEvb(ctx, peers);
@@ -3340,8 +3370,10 @@ TEST_P(DrainSequencePickupTest, ConvergesRegardlessOfPickupTiming) {
   // Bundle (per-peer) drain/undrain acts on the first 25% of the group's peers.
   const int kBundleCount = kN * 25 / 100;
 
-  // Start under a filtering (non-permit-all) egress policy so the initial dump
-  // exercises real policy application, not a permit-all pass-through.
+  /*
+   * Start under a filtering (non-permit-all) egress policy so the initial dump
+   * exercises real policy application, not a permit-all pass-through.
+   */
   auto ctx = setUpGroups({{kPg, kN}}, /*initialDumpCompleted=*/true, kDrain);
   auto peer = [](int i) { return makePeerId(i); };
   sendInitialRibDump(ctx);
@@ -3397,8 +3429,10 @@ TEST_P(DrainSequencePickupTest, ConvergesRegardlessOfPickupTiming) {
 
   const auto& seq = kDrainSequences[seqIdx];
   for (size_t i = 0; i < seq.size(); ++i) {
-    // Re-arm the async re-eval guard before each API call so only our manual
-    // pickups drive re-evaluation; a manual pickup clears the guard on exit.
+    /*
+     * Re-arm the async re-eval guard before each API call so only our manual
+     * pickups drive re-evaluation; a manual pickup clears the guard on exit.
+     */
     disableAsyncEgressReEvalOnEvb(ctx);
     applyOp(seq[i]);
     // Pick up after earlier ops per the config bitmask; always after the last.
@@ -3408,9 +3442,11 @@ TEST_P(DrainSequencePickupTest, ConvergesRegardlessOfPickupTiming) {
     }
   }
 
-  // Every sequence, under every pickup config, ends fully undrained: one group
-  // holding all peers on the undrain policy, no per-peer override, matching
-  // RIB-OUT.
+  /*
+   * Every sequence, under every pickup config, ends fully undrained: one group
+   * holding all peers on the undrain policy, no per-peer override, matching
+   * RIB-OUT.
+   */
   for (const auto& p : peers) {
     EXPECT_EQ(groupOf(peer(0)), groupOf(p));
     expectRibOutForPolicy(ctx, p, kUndrain);
@@ -3604,15 +3640,19 @@ TEST_F(
     peers.push_back(peer(i));
   }
 
-  // peer(0) -> DETACHED_BLOCKED; peer(1) stays in-sync so the source group is
-  // never left without a SYNC peer.
+  /*
+   * peer(0) -> DETACHED_BLOCKED; peer(1) stays in-sync so the source group is
+   * never left without a SYNC peer.
+   */
   triggerDetachedBlockedFromJoinedOnEvb(
       ctx, peer(0), /*useBlockFrequency=*/true);
   expectEventualStateOnEvb(ctx, peer(0), PeerUpdateState::DETACHED_BLOCKED);
 
-  // Override peer(0): its detached membership splits into a fresh group with
-  // one member and no in-sync peers -- the state the newGroups sweep must
-  // recover.
+  /*
+   * Override peer(0): its detached membership splits into a fresh group with
+   * one member and no in-sync peers -- the state the newGroups sweep must
+   * recover.
+   */
   disableAsyncEgressReEvalOnEvb(ctx);
   updatePeerEgressPolicyOnEvb(ctx, peer(0), kPolicy1);
   markEgressPolicyUpdateRequiredOnEvb(ctx, peers);
@@ -3631,9 +3671,11 @@ TEST_F(
   // The source group keeps its in-sync peer and is unaffected.
   EXPECT_EQ(numInSyncOf(peer(1)), 1u);
 
-  // Unblock peer(0): draining its egress queue relieves the backpressure that
-  // held it DETACHED_BLOCKED, so it resumes consuming, catches up to the end of
-  // the change list, and promotes itself to re-seed its single-member group.
+  /*
+   * Unblock peer(0): draining its egress queue relieves the backpressure that
+   * held it DETACHED_BLOCKED, so it resumes consuming, catches up to the end of
+   * the change list, and promotes itself to re-seed its single-member group.
+   */
   bool recovered = false;
   for (int round = 0; round < 300 && !recovered; ++round) {
     if (stateOf(peer(0)) == PeerUpdateState::JOINED_RUNNING) {
@@ -3646,9 +3688,11 @@ TEST_F(
   expectEventualStateOnEvb(ctx, peer(0), PeerUpdateState::JOINED_RUNNING);
   EXPECT_EQ(numInSyncOf(peer(0)), 1u);
 
-  // After recovery each peer's RIB-OUT reflects its group's egress policy: the
-  // source group's peer keeps kPolicy0; the recovered split-off peer advertises
-  // its override kPolicy1.
+  /*
+   * After recovery each peer's RIB-OUT reflects its group's egress policy: the
+   * source group's peer keeps kPolicy0; the recovered split-off peer advertises
+   * its override kPolicy1.
+   */
   expectRibOutForPolicy(ctx, peer(1), kPolicy0);
   expectRibOutForPolicy(ctx, peer(0), kPolicy1);
 
@@ -3677,9 +3721,11 @@ TEST_F(UpdateGroupsEgressReEvalTest, SourceGroupNoSyncPeersIsRecoveredBySweep) {
   const std::string kInherited = kPNamePermitAll;
   const std::string kOverride = kPNameMatchNoAdvtDeny;
 
-  // G1 = peers 0,1,2 {PG1, permit-all, override=false}. G2 = peers 3,4,5 with a
-  // per-peer no-advt-deny override {PG1, no-advt-deny, override=true}. Both
-  // form as their own update group at initial group formation -- no split.
+  /*
+   * G1 = peers 0,1,2 {PG1, permit-all, override=false}. G2 = peers 3,4,5 with a
+   * per-peer no-advt-deny override {PG1, no-advt-deny, override=true}. Both
+   * form as their own update group at initial group formation -- no split.
+   */
   auto ctx = setUpGroups(
       {{kPg, 6}},
       /*initialDumpCompleted=*/true,
@@ -3698,8 +3744,10 @@ TEST_F(UpdateGroupsEgressReEvalTest, SourceGroupNoSyncPeersIsRecoveredBySweep) {
   expectRibOutForPolicy(ctx, peer(0), kInherited); // G1: permit-all (100)
   expectRibOutForPolicy(ctx, peer(3), kOverride); // G2: no-advt-deny (50/50)
 
-  // G1: detach P3 (peer 2) at the dump version, then block the group through
-  // P2 (peer 1), leaving P1 (peer 0) JOINED_RUNNING.
+  /*
+   * G1: detach P3 (peer 2) at the dump version, then block the group through
+   * P2 (peer 1), leaving P1 (peer 0) JOINED_RUNNING.
+   */
   triggerDetachedBlockedFromJoinedOnEvb(
       ctx, peer(2), /*useBlockFrequency=*/true);
   expectEventualStateOnEvb(ctx, peer(2), PeerUpdateState::DETACHED_BLOCKED);
@@ -3707,8 +3755,10 @@ TEST_F(UpdateGroupsEgressReEvalTest, SourceGroupNoSyncPeersIsRecoveredBySweep) {
   publishRouteUpdates(ctx, /*isInitialDump=*/false);
   expectEventualStateOnEvb(ctx, peer(1), PeerUpdateState::JOINED_BLOCKED);
 
-  // G2: advance its changelist (a few routes) so P6 detaches at a higher rib
-  // version than P3. G1 is frozen (P2 blocked), so these only move G2.
+  /*
+   * G2: advance its changelist (a few routes) so P6 detaches at a higher rib
+   * version than P3. G1 is frozen (P2 blocked), so these only move G2.
+   */
   publishRouteUpdates(
       ctx, /*isInitialDump=*/false, [](int i) { return i < 5; });
   publishRouteUpdates(
@@ -3814,17 +3864,21 @@ TEST_F(UpdateGroupsEgressReEvalTest, SourceGroupNoSyncPeersIsRecoveredBySweep) {
       });
   flushEventBase(ctx);
 
-  // G3 = {P4, P5}, {PG1, policy1, override=true}. Split into a fresh group,
-  // which preserves the joined state, so both stay in-sync.
+  /*
+   * G3 = {P4, P5}, {PG1, policy1, override=true}. Split into a fresh group,
+   * which preserves the joined state, so both stay in-sync.
+   */
   EXPECT_EQ(groupOf(ctx, peer(3)), groupOf(ctx, peer(4)));
   EXPECT_EQ(memberCountOf(ctx, peer(3)), 2);
   EXPECT_EQ(numInSyncOf(ctx, peer(3)), 2u);
   EXPECT_TRUE(keyOf(ctx, peer(3)).peerOverride);
   EXPECT_EQ(*keyOf(ctx, peer(3)).egressPolicyName, kInherited);
 
-  // G2 = {P6, P1, P2}, {PG1, policy2, override=true}. P1,P2 moved into the
-  // existing G2 (detached on move); with P6 also detached the group has members
-  // but zero in-sync peers -- the source-side no-sync state the sweep recovers.
+  /*
+   * G2 = {P6, P1, P2}, {PG1, policy2, override=true}. P1,P2 moved into the
+   * existing G2 (detached on move); with P6 also detached the group has members
+   * but zero in-sync peers -- the source-side no-sync state the sweep recovers.
+   */
   EXPECT_EQ(groupOf(ctx, peer(0)), groupOf(ctx, peer(1)));
   EXPECT_EQ(groupOf(ctx, peer(0)), groupOf(ctx, peer(5)));
   EXPECT_EQ(memberCountOf(ctx, peer(0)), 3);
@@ -3839,11 +3893,13 @@ TEST_F(UpdateGroupsEgressReEvalTest, SourceGroupNoSyncPeersIsRecoveredBySweep) {
   EXPECT_NE(groupOf(ctx, peer(2)), groupOf(ctx, peer(0)));
   EXPECT_NE(groupOf(ctx, peer(2)), groupOf(ctx, peer(3)));
 
-  // Unblock everyone and run all three groups to the end of the changelist:
-  // drain each peer's queue (releasing low-water backpressure) until every peer
-  // is back in sync. A group whose consume timer was never scheduled would
-  // stall here and never converge -- so reaching JOINED_RUNNING for all six is
-  // the proof the timers were scheduled and the consumers ran to ready.
+  /*
+   * Unblock everyone and run all three groups to the end of the changelist:
+   * drain each peer's queue (releasing low-water backpressure) until every peer
+   * is back in sync. A group whose consume timer was never scheduled would
+   * stall here and never converge -- so reaching JOINED_RUNNING for all six is
+   * the proof the timers were scheduled and the consumers ran to ready.
+   */
   XLOG(INFO) << "Start drain loop";
   bool allSync = false;
   for (int round = 0; round < 300 && !allSync; ++round) {

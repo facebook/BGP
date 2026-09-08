@@ -60,8 +60,10 @@ TEST(MonitoredQueueTest, RWQueueSizeTest) {
   EXPECT_EQ(testQueue.size(), 2);
 }
 
-// Test that MonitoredQueue would call the explicit constructor
-// of its parent queue class
+/*
+ * Test that MonitoredQueue would call the explicit constructor
+ * of its parent queue class
+ */
 TEST(MonitoredQueueTest, ExplicitConstructorTest) {
   class MockQueue {
    public:
@@ -80,8 +82,10 @@ TEST(MonitoredQueueTest, ExplicitConstructorTest) {
   EXPECT_EQ(testQueue.size(), 0);
 }
 
-// Test that MonitoredQueue copy assignment works when the underlying class
-// has a copy assignment operator
+/*
+ * Test that MonitoredQueue copy assignment works when the underlying class
+ * has a copy assignment operator
+ */
 TEST(MonitoredQueueTest, CopyAssignmentWithAssignableClassTest) {
   class AssignableMockQueue {
    public:
@@ -114,8 +118,10 @@ TEST(MonitoredQueueTest, CopyAssignmentWithAssignableClassTest) {
   EXPECT_EQ(queue2.size(), 20);
 }
 
-// Test that MonitoredQueue compiles when the underlying class does not have
-// an assignment operator (SFINAE disables the copy assignment operator)
+/*
+ * Test that MonitoredQueue compiles when the underlying class does not have
+ * an assignment operator (SFINAE disables the copy assignment operator)
+ */
 TEST(MonitoredQueueTest, NoAssignmentOperatorClassTest) {
   class NonAssignableMockQueue {
    public:
@@ -139,8 +145,10 @@ TEST(MonitoredQueueTest, NoAssignmentOperatorClassTest) {
           const NonAssignableMockQueue&>::value,
       "NonAssignableMockQueue should not be copy assignable");
 
-  // Verify that std::is_assignable is also false for
-  // MonitoredQueue<NonAssignableMockQueue>
+  /*
+   * Verify that std::is_assignable is also false for
+   * MonitoredQueue<NonAssignableMockQueue>
+   */
   static_assert(
       !std::is_assignable<
           MonitoredQueue<NonAssignableMockQueue>&,

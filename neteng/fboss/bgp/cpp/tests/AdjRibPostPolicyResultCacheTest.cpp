@@ -91,9 +91,11 @@ TEST_F(AdjRibPostPolicyResultCacheFixture, SetPostInPolicyTest) {
   EXPECT_TRUE(postPolicyResultCache_.contains(entry.getPostInPolicy()));
 }
 
-// We will initialize three AdjRibs entries.
-// This test checks cache state when multiple adj ribs
-// are being modified.
+/*
+ * We will initialize three AdjRibs entries.
+ * This test checks cache state when multiple adj ribs
+ * are being modified.
+ */
 TEST_F(AdjRibPostPolicyResultCacheFixture, MultipleAdjRibEntryTest) {
   AdjRibEntry entry1 = AdjRibEntry(0x1 /* pathId */);
   AdjRibEntry entry2 = AdjRibEntry(0x2 /* pathId */);
@@ -125,8 +127,10 @@ TEST_F(AdjRibPostPolicyResultCacheFixture, MultipleAdjRibEntryTest) {
        kPostPolicyResultAdjRibIn,
        kPolicyEmptyTerm});
 
-  // T4: Set new result on entry1 via setPostOutPolicy.
-  // We should prune kPostPolicyResultDeniedByCrf from cache.
+  /*
+   * T4: Set new result on entry1 via setPostOutPolicy.
+   * We should prune kPostPolicyResultDeniedByCrf from cache.
+   */
   setAndVerify(
       entry1,
       kPolicyEmptyTerm,

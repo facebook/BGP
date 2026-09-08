@@ -291,15 +291,15 @@ TEST_F(PeerManagerTestFixture, ShadowRibEntryBestpathTest) {
           RibStats::kTotalShadowRibEntries));
 
   {
-    //
-    // Step 0: verify the empty ShadowRib collection
-    //
+    /*
+     * Step 0: verify the empty ShadowRib collection
+     */
     EXPECT_EQ(0, peerMgr->shadowRibEntries_.size());
   }
   {
-    //
-    // Step 1: push a Rib announcement
-    //
+    /*
+     * Step 1: push a Rib announcement
+     */
     const auto msg1 = createRibSingleAnnounce(
         kV4Prefix1, /* prefix */
         kV4Nexthop1, /* nexthop */
@@ -315,10 +315,10 @@ TEST_F(PeerManagerTestFixture, ShadowRibEntryBestpathTest) {
     EXPECT_EQ(0, srEntry1.multipaths.size());
     const auto bestpath1 = srEntry1.bestpath;
 
-    //
-    // Step 2: push a different Rib announcement with different path.
-    // Make sure path count is still 1 since only bestpath is updated.
-    //
+    /*
+     * Step 2: push a different Rib announcement with different path.
+     * Make sure path count is still 1 since only bestpath is updated.
+     */
     const auto msg2 = createRibSingleAnnounce(
         kV4Prefix1, /* prefix */
         kV4Nexthop2, /* nexthop */
@@ -341,10 +341,10 @@ TEST_F(PeerManagerTestFixture, ShadowRibEntryBestpathTest) {
             RibStats::kTotalShadowRibEntries));
   }
   {
-    //
-    // Step 3: push a RibWithdrawal for non-existing prefix.
-    // Expect this is a no-op.
-    //
+    /*
+     * Step 3: push a RibWithdrawal for non-existing prefix.
+     * Expect this is a no-op.
+     */
     RibOutWithdrawal withdrawal{};
     withdrawal.entries.emplace_back(kV4Prefix2, kDefaultPathID);
 
@@ -353,9 +353,9 @@ TEST_F(PeerManagerTestFixture, ShadowRibEntryBestpathTest) {
     EXPECT_TRUE(peerMgr->shadowRibEntries_.contains(kV4Prefix1));
   }
   {
-    //
-    // Step 4: push a RibWithdrawal for the existing prefix
-    //
+    /*
+     * Step 4: push a RibWithdrawal for the existing prefix
+     */
     RibOutWithdrawal withdrawal{};
     withdrawal.entries.emplace_back(kV4Prefix1, kDefaultPathID);
 
@@ -386,15 +386,15 @@ TEST_F(PeerManagerTestFixture, ShadowRibEntryMultipathTest) {
   PathId pathId = kV4Nexthop1;
 
   {
-    //
-    // Step 0: verify the empty ShadowRib collection
-    //
+    /*
+     * Step 0: verify the empty ShadowRib collection
+     */
     EXPECT_EQ(0, peerMgr->shadowRibEntries_.size());
   }
   {
-    //
-    // Step 1: push a Rib announcement and expect multipath is updated
-    //
+    /*
+     * Step 1: push a Rib announcement and expect multipath is updated
+     */
     const auto msg1 = createRibSingleAnnounce(
         kV4Prefix1, /* prefix */
         kV4Nexthop1, /* nexthop */
@@ -412,10 +412,10 @@ TEST_F(PeerManagerTestFixture, ShadowRibEntryMultipathTest) {
     const auto peerBefore = srEntry1.multipaths.at(pathId)->peer;
     const auto attrBefore = srEntry1.multipaths.at(pathId)->attrs;
 
-    //
-    // Step 2: push the same announcement with the same path.
-    // Make sure path count is NOT incremented as path is updated.
-    //
+    /*
+     * Step 2: push the same announcement with the same path.
+     * Make sure path count is NOT incremented as path is updated.
+     */
     const auto msg2 = createRibSingleAnnounce(
         kV4Prefix1, /* prefix */
         kV4Nexthop1, /* nexthop */
@@ -436,10 +436,10 @@ TEST_F(PeerManagerTestFixture, ShadowRibEntryMultipathTest) {
     EXPECT_NE(attrBefore, attrAfter);
   }
   {
-    //
-    // Step 3: push a different Rib announcement with different path.
-    // Make sure path count is incremented since multipath is extended.
-    //
+    /*
+     * Step 3: push a different Rib announcement with different path.
+     * Make sure path count is incremented since multipath is extended.
+     */
     const auto msg3 = createRibSingleAnnounce(
         kV4Prefix1, /* prefix */
         kV4Nexthop2, /* nexthop */
@@ -458,10 +458,10 @@ TEST_F(PeerManagerTestFixture, ShadowRibEntryMultipathTest) {
     EXPECT_EQ(2, srEntry.multipaths.size());
   }
   {
-    //
-    // Step 4: push a witdrawal to remove a non-existing path.
-    // Expect this is a no-op.
-    //
+    /*
+     * Step 4: push a witdrawal to remove a non-existing path.
+     * Expect this is a no-op.
+     */
     RibOutWithdrawal withdrawal{};
     withdrawal.addPathEntries.emplace_back(kV4Prefix2, 15);
 
@@ -471,9 +471,9 @@ TEST_F(PeerManagerTestFixture, ShadowRibEntryMultipathTest) {
     EXPECT_EQ(2, srEntry.multipaths.size());
   }
   {
-    //
-    // Step 5: deliberately push a witdrawal with different combinations.
-    //
+    /*
+     * Step 5: deliberately push a witdrawal with different combinations.
+     */
     RibOutWithdrawal withdrawal{};
 
     //  1. a non-existing path. Expect this is a no-op.
@@ -501,15 +501,15 @@ TEST_F(PeerManagerTestFixture, ShadowRibEntryEmptyAttrTest) {
       nbrRouteChangeQ_);
 
   {
-    //
-    // Step 0: verify the empty ShadowRib collection
-    //
+    /*
+     * Step 0: verify the empty ShadowRib collection
+     */
     EXPECT_EQ(0, peerMgr->shadowRibEntries_.size());
   }
   {
-    //
-    // Step 1: set attrs to be nullptr to create a broken update
-    //
+    /*
+     * Step 1: set attrs to be nullptr to create a broken update
+     */
     auto msg = createRibSingleAnnounce(
         kV4Prefix1, /* prefix */
         kV4Nexthop1, /* nexthop */
@@ -564,10 +564,10 @@ TEST_F(PeerManagerTestFixture, ShadowRibEntryMixpathTest) {
       0); /* pathIdToSend */
 
   {
-    //
-    // Step 1: push a bestpath update followed by a multipath update to make
-    // sure state is consistent.
-    //
+    /*
+     * Step 1: push a bestpath update followed by a multipath update to make
+     * sure state is consistent.
+     */
     peerMgr->handleShadowRibEntryAnnouncement(
         std::get<RibOutAnnouncement>(msg1));
     peerMgr->handleShadowRibEntryAnnouncement(
@@ -579,10 +579,10 @@ TEST_F(PeerManagerTestFixture, ShadowRibEntryMixpathTest) {
     const auto peerBefore = srEntry->multipaths.at(pathId)->peer;
     const auto attrBefore = srEntry->multipaths.at(pathId)->attrs;
 
-    //
-    // Step 2: push a withdrawal update and expect shadow ribEntry to be
-    // removed
-    //
+    /*
+     * Step 2: push a withdrawal update and expect shadow ribEntry to be
+     * removed
+     */
     RibOutWithdrawal withdrawal{};
     withdrawal.entries.emplace_back(kV4Prefix1, 0);
     peerMgr->handleShadowRibEntryWithdrawal(withdrawal);
@@ -596,10 +596,10 @@ TEST_F(PeerManagerTestFixture, ShadowRibEntryMixpathTest) {
     EXPECT_EQ(nullptr, srEntry->bestpath);
     EXPECT_EQ(1, srEntry->multipaths.size());
 
-    //
-    // Step 3: push a multipath update followed by a bestpath update to make
-    // sure state is consistent.
-    //
+    /*
+     * Step 3: push a multipath update followed by a bestpath update to make
+     * sure state is consistent.
+     */
     peerMgr->handleShadowRibEntryAnnouncement(
         std::get<RibOutAnnouncement>(msg2));
     peerMgr->handleShadowRibEntryAnnouncement(
@@ -617,9 +617,9 @@ TEST_F(PeerManagerTestFixture, ShadowRibEntryMixpathTest) {
 }
 
 TEST_F(PeerManagerTestFixture, RibDumpReqNegativeTest) {
-  //
-  // Step 0: test setup with PeerManagerBase and 1 adjRib
-  //
+  /*
+   * Step 0: test setup with PeerManagerBase and 1 adjRib
+   */
   auto config = getConfig(
       true /* includeStaticPeer */, true /* includeDynamicShivPeer */);
   auto peerMgr = std::make_shared<PeerManagerBase>(
@@ -642,9 +642,9 @@ TEST_F(PeerManagerTestFixture, RibDumpReqNegativeTest) {
   auto& messages = subscribeToLogMessages("");
 
   {
-    //
-    // Test 1: request RibDumpReq and expect skip due to no adjrib found.
-    //
+    /*
+     * Test 1: request RibDumpReq and expect skip due to no adjrib found.
+     */
     peerMgr->ribInitialAnnouncementStarted_ = true;
 
     messages.clear();
@@ -658,8 +658,10 @@ TEST_F(PeerManagerTestFixture, RibDumpReqNegativeTest) {
             kPeerId1.str()));
   }
 
-  // Register adjRib so it passes the "does not exist" check,
-  // but hits the "session queues not initialized" check.
+  /*
+   * Register adjRib so it passes the "does not exist" check,
+   * but hits the "session queues not initialized" check.
+   */
   peerMgr->adjRibs_[kPeerId1] = adjRib;
 
   messages.clear();
@@ -670,9 +672,11 @@ TEST_F(PeerManagerTestFixture, RibDumpReqNegativeTest) {
       fmt::format(
           "Skip RibDumpReq since session queues not initialized for {}.",
           adjRib->getRemotePeerId().str()));
-  // Cleanup: reset change list consumer to break circular shared_ptr reference
-  // (adjRib → consumer → adjRib) which keeps AdjRibPolicyCache singleton alive
-  // past destroyInstances, causing SIGABRT.
+  /*
+   * Cleanup: reset change list consumer to break circular shared_ptr reference
+   * (adjRib → consumer → adjRib) which keeps AdjRibPolicyCache singleton alive
+   * past destroyInstances, causing SIGABRT.
+   */
   adjRib->resetChangeListConsumer();
 }
 
@@ -798,11 +802,11 @@ CO_TEST_F(PeerManagerTestFixture, ShadowRibEntryMultiUpdateTest) {
 }
 
 CO_TEST_F(PeerManagerTestFixture, RibDumpReqPositiveTest) {
-  //
-  // Step 0.0: test setup with PeerManagerBase and 2 adjRibs:
-  //  - adjrib1: add-path disabled peer(by default)
-  //  - adirib2: add-path enabled peer
-  //
+  /*
+   * Step 0.0: test setup with PeerManagerBase and 2 adjRibs:
+   *  - adjrib1: add-path disabled peer(by default)
+   *  - adirib2: add-path enabled peer
+   */
   auto config = getConfig(
       true /* includeStaticPeer */, true /* includeDynamicShivPeer */);
   auto peerMgr = std::make_shared<PeerManagerBase>(
@@ -850,8 +854,10 @@ CO_TEST_F(PeerManagerTestFixture, RibDumpReqPositiveTest) {
       peerMgr->addPathConsumerBitmap_,
       peerMgr->nonAddPathConsumerBitmap_);
 
-  // mark EoR ready to simulate initial Fib sync done and initial
-  // Rib announcements are queued
+  /*
+   * mark EoR ready to simulate initial Fib sync done and initial
+   * Rib announcements are queued
+   */
   peerMgr->ribInitialAnnouncementStarted_ = true;
   peerMgr->ribInitialAnnouncementDone_ = true;
 
@@ -870,9 +876,9 @@ CO_TEST_F(PeerManagerTestFixture, RibDumpReqPositiveTest) {
   adjRib2->sendAddPath_ = true; /* add-path capable peer */
   adjRib2->markStateEstablished();
 
-  //
-  // Step 0.1: pre-populate shadow rib entries with bestpath and multipath
-  //
+  /*
+   * Step 0.1: pre-populate shadow rib entries with bestpath and multipath
+   */
   const auto msg1 = createRibSingleAnnounce(
       kV4Prefix1, /* prefix */
       kV4Nexthop1, /* nexthop */
@@ -908,19 +914,20 @@ CO_TEST_F(PeerManagerTestFixture, RibDumpReqPositiveTest) {
   EXPECT_EQ(nullptr, changeItem);
 
   {
-    //
-    // Step 0.2: send RibDumpReq for adjrib1 with sendAddPath = false.
-    //         Since there has been no bestpath yet in shadowRib collection,
-    //         the handling of RibDumpReq should not crash and send nothing.
-    //
+    /*
+     * Step 0.2: send RibDumpReq for adjrib1 with sendAddPath = false.
+     *         Since there has been no bestpath yet in shadowRib collection,
+     *         the handling of RibDumpReq should not crash and send nothing.
+     */
     co_await peerMgr->processRibDumpReqCoro(
         RibDumpReq(kPeerId1, false /* sendAddPath */));
   }
   {
-    //
-    // Step 1: send RibDumpReq for adjrib1 with sendAddPath = false
-    //
-    // populate bestpath
+    /*
+     * Step 1: send RibDumpReq for adjrib1 with sendAddPath = false
+     *
+     * populate bestpath
+     */
     peerMgr->handleShadowRibEntryAnnouncement(
         std::get<RibOutAnnouncement>(msg1));
     peerMgr->handleShadowRibEntryAnnouncement(
@@ -961,8 +968,9 @@ CO_TEST_F(PeerManagerTestFixture, RibDumpReqPositiveTest) {
   }
   {
     co_await adjRib1->getChangeListConsumer()->consumeChanges();
-    // Step 2: send RibDumpReq for adjrib2 with sendAddPath = true
-    //
+    /*
+     * Step 2: send RibDumpReq for adjrib2 with sendAddPath = true
+     */
     auto lastAdjRib1SendUpdateMsgs = adjRib1->stats_.getSentUpdateMsgs();
     auto lastAdjRib1SendEorMsgs = adjRib1->stats_.getSentEndOfRibMsgs();
     co_await peerMgr->processRibDumpReqCoro(
@@ -993,8 +1001,10 @@ CO_TEST_F(PeerManagerTestFixture, RibDumpReqPositiveTest) {
   }
 }
 
-// Verifies that ribInitialAnnouncementDone_ flag is set upon receipt of
-// RibInitialAnnouncementStart msg.
+/*
+ * Verifies that ribInitialAnnouncementDone_ flag is set upon receipt of
+ * RibInitialAnnouncementStart msg.
+ */
 CO_TEST_F(RibInitialAnnouncementTestFixture, RibInitialAnnouncementStartTest) {
   EXPECT_FALSE(peerMgr_->ribInitialAnnouncementStarted_);
   EXPECT_FALSE(peerMgr_->ribInitialAnnouncementDone_);
@@ -1010,11 +1020,13 @@ CO_TEST_F(RibInitialAnnouncementTestFixture, RibInitialAnnouncementStartTest) {
       co_withExecutor(&evb, peerMgr_->processRibOutMsgLoop()));
   ribOutQ_.push(RibInitialAnnouncementStart{});
 
-  // Wait for ribOutQ_ to drain, then synchronize with the EVB thread to
-  // ensure processRibOutMsgLoop has finished processing the message.
-  // runInEventBaseThreadAndWait provides a happens-before guarantee,
-  // preventing data races when reading ribInitialAnnouncementStarted_ from
-  // this thread.
+  /*
+   * Wait for ribOutQ_ to drain, then synchronize with the EVB thread to
+   * ensure processRibOutMsgLoop has finished processing the message.
+   * runInEventBaseThreadAndWait provides a happens-before guarantee,
+   * preventing data races when reading ribInitialAnnouncementStarted_ from
+   * this thread.
+   */
   while (!ribOutQ_.empty()) {
     co_await folly::coro::sleep(std::chrono::milliseconds(1));
   }
@@ -1025,13 +1037,17 @@ CO_TEST_F(RibInitialAnnouncementTestFixture, RibInitialAnnouncementStartTest) {
 
   cleanUp();
 
-  // Release the keep-alive token. The EVB will exit loop() once all
-  // remaining work (AdjRib teardown, etc.) completes.
+  /*
+   * Release the keep-alive token. The EVB will exit loop() once all
+   * remaining work (AdjRib teardown, etc.) completes.
+   */
   keepAlive.reset();
   evbThread.join();
 
-  // Check log messages after the EVB thread has joined to avoid racing
-  // with the EVB thread appending to the messages vector.
+  /*
+   * Check log messages after the EVB thread has joined to avoid racing
+   * with the EVB thread appending to the messages vector.
+   */
   auto hasMessage = [&](const std::string& prefix) {
     return std::any_of(messages.begin(), messages.end(), [&](const auto& msg) {
       return msg.first.getMessage().starts_with(prefix);
@@ -1265,8 +1281,10 @@ TEST_F(RibInitialAnnouncementTestFixture, HandleBufferedRibDumpReqsTest) {
     EXPECT_FALSE(adjRib->isRibDumpScheduled());
   }
 
-  // Test cleanup: reset change list consumers to break circular shared_ptr
-  // references and stop consumer coroutines, then drain the evb.
+  /*
+   * Test cleanup: reset change list consumers to break circular shared_ptr
+   * references and stop consumer coroutines, then drain the evb.
+   */
   for (auto& [_, adjRib] : peerMgr_->adjRibs_) {
     if (adjRib) {
       adjRib->resetChangeListConsumer();
@@ -1819,8 +1837,10 @@ TEST_F(
   // All buffered detached dumps are drained.
   EXPECT_TRUE(peerMgr_->pendingRibDumpAdjRibs_.empty());
 
-  // Test cleanup: reset change list consumers to break circular shared_ptr
-  // references and stop consumer coroutines, then drain the evb.
+  /*
+   * Test cleanup: reset change list consumers to break circular shared_ptr
+   * references and stop consumer coroutines, then drain the evb.
+   */
   for (auto& [_, adjRib] : peerMgr_->adjRibs_) {
     if (adjRib) {
       adjRib->resetChangeListConsumer();
@@ -1857,8 +1877,10 @@ TEST_F(
     EXPECT_FALSE(peerMgr_->adjRibs_[kPeerId3]->inInitialAnnouncement());
 
     EXPECT_EQ(1, peerMgr_->pendingRibDumpReqs_.size());
-    // No dump is scheduled because ribInitialAnnouncementDone_ is false, so
-    // handleBufferedRibDumpReqs is not yet scheduled.
+    /*
+     * No dump is scheduled because ribInitialAnnouncementDone_ is false, so
+     * handleBufferedRibDumpReqs is not yet scheduled.
+     */
     EXPECT_FALSE(peerMgr_->adjRibs_[kPeerId3]->isRibDumpScheduled());
 
     // Verify ODS counter matches pendingRibDumpReqs_ size after increment
@@ -1980,8 +2002,10 @@ CO_TEST_F(
 
   cleanUp();
 
-  // Release the keep-alive token. The EVB will exit loop() once all
-  // remaining work (AdjRib teardown, etc.) completes.
+  /*
+   * Release the keep-alive token. The EVB will exit loop() once all
+   * remaining work (AdjRib teardown, etc.) completes.
+   */
   keepAlive.reset();
   evbThread.join();
 }
@@ -2024,11 +2048,13 @@ CO_TEST_F(
       false /* sendWithEoR */,
       false /* sendAddPath */));
 
-  // Wait for ribOutQ_ to drain, then synchronize with the EVB thread to
-  // ensure processRibOutMsgLoop has finished processing and is suspended.
-  // runInEventBaseThreadAndWait provides a happens-before guarantee,
-  // preventing data races when sessionEstablished accesses PeerManagerBase
-  // state (adjRibs_, pendingRibDumpReqs_, etc.) from this thread.
+  /*
+   * Wait for ribOutQ_ to drain, then synchronize with the EVB thread to
+   * ensure processRibOutMsgLoop has finished processing and is suspended.
+   * runInEventBaseThreadAndWait provides a happens-before guarantee,
+   * preventing data races when sessionEstablished accesses PeerManagerBase
+   * state (adjRibs_, pendingRibDumpReqs_, etc.) from this thread.
+   */
   while (!ribOutQ_.empty()) {
     co_await folly::coro::sleep(std::chrono::milliseconds(1));
   }
@@ -2059,8 +2085,10 @@ CO_TEST_F(
 
   cleanUp();
 
-  // Release the keep-alive token. The EVB will exit loop() once all
-  // remaining work (AdjRib teardown, etc.) completes.
+  /*
+   * Release the keep-alive token. The EVB will exit loop() once all
+   * remaining work (AdjRib teardown, etc.) completes.
+   */
   keepAlive.reset();
   evbThread.join();
 }
@@ -2121,9 +2149,11 @@ CO_TEST_F(
       false /* sendWithEoR */,
       false /* sendAddPath */));
 
-  // Drain ribOutQ_ and synchronize with the EVB thread so this announcement is
-  // distributed to the adjRib before the session flaps, and so the EVB thread
-  // is quiesced before the EXPECT_* reads below observe shared state.
+  /*
+   * Drain ribOutQ_ and synchronize with the EVB thread so this announcement is
+   * distributed to the adjRib before the session flaps, and so the EVB thread
+   * is quiesced before the EXPECT_* reads below observe shared state.
+   */
   while (!ribOutQ_.empty()) {
     co_await folly::coro::sleep(std::chrono::milliseconds(1));
   }
@@ -2154,8 +2184,10 @@ CO_TEST_F(
   co_await co_withExecutor(&evb, peerMgr_->sessionEstablished(stateEvent));
   EXPECT_TRUE(adjRib->isStateEstablished());
 
-  // Rib is still in initial announcement, so inInitialAnnouncement=false
-  // indicates the session came up during initial announcement.
+  /*
+   * Rib is still in initial announcement, so inInitialAnnouncement=false
+   * indicates the session came up during initial announcement.
+   */
   EXPECT_FALSE(adjRib->inInitialAnnouncement());
   // There should be 1 pending rib dump req for this peer.
   EXPECT_EQ(1, peerMgr_->pendingRibDumpReqs_.size());
@@ -2175,8 +2207,10 @@ CO_TEST_F(
 
   cleanUp();
 
-  // Release the keep-alive token. The EVB will exit loop() once all
-  // remaining work (AdjRib teardown, etc.) completes.
+  /*
+   * Release the keep-alive token. The EVB will exit loop() once all
+   * remaining work (AdjRib teardown, etc.) completes.
+   */
   keepAlive.reset();
   evbThread.join();
 }
@@ -2252,8 +2286,10 @@ CO_TEST_F(
 
   cleanUp();
 
-  // Release the keep-alive token. The EVB will exit loop() once all
-  // remaining work (AdjRib teardown, etc.) completes.
+  /*
+   * Release the keep-alive token. The EVB will exit loop() once all
+   * remaining work (AdjRib teardown, etc.) completes.
+   */
   keepAlive.reset();
   evbThread.join();
 }
@@ -2265,9 +2301,9 @@ CO_TEST_F(
  */
 
 TEST_F(PeerManagerTestFixture, ReplicateRibMessageInitialadjRibsTest) {
-  //
-  // Step 0: test setup
-  //
+  /*
+   * Step 0: test setup
+   */
 
   auto config = getConfig(
       true /* includeStaticPeer */, true /* includeDynamicShivPeer */);
@@ -2451,9 +2487,11 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
   adjRib2->sendAddPath_ = true; // add-path capable peer
   adjRib2->markStateEstablished();
 
-  // Step 0.1: Pre-populate shadowRib:
-  // - kV4Prefix1: bestpath only (no multipaths)
-  // - kV4Prefix2: bestpath AND two multipaths
+  /*
+   * Step 0.1: Pre-populate shadowRib:
+   * - kV4Prefix1: bestpath only (no multipaths)
+   * - kV4Prefix2: bestpath AND two multipaths
+   */
   const auto msg1 = createRibSingleAnnounce(
       kV4Prefix1,
       kV4Nexthop1,
@@ -2498,9 +2536,11 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
   folly::coro::blockingWait(peerMgr->processRibDumpReqCoro(
       RibDumpReq(kPeerId2, true /* sendAddPath */)));
 
-  // Verify:
-  // - adjRib1 (non-addpath) gets bestpath for BOTH prefixes
-  // - adjRib2 (addpath) gets ONLY kV4Prefix2 (which has multipaths)
+  /*
+   * Verify:
+   * - adjRib1 (non-addpath) gets bestpath for BOTH prefixes
+   * - adjRib2 (addpath) gets ONLY kV4Prefix2 (which has multipaths)
+   */
   co_await waitForAdjRibsToProcessUpdates(
       evb, {adjRib1->boundedAdjRibOutQueue_, adjRib2->boundedAdjRibOutQueue_});
 
@@ -2513,9 +2553,11 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
 
   // Step 0.3: Test change list delivery AFTER RibDumpReq
 
-  // Case 1: Bestpath change for NEW prefix kV4Prefix3
-  // This should be delivered to BOTH adjRib1 and adjRib2
-  // Add bestpath for kV4Prefix3 (this will also be in multipaths)
+  /*
+   * Case 1: Bestpath change for NEW prefix kV4Prefix3
+   * This should be delivered to BOTH adjRib1 and adjRib2
+   * Add bestpath for kV4Prefix3 (this will also be in multipaths)
+   */
   const auto msg5a = createRibSingleAnnounce(
       kV4Prefix3,
       kV4Nexthop3,
@@ -2530,8 +2572,10 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
       false /* sendWithEoR */,
       false /* addPath */);
 
-  // Add multipath first, then bestpath (bestpath should be one of the
-  // multipaths)
+  /*
+   * Add multipath first, then bestpath (bestpath should be one of the
+   * multipaths)
+   */
   peerMgr->handleShadowRibEntryAnnouncement(
       std::get<RibOutAnnouncement>(msg5a));
   peerMgr->handleShadowRibEntryAnnouncement(
@@ -2546,9 +2590,11 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
   EXPECT_EQ(3, adjRib1->stats_.getPreOutPrefixCount());
   EXPECT_EQ(2, adjRib2->stats_.getPreOutPrefixCount());
 
-  // Case 2: Add multipath (non-bestpath) for kV4Prefix3
-  // This should ONLY be delivered to adjRib2 (addpath peer)
-  // This verifies the bitmap filtering is working correctly
+  /*
+   * Case 2: Add multipath (non-bestpath) for kV4Prefix3
+   * This should ONLY be delivered to adjRib2 (addpath peer)
+   * This verifies the bitmap filtering is working correctly
+   */
   const auto msg6 = createRibSingleAnnounce(
       kV4Prefix3,
       kV4Nexthop1, // different nexthop from bestpath
@@ -2558,8 +2604,10 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
       kMinPathIDToSend + 3);
   peerMgr->handleShadowRibEntryAnnouncement(std::get<RibOutAnnouncement>(msg6));
 
-  // Verify the bitmap: only addpath consumer (adjRib2) should have the bit
-  // set
+  /*
+   * Verify the bitmap: only addpath consumer (adjRib2) should have the bit
+   * set
+   */
   changeItem = peerMgr->getChangeListTracker()->getHead();
   EXPECT_NE(nullptr, changeItem);
   // adjRib2 (addpath capable) should have bit set
@@ -2583,9 +2631,11 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
   EXPECT_EQ(
       2, adjRib2->stats_.getPreOutPrefixCount()); // unchanged (same prefix)
 
-  // Case 3: Test variation - bestpath change while in changelist, then
-  // multipath change Bestpath change should still be delivered to ALL ribs
-  // (multipath change cannot override bestpath change)
+  /*
+   * Case 3: Test variation - bestpath change while in changelist, then
+   * multipath change Bestpath change should still be delivered to ALL ribs
+   * (multipath change cannot override bestpath change)
+   */
 
   // Add kV4Prefix4: First add as multipath, then as bestpath
   const auto msg7a = createRibSingleAnnounce(
@@ -2622,15 +2672,19 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
   co_await waitForAdjRibsToProcessUpdates(
       evb, {adjRib1->boundedAdjRibOutQueue_, adjRib2->boundedAdjRibOutQueue_});
 
-  // Both adjRibs should receive the bestpath change (multipath cannot
-  // override)
+  /*
+   * Both adjRibs should receive the bestpath change (multipath cannot
+   * override)
+   */
   EXPECT_EQ(4, adjRib1->stats_.getPreOutPrefixCount());
   EXPECT_EQ(3, adjRib2->stats_.getPreOutPrefixCount());
 
-  // Case 4: Test variation - multipath change in changelist, then bestpath
-  // change
-  // Bestpath change will OR nonAddPathConsumerBitmap with existing
-  // addPathConsumerBitmap, resulting in both bits set
+  /*
+   * Case 4: Test variation - multipath change in changelist, then bestpath
+   * change
+   * Bestpath change will OR nonAddPathConsumerBitmap with existing
+   * addPathConsumerBitmap, resulting in both bits set
+   */
 
   // First, add multipath for kV4Prefix5 (non-bestpath nexthop)
   const auto msg9 = createRibSingleAnnounce(
@@ -2665,8 +2719,10 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
   peerMgr->handleShadowRibEntryAnnouncement(
       std::get<RibOutAnnouncement>(msg10a));
 
-  // Verify: after second multipath publish (item already on list with
-  // multipath), bitmap should remain ONLY addpath
+  /*
+   * Verify: after second multipath publish (item already on list with
+   * multipath), bitmap should remain ONLY addpath
+   */
   changeItem = peerMgr->getChangeListTracker()->getHead();
   EXPECT_NE(nullptr, changeItem);
   EXPECT_TRUE(
@@ -2772,8 +2828,10 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationAddPathTest) {
   folly::coro::blockingWait(peerMgr->processRibDumpReqCoro(
       RibDumpReq(kPeerId2, false /* sendAddPath */)));
 
-  // Publish an add-path (multipath) announcement (addPath = true)
-  // This should ONLY be seen by adjRib1 (add-path capable)
+  /*
+   * Publish an add-path (multipath) announcement (addPath = true)
+   * This should ONLY be seen by adjRib1 (add-path capable)
+   */
   const auto msg1 = createRibSingleAnnounce(
       kV4Prefix1,
       kV4Nexthop1,
@@ -2872,9 +2930,11 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationMixTest) {
   co_await adjRib1->getChangeListConsumer()->consumeChanges();
   co_await adjRib2->getChangeListConsumer()->consumeChanges();
 
-  // Test Case 1: Publish a bestpath announcement
-  // (should be seen by BOTH adjRibs)
-  // First add as multipath, then as bestpath
+  /*
+   * Test Case 1: Publish a bestpath announcement
+   * (should be seen by BOTH adjRibs)
+   * First add as multipath, then as bestpath
+   */
   const auto msg1a = createRibSingleAnnounce(
       kV4Prefix1,
       kV4Nexthop1,
@@ -2897,8 +2957,10 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationMixTest) {
   EXPECT_EQ(1, adjRib1->stats_.getPreOutPrefixCount());
   EXPECT_EQ(1, adjRib2->stats_.getPreOutPrefixCount());
 
-  // Test Case 2: Publish an add-path (multipath) announcement
-  // (should be seen ONLY by adjRib1)
+  /*
+   * Test Case 2: Publish an add-path (multipath) announcement
+   * (should be seen ONLY by adjRib1)
+   */
   const auto msg2 = createRibSingleAnnounce(
       kV4Prefix2,
       kV4Nexthop2,
@@ -2918,8 +2980,10 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationMixTest) {
   // adjRib2 should only have the bestpath prefix
   EXPECT_EQ(1, adjRib2->stats_.getPreOutPrefixCount());
 
-  // Test Case 3: Publish another bestpath to verify system still works
-  // First add as multipath, then as bestpath
+  /*
+   * Test Case 3: Publish another bestpath to verify system still works
+   * First add as multipath, then as bestpath
+   */
   const auto msg3a = createRibSingleAnnounce(
       kV4Prefix3,
       kV4Nexthop3,

@@ -50,9 +50,11 @@ std::vector<folly::CIDRNetwork> generatePrefixes(size_t count) {
   return prefixes;
 }
 
-// Build a BgpPath modeling a CTE-managed route: a CTE class community
-// (65520:V, matched by statement setIdx % kNumStatements), padding communities
-// to reach FAUU's ~8 communities/path, and the given as-path.
+/*
+ * Build a BgpPath modeling a CTE-managed route: a CTE class community
+ * (65520:V, matched by statement setIdx % kNumStatements), padding communities
+ * to reach FAUU's ~8 communities/path, and the given as-path.
+ */
 std::shared_ptr<BgpPath> buildBgpPath(
     size_t setIdx,
     const std::vector<uint32_t>& asSeq) {
@@ -81,13 +83,15 @@ std::shared_ptr<BgpPath> buildBgpPath(
   return path;
 }
 
-// Build RibEntries modeling the FAUU RIB (CTE-managed): each prefix belongs to
-// a CTE class -- its community-set matches one statement -- and has
-// pathsPerPrefix paths whose as-paths lead with an upstream AS (64981-64988,
-// matched by the action regexes). Whole BgpPath objects are pooled per
-// community-set and reused across prefixes, mirroring bgpd's attribute dedup
-// (so the whole-attribute BgpPathMatcher memo dedups the action and the
-// sub-attribute community memo the match).
+/*
+ * Build RibEntries modeling the FAUU RIB (CTE-managed): each prefix belongs to
+ * a CTE class -- its community-set matches one statement -- and has
+ * pathsPerPrefix paths whose as-paths lead with an upstream AS (64981-64988,
+ * matched by the action regexes). Whole BgpPath objects are pooled per
+ * community-set and reused across prefixes, mirroring bgpd's attribute dedup
+ * (so the whole-attribute BgpPathMatcher memo dedups the action and the
+ * sub-attribute community memo the match).
+ */
 std::vector<RibEntry> buildFauuRibEntries(
     const std::vector<folly::CIDRNetwork>& prefixes,
     size_t pathsPerPrefix,
@@ -134,11 +138,13 @@ std::vector<RibEntry> buildFauuRibEntries(
   return ribEntries;
 }
 
-// Build the CTE route-attribute policy (mirrors `show bgp rib-policy cte`):
-// numStatements statements, each matching a single CTE community (65520:V, AND)
-// with a UCMP action of 8 nexthop-weight actions, each selecting an upstream
-// via an as-path regex (^64981.* .. ^64988.*). Empty prefix set forces the
-// community-match path.
+/*
+ * Build the CTE route-attribute policy (mirrors `show bgp rib-policy cte`):
+ * numStatements statements, each matching a single CTE community (65520:V, AND)
+ * with a UCMP action of 8 nexthop-weight actions, each selecting an upstream
+ * via an as-path regex (^64981.* .. ^64988.*). Empty prefix set forces the
+ * community-match path.
+ */
 rib_policy::TRouteAttributePolicy buildFauuPolicy(size_t numStatements) {
   rib_policy::TRouteAttributePolicy tPolicy;
   for (size_t s = 0; s < numStatements; ++s) {
@@ -173,8 +179,10 @@ rib_policy::TRouteAttributePolicy buildFauuPolicy(size_t numStatements) {
   return tPolicy;
 }
 
-// Create a policy with specified number of statements, each covering a portion
-// of prefixes
+/*
+ * Create a policy with specified number of statements, each covering a portion
+ * of prefixes
+ */
 rib_policy::TRibPolicy createPolicy(
     const std::vector<folly::CIDRNetwork>& prefixes,
     size_t numStatements,
@@ -410,9 +418,11 @@ void BM_PolicyUpdate_WithoutCachePreservation(
   suspender.rehire(); // STOP timing
 }
 
-// ============================================================================
-// Benchmark registrations
-// ============================================================================
+/*
+ * ============================================================================
+ * Benchmark registrations
+ * ============================================================================
+ */
 
 // Cache hit vs miss comparison (shows value of caching)
 BENCHMARK_NAMED_PARAM(BM_OverwriteRouteAttributes_CacheHit, 10k, 10000);
@@ -429,9 +439,11 @@ BENCHMARK_NAMED_PARAM(BM_CacheMigration_MoveCache, 100k, 100000);
 BENCHMARK_NAMED_PARAM(BM_CacheMigration_MoveCache, 500k, 500000);
 BENCHMARK_DRAW_LINE();
 
-// ============================================================================
-// KEY COMPARISON: With vs Without Cache Preservation
-// ============================================================================
+/*
+ * ============================================================================
+ * KEY COMPARISON: With vs Without Cache Preservation
+ * ============================================================================
+ */
 
 // 100K prefixes - compare full re-eval vs selective (8% affected)
 BENCHMARK_NAMED_PARAM(
@@ -519,8 +531,10 @@ void BM_FauuFullWalk(
   suspender.dismiss();
 
   while (iters--) {
-    // Fresh policy each iteration => cold memo, modeling the empty->full full
-    // re-evaluation.
+    /*
+     * Fresh policy each iteration => cold memo, modeling the empty->full full
+     * re-evaluation.
+     */
     RouteAttributePolicy policy(buildFauuPolicy(kNumStatements));
     RouteAttributePolicy::RibChange change;
     for (auto& entry : ribEntries) {
@@ -531,9 +545,11 @@ void BM_FauuFullWalk(
   suspender.rehire();
 }
 
-// ============================================================================
-// FAUU-scale benchmarks
-// ============================================================================
+/*
+ * ============================================================================
+ * FAUU-scale benchmarks
+ * ============================================================================
+ */
 
 // Small scale for fast signal
 BENCHMARK_NAMED_PARAM(

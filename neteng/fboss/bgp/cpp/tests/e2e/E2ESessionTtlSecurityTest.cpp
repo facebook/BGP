@@ -22,8 +22,10 @@
  * TCP/BGP sessions over loopback.
  */
 
-// Enable friend access to FiberBgpPeer::sock_ for socket option verification.
-// Must be defined before any transitive include of FiberBgpPeer.h.
+/*
+ * Enable friend access to FiberBgpPeer::sock_ for socket option verification.
+ * Must be defined before any transitive include of FiberBgpPeer.h.
+ */
 namespace facebook::bgp {
 class GtsmRealSocketTest;
 }
@@ -300,8 +302,10 @@ TEST_F(GtsmRealSocketTest, GtsmMismatchConfigSessionFails) {
     auto params2 = makePeeringParams(peerAddr2, kGtsmR2, port1);
     peerMgr2_->addPeer(peerAddr2, params2);
 
-    // Poll to confirm session does NOT establish, using callback counters
-    // to fail fast if session unexpectedly comes up.
+    /*
+     * Poll to confirm session does NOT establish, using callback counters
+     * to fail fast if session unexpectedly comes up.
+     */
     waitForSessionNotEstablished(peerId1, peerId2);
 
     EXPECT_FALSE(callback1_.isSessionUp(peerId1))

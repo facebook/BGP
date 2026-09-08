@@ -443,9 +443,11 @@ TEST_F(BgpServiceBaseTestFixture, AdjRibStatsRequestDefaultsToBothDirections) {
   EXPECT_EQ(TDirectionFilter::BOTH, request.direction().value());
 }
 
-// The getProcessUptimeSeconds handler returns a non-negative value that does
-// not go backwards across samples. (A deterministic positive value with a
-// controlled start time is verified in WatchdogTest.GetUptimeSecondsTest.)
+/*
+ * The getProcessUptimeSeconds handler returns a non-negative value that does
+ * not go backwards across samples. (A deterministic positive value with a
+ * controlled start time is verified in WatchdogTest.GetUptimeSecondsTest.)
+ */
 TEST_F(BgpServiceBaseTestFixture, GetProcessUptimeSecondsTest) {
   const int64_t uptime1 = service_->getProcessUptimeSeconds();
   EXPECT_GE(uptime1, 0);

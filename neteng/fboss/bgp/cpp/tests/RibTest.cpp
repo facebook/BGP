@@ -431,10 +431,12 @@ TEST_F(RibFixture, FibCallTest) {
       {prefix3, kDefaultPathID}};
 
   EXPECT_CALL(*rib_, prepareFibProgramming_()).Times(5);
-  // In step 1 and 3, updateUnicastRoute_ called with installToFib = true,
-  // bestpath = eBgpPeer1_
-  // step 4 updateUnicastRoute_ called for prefix withdrawn with installToFib =
-  // true
+  /*
+   * In step 1 and 3, updateUnicastRoute_ called with installToFib = true,
+   * bestpath = eBgpPeer1_
+   * step 4 updateUnicastRoute_ called for prefix withdrawn with installToFib =
+   * true
+   */
   EXPECT_CALL(*fib_, updateUnicastRoute_(Eq(prefix1), _, _, false, true, _))
       .Times(3);
   EXPECT_CALL(*fib_, updateUnicastRoute_(Eq(prefix2), _, _, false, true, _))
@@ -442,8 +444,10 @@ TEST_F(RibFixture, FibCallTest) {
   EXPECT_CALL(*fib_, updateUnicastRoute_(Eq(prefix3), _, _, false, true, _))
       .Times(3);
 
-  // 2. updateUnicastRoute_ called with installToFib = false, bestpath =
-  // redistributePeer_
+  /*
+   * 2. updateUnicastRoute_ called with installToFib = false, bestpath =
+   * redistributePeer_
+   */
   EXPECT_CALL(*fib_, updateUnicastRoute_(Eq(prefix1), _, _, false, false, _))
       .Times(1);
   EXPECT_CALL(*fib_, updateUnicastRoute_(Eq(prefix2), _, _, false, false, _))
@@ -478,9 +482,11 @@ TEST_F(RibFixture, FibCallTest) {
     EXPECT_EQ(eBgpPeer1_, bestPath->peer);
   }
 
-  // 2. prefix update with high local pref from redistributePeer_ (installToFib
-  // = false)
-  // best path = redistributePeer_
+  /*
+   * 2. prefix update with high local pref from redistributePeer_ (installToFib
+   * = false)
+   * best path = redistributePeer_
+   */
   fibFuture = fib_->getFibProgramFuture();
   sendAnnouncement(prefixBatch, redistributePeer_, attrHighLocalPref_);
   fibFuture.wait();
@@ -524,8 +530,10 @@ TEST_F(RibFixture, FibCallTest) {
  * @brief Tests correctness of Rib::stop()
  */
 TEST_F(RibFixture, TestStop) {
-  // Start a task that will access the timer cleared Rib::stop() has started
-  // executing.
+  /*
+   * Start a task that will access the timer cleared Rib::stop() has started
+   * executing.
+   */
   rib_->evb_.runInEventBaseThreadAndWait([&]() {
     rib_->asyncScope_.add(
         co_withExecutor(&rib_->evb_, delayedFibProgramSchedule()));
@@ -544,23 +552,29 @@ TEST_F(RibFixture, NoBestPathNexthopChangeAddPath) {
   fibFuture.wait();
   rib_->setFibBatchTime(milliseconds(2));
 
-  // first we let the initial dump finish:
-  // eventually we get a RibInitialAnnouncementStart msg and one
-  // RibOutAnnouncement with initialDump=true. Pop them both and then proceed
-  // with test
+  /*
+   * first we let the initial dump finish:
+   * eventually we get a RibInitialAnnouncementStart msg and one
+   * RibOutAnnouncement with initialDump=true. Pop them both and then proceed
+   * with test
+   */
   WITH_RETRIES({ ASSERT_EVENTUALLY_EQ(ribOutQ_.size(), 2); });
   REPEAT_N(2, folly::coro::blockingWait(ribOutQ_.pop()));
 
-  // Simulate a route to kV4Prefix1 received from eBgpPeer1_ with nexthop
-  // kV4Nexthop1 and add to ribEntries_
+  /*
+   * Simulate a route to kV4Prefix1 received from eBgpPeer1_ with nexthop
+   * kV4Nexthop1 and add to ribEntries_
+   */
   RibEntry entry(kV4Prefix1);
   // Use the default attributes, which sets nexthop to kV4Nexthop1
   entry.updatePath(eBgpPeer1_, attr_, false);
   rib_->evb_.runInEventBaseThreadAndWait([&]() {
     rib_->ribEntries_.clear();
     rib_->ribEntries_.emplace(kV4Prefix1, std::move(entry));
-    // Now simulate a second route to same prefix received from eBgpPeer2_ with
-    // different nexthop kV4Nexthop2
+    /*
+     * Now simulate a second route to same prefix received from eBgpPeer2_ with
+     * different nexthop kV4Nexthop2
+     */
     auto newAttr = std::make_shared<facebook::bgp::BgpPath>(
         *buildBgpPathFields(4, 4, 4, 4));
     newAttr->setNexthop(kV4Nexthop2);
@@ -574,8 +588,10 @@ TEST_F(RibFixture, NoBestPathNexthopChangeAddPath) {
         false,
         0);
   });
-  // Now simulate recepit of announcement from eBgpPeer2_ for same prefix,
-  // kV4Prefix1, same nexthop, kV4Nexthop2, but different communities
+  /*
+   * Now simulate recepit of announcement from eBgpPeer2_ for same prefix,
+   * kV4Prefix1, same nexthop, kV4Nexthop2, but different communities
+   */
   auto prefixBatch2 = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
 
   fibFuture = fib_->getFibProgramFuture();
@@ -610,23 +626,29 @@ TEST_F(RibFixture, NoBestPathNexthopChangeAddPathWithRibPolicyMNHTest) {
   fibFuture.wait();
   rib_->setFibBatchTime(milliseconds(2));
 
-  // first we let the initial dump finish:
-  // eventually we get a RibInitialAnnouncementStart msg and one
-  // RibOutAnnouncement with initialDump=true. Pop them both and then proceed
-  // with test
+  /*
+   * first we let the initial dump finish:
+   * eventually we get a RibInitialAnnouncementStart msg and one
+   * RibOutAnnouncement with initialDump=true. Pop them both and then proceed
+   * with test
+   */
   WITH_RETRIES({ ASSERT_EVENTUALLY_EQ(ribOutQ_.size(), 2); });
   REPEAT_N(2, folly::coro::blockingWait(ribOutQ_.pop()));
 
-  // Simulate a route to kV4Prefix1 received from eBgpPeer1_ with nexthop
-  // kV4Nexthop1 and add to ribEntries_
+  /*
+   * Simulate a route to kV4Prefix1 received from eBgpPeer1_ with nexthop
+   * kV4Nexthop1 and add to ribEntries_
+   */
   RibEntry entry(kV4Prefix1);
   // Use the default attributes, which sets nexthop to kV4Nexthop1
   entry.updatePath(eBgpPeer1_, attr_, false);
   rib_->evb_.runInEventBaseThreadAndWait([&]() {
     rib_->ribEntries_.clear();
     rib_->ribEntries_.emplace(kV4Prefix1, std::move(entry));
-    // Now simulate a second route to same prefix received from eBgpPeer2_ with
-    // different nexthop kV4Nexthop2
+    /*
+     * Now simulate a second route to same prefix received from eBgpPeer2_ with
+     * different nexthop kV4Nexthop2
+     */
     auto newAttr = std::make_shared<facebook::bgp::BgpPath>(
         *buildBgpPathFields(4, 4, 4, 4));
     newAttr->setNexthop(kV4Nexthop2);
@@ -641,9 +663,9 @@ TEST_F(RibFixture, NoBestPathNexthopChangeAddPathWithRibPolicyMNHTest) {
         0);
   });
 
-  //
-  // inject the cps policy with mnh of 3
-  //
+  /*
+   * inject the cps policy with mnh of 3
+   */
 
   // default min nexthop = 3
   TPathSelector tPathSelector;
@@ -668,11 +690,13 @@ TEST_F(RibFixture, NoBestPathNexthopChangeAddPathWithRibPolicyMNHTest) {
     EXPECT_EQ(kDefaultPathID, announcement.entries[0].pathIdToSend);
   }
 
-  // Now simulate recepit of announcement from eBgpPeer2_ for same prefix,
-  // kV4Prefix1, same nexthop, kV4Nexthop2, but different communities.
-  // Under partial drain, the bestpath is retained but unchanged (eBgpPeer2_ is
-  // not the bestpath). The multipath set changes (updated attrs), generating
-  // add-path entries but no standard bestpath re-announcement.
+  /*
+   * Now simulate recepit of announcement from eBgpPeer2_ for same prefix,
+   * kV4Prefix1, same nexthop, kV4Nexthop2, but different communities.
+   * Under partial drain, the bestpath is retained but unchanged (eBgpPeer2_ is
+   * not the bestpath). The multipath set changes (updated attrs), generating
+   * add-path entries but no standard bestpath re-announcement.
+   */
   auto prefixBatch2 = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
 
   fibFuture = fib_->getFibProgramFuture();
@@ -718,13 +742,17 @@ TEST_F(RibFixture, PartialDrainAnnouncesWhenBestpathPointerUnchanged) {
   fibFuture.wait();
   rib_->setFibBatchTime(milliseconds(2));
 
-  // Drain the initial-dump messages (RibInitialAnnouncementStart +
-  // RibOutAnnouncement with initialDump=true).
+  /*
+   * Drain the initial-dump messages (RibInitialAnnouncementStart +
+   * RibOutAnnouncement with initialDump=true).
+   */
   WITH_RETRIES({ ASSERT_EVENTUALLY_EQ(ribOutQ_.size(), 2); });
   REPEAT_N(2, folly::coro::blockingWait(ribOutQ_.pop()));
 
-  // Install a single path so there's exactly 1 multipath — guaranteed to
-  // violate any mnh > 1 policy. attr_ uses kV4Nexthop1.
+  /*
+   * Install a single path so there's exactly 1 multipath — guaranteed to
+   * violate any mnh > 1 policy. attr_ uses kV4Nexthop1.
+   */
   auto prefixBatch = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
   fibFuture = fib_->getFibProgramFuture();
   sendAnnouncement(prefixBatch, eBgpPeer1_, attr_);
@@ -737,8 +765,10 @@ TEST_F(RibFixture, PartialDrainAnnouncesWhenBestpathPointerUnchanged) {
     ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
   }
 
-  // Capture the bestpath shared_ptr so we can prove it stays the same
-  // across the partial-drain transition.
+  /*
+   * Capture the bestpath shared_ptr so we can prove it stays the same
+   * across the partial-drain transition.
+   */
   std::shared_ptr<RouteInfo> bestpathBefore;
   rib_->evb_.runInEventBaseThreadAndWait([&]() {
     auto& entry = rib_->ribEntries_.find(kV4Prefix1)->second;
@@ -747,8 +777,10 @@ TEST_F(RibFixture, PartialDrainAnnouncesWhenBestpathPointerUnchanged) {
   });
   ASSERT_NE(bestpathBefore, nullptr);
 
-  // Inject CPS policy: mnh=3 (1 path < 3 → violation) +
-  // drain_on_min_nexthop_violation.
+  /*
+   * Inject CPS policy: mnh=3 (1 path < 3 → violation) +
+   * drain_on_min_nexthop_violation.
+   */
   TPathSelector tPathSelector;
   tPathSelector.bgp_native_path_selection_min_nexthop() = 3;
   tPathSelector.drain_on_min_nexthop_violation() = true;
@@ -759,10 +791,12 @@ TEST_F(RibFixture, PartialDrainAnnouncesWhenBestpathPointerUnchanged) {
   rib_->waitForPathSelectionPolicyUpdate();
   ribFuture.wait();
 
-  // The transition is partial-drain false → true, but the bestpath pointer
-  // stays the same (still the one path we installed). The drain-transition
-  // fold in selectBestPath() must produce a re-announcement (NOT a
-  // withdrawal) so the entry stays on the announce path.
+  /*
+   * The transition is partial-drain false → true, but the bestpath pointer
+   * stays the same (still the one path we installed). The drain-transition
+   * fold in selectBestPath() must produce a re-announcement (NOT a
+   * withdrawal) so the entry stays on the announce path.
+   */
   WITH_RETRIES({ ASSERT_EVENTUALLY_GE(ribOutQ_.size(), 1); });
   {
     auto msg = folly::coro::blockingWait(ribOutQ_.pop());
@@ -772,8 +806,10 @@ TEST_F(RibFixture, PartialDrainAnnouncesWhenBestpathPointerUnchanged) {
     EXPECT_EQ(kDefaultPathID, announcement.entries[0].pathIdToSend);
   }
 
-  // Verify the invariant the test exists to guard: drain transitioned, but
-  // the bestpath shared_ptr is unchanged.
+  /*
+   * Verify the invariant the test exists to guard: drain transitioned, but
+   * the bestpath shared_ptr is unchanged.
+   */
   rib_->evb_.runInEventBaseThreadAndWait([&]() {
     auto& entry = rib_->ribEntries_.find(kV4Prefix1)->second;
     EXPECT_TRUE(entry.getIsPartialDrain());
@@ -809,8 +845,10 @@ TEST_F(RibFixture, PartialDrainStatusReflectsRibState) {
   WITH_RETRIES({ ASSERT_EVENTUALLY_GE(ribOutQ_.size(), 1); });
   folly::coro::blockingWait(ribOutQ_.pop());
 
-  // Trigger partial drain: mnh=3 with 1 path → violation, drain retains
-  // bestpath.
+  /*
+   * Trigger partial drain: mnh=3 with 1 path → violation, drain retains
+   * bestpath.
+   */
   TPathSelector tPathSelector;
   tPathSelector.bgp_native_path_selection_min_nexthop() = 3;
   tPathSelector.drain_on_min_nexthop_violation() = true;
@@ -831,10 +869,12 @@ TEST_F(RibFixture, PartialDrainStatusReflectsRibState) {
     auto prefixes = rib_->getPartiallyDrainedPrefixes();
     ASSERT_EQ(1, prefixes.size());
     EXPECT_EQ(kV4Prefix1.second, *prefixes[0].prefix()->num_bits());
-    // Trigger was MNH: the TCapacity union holds the next_hop_count arm,
-    // captured during selectBestPath() and surfaced via the Thrift accessor
-    // without a per-prefix policy lookup at RPC time. min_capacity carries the
-    // violated threshold (3); current_capacity the live nexthop count (1).
+    /*
+     * Trigger was MNH: the TCapacity union holds the next_hop_count arm,
+     * captured during selectBestPath() and surfaced via the Thrift accessor
+     * without a per-prefix policy lookup at RPC time. min_capacity carries the
+     * violated threshold (3); current_capacity the live nexthop count (1).
+     */
     ASSERT_TRUE(prefixes[0].min_capacity()->next_hop_count().has_value());
     EXPECT_EQ(3, *prefixes[0].min_capacity()->next_hop_count());
     ASSERT_TRUE(prefixes[0].current_capacity()->next_hop_count().has_value());
@@ -897,8 +937,10 @@ TEST_F(RibFixture, PartialDrainTransitionCountOnlyOnDeviceFlip) {
     EXPECT_EQ(1, *status.partial_drain_transition_count());
   });
 
-  // Withdraw the only path → entry has no routes → selectBestPath resets
-  // isPartialDrain_ → device flips back from drained to not-drained.
+  /*
+   * Withdraw the only path → entry has no routes → selectBestPath resets
+   * isPartialDrain_ → device flips back from drained to not-drained.
+   */
   fibFuture = fib_->getFibProgramFuture();
   sendWithdrawal(prefixBatch, eBgpPeer1_);
   fibFuture.wait();
@@ -960,8 +1002,10 @@ TEST_F(RibFixture, PartialDrainTransitionCountMultiPrefix) {
     EXPECT_EQ(1, *status.partial_drain_transition_count());
   });
 
-  // Withdraw two of three prefixes — device stays drained, counter must NOT
-  // bump.
+  /*
+   * Withdraw two of three prefixes — device stays drained, counter must NOT
+   * bump.
+   */
   for (const auto& prefix : {kV4Prefix1, kV4Prefix2}) {
     auto prefixBatch = PrefixPathIds{{prefix, kDefaultPathID}};
     fibFuture = fib_->getFibProgramFuture();
@@ -977,8 +1021,10 @@ TEST_F(RibFixture, PartialDrainTransitionCountMultiPrefix) {
     EXPECT_EQ(1, *status.partial_drain_transition_count());
   });
 
-  // Withdraw the last drained prefix — device flips back, counter bumps once
-  // more.
+  /*
+   * Withdraw the last drained prefix — device flips back, counter bumps once
+   * more.
+   */
   {
     auto prefixBatch = PrefixPathIds{{kV6Prefix1, kDefaultPathID}};
     fibFuture = fib_->getFibProgramFuture();
@@ -1039,9 +1085,11 @@ TEST_F(RibFixture, PartialDrainMnhThresholdUpdatedAcrossDrainCycle) {
     EXPECT_EQ(3, *prefixes[0].min_capacity()->next_hop_count());
   });
 
-  // Phase 2: recover by lowering mnh to 1 (1 path satisfies). The prefix
-  // is no longer drained, and the cached threshold on RibEntry must reset
-  // (verified indirectly via empty drained-prefix list).
+  /*
+   * Phase 2: recover by lowering mnh to 1 (1 path satisfies). The prefix
+   * is no longer drained, and the cached threshold on RibEntry must reset
+   * (verified indirectly via empty drained-prefix list).
+   */
   TPathSelector noDrainSelector;
   noDrainSelector.bgp_native_path_selection_min_nexthop() = 1;
   noDrainSelector.drain_on_min_nexthop_violation() = true;
@@ -1059,8 +1107,10 @@ TEST_F(RibFixture, PartialDrainMnhThresholdUpdatedAcrossDrainCycle) {
     EXPECT_TRUE(rib_->getPartiallyDrainedPrefixes().empty());
   });
 
-  // Phase 3: re-drain with mnh=5. The surfaced threshold must reflect 5,
-  // not the stale 3 from phase 1.
+  /*
+   * Phase 3: re-drain with mnh=5. The surfaced threshold must reflect 5,
+   * not the stale 3 from phase 1.
+   */
   TPathSelector reDrainSelector;
   reDrainSelector.bgp_native_path_selection_min_nexthop() = 5;
   reDrainSelector.drain_on_min_nexthop_violation() = true;
@@ -1075,8 +1125,10 @@ TEST_F(RibFixture, PartialDrainMnhThresholdUpdatedAcrossDrainCycle) {
     auto prefixes = rib_->getPartiallyDrainedPrefixes();
     ASSERT_EQ(1, prefixes.size());
     ASSERT_TRUE(prefixes[0].min_capacity()->next_hop_count().has_value());
-    // Threshold updated to 5 — proves the reset+recompute in
-    // RibEntry::selectBestPath refreshes the cached value across cycles.
+    /*
+     * Threshold updated to 5 — proves the reset+recompute in
+     * RibEntry::selectBestPath refreshes the cached value across cycles.
+     */
     EXPECT_EQ(5, *prefixes[0].min_capacity()->next_hop_count());
   });
 }
@@ -1101,8 +1153,10 @@ TEST_F(RibFixture, PartialDrainUnderflowGuard) {
     ASSERT_EQ(0, *status.num_affected_prefixes());
     ASSERT_EQ(0, *status.partial_drain_transition_count());
 
-    // Simulate the stale-oldIsPartialDrain scenario. Guard must return
-    // false (no transition recorded) and leave the counters at 0.
+    /*
+     * Simulate the stale-oldIsPartialDrain scenario. Guard must return
+     * false (no transition recorded) and leave the counters at 0.
+     */
     bool transitioned = rib_->recordPartialDrainTransition(
         /*oldIsPartialDrain=*/true, /*newIsPartialDrain=*/false);
     EXPECT_FALSE(transitioned);
@@ -1182,18 +1236,24 @@ TEST_F(RibFixture, BestPathWithAddPathEnabled_OnlyPathIdChange) {
   fibFuture.wait();
   rib_->setFibBatchTime(milliseconds(2));
 
-  // first we let the initial dump finish:
-  // eventually we get a RibInitialAnnouncementStart msg and one
-  // RibOutAnnouncement with initialDump=true. Pop them both and then proceed
-  // with test
+  /*
+   * first we let the initial dump finish:
+   * eventually we get a RibInitialAnnouncementStart msg and one
+   * RibOutAnnouncement with initialDump=true. Pop them both and then proceed
+   * with test
+   */
   WITH_RETRIES({ ASSERT_EVENTUALLY_EQ(ribOutQ_.size(), 2); });
   REPEAT_N(2, folly::coro::blockingWait(ribOutQ_.pop()));
 
-  // Simulate a route to kV4Prefix1 received from eBgpPeer1_ with nexthop
-  // kV4Nexthop1 and add to ribEntries_
+  /*
+   * Simulate a route to kV4Prefix1 received from eBgpPeer1_ with nexthop
+   * kV4Nexthop1 and add to ribEntries_
+   */
   RibEntry entry(kV4Prefix1);
-  // Use the default attributes, which sets nexthop to kV4Nexthop1
-  // and uses kDefaultPathID = 0.
+  /*
+   * Use the default attributes, which sets nexthop to kV4Nexthop1
+   * and uses kDefaultPathID = 0.
+   */
   entry.updatePath(eBgpPeer1_, attr_, false);
 
   // Trigger bestpath computation.
@@ -1208,8 +1268,10 @@ TEST_F(RibFixture, BestPathWithAddPathEnabled_OnlyPathIdChange) {
         0);
   });
 
-  // Now simulate receipt of announcement from eBgpPeer1_ for the same route
-  // but with different pathId.
+  /*
+   * Now simulate receipt of announcement from eBgpPeer1_ for the same route
+   * but with different pathId.
+   */
   auto prefixBatch2 = PrefixPathIds{{kV4Prefix1, 1 /* pathId */}};
 
   fibFuture = fib_->getFibProgramFuture();
@@ -1254,9 +1316,11 @@ TEST_F(RibFixture, BestpathChangeWithNexthopChangeTest) {
   sendInitialPathComputation();
   fibFuture.wait();
 
-  // send local route for prefix2, this should:
-  // 1. set prefix2 bestpath to local route,
-  // 2. local route has different nexthop, withdraw previous one
+  /*
+   * send local route for prefix2, this should:
+   * 1. set prefix2 bestpath to local route,
+   * 2. local route has different nexthop, withdraw previous one
+   */
   fibFuture = fib_->getFibProgramFuture();
   auto attr =
       std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
@@ -1266,8 +1330,10 @@ TEST_F(RibFixture, BestpathChangeWithNexthopChangeTest) {
   fibFuture.wait();
 }
 
-// This tests rib flags update after EoR with add-path enabled
-// ribFlagUpdate: addPath = false
+/*
+ * This tests rib flags update after EoR with add-path enabled
+ * ribFlagUpdate: addPath = false
+ */
 TEST_P(RibFixtureAddPathTestSuite, EoR) {
   // send prefixes from iBgpPeer_(kPeerAddr2) to Rib
   auto prefixBatch1 = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
@@ -1354,8 +1420,10 @@ TEST_F(RibFixture, RibAnnouncementRedistributePeerTest) {
   EXPECT_EQ(eBgpPeer1_, announcement2.entries.at(0).peer);
   checkRibOutEntriesAddPathIds(announcement2);
 
-  // Step 3: redistributePeer_ announce prefix 1 again; best path
-  // changed
+  /*
+   * Step 3: redistributePeer_ announce prefix 1 again; best path
+   * changed
+   */
   fibFuture = fib_->getFibProgramFuture();
   sendAnnouncement(prefixBatch, redistributePeer_, attrHighLocalPref_);
   fibFuture.wait();
@@ -1368,13 +1436,17 @@ TEST_F(RibFixture, RibAnnouncementRedistributePeerTest) {
   EXPECT_EQ(false, announcement3.sendWithEoR);
   EXPECT_EQ(false, announcement3.initialDump);
   EXPECT_EQ(redistributePeer_, announcement3.entries.at(0).peer);
-  // first path to be selected is no longer announced, hence just minId+1 is
-  // announced here
+  /*
+   * first path to be selected is no longer announced, hence just minId+1 is
+   * announced here
+   */
   checkRibOutEntriesAddPathIds(
       announcement3, PrefixToPathIdsMap{{kV6Prefix1, {kMinPathIDToSend + 1}}});
 
-  // Step 4: redistributePeer_ withdrawn prefix 1; best path
-  // changed
+  /*
+   * Step 4: redistributePeer_ withdrawn prefix 1; best path
+   * changed
+   */
   fibFuture = fib_->getFibProgramFuture();
   sendWithdrawal(prefixBatch, redistributePeer_);
   fibFuture.wait();
@@ -1390,14 +1462,16 @@ TEST_F(RibFixture, RibAnnouncementRedistributePeerTest) {
   checkRibOutEntriesAddPathIds(announcement4);
 }
 
-// Test for VIP Injector, that is same peer with multiple sessions
-// First, a peer 2.2.2.2 with router ID 2.2.2.2 injects prefix 2001::/64. Here,
-// we are expecting to see the Fib programmed. Later, a peer (on the same
-// physical machine) 2.2.2.2 with router ID 1.1.1.1 injects the same prefix.
-// Now, we are also expecting to see Fib programmed because the policy
-// selects the one with lower router_id. Next, the second session sends a
-// withdrawal of the prefix, and the best path is changed again, and we are
-// expecting Fib programmed again.
+/*
+ * Test for VIP Injector, that is same peer with multiple sessions
+ * First, a peer 2.2.2.2 with router ID 2.2.2.2 injects prefix 2001::/64. Here,
+ * we are expecting to see the Fib programmed. Later, a peer (on the same
+ * physical machine) 2.2.2.2 with router ID 1.1.1.1 injects the same prefix.
+ * Now, we are also expecting to see Fib programmed because the policy
+ * selects the one with lower router_id. Next, the second session sends a
+ * withdrawal of the prefix, and the best path is changed again, and we are
+ * expecting Fib programmed again.
+ */
 TEST_F(RibFixture, RibAnnouncementFromSamePeerWithBestPathChange) {
   EXPECT_CALL(*rib_, prepareFibProgramming_()).Times(testing::AnyNumber());
   EXPECT_CALL(*fib_, program_(_)).Times(testing::AnyNumber());
@@ -1439,8 +1513,10 @@ TEST_F(RibFixture, RibAnnouncementFromSamePeerWithBestPathChange) {
   EXPECT_EQ(injector2_, announcement2.entries.at(0).peer);
   checkRibOutEntriesAddPathIds(announcement2);
 
-  // Step 3: peer1 with lower routerId announce prefix 1 again; best path
-  // changed
+  /*
+   * Step 3: peer1 with lower routerId announce prefix 1 again; best path
+   * changed
+   */
   fibFuture = fib_->getFibProgramFuture();
   sendAnnouncement(prefixBatch, injector1_, attr_);
   fibFuture.wait();
@@ -1471,16 +1547,18 @@ TEST_F(RibFixture, RibAnnouncementFromSamePeerWithBestPathChange) {
   checkRibOutEntriesAddPathIds(announcement4);
 }
 
-// Test for VIP Injector, that is same peer with multiple sessions
-// In this testing, the best path will not change since the second session has
-// a higher router_id.
-// First, a peer 2.2.2.2 with router ID 1.1.1.1 injects prefix 2001::/64. Here,
-// we are expecting to see the Fib programmed. Later, a peer (on the same
-// physical machine) 2.2.2.2 with router ID 2.2.2.2 injects the same prefix.
-// Now, we are NOT expecting to see Fib programmed because the policy
-// selects the one with lower router_id. Next, the second session sends a
-// withdrawal of the prefix, and the best path doesn't change, and Fib is not
-// expected to be programmed.
+/*
+ * Test for VIP Injector, that is same peer with multiple sessions
+ * In this testing, the best path will not change since the second session has
+ * a higher router_id.
+ * First, a peer 2.2.2.2 with router ID 1.1.1.1 injects prefix 2001::/64. Here,
+ * we are expecting to see the Fib programmed. Later, a peer (on the same
+ * physical machine) 2.2.2.2 with router ID 2.2.2.2 injects the same prefix.
+ * Now, we are NOT expecting to see Fib programmed because the policy
+ * selects the one with lower router_id. Next, the second session sends a
+ * withdrawal of the prefix, and the best path doesn't change, and Fib is not
+ * expected to be programmed.
+ */
 TEST_F(RibFixture, RibAnnouncementFromSamePeerWithoutBestPathChange) {
   EXPECT_CALL(*rib_, prepareFibProgramming_()).Times(testing::AnyNumber());
   EXPECT_CALL(*fib_, program_(_)).Times(testing::AnyNumber());
@@ -1579,10 +1657,12 @@ TEST_F(RibFixture, RibVersionIncrementsOnBestpathChange) {
   // RIB version should still be 0 (no routes yet)
   EXPECT_EQ(0, rib_->getRibVersion());
 
-  // Step 2: Inject first route - should increment RIB version. The version is
-  // now stamped at emission time (in handleFibProgrammedMessage, after the FIB
-  // round-trip), so synchronize on the announcement being pushed before reading
-  // the version.
+  /*
+   * Step 2: Inject first route - should increment RIB version. The version is
+   * now stamped at emission time (in handleFibProgrammedMessage, after the FIB
+   * round-trip), so synchronize on the announcement being pushed before reading
+   * the version.
+   */
   fibFuture = fib_->getFibProgramFuture();
   sendAnnouncement(prefixBatch, injector2_, attr_);
   fibFuture.wait();
@@ -1612,8 +1692,10 @@ TEST_F(RibFixture, RibVersionIncrementsOnBestpathChange) {
   // Verify prefix counter after first route
   EXPECT_EQ(1, tcData->getCounter(RibStats::kRibPrefixCount));
 
-  // Step 3: Inject same prefix from peer with lower router ID - bestpath
-  // changes. Synchronize on the announcement before reading the version.
+  /*
+   * Step 3: Inject same prefix from peer with lower router ID - bestpath
+   * changes. Synchronize on the announcement before reading the version.
+   */
   fibFuture = fib_->getFibProgramFuture();
   sendAnnouncement(prefixBatch, injector1_, attr_);
   fibFuture.wait();
@@ -1642,9 +1724,11 @@ TEST_F(RibFixture, RibVersionIncrementsOnBestpathChange) {
   // Verify prefix count unchanged (same prefix)
   EXPECT_EQ(1, tcData->getCounter(RibStats::kRibPrefixCount));
 
-  // Step 4: Withdraw the winning path - bestpath reverts to injector2, which is
-  // re-advertised in handleFibProgrammedMessage. Synchronize on the
-  // announcement before reading the version.
+  /*
+   * Step 4: Withdraw the winning path - bestpath reverts to injector2, which is
+   * re-advertised in handleFibProgrammedMessage. Synchronize on the
+   * announcement before reading the version.
+   */
   fibFuture = fib_->getFibProgramFuture();
   sendWithdrawal(prefixBatch, injector1_);
   fibFuture.wait();
@@ -1747,8 +1831,10 @@ TEST_F(RibFixture, RibVersionNoChangeOnDuplicateRoute) {
   msg = folly::coro::blockingWait(ribOutQ_.pop());
   ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
 
-  // Inject route. The version is stamped at emission time, so synchronize on
-  // the announcement being pushed before reading the version.
+  /*
+   * Inject route. The version is stamped at emission time, so synchronize on
+   * the announcement being pushed before reading the version.
+   */
   fibFuture = fib_->getFibProgramFuture();
   sendAnnouncement(prefixBatch, eBgpPeer1_, attr_);
   fibFuture.wait();
@@ -1759,9 +1845,11 @@ TEST_F(RibFixture, RibVersionNoChangeOnDuplicateRoute) {
   uint64_t versionAfterFirst = rib_->getRibVersion();
   EXPECT_GT(versionAfterFirst, 0);
 
-  // Re-inject same route with same attributes (no material change)
-  // Note: We don't wait for FIB programming since duplicate routes don't
-  // trigger FIB updates. Instead, wait for RIB to process the message.
+  /*
+   * Re-inject same route with same attributes (no material change)
+   * Note: We don't wait for FIB programming since duplicate routes don't
+   * trigger FIB updates. Instead, wait for RIB to process the message.
+   */
   sendAnnouncement(prefixBatch, eBgpPeer1_, attr_);
   rib_->evb_.runInEventBaseThreadAndWait([&]() {
     // Version should NOT have changed since bestpath didn't change
@@ -1798,8 +1886,10 @@ TEST_F(RibFixture, RibVersionStampedOnEmittedEntriesMonotonicPerPrefix) {
   msg = folly::coro::blockingWait(ribOutQ_.pop());
   ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
 
-  // Announce a prefix: the emitted announcement entry carries the current RIB
-  // version (stamped at emission in handleFibProgrammedMessage).
+  /*
+   * Announce a prefix: the emitted announcement entry carries the current RIB
+   * version (stamped at emission in handleFibProgrammedMessage).
+   */
   fibFuture = fib_->getFibProgramFuture();
   sendAnnouncement(prefixBatch, eBgpPeer1_, attr_);
   fibFuture.wait();
@@ -1813,9 +1903,11 @@ TEST_F(RibFixture, RibVersionStampedOnEmittedEntriesMonotonicPerPrefix) {
   EXPECT_GT(announceVersion, 0);
   EXPECT_EQ(rib_->getRibVersion(), announceVersion);
 
-  // Withdraw the prefix: the withdrawal entry carries a strictly greater
-  // version (stamped at emission in prepareFibProgramming, before the FIB
-  // round-trip).
+  /*
+   * Withdraw the prefix: the withdrawal entry carries a strictly greater
+   * version (stamped at emission in prepareFibProgramming, before the FIB
+   * round-trip).
+   */
   fibFuture = fib_->getFibProgramFuture();
   sendWithdrawal(prefixBatch, eBgpPeer1_);
   fibFuture.wait();
@@ -1844,9 +1936,11 @@ TEST_F(RibFixture, RibVersionSingleBumpAcrossMultipathAddPathEntries) {
 
   auto prefixBatch = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
 
-  // Two equal-cost paths for the same prefix (kV4Nexthop1 via eBgpPeer1_,
-  // kV4Nexthop2 via eBgpPeer2_) so multipath selection yields two ECMP
-  // nexthops -> one best-path entry plus two add-path entries.
+  /*
+   * Two equal-cost paths for the same prefix (kV4Nexthop1 via eBgpPeer1_,
+   * kV4Nexthop2 via eBgpPeer2_) so multipath selection yields two ECMP
+   * nexthops -> one best-path entry plus two add-path entries.
+   */
   sendAnnouncement(prefixBatch, eBgpPeer1_, attr_); // attr_ carries kV4Nexthop1
   auto newAttr =
       std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
@@ -1896,8 +1990,10 @@ TEST_F(RibFixture, RibVersionDistinctPerPrefixInAnnouncement) {
   EXPECT_CALL(*fib_, updateUnicastRoute_(_, _, _, _, _, _))
       .Times(testing::AnyNumber());
 
-  // Announce two distinct prefixes before EoR so a single initial-dump
-  // announcement carries both, each version-stamped once at emission.
+  /*
+   * Announce two distinct prefixes before EoR so a single initial-dump
+   * announcement carries both, each version-stamped once at emission.
+   */
   sendAnnouncement(
       PrefixPathIds{{kV4Prefix1, kDefaultPathID}}, eBgpPeer1_, attr_);
   auto attr2 =
@@ -1918,8 +2014,10 @@ TEST_F(RibFixture, RibVersionDistinctPerPrefixInAnnouncement) {
   auto announcement = std::get<RibOutAnnouncement>(msg);
   ASSERT_EQ(2, announcement.entries.size());
 
-  // Two distinct prefixes -> two distinct versions, strictly increasing in
-  // the order they were pushed onto the queue.
+  /*
+   * Two distinct prefixes -> two distinct versions, strictly increasing in
+   * the order they were pushed onto the queue.
+   */
   EXPECT_NE(
       announcement.entries.at(0).prefix, announcement.entries.at(1).prefix);
   EXPECT_LT(
@@ -1950,8 +2048,10 @@ TEST_F(RibFixture, RibVersionDistinctPerPrefixInWithdrawal) {
       entry.updatePath(eBgpPeer1_, pathAttr, true, 0);
       RibBase::selectBestPath(
           entry, multipathSelector, bestpathSelector, false, 0);
-      // Commit so the prefix is treated as already advertised, then withdraw
-      // its only path so best path becomes null (a full withdrawal).
+      /*
+       * Commit so the prefix is treated as already advertised, then withdraw
+       * its only path so best path becomes null (a full withdrawal).
+       */
       entry.commitMultipaths();
       entry.commitMultipathNexthops();
       entry.commitBestpath();
@@ -1997,9 +2097,11 @@ TEST_F(RibFixture, RibVersionWithdrawalAdvertisedFirstHasLowerVersion) {
   fibFuture.wait();
   REPEAT_N(2, folly::coro::blockingWait(ribOutQ_.pop()));
 
-  // In one pass: fully withdraw p1 and change p2's best path (a higher
-  // local-pref path from another peer). p1's withdrawal is advertised before
-  // the FIB round-trip; p2's re-announcement after it.
+  /*
+   * In one pass: fully withdraw p1 and change p2's best path (a higher
+   * local-pref path from another peer). p1's withdrawal is advertised before
+   * the FIB round-trip; p2's re-announcement after it.
+   */
   fibFuture = fib_->getFibProgramFuture();
   sendWithdrawal(p1, eBgpPeer1_);
   sendAnnouncement(p2, eBgpPeer2_, attrHighLocalPref_);
@@ -2058,9 +2160,11 @@ TEST_F(RibFixture, RibVersionWithdrawalsPrecedeAllAnnouncementsInPass) {
   fibFuture.wait();
   REPEAT_N(2, folly::coro::blockingWait(ribOutQ_.pop())); // start + dump
 
-  // One pass: withdraw the first block and re-announce the second with a
-  // strictly better path (higher local-pref from a different peer), so the
-  // second block is re-advertised in handleFibProgrammedMessage.
+  /*
+   * One pass: withdraw the first block and re-announce the second with a
+   * strictly better path (higher local-pref from a different peer), so the
+   * second block is re-advertised in handleFibProgrammedMessage.
+   */
   fibFuture = fib_->getFibProgramFuture();
   sendBulkWithdrawal(kBlock, eBgpPeer1_, kWithdrawBase);
   sendBulkAnnouncement(kBlock, eBgpPeer2_, attrHighLocalPref_, kAnnounceBase);
@@ -2128,8 +2232,10 @@ TEST_F(RibFixture, RibVersionBestPathOnlyChangeBumpsExactlyOnce) {
   ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
   const uint64_t versionAfterFirst = rib_->getRibVersion();
 
-  // Same prefix, same nexthop, lower router id (injector1) -> the best path
-  // flips but the multipath nexthop set is unchanged. Exactly one more bump.
+  /*
+   * Same prefix, same nexthop, lower router id (injector1) -> the best path
+   * flips but the multipath nexthop set is unchanged. Exactly one more bump.
+   */
   fibFuture = fib_->getFibProgramFuture();
   sendAnnouncement(prefixBatch, injector1_, attr_);
   fibFuture.wait();
@@ -2170,8 +2276,10 @@ TEST_F(RibFixture, RibVersionIncrementalAddPathBumpsExactlyOnce) {
   REPEAT_N(2, folly::coro::blockingWait(ribOutQ_.pop()));
   const uint64_t versionAfterTwoPaths = rib_->getRibVersion();
 
-  // Add a third ECMP path (nh3 via peer3). All three paths are re-advertised,
-  // but the version bumps by exactly one and every add-path entry shares it.
+  /*
+   * Add a third ECMP path (nh3 via peer3). All three paths are re-advertised,
+   * but the version bumps by exactly one and every add-path entry shares it.
+   */
   auto attr3 =
       std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
   attr3->setNexthop(kV4Nexthop3);
@@ -2228,9 +2336,11 @@ TEST_F(RibFixture, RibVersionEcmpShrinkWithdrawAndReannounceShareVersion) {
   REPEAT_N(2, folly::coro::blockingWait(ribOutQ_.pop()));
   const uint64_t versionBeforeShrink = rib_->getRibVersion();
 
-  // Shrink the ECMP set: withdraw the nh3 path. The same prefix now emits an
-  // add-path withdrawal (for nh3) then a re-announcement (nh1/nh2), two
-  // separate RibOut messages that share ONE version.
+  /*
+   * Shrink the ECMP set: withdraw the nh3 path. The same prefix now emits an
+   * add-path withdrawal (for nh3) then a re-announcement (nh1/nh2), two
+   * separate RibOut messages that share ONE version.
+   */
   fibFuture = fib_->getFibProgramFuture();
   sendWithdrawal(prefixBatch, eBgpPeer3_);
   fibFuture.wait();
@@ -2246,8 +2356,10 @@ TEST_F(RibFixture, RibVersionEcmpShrinkWithdrawAndReannounceShareVersion) {
   ASSERT_EQ(2, announcement.addPathEntries.size());
 
   const uint64_t versionAfterShrink = rib_->getRibVersion();
-  // One bump for the whole shrink pass; withdrawal and re-announcement share
-  // it.
+  /*
+   * One bump for the whole shrink pass; withdrawal and re-announcement share
+   * it.
+   */
   EXPECT_EQ(versionBeforeShrink + 1, versionAfterShrink);
   EXPECT_EQ(versionAfterShrink, withdrawal.addPathEntries.at(0).ribVersion);
   for (const auto& addPathEntry : announcement.addPathEntries) {
@@ -2269,9 +2381,11 @@ TEST_F(RibFixture, RibVersionAddPathsSpanningChunksBumpAcrossChunks) {
   EXPECT_CALL(*fib_, updateUnicastRoute_(_, _, _, _, _, _))
       .Times(testing::AnyNumber());
 
-  // Establish kRibChunkSize + 1 equal-cost paths for ONE prefix, from a single
-  // peer via distinct received path-ids and distinct nexthops, so multipath
-  // selection yields kRibChunkSize + 1 add-paths that span two chunks.
+  /*
+   * Establish kRibChunkSize + 1 equal-cost paths for ONE prefix, from a single
+   * peer via distinct received path-ids and distinct nexthops, so multipath
+   * selection yields kRibChunkSize + 1 add-paths that span two chunks.
+   */
   constexpr uint32_t kNumPaths = kRibChunkSize + 1;
   constexpr int kNexthopBase = 0x0B010000; // 11.1.0.0
   for (uint32_t i = 0; i < kNumPaths; i++) {
@@ -2290,8 +2404,10 @@ TEST_F(RibFixture, RibVersionAddPathsSpanningChunksBumpAcrossChunks) {
   auto msg = folly::coro::blockingWait(ribOutQ_.pop());
   ASSERT_TRUE(std::holds_alternative<RibInitialAnnouncementStart>(msg));
 
-  // Walk the emitted announcement chunks, collecting one representative version
-  // per add-path chunk. The final chunk carries the EoR flag.
+  /*
+   * Walk the emitted announcement chunks, collecting one representative version
+   * per add-path chunk. The final chunk carries the EoR flag.
+   */
   std::vector<uint64_t> chunkVersions;
   uint32_t addPathTotal = 0;
   bool haveEoR = false;
@@ -2353,13 +2469,17 @@ TEST_F(RibFixture, RibVersionAddPathWithdrawalsSpanningChunksBumpAcrossChunks) {
     }
     RibBase::selectBestPath(
         entry, multipathSelector, bestpathSelector, false, 0);
-    // The setup must actually produce > kRibChunkSize advertised paths for the
-    // withdrawal to span chunks; otherwise the test would not exercise rule 2.
+    /*
+     * The setup must actually produce > kRibChunkSize advertised paths for the
+     * withdrawal to span chunks; otherwise the test would not exercise rule 2.
+     */
     ASSERT_EQ(kNumPaths, entry.getMultipaths().size());
 
-    // Commit as advertised, then fully withdraw every path so
-    // prepareFibProgramming emits an add-path withdrawal per advertised
-    // nexthop.
+    /*
+     * Commit as advertised, then fully withdraw every path so
+     * prepareFibProgramming emits an add-path withdrawal per advertised
+     * nexthop.
+     */
     entry.commitMultipaths();
     entry.commitMultipathNexthops();
     entry.commitBestpath();
@@ -2404,16 +2524,20 @@ TEST_F(RibFixture, IncrementalAnnoucementChunkTestAfterReadOnly) {
   EXPECT_CALL(*fib_, program_(_)).Times(2);
   EXPECT_CALL(*fib_, updateUnicastRoute_(_, _, _, _, _, _))
       .Times(2 * (kRibChunkSize + 1));
-  // As RibDumpReq is served by a different fiber, make sure the fibsync updates
-  // are enqueued before dump-req is sent. The expected-match sequence is coded
-  // with this assumption.
+  /*
+   * As RibDumpReq is served by a different fiber, make sure the fibsync updates
+   * are enqueued before dump-req is sent. The expected-match sequence is coded
+   * with this assumption.
+   */
   folly::fibers::Baton fibSyncDone;
   // ribOutQ_ consumer
   auto listenerThread = std::thread([&]() {
-    // We expect 5 messages:
-    //   one message indicating start of initial dump
-    //   two messages for initial dump
-    //   two messages for incremental announcements
+    /*
+     * We expect 5 messages:
+     *   one message indicating start of initial dump
+     *   two messages for initial dump
+     *   two messages for incremental announcements
+     */
 
     // Indicate start of initial announcements
     {
@@ -2496,9 +2620,11 @@ TEST_F(RibFixture, IncrementalAnnoucementChunkTestAfterReadOnly) {
   sendInitialPathComputation();
   fibFuture.wait();
   fibSyncDone.wait();
-  // send rib dump req for kPeerAddr1 to rib
-  // this will cause rib to send RibOutWithdrawal for "kRibChunkSize"
-  // prefixes with sendWithEoR being true
+  /*
+   * send rib dump req for kPeerAddr1 to rib
+   * this will cause rib to send RibOutWithdrawal for "kRibChunkSize"
+   * prefixes with sendWithEoR being true
+   */
   fibFuture = fib_->getFibProgramFuture();
   // send bulk prefixes from iBgpPeer_(kPeerAddr2) to Rib
   sendBulkAnnouncement(
@@ -2514,16 +2640,20 @@ TEST_F(RibFixture, IncrementalWithdrawnChunkTestAfterReadOnly) {
   EXPECT_CALL(*fib_, program_(_)).Times(2);
   EXPECT_CALL(*fib_, updateUnicastRoute_(_, _, _, _, _, _))
       .Times(2 * (kRibChunkSize + 1));
-  // As RibDumpReq is served by a different fiber, make sure the fibsync updates
-  // are enqueued before dump-req is sent. The expected-match sequence is coded
-  // with this assumption.
+  /*
+   * As RibDumpReq is served by a different fiber, make sure the fibsync updates
+   * are enqueued before dump-req is sent. The expected-match sequence is coded
+   * with this assumption.
+   */
   folly::fibers::Baton fibSyncDone;
   // ribOutQ_ consumer
   auto listenerThread = std::thread([&]() {
-    // We expect 5 messages:
-    //   one message indicating start of initial dump
-    //   two messages for initial dump
-    //   two messages for incremental withdrawals
+    /*
+     * We expect 5 messages:
+     *   one message indicating start of initial dump
+     *   two messages for initial dump
+     *   two messages for incremental withdrawals
+     */
     {
       auto msg = folly::coro::blockingWait(ribOutQ_.pop());
       ASSERT_TRUE(std::holds_alternative<RibInitialAnnouncementStart>(msg));
@@ -2597,9 +2727,11 @@ TEST_F(RibFixture, IncrementalWithdrawnChunkTestAfterReadOnly) {
   sendInitialPathComputation();
   fibFuture.wait();
   fibSyncDone.wait();
-  // send rib dump req for kPeerAddr1 to rib
-  // this will cause rib to send RibOutWithdrawal for "kRibChunkSize"
-  // prefixes with sendWithEoR being true
+  /*
+   * send rib dump req for kPeerAddr1 to rib
+   * this will cause rib to send RibOutWithdrawal for "kRibChunkSize"
+   * prefixes with sendWithEoR being true
+   */
   fibFuture = fib_->getFibProgramFuture();
   sendBulkWithdrawal(kRibChunkSize + 1, iBgpPeer_);
   fibFuture.wait();
@@ -2613,16 +2745,20 @@ TEST_F(RibFixture, IncrementalWithdrawnChunkTestAfterReadOnlyForAddPath) {
   EXPECT_CALL(*fib_, program_(_)).Times(2);
   EXPECT_CALL(*fib_, updateUnicastRoute_(_, _, _, _, _, _))
       .Times(2 * (kRibChunkSize + 1));
-  // As RibDumpReq is served by a different fiber, make sure the fibsync updates
-  // are enqueued before dump-req is sent. The expected-match sequence is coded
-  // with this assumption.
+  /*
+   * As RibDumpReq is served by a different fiber, make sure the fibsync updates
+   * are enqueued before dump-req is sent. The expected-match sequence is coded
+   * with this assumption.
+   */
   folly::fibers::Baton fibSyncDone;
   // ribOutQ_ consumer
   auto listenerThread = std::thread([&]() {
-    // We expect 5 messages:
-    //   one message to mark start of initial dump
-    //   two messages for initial dump
-    //   two messages for incremental withdrawals
+    /*
+     * We expect 5 messages:
+     *   one message to mark start of initial dump
+     *   two messages for initial dump
+     *   two messages for incremental withdrawals
+     */
 
     // Expect RibInitialAnnouncementStart
     {
@@ -2698,9 +2834,11 @@ TEST_F(RibFixture, IncrementalWithdrawnChunkTestAfterReadOnlyForAddPath) {
   sendInitialPathComputation();
   fibFuture.wait();
   fibSyncDone.wait();
-  // send rib dump req for kPeerAddr1 to rib
-  // this will cause rib to send RibOutWithdrawal for "kRibChunkSize"
-  // prefixes with sendWithEoR being true
+  /*
+   * send rib dump req for kPeerAddr1 to rib
+   * this will cause rib to send RibOutWithdrawal for "kRibChunkSize"
+   * prefixes with sendWithEoR being true
+   */
   fibFuture = fib_->getFibProgramFuture();
   sendBulkWithdrawal(kRibChunkSize + 1, iBgpPeer_);
   fibFuture.wait();
@@ -2708,8 +2846,10 @@ TEST_F(RibFixture, IncrementalWithdrawnChunkTestAfterReadOnlyForAddPath) {
   listenerThread.join();
 }
 
-// Verify that multiple full-sync requests will cause one-time of FIB
-// programming to avoid syncing 0 routes to FIB.
+/*
+ * Verify that multiple full-sync requests will cause one-time of FIB
+ * programming to avoid syncing 0 routes to FIB.
+ */
 TEST_F(RibFixture, MultipleFullSyncRequest) {
   EXPECT_CALL(*fib_, program_(true)).Times(1);
 
@@ -2718,13 +2858,17 @@ TEST_F(RibFixture, MultipleFullSyncRequest) {
 
   auto& toFibQ = rib_->toFibMessageQ_;
   rib_->evb_.runInEventBaseThreadAndWait([&]() {
-    // call prepareFibProgramming() multiple times(>1) to mimic the full-sync
-    // requests being piled up scenario
+    /*
+     * call prepareFibProgramming() multiple times(>1) to mimic the full-sync
+     * requests being piled up scenario
+     */
     rib_->prepareFibProgramming(true);
     rib_->prepareFibProgramming(true);
 
-    // ATTN: this cb will NOT yield to other fiber tasks, which can read the
-    // pending requests. Thus we expect 2 pending messages inside the queue.
+    /*
+     * ATTN: this cb will NOT yield to other fiber tasks, which can read the
+     * pending requests. Thus we expect 2 pending messages inside the queue.
+     */
     EXPECT_EQ(2, toFibQ.size());
   });
 
@@ -2740,10 +2884,12 @@ TEST_F(RibFixture, MultipleFullSyncRequest) {
   });
 }
 
-// Verify that initial rib dump is responded in chunks.
-// Fib programmed kRibChunkSize + 1 prefixes, we should see that two rib
-// announcements happen, one with kRibChunkSize prefixes and another with 1
-// prefix.
+/*
+ * Verify that initial rib dump is responded in chunks.
+ * Fib programmed kRibChunkSize + 1 prefixes, we should see that two rib
+ * announcements happen, one with kRibChunkSize prefixes and another with 1
+ * prefix.
+ */
 TEST_F(RibFixture, InitialDumpChunkTest) {
   auto& inputQ = rib_->fromFibMessageQ_;
 
@@ -2777,13 +2923,15 @@ TEST_F(RibFixture, InitialDumpChunkTest) {
   Fib::FibProgrammedMessage fibMsg(FibProgrammedPfxs, true);
   inputQ.push(std::move(fibMsg));
 
-  // We expect four messages
-  // All should have initial dump as true.
-  // First is RibInitialAnnouncementStart.
-  // Last three are addPath entries and regular entries.
-  // Only third message should have send with EOR set with 1 prefix.
-  // As this is initial dump, there shouldn't be any peerAddr (representing
-  // notification is to all peers)
+  /*
+   * We expect four messages
+   * All should have initial dump as true.
+   * First is RibInitialAnnouncementStart.
+   * Last three are addPath entries and regular entries.
+   * Only third message should have send with EOR set with 1 prefix.
+   * As this is initial dump, there shouldn't be any peerAddr (representing
+   * notification is to all peers)
+   */
   {
     auto msg = folly::coro::blockingWait(ribOutQ_.pop());
     ASSERT_TRUE(std::holds_alternative<RibInitialAnnouncementStart>(msg));
@@ -2850,13 +2998,17 @@ TEST_F(RibFixture, WithdrawalAfterReadOnly) {
   auto batch = rib_->getFibBatchTime();
   EXPECT_EQ(batch, milliseconds(15));
 
-  // send withdrawal to rib
-  // this will cause rib to send a withdrawal for kV4Prefix1 immediately
-  // then trigger fib programming in 15 milliseconds
+  /*
+   * send withdrawal to rib
+   * this will cause rib to send a withdrawal for kV4Prefix1 immediately
+   * then trigger fib programming in 15 milliseconds
+   */
   fibFuture = fib_->getFibProgramFuture();
   auto start = steady_clock::now();
-  // create listener thread. This couldn't be done with fiber as
-  // fibFuture.wait() blocks the thread itself.
+  /*
+   * create listener thread. This couldn't be done with fiber as
+   * fibFuture.wait() blocks the thread itself.
+   */
   auto listenerThread = std::thread([&]() {
     auto ribInitialAnnouncementStart =
         folly::coro::blockingWait(ribOutQ_.pop());
@@ -2911,16 +3063,20 @@ TEST_F(RibFixture, WithdrawalDuringReadOnly) {
   auto fibFuture = fib_->getFibProgramFuture();
   sendAnnouncement(prefixBatch1, iBgpPeer_, attr_);
   sendAnnouncement(prefixBatch2, iBgpPeer_, attr_);
-  // send withdrawal to rib
-  // this will cause bestpath selection set nexthops to nullptr in
-  // fullSync fib programming, which should be ignored
+  /*
+   * send withdrawal to rib
+   * this will cause bestpath selection set nexthops to nullptr in
+   * fullSync fib programming, which should be ignored
+   */
   sendWithdrawal(prefixBatch1, iBgpPeer_);
   sendInitialPathComputation();
   fibFuture.wait();
 }
 
-// This checks rib announce local routes that do not need
-// minimum supporting routes upon thread starting
+/*
+ * This checks rib announce local routes that do not need
+ * minimum supporting routes upon thread starting
+ */
 TEST_F(RibWithLocalRouteFixture, LocalRouteWithoutMinSupportRoutes) {
   setUpRibAndFib(getDefaultLocalRoutes());
   rib_->setFibBatchTime(milliseconds(8));
@@ -2980,8 +3136,10 @@ TEST_F(RibWithLocalRouteFixture, LocalRouteWithoutMinSupportRoutes) {
   fibFuture.wait();
 }
 
-// This checks rib announce local routes that need
-// minimum supporting routes only when support criteria is met.
+/*
+ * This checks rib announce local routes that need
+ * minimum supporting routes only when support criteria is met.
+ */
 TEST_F(RibWithLocalRouteFixture, RouteAggregation) {
   setUpRibAndFib(getDefaultLocalRoutes());
   rib_->setFibBatchTime(milliseconds(8));
@@ -2991,9 +3149,11 @@ TEST_F(RibWithLocalRouteFixture, RouteAggregation) {
       .Times(1);
   EXPECT_CALL(*fib_, updateUnicastRoute_(Eq(kV6Prefix1), _, _, _, _, _))
       .Times(1);
-  // updateUnicastRoute_ called two times for kV4Prefix2 and kV6Prefix2
-  // one announcement because minimum_supporting_routes is reached
-  // one withdrawal due to withdrawal of supporting routes
+  /*
+   * updateUnicastRoute_ called two times for kV4Prefix2 and kV6Prefix2
+   * one announcement because minimum_supporting_routes is reached
+   * one withdrawal due to withdrawal of supporting routes
+   */
   EXPECT_CALL(*fib_, updateUnicastRoute_(Eq(kV4Prefix2), _, _, _, _, _))
       .Times(2);
   EXPECT_CALL(*fib_, updateUnicastRoute_(Eq(kV6Prefix2), _, _, _, _, _))
@@ -3035,8 +3195,10 @@ TEST_F(RibWithLocalRouteFixture, RouteAggregation) {
     EXPECT_EQ(1, bestpath->attrs->getCommunities()->size());
     EXPECT_EQ(localPeer_, bestpath->peer);
 
-    // withdrawal of kV4Prefix2Slash31 and kV6Prefix2Slash127 should cause
-    // local route withdrawal of kV4Prefix2 and kV6Prefix2
+    /*
+     * withdrawal of kV4Prefix2Slash31 and kV6Prefix2Slash127 should cause
+     * local route withdrawal of kV4Prefix2 and kV6Prefix2
+     */
     fibFuture = fib_->getFibProgramFuture();
     sendWithdrawal(prefixBatch1, iBgpPeer_);
     fibFuture.wait();
@@ -3108,8 +3270,10 @@ TEST_F(RibWithLocalRouteFixture, RouteAggregationStress) {
       updateUnicastRoute_(Eq(get<0>(supportingPrefixes[3])), _, _, _, _, _))
       .Times(testing::AnyNumber());
 
-  // 1. flap 2401:db00:21:7003::/64 with withdraw followed by immediate
-  // announcement: S200838
+  /*
+   * 1. flap 2401:db00:21:7003::/64 with withdraw followed by immediate
+   * announcement: S200838
+   */
   {
     fibFuture = fib_->getFibProgramFuture();
     sendWithdrawal({supportingPrefixes[3]}, peers[3]);
@@ -3227,15 +3391,19 @@ TEST_F(RibFixture, RoutesAnnouncedPerAttr) {
   EXPECT_EQ(true, announcement.initialDump);
   EXPECT_EQ(true, announcement.sendWithEoR);
 
-  // Check all announced prefixes are next to each other for a given attr
-  // prefixes in announcements are based on 1st hash of attrs
+  /*
+   * Check all announced prefixes are next to each other for a given attr
+   * prefixes in announcements are based on 1st hash of attrs
+   */
   EXPECT_EQ(announcement.entries[0].attrs, announcement.entries[1].attrs);
   EXPECT_NE(announcement.entries[1].attrs, announcement.entries[2].attrs);
   EXPECT_EQ(announcement.entries[2].attrs, announcement.entries[3].attrs);
 }
 
-// This checks rib announce/withdrawn local routes correctly
-// when supporting routes has multiple updates on their attributes
+/*
+ * This checks rib announce/withdrawn local routes correctly
+ * when supporting routes has multiple updates on their attributes
+ */
 TEST_F(RibWithLocalRouteFixture, RouteAggregationWithPathUpdate) {
   thrift::BgpNetwork network;
   *network.prefix() = IPAddress::networkToString(kV4Prefix2);
@@ -3246,9 +3414,11 @@ TEST_F(RibWithLocalRouteFixture, RouteAggregationWithPathUpdate) {
   setUpRibAndFib({{kV4Prefix2, network}});
   rib_->setFibBatchTime(milliseconds(8));
 
-  // updateUnicastRoute_ called two times for kV4Prefix2
-  // one announcement because minimum_supporting_routes is reached
-  // one withdrawal due to withdrawal of supporting routes
+  /*
+   * updateUnicastRoute_ called two times for kV4Prefix2
+   * one announcement because minimum_supporting_routes is reached
+   * one withdrawal due to withdrawal of supporting routes
+   */
   EXPECT_CALL(*fib_, updateUnicastRoute_(Eq(kV4Prefix2), _, _, _, _, _))
       .Times(1);
   EXPECT_CALL(
@@ -3290,8 +3460,10 @@ TEST_F(RibWithLocalRouteFixture, RouteAggregationWithPathUpdate) {
   fibFuture.wait();
 }
 
-// This checks rib announce local routes correctly
-// when supporting routes has ecmp path
+/*
+ * This checks rib announce local routes correctly
+ * when supporting routes has ecmp path
+ */
 TEST_F(RibWithLocalRouteFixture, RouteAggregationWithEcmp) {
   thrift::BgpNetwork network;
   *network.prefix() = IPAddress::networkToString(kV4Prefix2);
@@ -3302,9 +3474,11 @@ TEST_F(RibWithLocalRouteFixture, RouteAggregationWithEcmp) {
   setUpRibAndFib({{kV4Prefix2, network}});
   rib_->setFibBatchTime(milliseconds(8));
 
-  // updateUnicastRoute_ called two times for kV4Prefix2
-  // one announcement because minimum_supporting_routes is reached
-  // one withdrawal due to withdrawal of supporting routes
+  /*
+   * updateUnicastRoute_ called two times for kV4Prefix2
+   * one announcement because minimum_supporting_routes is reached
+   * one withdrawal due to withdrawal of supporting routes
+   */
   EXPECT_CALL(*fib_, updateUnicastRoute_(Eq(kV4Prefix2), _, _, _, _, _))
       .Times(1);
   EXPECT_CALL(
@@ -3335,8 +3509,10 @@ TEST_F(RibWithLocalRouteFixture, RouteAggregationWithEcmp) {
 
   // send supporting prefixes with updated attributes to Rib
   fibFuture = fib_->getFibProgramFuture();
-  // withdrawal of one path of the supporting route
-  // should not cause local route withdrawal
+  /*
+   * withdrawal of one path of the supporting route
+   * should not cause local route withdrawal
+   */
   sendWithdrawal(prefixBatch, eBgpPeer1_);
 
   fibFuture.wait();
@@ -3350,16 +3526,20 @@ TEST_F(RibWithLocalRouteFixture, RouteAggregationWithEcmp) {
 
   // send supporting prefixes with updated attributes to Rib
   fibFuture = fib_->getFibProgramFuture();
-  // withdrawal of one path of the supporting route
-  // should not cause local route withdrawal
+  /*
+   * withdrawal of one path of the supporting route
+   * should not cause local route withdrawal
+   */
   sendWithdrawal(prefixBatch, eBgpPeer2_);
   fibFuture.wait();
 }
 
 // This checks installToFib flag when programming to fib
 TEST_F(RibWithLocalRouteFixture, InstallToFibTest) {
-  // Out of 4 default local routes, set install_to_fib to true for kV6Prefix1
-  // and kV4Prefix2; set it to false for kV4Prefix1 and kV6Prefix2
+  /*
+   * Out of 4 default local routes, set install_to_fib to true for kV6Prefix1
+   * and kV4Prefix2; set it to false for kV4Prefix1 and kV6Prefix2
+   */
   auto localRoutes = getDefaultLocalRoutes();
   localRoutes[kV4Prefix1].install_to_fib() = false;
   localRoutes[kV4Prefix2].install_to_fib() = true;
@@ -3389,13 +3569,15 @@ TEST_F(RibWithLocalRouteFixture, InstallToFibTest) {
     });
   }
   {
-    // send update msg with prefix 9.0.0.0/28 through eBgpPeer1_. Since we
-    // need to write (0/28, {eBgpPeer1_}) to FIB, we do not need to write (1/32,
-    // {eBgpPeer1_}) or (2/32, {eBgpPeer1_}) to FIB because they share same
-    // nexthops. In addition, kV4Prefix2, kV4Prefix1, and kV6Prefix1 are
-    // configured as local routes. Therefore, (kV4Prefix2,
-    // {kLocalV4RoutePeerAddr}), (kV4Prefix1, {kLocalV4RoutePeerAddr}), and
-    // (kV6Prefix1, {kLocalV6RoutePeerAddr}) will also be written to FIB
+    /*
+     * send update msg with prefix 9.0.0.0/28 through eBgpPeer1_. Since we
+     * need to write (0/28, {eBgpPeer1_}) to FIB, we do not need to write (1/32,
+     * {eBgpPeer1_}) or (2/32, {eBgpPeer1_}) to FIB because they share same
+     * nexthops. In addition, kV4Prefix2, kV4Prefix1, and kV6Prefix1 are
+     * configured as local routes. Therefore, (kV4Prefix2,
+     * {kLocalV4RoutePeerAddr}), (kV4Prefix1, {kLocalV4RoutePeerAddr}), and
+     * (kV6Prefix1, {kLocalV6RoutePeerAddr}) will also be written to FIB
+     */
     WeightedNexthopMap nhWts = {{eBgpPeer1_.addr, 0}};
     EXPECT_CALL(
         *fib_,
@@ -3558,8 +3740,10 @@ TEST_F(LocalRouteWithPolicyFixture, LocalRouteWithoutPolicy) {
   }
 }
 
-// This checks that local routes have weight set to 2^15 to ensure they win
-// in path selection when weight comparison is enabled
+/*
+ * This checks that local routes have weight set to 2^15 to ensure they win
+ * in path selection when weight comparison is enabled
+ */
 TEST_F(LocalRouteWithPolicyFixture, LocalRouteHasMaxWeight) {
   // create rib with default local routes
   rib_ = createMockRib(getDefaultLocalRoutes());
@@ -3576,10 +3760,12 @@ TEST_F(LocalRouteWithPolicyFixture, LocalRouteHasMaxWeight) {
 // This checks rib generates local route correctly when policy is used
 TEST_F(LocalRouteWithPolicyFixture, LocalRouteWithPolicy) {
   {
-    // create rib with local routes.
-    // kV4Prefix1 and kV6Prefix1 have policy config which sets origin,
-    // local-pref, and community list. kV4Prefix2 and kV6Prefix2 will continue
-    // to have the default values.
+    /*
+     * create rib with local routes.
+     * kV4Prefix1 and kV6Prefix1 have policy config which sets origin,
+     * local-pref, and community list. kV4Prefix2 and kV6Prefix2 will continue
+     * to have the default values.
+     */
     auto localRouteConfig = getDefaultLocalRoutes();
     localRouteConfig[kV4Prefix1].policy_name() = "SET-ATTR";
     localRouteConfig[kV6Prefix1].policy_name() = "SET-ATTR";
@@ -3603,9 +3789,11 @@ TEST_F(LocalRouteWithPolicyFixture, LocalRouteWithPolicy) {
          setAsPathAction});
     rib_ = createMockRib(localRouteConfig, policyConfig);
 
-    // verify the resulting attributes
-    // kV4Prefix1 and kV6Prefix1 have the new attribute settings.
-    // kV4Prefix2 and kV6Prefix2 have the default attribute settings.
+    /*
+     * verify the resulting attributes
+     * kV4Prefix1 and kV6Prefix1 have the new attribute settings.
+     * kV4Prefix2 and kV6Prefix2 have the default attribute settings.
+     */
     auto localRoutes = rib_->getLocalRoutes();
     EXPECT_EQ(5, localRoutes.size());
     EXPECT_EQ(
@@ -3697,8 +3885,10 @@ TEST_F(LocalRouteWithPolicyFixture, LocalRouteWithPolicy) {
     }
   }
   {
-    // create rib with local routes.
-    // All 5 prefixes have policy config which denies kV4Prefix1 and kV6Prefix1.
+    /*
+     * create rib with local routes.
+     * All 5 prefixes have policy config which denies kV4Prefix1 and kV6Prefix1.
+     */
     auto localRouteConfig = getDefaultLocalRoutes();
     localRouteConfig[kV4Prefix1].policy_name() = "REJECT-SOME";
     localRouteConfig[kV6Prefix1].policy_name() = "REJECT-SOME";
@@ -3727,10 +3917,12 @@ TEST_F(LocalRouteWithPolicyFixture, LocalRouteWithPolicy) {
     const auto& policyConfig = createBgpPolicies("REJECT-SOME", {term1, term2});
     rib_ = createMockRib(localRouteConfig, policyConfig);
 
-    // verify the resulting attributes
-    // kV4Prefix1 and kV6Prefix1 are denied but rib entries are created for
-    // them. kV4Prefix2, kV6Prefix2 and kV4Prefix5 have the default attribute
-    // settings
+    /*
+     * verify the resulting attributes
+     * kV4Prefix1 and kV6Prefix1 are denied but rib entries are created for
+     * them. kV4Prefix2, kV6Prefix2 and kV4Prefix5 have the default attribute
+     * settings
+     */
     auto localRoutes = rib_->getLocalRoutes();
     EXPECT_EQ(3, localRoutes.size());
     EXPECT_EQ(
@@ -3792,8 +3984,10 @@ TEST_F(LocalRouteWithPolicyFixture, LocalRouteWithPolicy) {
     }
   }
   {
-    // create rib with local routes.
-    // kV4Prefix1 has policy config, but the policy definition does not exist.
+    /*
+     * create rib with local routes.
+     * kV4Prefix1 has policy config, but the policy definition does not exist.
+     */
     std::vector<folly::CIDRNetwork> expectedPrefixSet{
         kV4Prefix1, kV6Prefix1, kV4Prefix2, kV6Prefix2};
     auto localRouteConfig = getDefaultLocalRoutes();
@@ -3808,21 +4002,23 @@ TEST_F(LocalRouteWithPolicyFixture, LocalRouteWithPolicy) {
   }
 }
 
-// When programming FIB automatically include the min-support
-// viable local (aggregate) routes in the current fib-batch.
-// Send update for the following:
-//      kV4Prefix3 8.0.1.0/24
-//      kV4Prefix2Slash31 9.0.0.0/31
-//      kV6Prefix2Slash127 2002::/27
-// Due to summerization expect to have the following
-// prefixes in updateUnicastRoute_ call:
-//      kV4Prefix3 8.0.1.0/24 : part of update
-//      kV4Prefix2Slash31 9.0.0.0/31 : part of update
-//      kV6Prefix2Slash127 2002::/127 : part of update
-//      kV4Prefix2 9.0.0.0/24 : min-support local route
-//      kV6Prefix2 2002::/64  : min-support local route
-//      kV4Prefix1 8.0.0.0/24 : no min-support local route
-//      kV6Prefix1 2001::/64  : no min-support local route
+/*
+ * When programming FIB automatically include the min-support
+ * viable local (aggregate) routes in the current fib-batch.
+ * Send update for the following:
+ *      kV4Prefix3 8.0.1.0/24
+ *      kV4Prefix2Slash31 9.0.0.0/31
+ *      kV6Prefix2Slash127 2002::/27
+ * Due to summerization expect to have the following
+ * prefixes in updateUnicastRoute_ call:
+ *      kV4Prefix3 8.0.1.0/24 : part of update
+ *      kV4Prefix2Slash31 9.0.0.0/31 : part of update
+ *      kV6Prefix2Slash127 2002::/127 : part of update
+ *      kV4Prefix2 9.0.0.0/24 : min-support local route
+ *      kV6Prefix2 2002::/64  : min-support local route
+ *      kV4Prefix1 8.0.0.0/24 : no min-support local route
+ *      kV6Prefix1 2001::/64  : no min-support local route
+ */
 TEST_F(RibWithLocalRouteFixture, RouteAggregationPromotion) {
   setUpRibAndFib(getDefaultLocalRoutes());
   rib_->setFibBatchTime(milliseconds(8));
@@ -3937,8 +4133,10 @@ TEST_F(RibWithLocalRouteFixture, RouteAggregationPromotion) {
       EXPECT_EQ(iBgpPeer_, bestpath->peer);
     }
   }
-  // First message is RibInitialAnnouncementStart.
-  // Second message is RibOutAnnouncement.
+  /*
+   * First message is RibInitialAnnouncementStart.
+   * Second message is RibOutAnnouncement.
+   */
   EXPECT_EQ(ribOutQ_.size(), 2);
 
   // Expect RibInitialAnnouncementStart before initial announcement.
@@ -4019,9 +4217,11 @@ getConditionalLocalRoutes() {
   return {{kV4Prefix1, network}};
 }
 
-// Helper function to create multiple conditional local routes
-// with two prefixes sharing the same nexthop (kV4Nexthop1)
-// and one prefix with a different nexthop (kV4Nexthop2)
+/*
+ * Helper function to create multiple conditional local routes
+ * with two prefixes sharing the same nexthop (kV4Nexthop1)
+ * and one prefix with a different nexthop (kV4Nexthop2)
+ */
 std::unordered_map<folly::CIDRNetwork, thrift::BgpNetwork>
 getMultipleConditionalLocalRoutes() {
   std::unordered_map<folly::CIDRNetwork, thrift::BgpNetwork> routes;
@@ -4050,11 +4250,13 @@ getMultipleConditionalLocalRoutes() {
   return routes;
 }
 
-// hasConditionalLocalRoutes() must reflect whether any configured local route
-// requires nexthop resolution. This is the single source of truth the
-// composition root (Main.cpp) uses to arm PeerManagerBase's nexthop-resolution
-// gate, so it must be true whenever conditionalLocalRoutes_ is populated in the
-// RIB ctor and false otherwise.
+/*
+ * hasConditionalLocalRoutes() must reflect whether any configured local route
+ * requires nexthop resolution. This is the single source of truth the
+ * composition root (Main.cpp) uses to arm PeerManagerBase's nexthop-resolution
+ * gate, so it must be true whenever conditionalLocalRoutes_ is populated in the
+ * RIB ctor and false otherwise.
+ */
 TEST_F(
     RibWithLocalRouteFixture,
     HasConditionalLocalRoutes_TrueWhenRoutesRequireResolution) {
@@ -4069,16 +4271,20 @@ TEST_F(
   EXPECT_FALSE(rib_->hasConditionalLocalRoutes());
 }
 
-// Test that conditional local routes are NOT originated at startup
-// when the nexthop is not resolved
+/*
+ * Test that conditional local routes are NOT originated at startup
+ * when the nexthop is not resolved
+ */
 TEST_F(
     RibWithLocalRouteFixture,
     ConditionalLocalRoute_NotOriginatedWithoutNexthopResolution) {
   setUpRibAndFib(getConditionalLocalRoutes());
   rib_->setFibBatchTime(milliseconds(8));
 
-  // The route should NOT be announced because it requires nexthop resolution
-  // and no resolution update has been received
+  /*
+   * The route should NOT be announced because it requires nexthop resolution
+   * and no resolution update has been received
+   */
   EXPECT_CALL(*rib_, prepareFibProgramming_()).Times(1);
   // No updateUnicastRoute calls expected for kV4Prefix1
   EXPECT_CALL(*fib_, updateUnicastRoute_(Eq(kV4Prefix1), _, _, _, _, _))
@@ -4094,8 +4300,10 @@ TEST_F(
   EXPECT_EQ(bestpath, nullptr);
 }
 
-// Test that conditional local routes ARE originated when nexthop becomes
-// resolved
+/*
+ * Test that conditional local routes ARE originated when nexthop becomes
+ * resolved
+ */
 TEST_F(RibWithLocalRouteFixture, ConditionalLocalRoute_OriginatedWhenResolved) {
   setUpRibAndFib(getConditionalLocalRoutes());
   rib_->setFibBatchTime(milliseconds(8));
@@ -4140,8 +4348,10 @@ TEST_F(RibWithLocalRouteFixture, ConditionalLocalRoute_OriginatedWhenResolved) {
   }
 }
 
-// Test that conditional local routes ARE withdrawn when nexthop becomes
-// unresolved
+/*
+ * Test that conditional local routes ARE withdrawn when nexthop becomes
+ * unresolved
+ */
 TEST_F(
     RibWithLocalRouteFixture,
     ConditionalLocalRoute_WithdrawnWhenUnresolved) {
@@ -4201,8 +4411,10 @@ TEST_F(
   }
 }
 
-// Test that multiple conditional local routes sharing the same nexthop are all
-// announced when that nexthop becomes resolved
+/*
+ * Test that multiple conditional local routes sharing the same nexthop are all
+ * announced when that nexthop becomes resolved
+ */
 TEST_F(
     RibWithLocalRouteFixture,
     ConditionalLocalRoute_MultipleRoutesForSameNexthop) {
@@ -4225,8 +4437,10 @@ TEST_F(
     EXPECT_EQ(rib_->getBestPath(kV4Prefix3), nullptr);
   }
 
-  // Resolve kV4Nexthop1 — should announce kV4Prefix1 and kV4Prefix2
-  // but NOT kV4Prefix3 (which uses kV4Nexthop2)
+  /*
+   * Resolve kV4Nexthop1 — should announce kV4Prefix1 and kV4Prefix2
+   * but NOT kV4Prefix3 (which uses kV4Nexthop2)
+   */
   {
     EXPECT_CALL(*rib_, prepareFibProgramming_()).Times(1);
     EXPECT_CALL(*fib_, updateUnicastRoute_(Eq(kV4Prefix1), _, _, _, _, _))
@@ -4253,8 +4467,10 @@ TEST_F(
   }
 }
 
-// Test that a conditional local route can be re-originated after being
-// withdrawn (resolve -> unresolve -> re-resolve cycle)
+/*
+ * Test that a conditional local route can be re-originated after being
+ * withdrawn (resolve -> unresolve -> re-resolve cycle)
+ */
 TEST_F(
     RibWithLocalRouteFixture,
     ConditionalLocalRoute_ReResolutionAfterWithdrawal) {
@@ -4327,8 +4543,10 @@ TEST_F(
   }
 }
 
-// Test that a single NexthopResolutionUpdate with both resolved and unresolved
-// nexthops correctly announces and withdraws the corresponding routes
+/*
+ * Test that a single NexthopResolutionUpdate with both resolved and unresolved
+ * nexthops correctly announces and withdraws the corresponding routes
+ */
 TEST_F(
     RibWithLocalRouteFixture,
     ConditionalLocalRoute_MixedResolvedAndUnresolved) {
@@ -4369,18 +4587,24 @@ TEST_F(
     EXPECT_NE(rib_->getBestPath(kV4Prefix3), nullptr);
   }
 
-  // Now send mixed update: resolve kV4Nexthop2, unresolve kV4Nexthop1
-  // This should withdraw kV4Prefix1 and kV4Prefix2, keep kV4Prefix3
+  /*
+   * Now send mixed update: resolve kV4Nexthop2, unresolve kV4Nexthop1
+   * This should withdraw kV4Prefix1 and kV4Prefix2, keep kV4Prefix3
+   */
   {
     EXPECT_CALL(*rib_, prepareFibProgramming_()).Times(1);
-    // kV4Prefix1 and kV4Prefix2 should be withdrawn (updateUnicastRoute for
-    // withdrawal)
+    /*
+     * kV4Prefix1 and kV4Prefix2 should be withdrawn (updateUnicastRoute for
+     * withdrawal)
+     */
     EXPECT_CALL(*fib_, updateUnicastRoute_(Eq(kV4Prefix1), _, _, _, _, _))
         .Times(1);
     EXPECT_CALL(*fib_, updateUnicastRoute_(Eq(kV4Prefix2), _, _, _, _, _))
         .Times(1);
-    // kV4Prefix3 should NOT be updated (nexthop2 re-resolved is a no-op since
-    // already resolved)
+    /*
+     * kV4Prefix3 should NOT be updated (nexthop2 re-resolved is a no-op since
+     * already resolved)
+     */
     EXPECT_CALL(*fib_, program_(false)).Times(1);
 
     auto fibFuture = fib_->getFibProgramFuture();
@@ -4398,8 +4622,10 @@ TEST_F(
   }
 }
 
-// Test that sending a NexthopResolutionUpdate with a nexthop that has no
-// conditional routes is a no-op
+/*
+ * Test that sending a NexthopResolutionUpdate with a nexthop that has no
+ * conditional routes is a no-op
+ */
 TEST_F(RibWithLocalRouteFixture, ConditionalLocalRoute_UnknownNexthopNoOp) {
   setUpRibAndFib(getConditionalLocalRoutes());
   rib_->setFibBatchTime(milliseconds(8));
@@ -4415,8 +4641,10 @@ TEST_F(RibWithLocalRouteFixture, ConditionalLocalRoute_UnknownNexthopNoOp) {
     fibFuture.wait();
   }
 
-  // Resolve a nexthop (kV4Nexthop2) that has no conditional routes
-  // This should be a no-op — no routes announced
+  /*
+   * Resolve a nexthop (kV4Nexthop2) that has no conditional routes
+   * This should be a no-op — no routes announced
+   */
   {
     // No FIB programming expected since no routes change
     EXPECT_CALL(*fib_, updateUnicastRoute_(_, _, _, _, _, _)).Times(0);
@@ -4464,10 +4692,12 @@ TEST_F(RibFixture, RibInAddPath) {
   auto prefix1 = folly::IPAddress::createNetwork("1::/64");
   auto prefixBatch1 = PrefixPathIds{{prefix1, 0}};
 
-  // send first announcement
-  // prefix: prefixBatch1
-  // nexthop: kV4Nexthop1
-  // peer: eBgpPeer1_
+  /*
+   * send first announcement
+   * prefix: prefixBatch1
+   * nexthop: kV4Nexthop1
+   * peer: eBgpPeer1_
+   */
   auto fibFuture = fib_->getFibProgramFuture();
   // send route from eBGP Peer
   sendAnnouncement(prefixBatch1, eBgpPeer1_, attr_);
@@ -4479,11 +4709,13 @@ TEST_F(RibFixture, RibInAddPath) {
   EXPECT_EQ(multiPath.size(), 1);
   EXPECT_EQ(multiPath.begin()->second->attrs->getNexthop(), kV4Nexthop1);
 
-  // send second announcement, just changed nexthop
-  // prefix: prefixBatch1
-  // nexthop: kV4Nexthop2
-  // peer: eBgpPeer1_
-  // verify new path has been added into multipaths.
+  /*
+   * send second announcement, just changed nexthop
+   * prefix: prefixBatch1
+   * nexthop: kV4Nexthop2
+   * peer: eBgpPeer1_
+   * verify new path has been added into multipaths.
+   */
   auto attrFields = buildBgpPathFields(4, 4, 4, 4);
   attrFields->nexthop = kV4Nexthop2;
   // change clustlist length to do the tie breaking for best path
@@ -4516,11 +4748,13 @@ TEST_F(RibFixture, RibInAddPath) {
   EXPECT_NE(routeInfos.find(0), routeInfos.end());
   EXPECT_NE(routeInfos.find(1), routeInfos.end());
 
-  // send withdraw announcement
-  // prefix: prefixBatch1
-  // nexthop: kV4Nexthop1
-  // peer: eBgpPeer1_
-  // verify only path with kV4Nexthop1 exist.
+  /*
+   * send withdraw announcement
+   * prefix: prefixBatch1
+   * nexthop: kV4Nexthop1
+   * peer: eBgpPeer1_
+   * verify only path with kV4Nexthop1 exist.
+   */
   fibFuture = fib_->getFibProgramFuture();
   sendWithdrawal(prefixBatch1, eBgpPeer1_);
   fibFuture.wait();
@@ -4533,8 +4767,10 @@ TEST_F(RibFixture, RibInAddPath) {
   EXPECT_NE(routeInfos2.find(1), routeInfos.end());
 }
 
-// This checks we set EBGP/Local flag correctly for incoming Confed EBGP
-// announcements
+/*
+ * This checks we set EBGP/Local flag correctly for incoming Confed EBGP
+ * announcements
+ */
 TEST_F(RibFixture, ConfedEbgpRoute) {
   rib_->setFibBatchTime(milliseconds(2));
 
@@ -4630,10 +4866,12 @@ TEST_F(RibFixture, GetRibEntries) {
   attrs1->publish();
   attrs2->publish();
 
-  // add 2 v4 entry and 1 v6 entry to rib
-  // entry1 has 2 peers, p1
-  // entry2 has 2 peers, p1 & p2
-  // entry3 has 2 peers, p1 & p2
+  /*
+   * add 2 v4 entry and 1 v6 entry to rib
+   * entry1 has 2 peers, p1
+   * entry2 has 2 peers, p1 & p2
+   * entry3 has 2 peers, p1 & p2
+   */
   RibEntry entry1(kV4Prefix1);
   EXPECT_EQ(entry1.getMultipathNexthopsStr(), "[]");
   entry1.updatePath(eBgpPeer1_, attrs1, false); // p1 has nexthop kV4Nexthop1
@@ -4671,8 +4909,10 @@ TEST_F(RibFixture, GetRibEntries) {
           rib_->createTRibEntry(*rib_->ribEntries_.find(kV4Prefix2))));
   EXPECT_EQ(output2.size(), 0);
 
-  // verify the content of the returned TRibEntry objects
-  // compare 1st element in output1
+  /*
+   * verify the content of the returned TRibEntry objects
+   * compare 1st element in output1
+   */
   bool firstIsPrefix1 = false;
   if ((*output1[0].prefix()->prefix_bin() ==
        network::toBinaryAddress(kV4Prefix1.first).addr()->toStdString()) &&
@@ -4722,9 +4962,11 @@ TEST_F(RibFixture, GetRibEntries) {
     auto p1Nexthop = network::toBinaryAddress(kV4Nexthop1);
     auto p2Nexthop = network::toBinaryAddress(kV4Nexthop2);
 
-    // As path pointing to p2Nexthop has a better local-pref
-    // this will be selected in the bestPathGroup and other entry
-    // will be part of the default group.
+    /*
+     * As path pointing to p2Nexthop has a better local-pref
+     * this will be selected in the bestPathGroup and other entry
+     * will be part of the default group.
+     */
     auto paths = entry.paths()->find(kBestPathGroup)->second;
     EXPECT_EQ(1, paths.size());
     EXPECT_THAT(
@@ -4772,9 +5014,11 @@ TEST_F(RibFixture, GetRibEntries) {
     auto p1Nexthop = network::toBinaryAddress(kV4Nexthop1);
     auto p2Nexthop = network::toBinaryAddress(kV4Nexthop2);
     auto paths = entry.paths()->find(kBestPathGroup)->second;
-    // As path pointing to p2Nexthop has a better local-pref
-    // this will be selected in the bestPathGroup and other entry
-    // will be part of the default group.
+    /*
+     * As path pointing to p2Nexthop has a better local-pref
+     * this will be selected in the bestPathGroup and other entry
+     * will be part of the default group.
+     */
     EXPECT_EQ(1, paths.size());
     EXPECT_THAT(
         *paths[0].next_hop()->prefix_bin(), p2Nexthop.addr()->toStdString());
@@ -4973,10 +5217,12 @@ TEST_F(RibFixture, UpdateEntryStatsTest) {
 }
 
 TEST_F(RibFixture, GetRibEntriesWithCommunityFilter) {
-  // make 2 attrs with different nexthops, attrs2 has higher local preferece
-  // attr1 has 4 communities 65530:15800 to 65530:15803 where-as
-  // attr2 has 3 communities 65530:15800 to 65530:15802
-  // attr2 wins best-path and attr1 is not selected in ecmp.
+  /*
+   * make 2 attrs with different nexthops, attrs2 has higher local preferece
+   * attr1 has 4 communities 65530:15800 to 65530:15803 where-as
+   * attr2 has 3 communities 65530:15800 to 65530:15802
+   * attr2 wins best-path and attr1 is not selected in ecmp.
+   */
   auto attrs1 =
       std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
   auto attrs2 =
@@ -4986,10 +5232,12 @@ TEST_F(RibFixture, GetRibEntriesWithCommunityFilter) {
   attrs1->publish();
   attrs2->publish();
 
-  // add 2 v4 entry and 1 v6 entry to rib
-  // entry1 has 1 peer, p2
-  // entry2 has 2 peers, p1 & p2
-  // entry3 has 2 peers, p1 & p2
+  /*
+   * add 2 v4 entry and 1 v6 entry to rib
+   * entry1 has 1 peer, p2
+   * entry2 has 2 peers, p1 & p2
+   * entry3 has 2 peers, p1 & p2
+   */
   RibEntry entry1(kV4Prefix1);
   entry1.updatePath(eBgpPeer1_, attrs2, false); // p1 has nexthop kV4Nexthop1
   RibBase::selectBestPath(
@@ -5015,8 +5263,10 @@ TEST_F(RibFixture, GetRibEntriesWithCommunityFilter) {
   rib_->ribEntries_.emplace(make_pair(kV4Prefix1, std::move(entry1)));
   rib_->ribEntries_.emplace(make_pair(kV4Prefix2, std::move(entry2)));
 
-  // With a matched filter for community 65530:15800
-  // we should see both rib entries returned.
+  /*
+   * With a matched filter for community 65530:15800
+   * we should see both rib entries returned.
+   */
   auto output1 = rib_->getRibEntriesForCommunities(
       TBgpAfi::AFI_IPV4, {nettools::bgplib::BgpAttrCommunityC(65530, 15800)});
   EXPECT_THAT(
@@ -5045,16 +5295,20 @@ TEST_F(RibFixture, GetRibEntriesWithCommunityFilter) {
       TBgpAfi::AFI_IPV4, {nettools::bgplib::BgpAttrCommunityC(0xF004, 0xABCD)});
   EXPECT_EQ(output2.size(), 0);
 
-  // With an unmatched community and a matched one, we should see non-empty
-  // result.
+  /*
+   * With an unmatched community and a matched one, we should see non-empty
+   * result.
+   */
   auto output3 = rib_->getRibEntriesForCommunities(
       TBgpAfi::AFI_IPV4,
       {nettools::bgplib::BgpAttrCommunityC(0xF004, 0xABCD),
        nettools::bgplib::BgpAttrCommunityC(65530, 15803)});
   EXPECT_EQ(output3.size(), 1);
 
-  // With a matched filter for communities [65530:15802, 65530:15803]
-  // we should see both rib entries returned
+  /*
+   * With a matched filter for communities [65530:15802, 65530:15803]
+   * we should see both rib entries returned
+   */
   auto output4 = rib_->getRibEntriesForCommunities(
       TBgpAfi::AFI_IPV4,
       {nettools::bgplib::BgpAttrCommunityC(65530, 15802),
@@ -5116,10 +5370,12 @@ TEST_F(RibFixture, GetRibEntriesWithCommunityFilter) {
     ASSERT_TRUE(entry.best_path().has_value());
     EXPECT_EQ(paths[0], *entry.best_path());
   };
-  // Lambda to verify a ribentry and associated attributes.
-  // param bestPathPresent controls whether the rib-entry is expected
-  // to have bestPath selected as part of community filtered rib-entries
-  // or not.
+  /*
+   * Lambda to verify a ribentry and associated attributes.
+   * param bestPathPresent controls whether the rib-entry is expected
+   * to have bestPath selected as part of community filtered rib-entries
+   * or not.
+   */
   auto verifyV4Entry2 = [verifyCommunities](
                             const TRibEntry& entry,
                             bool bestPathPresent = true) {
@@ -5129,9 +5385,11 @@ TEST_F(RibFixture, GetRibEntriesWithCommunityFilter) {
     auto p1Nexthop = network::toBinaryAddress(kV4Nexthop1);
     auto p2Nexthop = network::toBinaryAddress(kV4Nexthop2);
 
-    // As path pointing to p2Nexthop has a better local-pref
-    // this will be selected in the bestPathGroup and other entry
-    // will be part of the default group.
+    /*
+     * As path pointing to p2Nexthop has a better local-pref
+     * this will be selected in the bestPathGroup and other entry
+     * will be part of the default group.
+     */
     std::vector<TBgpPath> paths;
     if (bestPathPresent) {
       paths = entry.paths()->find(kBestPathGroup)->second;
@@ -5150,8 +5408,10 @@ TEST_F(RibFixture, GetRibEntriesWithCommunityFilter) {
       EXPECT_EQ(paths[0], *entry.best_path());
     } else {
       EXPECT_EQ(entry.paths()->find(kBestPathGroup), entry.paths()->end());
-      // When no path is in the bestPath group (e.g. filtered out by
-      // community filter), best_path must also be unset.
+      /*
+       * When no path is in the bestPath group (e.g. filtered out by
+       * community filter), best_path must also be unset.
+       */
       EXPECT_FALSE(entry.best_path().has_value());
     }
     paths = entry.paths()->find(kDefaultPathGroup)->second;
@@ -5180,10 +5440,12 @@ TEST_F(RibFixture, GetRibEntriesWithCommunityFilter) {
       output2,
       UnorderedElementsAre(
           rib_->createTRibEntry(*rib_->ribEntries_.find(kV6Prefix1))));
-  // Lambda to verify a ribentry and associated attributes.
-  // param bestPathPresent controls whether the rib-entry is expected
-  // to have bestPath selected as part of community filtered rib-entries
-  // or not.
+  /*
+   * Lambda to verify a ribentry and associated attributes.
+   * param bestPathPresent controls whether the rib-entry is expected
+   * to have bestPath selected as part of community filtered rib-entries
+   * or not.
+   */
   auto verifyV6Entry = [verifyCommunities](
                            const TRibEntry& entry,
                            bool bestPathPresent = true) {
@@ -5198,9 +5460,11 @@ TEST_F(RibFixture, GetRibEntriesWithCommunityFilter) {
     auto p1Nexthop = network::toBinaryAddress(kV4Nexthop1);
     auto p2Nexthop = network::toBinaryAddress(kV4Nexthop2);
     std::vector<TBgpPath> paths;
-    // As path pointing to p2Nexthop has a better local-pref
-    // this will be selected in the bestPathGroup and other entry
-    // will be part of the default group.
+    /*
+     * As path pointing to p2Nexthop has a better local-pref
+     * this will be selected in the bestPathGroup and other entry
+     * will be part of the default group.
+     */
     if (bestPathPresent) {
       paths = entry.paths()->find(kBestPathGroup)->second;
       EXPECT_EQ(1, paths.size());
@@ -5230,8 +5494,10 @@ TEST_F(RibFixture, GetRibEntriesWithCommunityFilter) {
       TBgpAfi::AFI_IPV6, {nettools::bgplib::BgpAttrCommunityC(0xFFFF, 0xFFFF)});
   EXPECT_THAT(output2.size(), 0);
 
-  // AFI agnostic filtering for a matched community case:
-  // We should see all the three entries with their paths
+  /*
+   * AFI agnostic filtering for a matched community case:
+   * We should see all the three entries with their paths
+   */
   output2 = rib_->getRibEntriesForCommunities(
       TBgpAfi::AFI_ALL, {nettools::bgplib::BgpAttrCommunityC(65530, 15800)});
   EXPECT_THAT(output2.size(), 3);
@@ -5252,11 +5518,13 @@ TEST_F(RibFixture, GetRibEntriesWithCommunityFilter) {
   }
   EXPECT_EQ((matched_v4_1 && matched_v4_2 && matched_v6), true);
 
-  // Perform a partial-match fetch. Note that only attrs1 has 65530:15803
-  // community. As prefix1 has only 1 path with attrs2 -- we don't expect to
-  // see this in result. Other two prefixes namely kV4prefix2 and kV6Prefix1
-  // should be returned but both should only return the path corresponding to
-  // attrs2 and it should not be marked as best-path.
+  /*
+   * Perform a partial-match fetch. Note that only attrs1 has 65530:15803
+   * community. As prefix1 has only 1 path with attrs2 -- we don't expect to
+   * see this in result. Other two prefixes namely kV4prefix2 and kV6Prefix1
+   * should be returned but both should only return the path corresponding to
+   * attrs2 and it should not be marked as best-path.
+   */
   output2 = rib_->getRibEntriesForCommunities(
       TBgpAfi::AFI_ALL, {nettools::bgplib::BgpAttrCommunityC(65530, 15803)});
   EXPECT_THAT(output2.size(), 2);
@@ -5290,12 +5558,14 @@ TEST_F(RibFixture, GetRibEntriesForSubprefixes) {
   attrs1->publish();
   attrs2->publish();
 
-  // add 4 v4 entry and 1 v6 entry to rib
-  // entry1 has 1 peer, p1
-  // entry2 has 2 peers, p1 & p2
-  // entry3 has 2 peers, p1 & p2
-  // entry4 has 1 peer, p1
-  // entry5 has 1 peer, p2
+  /*
+   * add 4 v4 entry and 1 v6 entry to rib
+   * entry1 has 1 peer, p1
+   * entry2 has 2 peers, p1 & p2
+   * entry3 has 2 peers, p1 & p2
+   * entry4 has 1 peer, p1
+   * entry5 has 1 peer, p2
+   */
   RibEntry entry1(kV4Prefix1);
   EXPECT_EQ(entry1.getMultipathNexthopsStr(), "[]");
   entry1.updatePath(eBgpPeer1_, attrs1, false); // p1 has nexthop kV4Nexthop1
@@ -5363,9 +5633,11 @@ TEST_F(RibFixture, GetRibEntriesForSubprefixes) {
   }
 
   {
-    // with valid prefix that exists
-    // kV4Prefix1, kV4Prefix2, kV4Prefix1Slash23,
-    // and kV4Prefix1Slash25 are within 8.0.0.0/7
+    /*
+     * with valid prefix that exists
+     * kV4Prefix1, kV4Prefix2, kV4Prefix1Slash23,
+     * and kV4Prefix1Slash25 are within 8.0.0.0/7
+     */
     auto prefix = std::make_unique<std::string>("8.0.0.0/7");
     auto output = rib_->getRibEntriesForSubprefixes(std::move(prefix));
     EXPECT_THAT(
@@ -5378,8 +5650,10 @@ TEST_F(RibFixture, GetRibEntriesForSubprefixes) {
   }
 
   {
-    // with valid prefix that exists
-    // kV4Prefix1Slash23 and kV4Prefix1Slash25 are within kV4Prefix1Base
+    /*
+     * with valid prefix that exists
+     * kV4Prefix1Slash23 and kV4Prefix1Slash25 are within kV4Prefix1Base
+     */
     auto prefix = std::make_unique<std::string>(
         folly::IPAddress::networkToString(kV4Prefix1Base));
     auto output = rib_->getRibEntriesForSubprefixes(std::move(prefix));
@@ -5392,8 +5666,10 @@ TEST_F(RibFixture, GetRibEntriesForSubprefixes) {
   }
 
   {
-    // with valid prefix that exists
-    // kV4Prefix1 and kV4Prefix1Slash25 are within kV4Prefix1
+    /*
+     * with valid prefix that exists
+     * kV4Prefix1 and kV4Prefix1Slash25 are within kV4Prefix1
+     */
     auto prefix = std::make_unique<std::string>(
         folly::IPAddress::networkToString(kV4Prefix1));
     auto output = rib_->getRibEntriesForSubprefixes(std::move(prefix));
@@ -5405,8 +5681,10 @@ TEST_F(RibFixture, GetRibEntriesForSubprefixes) {
   }
 
   {
-    // with valid prefix that exists
-    // kV6Prefix1 is within 2001::/60
+    /*
+     * with valid prefix that exists
+     * kV6Prefix1 is within 2001::/60
+     */
     auto prefix = std::make_unique<std::string>("2001::/60");
     auto output = rib_->getRibEntriesForSubprefixes(std::move(prefix));
     EXPECT_THAT(
@@ -5435,10 +5713,12 @@ TEST_F(RibFixture, GetRibEntryForPrefix) {
   attrs1->publish();
   attrs2->publish();
 
-  // add 2 v4 entry and 1 v6 entry to rib
-  // entry1 has 2 peers, p1
-  // entry2 has 2 peers, p1 & p2
-  // entry3 has 2 peers, p1 & p2
+  /*
+   * add 2 v4 entry and 1 v6 entry to rib
+   * entry1 has 2 peers, p1
+   * entry2 has 2 peers, p1 & p2
+   * entry3 has 2 peers, p1 & p2
+   */
   RibEntry entry1(kV4Prefix1);
   entry1.updatePath(eBgpPeer1_, attrs1, false); // p1 has nexthop kV4Nexthop1
   RibBase::selectBestPath(
@@ -5578,13 +5858,15 @@ TEST_F(RibNoUcmpComputeFixture, LbwCommunityBestPathNoUcmpCompute) {
 }
 
 TEST_F(RibFixtureCountConfedsInAsPathLen, NativeBestPathCompute) {
-  // Build 3 paths:
-  //  1st: 2 asns in AsSequence, 1 confed in ConfedAsSequence
-  //  2nd: 1 asn, 2 Confeds
-  //  3rd: 0 asn, 4 confeds
-  // With native BGP path selection, verify that :
-  //  * first 2 paths are selected as multipaths
-  //  * 3th should not be rejected due to longer as path len.
+  /*
+   * Build 3 paths:
+   *  1st: 2 asns in AsSequence, 1 confed in ConfedAsSequence
+   *  2nd: 1 asn, 2 Confeds
+   *  3rd: 0 asn, 4 confeds
+   * With native BGP path selection, verify that :
+   *  * first 2 paths are selected as multipaths
+   *  * 3th should not be rejected due to longer as path len.
+   */
   auto attrs1 = std::make_shared<facebook::bgp::BgpPath>(
       *buildBgpPathFields(2, 1, 0, 0, 1));
   auto attrs2 = std::make_shared<facebook::bgp::BgpPath>(
@@ -5675,11 +5957,13 @@ TEST_F(RibFixtureCountConfedsInAsPathLen, NativeBestPathCompute) {
  * weights is carried out in RibEntryTest.AggregateLocalUcmpWeight
  */
 TEST_F(RibFixture, AggregateUcmpWeight) {
-  // Build 4 paths with first 3 of localPref=200 and 4th one with
-  // localPref=100.  All the attrs have LBW community except for attr4.
-  // call selectBestPath() on above path-set.  Because all paths in ECMP of
-  // bestpath have LBW community, ribEntry should have honorUcmpWeight set,
-  // even though the non-best path does not have LBW community
+  /*
+   * Build 4 paths with first 3 of localPref=200 and 4th one with
+   * localPref=100.  All the attrs have LBW community except for attr4.
+   * call selectBestPath() on above path-set.  Because all paths in ECMP of
+   * bestpath have LBW community, ribEntry should have honorUcmpWeight set,
+   * even though the non-best path does not have LBW community
+   */
   auto attrs1 =
       std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(2, 1, 0, 2));
   auto attrs2 =
@@ -5761,8 +6045,10 @@ TEST_F(RibFixture, AggregateUcmpWeight) {
   EXPECT_EQ(attrs2->getNonTransitiveLbwValue().value(), kLbw5G);
   EXPECT_EQ(attrs3->getNonTransitiveLbwValue().value(), kLbw2G);
 
-  // For this test assert that kPeerAddr1 is the smallest value so its
-  // advertisement is chosen to be best path
+  /*
+   * For this test assert that kPeerAddr1 is the smallest value so its
+   * advertisement is chosen to be best path
+   */
   ASSERT_LT(kPeerAddr1, kPeerAddr2);
   ASSERT_LT(kPeerAddr1, kPeerAddr3);
   ASSERT_LT(kPeerAddr1, kPeerAddr4);
@@ -5893,11 +6179,13 @@ TEST_F(RibFixture, ProgramTopoInfoTest) {
 }
 
 TEST_F(RibFixture, NoLbwECMP) {
-  // Build 4 paths with first 3 of localPref=200 and 4th one with
-  // localPref=100.  One of the ECMP paths does not have lbw community, the
-  // others do.  Call selectBestPath() on above path-set.  Because one of
-  // the ECMP paths does not have LBW community, ribEntry should have not
-  // have honorUcmpWeight set, and we should resort to doing ECMP, not UCMP.
+  /*
+   * Build 4 paths with first 3 of localPref=200 and 4th one with
+   * localPref=100.  One of the ECMP paths does not have lbw community, the
+   * others do.  Call selectBestPath() on above path-set.  Because one of
+   * the ECMP paths does not have LBW community, ribEntry should have not
+   * have honorUcmpWeight set, and we should resort to doing ECMP, not UCMP.
+   */
   auto attrs1 =
       std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(2, 1, 0, 2));
   auto attrs2 =
@@ -5959,9 +6247,11 @@ TEST_F(RibFixture, NoLbwECMP) {
   {
     InSequence dummy;
     EXPECT_CALL(*fib_, program_(true)).Times(1);
-    // As LBW community is not present in all ECMP paths, UCMP will be
-    // effectively disabled. Hence we should expect weight params of each nh
-    // to be 0 i.e. ucmp degenrates to ecmp.
+    /*
+     * As LBW community is not present in all ECMP paths, UCMP will be
+     * effectively disabled. Hence we should expect weight params of each nh
+     * to be 0 i.e. ucmp degenrates to ecmp.
+     */
     WeightedNexthopMap nhWts = {
         {kV4Nexthop1, 0}, {kV4Nexthop2, 0}, {kV4Nexthop3, 0}};
     EXPECT_CALL(
@@ -5993,8 +6283,10 @@ TEST_F(RibFixture, NoLbwECMP) {
 TEST_F(RibFixture, LbwCommunityForward) {
   auto installToFib{true};
   auto& inputQ = rib_->fromFibMessageQ_;
-  // Two peers are advertising a given prefix with lbw community set.
-  // We should see lbwCommunity in the RibOutAnnouncement attrs.
+  /*
+   * Two peers are advertising a given prefix with lbw community set.
+   * We should see lbwCommunity in the RibOutAnnouncement attrs.
+   */
   RibEntry entry(kV4Prefix1);
   {
     auto attrs = std::make_shared<facebook::bgp::BgpPath>(
@@ -6067,10 +6359,12 @@ TEST_F(RibFixture, LbwCommunityForward) {
 TEST_F(RibFixture, LbwCommunitySuppression1) {
   auto installToFib{true};
   auto& inputQ = rib_->fromFibMessageQ_;
-  //  2 peers advertise same prefix but only 1 of them advertise
-  //  lbw community also. we would expect bestpath to mark
-  //  rib entry's honorUcmpWeight as false and in the RibOutAnnoucmnent
-  //  we should not see any lbw community attribute.
+  /*
+   *  2 peers advertise same prefix but only 1 of them advertise
+   *  lbw community also. we would expect bestpath to mark
+   *  rib entry's honorUcmpWeight as false and in the RibOutAnnoucmnent
+   *  we should not see any lbw community attribute.
+   */
   RibEntry entry(kV4Prefix2);
   {
     auto attrs = std::make_shared<facebook::bgp::BgpPath>(
@@ -6095,8 +6389,10 @@ TEST_F(RibFixture, LbwCommunitySuppression1) {
         kPeerAddr2, kPeerAsn2, kPeerRouterId2, BgpSessionType::EBGP, false);
     entry.updatePath(peer2, attrs, false, installToFib);
   }
-  // For this test, we assert that peer1 < peer2, so as to ensure that
-  // the route advertised by peer1 is the best path
+  /*
+   * For this test, we assert that peer1 < peer2, so as to ensure that
+   * the route advertised by peer1 is the best path
+   */
   ASSERT_LT(kPeerAddr1, kPeerAddr2);
   RibBase::selectBestPath(entry, multipathSelector, bestpathSelector, false, 0);
   EXPECT_EQ(entry.getBestPath()->attrs->getExtCommunities()->size(), 5);
@@ -6153,10 +6449,12 @@ TEST_F(RibFixture, LbwCommunitySuppression1) {
 TEST_F(RibFixture, LbwCommunitySuppression2) {
   auto installToFib{true};
   auto& inputQ = rib_->fromFibMessageQ_;
-  //  2 peers advertise same prefix but only 1 of them advertise
-  //  lbw community also. we would expect bestpath to mark
-  //  rib entry's honorUcmpWeight as false and in the RibOutAnnoucmnent
-  //  we should not see any lbw community attribute.
+  /*
+   *  2 peers advertise same prefix but only 1 of them advertise
+   *  lbw community also. we would expect bestpath to mark
+   *  rib entry's honorUcmpWeight as false and in the RibOutAnnoucmnent
+   *  we should not see any lbw community attribute.
+   */
   RibEntry entry(kV4Prefix2);
   {
     auto attrs = std::make_shared<facebook::bgp::BgpPath>(
@@ -6180,8 +6478,10 @@ TEST_F(RibFixture, LbwCommunitySuppression2) {
         kPeerAddr2, kPeerAsn2, kPeerRouterId2, BgpSessionType::EBGP, false);
     entry.updatePath(peer2, attrs, false, installToFib);
   }
-  // For this test, we assert that peer1 < peer2, so as to ensure that
-  // the route advertised by peer1 is the best path
+  /*
+   * For this test, we assert that peer1 < peer2, so as to ensure that
+   * the route advertised by peer1 is the best path
+   */
   ASSERT_LT(kPeerAddr1, kPeerAddr2);
   RibBase::selectBestPath(entry, multipathSelector, bestpathSelector, false, 0);
   EXPECT_EQ(entry.getBestPath()->attrs->getExtCommunities()->size(), 4);
@@ -6302,8 +6602,10 @@ TEST_F(RibFixture, EorSentInitializationEvent) {
  * RibDumpReq requested to the Rib. Then, bgp++ must not crash.
  */
 TEST_P(RibFixtureAddPathTestSuite, PathRemovedAndRibDumpReqTest) {
-  // send prefix from eBgpPeer1_(kPeerAddr1), nh is kV4Nexthop1 to Rib
-  // attr_ has kV4Nexthop1 as next hop
+  /*
+   * send prefix from eBgpPeer1_(kPeerAddr1), nh is kV4Nexthop1 to Rib
+   * attr_ has kV4Nexthop1 as next hop
+   */
   auto prefixBatch = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
   sendAnnouncement(prefixBatch, eBgpPeer1_, attr_);
   // send prefix from eBgpPeer2_(kPeerAddr2), nh is kV4Nexthop2 to Rib
@@ -6313,8 +6615,10 @@ TEST_P(RibFixtureAddPathTestSuite, PathRemovedAndRibDumpReqTest) {
   newAttr->publish();
   sendAnnouncement(prefixBatch, eBgpPeer2_, newAttr);
 
-  // rib_ learns that this kV4Prefix1 route has 2 paths (via kV4Nexthop1 and
-  // kV4Nexthop2)
+  /*
+   * rib_ learns that this kV4Prefix1 route has 2 paths (via kV4Nexthop1 and
+   * kV4Nexthop2)
+   */
 
   EXPECT_EQ(0, ribOutQ_.size());
 
@@ -6334,21 +6638,27 @@ TEST_P(RibFixtureAddPathTestSuite, PathRemovedAndRibDumpReqTest) {
     auto msg1 = folly::coro::blockingWait(ribOutQ_.pop());
     ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg1));
     auto announcement1 = std::get<RibOutAnnouncement>(msg1);
-    // entries will be 1 since this announcement of kV4Prefix1 will advertise
-    // only best path
+    /*
+     * entries will be 1 since this announcement of kV4Prefix1 will advertise
+     * only best path
+     */
     ASSERT_EQ(1, announcement1.entries.size());
     EXPECT_EQ(kDefaultPathID, announcement1.entries[0].pathIdToSend);
     EXPECT_EQ(true, announcement1.sendWithEoR);
     EXPECT_EQ(true, announcement1.initialDump);
-    // If the rib_->sendAddPath is true, the addPathEntries will be 2, since
-    // there are 2 paths for this kV4Prefix1 route, otherwise 0. Each AdjRib
-    // will decide whether entires or addPathEntries will be sent to the remote
-    // peer
+    /*
+     * If the rib_->sendAddPath is true, the addPathEntries will be 2, since
+     * there are 2 paths for this kV4Prefix1 route, otherwise 0. Each AdjRib
+     * will decide whether entires or addPathEntries will be sent to the remote
+     * peer
+     */
     ASSERT_EQ(2, announcement1.addPathEntries.size());
     checkRibOutEntriesAddPathIds(announcement1);
-    // store pathIdToSend from peer 1's path, as we'll remove this path from Rib
-    // later and we want to make sure the subsequent RibOutAnnouncement does not
-    // have the same pathIdToSend value
+    /*
+     * store pathIdToSend from peer 1's path, as we'll remove this path from Rib
+     * later and we want to make sure the subsequent RibOutAnnouncement does not
+     * have the same pathIdToSend value
+     */
     bool entry1FromPeer1 = announcement1.addPathEntries[0].peer == eBgpPeer1_;
     bool entry2FromPeer1 = announcement1.addPathEntries[1].peer == eBgpPeer1_;
     EXPECT_NE(
@@ -6381,15 +6691,17 @@ TEST_P(RibFixtureAddPathTestSuite, PathRemovedAndRibDumpReqTest) {
         2, kV4Prefix1Entry.getAdvertisedMultipathWeightedNexthops()->size());
   }
   {
-    //
-    // Simulate FIB has been programmed and acks back to Rib
-    //
+    /*
+     * Simulate FIB has been programmed and acks back to Rib
+     */
     auto& kV4Prefix1Entry = rib_->ribEntries_.find(kV4Prefix1)->second;
     auto& fromFibToRibQ = rib_->fromFibMessageQ_;
 
-    // Route is update because a path is removed, but there is another path
-    // left. The kV4Prefix1Entry.getMultipathWeightedNexthops() is computed by
-    // RIB and will be programmed to FIB
+    /*
+     * Route is update because a path is removed, but there is another path
+     * left. The kV4Prefix1Entry.getMultipathWeightedNexthops() is computed by
+     * RIB and will be programmed to FIB
+     */
     EXPECT_NE(nullptr, kV4Prefix1Entry.getMultipathWeightedNexthops());
     folly::F14NodeMap<
         folly::CIDRNetwork,
@@ -6407,8 +6719,10 @@ TEST_P(RibFixtureAddPathTestSuite, PathRemovedAndRibDumpReqTest) {
     Fib::FibProgrammedMessage msg(FibProgrammedPfxs, false /* fullSync */);
     fromFibToRibQ.push(std::move(msg));
 
-    // expect 2 elements in the ribOutQ_, 1 RibOutWithdrawal followed by
-    // 1 RibOutAnnouncement since rib_->sendAddPath is true
+    /*
+     * expect 2 elements in the ribOutQ_, 1 RibOutWithdrawal followed by
+     * 1 RibOutAnnouncement since rib_->sendAddPath is true
+     */
     auto msg1 = folly::coro::blockingWait(ribOutQ_.pop());
     ASSERT_TRUE(std::holds_alternative<RibOutWithdrawal>(msg1));
     auto msg2 = folly::coro::blockingWait(ribOutQ_.pop());
@@ -6424,20 +6738,26 @@ TEST_P(RibFixtureAddPathTestSuite, PathRemovedAndRibDumpReqTest) {
     REPEAT_N(5, { ASSERT_EQ(0, ribOutQ_.size()); });
   }
   {
-    // Verify that kV4Prefix1 entry is still in the ribEntries_, but with only 1
-    // path left
+    /*
+     * Verify that kV4Prefix1 entry is still in the ribEntries_, but with only 1
+     * path left
+     */
     ASSERT_NE(rib_->ribEntries_.find(kV4Prefix1), rib_->ribEntries_.end());
     auto& kV4Prefix1Entry = rib_->ribEntries_.find(kV4Prefix1)->second;
-    // Verify that kV4Prefix1 entry advertisedWeightedNexthops_ is updated to
-    // multipathWeightedNexthops
+    /*
+     * Verify that kV4Prefix1 entry advertisedWeightedNexthops_ is updated to
+     * multipathWeightedNexthops
+     */
     ASSERT_EQ(
         kV4Prefix1Entry.getAdvertisedMultipathWeightedNexthops(),
         kV4Prefix1Entry.getMultipathWeightedNexthops());
     std::shared_ptr<const WeightedNexthopMap> nextHopMap =
         rib_->ribEntries_.find(kV4Prefix1)
             ->second.getAdvertisedMultipathWeightedNexthops();
-    // Verify that nextHopMap is not nullptr since there is still a path through
-    // kV4Nexthop2
+    /*
+     * Verify that nextHopMap is not nullptr since there is still a path through
+     * kV4Nexthop2
+     */
     ASSERT_NE(nullptr, nextHopMap);
     EXPECT_EQ(1, nextHopMap->size());
     EXPECT_NE(nextHopMap->find(kV4Nexthop2), nextHopMap->end());
@@ -6452,8 +6772,10 @@ TEST_P(RibFixtureAddPathTestSuite, PathRemovedAndRibDumpReqTest) {
  * crash.
  */
 TEST_P(RibFixtureAddPathTestSuite, RouteWithdrawnAndRibDumpReqTest) {
-  // send prefix from eBgpPeer1_(kPeerAddr1), nh is kV4Nexthop1 to Rib
-  // attr_ has kV4Nexthop1 as next hop
+  /*
+   * send prefix from eBgpPeer1_(kPeerAddr1), nh is kV4Nexthop1 to Rib
+   * attr_ has kV4Nexthop1 as next hop
+   */
   auto prefixBatch = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
   sendAnnouncement(prefixBatch, eBgpPeer1_, attr_);
   EXPECT_EQ(0, ribOutQ_.size());
@@ -6470,15 +6792,19 @@ TEST_P(RibFixtureAddPathTestSuite, RouteWithdrawnAndRibDumpReqTest) {
     msg = folly::coro::blockingWait(ribOutQ_.pop());
     ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
     auto announcement = std::get<RibOutAnnouncement>(msg);
-    // entries will be 1 since this announcement of kV4Prefix1 will advertise
-    // only best path
+    /*
+     * entries will be 1 since this announcement of kV4Prefix1 will advertise
+     * only best path
+     */
     ASSERT_EQ(1, announcement.entries.size());
     EXPECT_EQ(kDefaultPathID, announcement.entries[0].pathIdToSend);
     EXPECT_EQ(true, announcement.sendWithEoR);
     EXPECT_EQ(true, announcement.initialDump);
-    // If the rib_->sendAddPath is true, the addPathEntries will be 1 (1 path),
-    // otherwise 0 Each AdjRib will decide whether entires or addPathEntries
-    // will be sent to the remote peer
+    /*
+     * If the rib_->sendAddPath is true, the addPathEntries will be 1 (1 path),
+     * otherwise 0 Each AdjRib will decide whether entires or addPathEntries
+     * will be sent to the remote peer
+     */
     ASSERT_EQ(1, announcement.addPathEntries.size());
     EXPECT_EQ(kMinPathIDToSend, announcement.addPathEntries[0].pathIdToSend);
   }
@@ -6494,29 +6820,35 @@ TEST_P(RibFixtureAddPathTestSuite, RouteWithdrawnAndRibDumpReqTest) {
         kV4Prefix1Entry, multipathSelector, bestpathSelector, false, 0);
     ASSERT_NE(
         nullptr, kV4Prefix1Entry.getAdvertisedMultipathWeightedNexthops());
-    // Verify that a route has been withdrawn. The RIB's computed
-    // multipathWeightNexthops must be nullptr
+    /*
+     * Verify that a route has been withdrawn. The RIB's computed
+     * multipathWeightNexthops must be nullptr
+     */
     ASSERT_EQ(nullptr, kV4Prefix1Entry.getMultipathWeightedNexthops());
-    // Verify that advertisedMultipathWeightedNexthops is not nullptr since FIB
-    // has not programmed the withdrawn route yet.
+    /*
+     * Verify that advertisedMultipathWeightedNexthops is not nullptr since FIB
+     * has not programmed the withdrawn route yet.
+     */
     EXPECT_EQ(
         1, kV4Prefix1Entry.getAdvertisedMultipathWeightedNexthops()->size());
   }
 }
 
 TEST_F(RibFixture, GetSelectionFilterCriteriaTest) {
-  // make 5 attrs with different attributes
-  // attrs1: { LocalPref = kLocalPref2, AsPathCount = 4, Origin = IGP }
-  // attrs2: { LocalPref = kLocalPref2, AsPathCount = 4, Origin = IGP }
-  // attrs3: { LocalPref = kLocalPref2, AsPathCount = 4, Origin = EGP }
-  // attrs4: { LocalPref = kLocalPref2, AsPathCount = 5, Origin = IGP }
-  // attrs5: { LocalPref = kLocalPref, AsPathCount = 4, Origin = IGP }
-  // BGP Selection Algo of relevance for this test (in the following order)
-  //   LocalPref2 > LocalPref  wins.
-  //   Shorter AS Path wins and IGP wins over EGP (origin).
-  //   Lowest peer-id wins.
-  // As such the preference order of the above attr set:
-  //  attrs1 > attrs2 > attrs3 > attrs4 > attrs5
+  /*
+   * make 5 attrs with different attributes
+   * attrs1: { LocalPref = kLocalPref2, AsPathCount = 4, Origin = IGP }
+   * attrs2: { LocalPref = kLocalPref2, AsPathCount = 4, Origin = IGP }
+   * attrs3: { LocalPref = kLocalPref2, AsPathCount = 4, Origin = EGP }
+   * attrs4: { LocalPref = kLocalPref2, AsPathCount = 5, Origin = IGP }
+   * attrs5: { LocalPref = kLocalPref, AsPathCount = 4, Origin = IGP }
+   * BGP Selection Algo of relevance for this test (in the following order)
+   *   LocalPref2 > LocalPref  wins.
+   *   Shorter AS Path wins and IGP wins over EGP (origin).
+   *   Lowest peer-id wins.
+   * As such the preference order of the above attr set:
+   *  attrs1 > attrs2 > attrs3 > attrs4 > attrs5
+   */
 
   auto attrs1 =
       std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
@@ -6586,9 +6918,11 @@ TEST_F(RibFixture, GetSelectionFilterCriteriaTest) {
 
     EXPECT_EQ(output1.size(), 1);
     auto paths = output1[0].paths()->find(kBestPathGroup)->second;
-    // Check the filter Criteria are set properly
-    // Both are selected as ECMP paths however nextHop3 will win in best-path
-    // due to Lowest peer-ip.
+    /*
+     * Check the filter Criteria are set properly
+     * Both are selected as ECMP paths however nextHop3 will win in best-path
+     * due to Lowest peer-ip.
+     */
     EXPECT_THAT(
         paths,
         UnorderedElementsAre(
@@ -6612,9 +6946,11 @@ TEST_F(RibFixture, GetSelectionFilterCriteriaTest) {
                     Eq("")))));
   }
 
-  // Case-3:
-  //      add rib-entry2 :: all 5 attrs -- winner are <attrs1 and attrs2>
-  //      nexthop1 is best path and both nexthop1 & 2 are ecmp.
+  /*
+   * Case-3:
+   *      add rib-entry2 :: all 5 attrs -- winner are <attrs1 and attrs2>
+   *      nexthop1 is best path and both nexthop1 & 2 are ecmp.
+   */
   RibEntry entry2(kV4Prefix3);
   entry2.updatePath(eBgpPeer1_, attrs5, false);
   entry2.updatePath(eBgpPeer2_, attrs4, false);
@@ -6633,11 +6969,13 @@ TEST_F(RibFixture, GetSelectionFilterCriteriaTest) {
     auto paths = output2[0].paths()->find(kBestPathGroup)->second;
     EXPECT_EQ(2, paths.size());
 
-    // the paths' order here doesn't matter as long as the filter description
-    // matched the record
-    // Also check the filter Criteria are set properly
-    // Both attrs (attrs1 & attrs2) are selected as ECMP paths however nextHop3
-    // will win in best-path due to Lowest router-id; 6 vs. 127.3.0.1.
+    /*
+     * the paths' order here doesn't matter as long as the filter description
+     * matched the record
+     * Also check the filter Criteria are set properly
+     * Both attrs (attrs1 & attrs2) are selected as ECMP paths however nextHop3
+     * will win in best-path due to Lowest router-id; 6 vs. 127.3.0.1.
+     */
     std::vector<std::pair<std::string, std::string>> path_prefixes(
         paths.size());
     std::transform(
@@ -6658,8 +6996,10 @@ TEST_F(RibFixture, GetSelectionFilterCriteriaTest) {
     auto nonecmpPaths = output2[0].paths()->find(kDefaultPathGroup)->second;
     EXPECT_EQ(3, nonecmpPaths.size());
 
-    // the paths'order here doesn't matter as long as the filter description
-    // matched the record
+    /*
+     * the paths'order here doesn't matter as long as the filter description
+     * matched the record
+     */
     std::unordered_set<std::string> nonecmpPathNhs{
         *nonecmpPaths[0].next_hop()->prefix_bin(),
         *nonecmpPaths[1].next_hop()->prefix_bin(),
@@ -6694,8 +7034,10 @@ TEST_F(RibFixture, GetSelectionFilterCriteriaTest) {
     }
   }
 
-  // Case-4:
-  //      add rib-entry3 :: 2 attrs -- with same router ID but different peer IP
+  /*
+   * Case-4:
+   *      add rib-entry3 :: 2 attrs -- with same router ID but different peer IP
+   */
   RibEntry entry3(kV4Prefix4);
   entry3.updatePath(eBgpPeer1_, attrs1, false);
   entry3.updatePath(eBgpPeer6_, attrs1, false);
@@ -7001,8 +7343,10 @@ TEST_F(RibFixture, GetOriginatedRoutes) {
       auto binAddr = facebook::network::toBinaryAddress(kV4Prefix1.first);
       EXPECT_EQ(binAddr.addr()->toStdString(), *tPrefix.prefix_bin());
 
-      // Verify that communities was not passed in configuration(optional),
-      // but returned empty vector for display
+      /*
+       * Verify that communities was not passed in configuration(optional),
+       * but returned empty vector for display
+       */
       EXPECT_EQ(0, routes[i].communities()->size());
 
     } else {
@@ -7069,8 +7413,10 @@ TEST_F(RibFixture, RibPauseTimeOutTest) {
   sendInitialPathComputation();
   fibFuture.wait();
 
-  // Step 3: Send PauseBestPathAndFibProgramming message to rib and verify
-  // best path and Fib programming is paused
+  /*
+   * Step 3: Send PauseBestPathAndFibProgramming message to rib and verify
+   * best path and Fib programming is paused
+   */
   sendPauseBestPathAndFibProgramming(RibPauseResumeCause::SAFE_MODE);
   WITH_RETRIES_N_TIMED(3000, milliseconds(10), {
     EXPECT_EVENTUALLY_TRUE(isBestPathAndFibProgrammingPaused());
@@ -7105,8 +7451,10 @@ TEST_F(RibFixture, RibPauseTimeOutMultipleTasksTest) {
   sendInitialPathComputation();
   fibFuture.wait();
 
-  // Step 3: Send PauseBestPathAndFibProgramming message to rib from
-  // BACKPRESSURE and wait for the non-expiring pause to take effect
+  /*
+   * Step 3: Send PauseBestPathAndFibProgramming message to rib from
+   * BACKPRESSURE and wait for the non-expiring pause to take effect
+   */
   sendPauseBestPathAndFibProgramming(RibPauseResumeCause::BACKPRESSURE);
   WITH_RETRIES({
     EXPECT_EVENTUALLY_TRUE(isBestPathAndFibProgrammingPaused());
@@ -7118,8 +7466,10 @@ TEST_F(RibFixture, RibPauseTimeOutMultipleTasksTest) {
   // Step 4: Send PauseBestPathAndFibProgramming message to rib from SAFE_MODE
   sendPauseBestPathAndFibProgramming(RibPauseResumeCause::SAFE_MODE);
 
-  // Step 5: Verify best path and Fib programming is paused and size of
-  // bestPathAndFibProgrammingPausedBy_ set is 2
+  /*
+   * Step 5: Verify best path and Fib programming is paused and size of
+   * bestPathAndFibProgrammingPausedBy_ set is 2
+   */
   WITH_RETRIES_N_TIMED(200, milliseconds(5), {
     EXPECT_EVENTUALLY_TRUE(isBestPathAndFibProgrammingPaused());
     EXPECT_EVENTUALLY_EQ(
@@ -7133,8 +7483,10 @@ TEST_F(RibFixture, RibPauseTimeOutMultipleTasksTest) {
         EXPECT_TRUE(isBestPathAndFibProgrammingPaused());
         EXPECT_EQ(1, rib_->bestPathAndFibProgrammingPausedBy_.rlock()->size());
 
-        // Step 7: Verify bestPathAndFibProgrammingPausedBy_ is cleared after
-        // timeout
+        /*
+         * Step 7: Verify bestPathAndFibProgrammingPausedBy_ is cleared after
+         * timeout
+         */
         sendResumeBestPathAndFibProgramming(RibPauseResumeCause::BACKPRESSURE);
 
         WITH_RETRIES(
@@ -7332,8 +7684,10 @@ TEST_F(RibFixture, RouteChurnDetectionTestWithAnnouncementsAndWithdraws) {
           RibStats::kTotalRouteChurnDetected),
       0);
 
-  // Step 4: No more announcements sent, Ensure Route churn is stable with
-  // checks at constant intervals
+  /*
+   * Step 4: No more announcements sent, Ensure Route churn is stable with
+   * checks at constant intervals
+   */
   folly::EventBase testEvb;
   testEvb.scheduleAt(
       [&]() noexcept {
@@ -7363,10 +7717,12 @@ TEST_F(RibFixture, AnnounceIncludesPathIdOnRouteInfo) {
 }
 
 TEST_F(RibFixture, PathsAreUpdatedByPathId) {
-  // updatePath(1) creates routeInfo w/ pathID 1
-  // updatePath(2) (with same attrs) creates different routeInfo w/ pathID 2
-  // 2nd updatePath(1) updates route w/ pathID 1, even if nh is different
-  // updatePath(1) with null attrs (withdraw) removes routeinfo w/ path 1
+  /*
+   * updatePath(1) creates routeInfo w/ pathID 1
+   * updatePath(2) (with same attrs) creates different routeInfo w/ pathID 2
+   * 2nd updatePath(1) updates route w/ pathID 1, even if nh is different
+   * updatePath(1) with null attrs (withdraw) removes routeinfo w/ path 1
+   */
   auto attrs1 =
       std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
   auto attrs2 =
@@ -7635,16 +7991,20 @@ TEST_F(RibNexthopTrackingFixture, RibInNexthopUpdate) {
   tcData->publishStats();
   EXPECT_EQ(1, tcData->getCounter(RibStats::kRibUnresolvableNexthopsCount));
 
-  // Update the nexthop status for kPeerAddr1 to reachable
-  // Create a vector of NexthopStatus objects
+  /*
+   * Update the nexthop status for kPeerAddr1 to reachable
+   * Create a vector of NexthopStatus objects
+   */
   nexthopStatusList.clear();
 
   // Create a NexthopStatus with lower IGP cost
   NexthopStatus lowerCostReachableStatus(kPeerAddr1, true, 50);
   nexthopStatusList.push_back(lowerCostReachableStatus);
 
-  // Expect best path computation and FIB programming to be triggered on the
-  // nexthop update
+  /*
+   * Expect best path computation and FIB programming to be triggered on the
+   * nexthop update
+   */
   EXPECT_CALL(*rib_, prepareFibProgramming_()).Times(1);
   auto fibFuture2 = fib_->getFibProgramFuture();
   updateCacheAndNotifyRib(nexthopStatusList);
@@ -7759,15 +8119,19 @@ TEST_F(RibNexthopTrackingFixture, InactivePathCountTracksPartialWithdrawals) {
   EXPECT_EQ(1, inactivePathCount());
   EXPECT_TRUE(rib_->getBestPath(kV4Prefix1));
 
-  // The prefix and its selected path survive, but its inactive contribution
-  // disappears on the next selection pass.
+  /*
+   * The prefix and its selected path survive, but its inactive contribution
+   * disappears on the next selection pass.
+   */
   sendWithdrawal(prefixBatch, iBgpPeer_);
   WITH_RETRIES({ ASSERT_EVENTUALLY_EQ(0, inactivePathCount()); });
   EXPECT_TRUE(rib_->getBestPath(kV4Prefix1));
 
-  // Restore the mixed entry, then remove only the active path. The unresolved
-  // path keeps the RibEntry alive and remains counted, despite there being no
-  // best path to program.
+  /*
+   * Restore the mixed entry, then remove only the active path. The unresolved
+   * path keeps the RibEntry alive and remains counted, despite there being no
+   * best path to program.
+   */
   sendAnnouncement(prefixBatch, iBgpPeer_, unresolvedAttrs);
   WITH_RETRIES({ ASSERT_EVENTUALLY_EQ(1, inactivePathCount()); });
 
@@ -7777,8 +8141,10 @@ TEST_F(RibNexthopTrackingFixture, InactivePathCountTracksPartialWithdrawals) {
   EXPECT_FALSE(rib_->getBestPath(kV4Prefix1));
   EXPECT_EQ(1, inactivePathCount());
 
-  // Removing the final inactive path erases the entry and releases its cached
-  // contribution through RibCounters::onPrefixRemoved.
+  /*
+   * Removing the final inactive path erases the entry and releases its cached
+   * contribution through RibCounters::onPrefixRemoved.
+   */
   sendWithdrawal(prefixBatch, iBgpPeer_);
   WITH_RETRIES({ ASSERT_EVENTUALLY_EQ(0, inactivePathCount()); });
 }
@@ -7877,8 +8243,10 @@ TEST_F(
 
   constexpr int kNumReadvertisements = 10;
   for (int i = 0; i < kNumReadvertisements; i++) {
-    // Vary the AS path so each refresh is a genuine attribute change rather
-    // than an update that updatePath() short-circuits.
+    /*
+     * Vary the AS path so each refresh is a genuine attribute change rather
+     * than an update that updatePath() short-circuits.
+     */
     auto refreshedAttrs = std::make_shared<facebook::bgp::BgpPath>(
         *buildBgpPathFields(4 + i, 4, 4, 4));
     refreshedAttrs->setNexthop(kPeerAddr1);
@@ -7994,8 +8362,10 @@ TEST_F(RibNexthopTrackingFixture, RouteFlappingWithUniqueNexthop) {
     sendWithdrawal(prefixBatch2, eBgpPeer1_);
     fibFuture.wait();
 
-    // Verify both reachable and unreachable nexthops are removed from the
-    // nexthopInfoMap_ since routeInfos are removed
+    /*
+     * Verify both reachable and unreachable nexthops are removed from the
+     * nexthopInfoMap_ since routeInfos are removed
+     */
     nexthopInfoIt1 = rib_->nexthopInfoMap_.find(kPeerAddr1);
     nexthopInfoIt2 = rib_->nexthopInfoMap_.find(kPeerAddr2);
     EXPECT_EQ(nexthopInfoIt1, rib_->nexthopInfoMap_.end());
@@ -8127,8 +8497,10 @@ TEST_F(RibNexthopTrackingFixture, GetNexthopInfos) {
   ASSERT_TRUE(byAddr.count(kPeerAddr1));
   ASSERT_TRUE(byAddr.count(kPeerAddr2));
 
-  // Reachable nexthop: resolved, and has change timestamps (resolved at
-  // creation).
+  /*
+   * Reachable nexthop: resolved, and has change timestamps (resolved at
+   * creation).
+   */
   const auto& reachable = byAddr.at(kPeerAddr1);
   EXPECT_TRUE(*reachable.is_reachable());
   EXPECT_TRUE(*reachable.is_resolved_for_selection());
@@ -8258,8 +8630,10 @@ TEST_F(
   attrs1->publish();
   sendAnnouncement(PrefixPathIds{{prefix1, kDefaultPathID}}, iBgpPeer_, attrs1);
 
-  // Trigger with a long resolution timeout while kPeerAddr1 is unresolved: the
-  // initial full-sync must be deferred, not run.
+  /*
+   * Trigger with a long resolution timeout while kPeerAddr1 is unresolved: the
+   * initial full-sync must be deferred, not run.
+   */
   sendInitialPathComputation(std::chrono::seconds(60));
   WITH_RETRIES_N_TIMED(100, std::chrono::milliseconds(10), {
     ASSERT_EVENTUALLY_TRUE(isInitialPathComputationPending());
@@ -8331,8 +8705,10 @@ TEST_F(
     ASSERT_EVENTUALLY_TRUE(isInitialPathComputationPending());
   });
 
-  // Resolving ONLY the real nexthop completes the gate: the unspecified ::
-  // nexthop is not tracked, so it does not hold the computation.
+  /*
+   * Resolving ONLY the real nexthop completes the gate: the unspecified ::
+   * nexthop is not tracked, so it does not hold the computation.
+   */
   auto fibFuture = fib_->getFibProgramFuture();
   updateCacheAndNotifyRib({NexthopStatus(kPeerAddr1, true, 100)});
   fibFuture.wait();
@@ -8383,8 +8759,10 @@ TEST_F(
   setUpRibAndFib(getConditionalLocalRoutes());
   rib_->setFibBatchTime(milliseconds(8));
 
-  // Trigger with a resolution budget; the conditional routes must hold the
-  // initial full-sync until they are advertised.
+  /*
+   * Trigger with a resolution budget; the conditional routes must hold the
+   * initial full-sync until they are advertised.
+   */
   sendInitialPathComputation(std::chrono::seconds(60));
   WITH_RETRIES_N_TIMED(100, std::chrono::milliseconds(10), {
     ASSERT_EVENTUALLY_TRUE(isInitialPathComputationPending());
@@ -8393,8 +8771,10 @@ TEST_F(
   // Conditional route not yet advertised, and the sync has not run.
   EXPECT_EQ(nullptr, rib_->getBestPath(kV4Prefix1));
 
-  // First NexthopResolutionUpdate advertises the conditional route -> the
-  // deferred initial full-sync runs and includes it.
+  /*
+   * First NexthopResolutionUpdate advertises the conditional route -> the
+   * deferred initial full-sync runs and includes it.
+   */
   auto fibFuture = fib_->getFibProgramFuture();
   sendNexthopResolutionUpdate(
       NexthopResolutionUpdate{{kV4Nexthop1}, {} /* unresolved */});

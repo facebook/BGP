@@ -568,8 +568,10 @@ TEST_F(AdjRibGroupTest, ResolveLiteEntryForPeer_VersionGatedSharing) {
       adjRibOutGroup_->resolveLiteEntryForPeer(
           ownerMap, peerKey, kGroupEntryVersion - 1));
 
-  // Diverged: a per-peer (lazy-cloned) entry wins regardless of the version
-  // gate.
+  /*
+   * Diverged: a per-peer (lazy-cloned) entry wins regardless of the version
+   * gate.
+   */
   auto* peerEntry = adjRibOutGroup_->addToLiteTree(
       adjRibOutGroup_->LiteTree_, prefix, peerKey, kDefaultPathID);
   peerEntry->setRibVersion(kGroupEntryVersion + 20);
@@ -671,8 +673,10 @@ TEST_F(AdjRibGroupTest, ResolvePathEntriesForPeer_PerPathDivergence) {
           ->getRadixNodeItrFromPathTree(adjRibOutGroup_->PathTree_, prefix)
           ->value();
 
-  // Detached at version 120: pathId 1 -> peer-owned p1; pathId 2 group entry
-  // (v200 > 120) was never seen -> omitted.
+  /*
+   * Detached at version 120: pathId 1 -> peer-owned p1; pathId 2 group entry
+   * (v200 > 120) was never seen -> omitted.
+   */
   std::map<uint32_t, const AdjRibEntry*> detachedView;
   adjRibOutGroup_->resolvePathEntriesForPeer(
       ownerMap,
@@ -762,8 +766,10 @@ TEST_F(AdjRibGroupTest, ResolveEntriesForPeer_UpdateGroupDisabled) {
       adjRibOutGroup_
           ->getRadixNodeItrFromPathTree(adjRibOutGroup_->PathTree_, prefix)
           ->value();
-  // Only the peer-owned pathId 2 is emitted; the group-only pathId 1 is never
-  // consulted.
+  /*
+   * Only the peer-owned pathId 2 is emitted; the group-only pathId 1 is never
+   * consulted.
+   */
   std::map<uint32_t, const AdjRibEntry*> view;
   adjRibOutGroup_->resolvePathEntriesForPeer(
       pathOwnerMap,
@@ -824,9 +830,11 @@ TEST_F(AdjRibGroupTest, ScheduleInitialDump) {
   // Process event loop to allow coroutine to execute
   evb_->loopOnce();
 
-  // State should transition away from UNINITIALIZED
-  // With feature flag enabled: WAITING
-  // With feature flag disabled: IDLE
+  /*
+   * State should transition away from UNINITIALIZED
+   * With feature flag enabled: WAITING
+   * With feature flag disabled: IDLE
+   */
   EXPECT_NE(adjRibOutGroup_->getState(), UpdateGroupState::UNINITIALIZED);
 }
 
@@ -1549,10 +1557,12 @@ TEST_F(
   createAdjRibOutGroup("test_group", 42, createDefaultGroupKey());
   ASSERT_FALSE(adjRibOutGroup_->getGroupKey().egressPolicyName.has_value());
 
-  // Reaching the crashing path requires (1) cached peering params so
-  // updateAttributesOutWithoutNexthop() does not early-return, and (2) a
-  // non-null policy manager so the egress-policy branch is entered. An empty
-  // BgpPolicies yields a policy DB with no entry for "" (mask lookup -> null).
+  /*
+   * Reaching the crashing path requires (1) cached peering params so
+   * updateAttributesOutWithoutNexthop() does not early-return, and (2) a
+   * non-null policy manager so the egress-policy branch is entered. An empty
+   * BgpPolicies yields a policy DB with no entry for "" (mask lookup -> null).
+   */
   adjRibOutGroup_->peeringParams_ = PeeringParams{};
   adjRibOutGroup_->policyManager_ =
       std::make_shared<PolicyManager>(bgp_policy::BgpPolicies{});
@@ -1572,8 +1582,10 @@ TEST_F(
   // Pre-fix: aborts via CHECK(mask) in overridePrePolicyAttributesCommon.
   adjRibOutGroup_->processRibAnnouncedEntryForGroup(entry);
 
-  // Post-fix: the announcement is processed and stored (no policy override
-  // applied because no egress policy is configured).
+  /*
+   * Post-fix: the announcement is processed and stored (no policy override
+   * applied because no egress policy is configured).
+   */
   auto groupOwnerKey =
       AdjRibOutOwnerKey::forGroup(adjRibOutGroup_->getGroupId());
   auto* adjRibEntry = adjRibOutGroup_->getFromLiteTree(
@@ -1625,9 +1637,11 @@ TEST_F(AdjRibGroupPackingFixture, ProcessRibOutAnnouncement_MultipleEntries) {
   // Run event loop to allow async build and send to complete
   runEventLoopUntilIdle();
 
-  // Verify packing list is now EMPTY after buildAndSendGroupBgpMessages drains
-  // it (even though there are no peers to send to, messages are built and
-  // distributed)
+  /*
+   * Verify packing list is now EMPTY after buildAndSendGroupBgpMessages drains
+   * it (even though there are no peers to send to, messages are built and
+   * distributed)
+   */
   auto& attrToPrefixMap = adjRibOutGroup_->getAttrToPrefixMap();
   EXPECT_EQ(0, attrToPrefixMap.size());
 }
@@ -1720,19 +1734,25 @@ TEST_F(AdjRibGroupRibOutEntryFixture, TryInsertRibOutEntry_MultiplePrefixes) {
 TEST_F(
     AdjRibGroupRibOutEntryFixture,
     TryInsertRibOutEntry_CreatesNewEntry_PathTree) {
-  // Enable sendAddPath to use PathTree
-  // Note: We need to manually set this via constructor or setter
-  // For this test, let's create a new group with proper setup
+  /*
+   * Enable sendAddPath to use PathTree
+   * Note: We need to manually set this via constructor or setter
+   * For this test, let's create a new group with proper setup
+   */
 
   auto groupWithAddPath = std::make_shared<AdjRibOutGroup>(
       *evb_, "test_group_addpath", 43, true /* enableUpdateGroup */);
 
-  // Manually enable sendAddPath (would normally be set from peer config)
-  // Since there's no public setter, this tests the PathTree code path
-  // by directly accessing if possible, or we can test through integration
+  /*
+   * Manually enable sendAddPath (would normally be set from peer config)
+   * Since there's no public setter, this tests the PathTree code path
+   * by directly accessing if possible, or we can test through integration
+   */
 
-  // For now, test that the LiteTree path works correctly
-  // PathTree logic is tested through integration tests
+  /*
+   * For now, test that the LiteTree path works correctly
+   * PathTree logic is tested through integration tests
+   */
 }
 
 /**
@@ -2137,8 +2157,10 @@ TEST_F(AdjRibGroupPolicyFixture, GetPostOutPolicyAttributesAndInfo_NullEntry) {
       0,
       0);
 
-  // This should trigger CHECK failure in the implementation
-  // Extract lambda to avoid macro issues with structured bindings
+  /*
+   * This should trigger CHECK failure in the implementation
+   * Extract lambda to avoid macro issues with structured bindings
+   */
   auto callWithNullEntry = [&]() {
     adjRibOutGroup_->getPostOutPolicyAttributesAndInfo(
         update, nullptr, testAttrs_, "test_peer");
@@ -2590,13 +2612,17 @@ TEST_F(AdjRibGroupPackingFixture, BuildAndSendGroupBgpMessages_MixedMessages) {
   // Packing list should be cleared
   EXPECT_TRUE(adjRibOutGroup_->getAttrToPrefixMap().empty());
 
-  // Group-level control-plane count: 2 UPDATE PDUs generated (1 announcement +
-  // 1 withdrawal).
+  /*
+   * Group-level control-plane count: 2 UPDATE PDUs generated (1 announcement +
+   * 1 withdrawal).
+   */
   EXPECT_EQ(2, adjRibOutGroup_->getStats().getSentUpdateMsgs());
   // EoR is a distinct PDU; a pure UPDATE flow must not touch the EoR counter.
   EXPECT_EQ(0, adjRibOutGroup_->getStats().getSentEndOfRibMsgs());
-  // Announcement/withdrawal PDUs are tracked per-AFI on the group (1 IPv4
-  // announcement + 1 IPv4 withdrawal here).
+  /*
+   * Announcement/withdrawal PDUs are tracked per-AFI on the group (1 IPv4
+   * announcement + 1 IPv4 withdrawal here).
+   */
   EXPECT_EQ(1, adjRibOutGroup_->getStats().getSentAnnouncementsIpv4());
   EXPECT_EQ(0, adjRibOutGroup_->getStats().getSentAnnouncementsIpv6());
   EXPECT_EQ(1, adjRibOutGroup_->getStats().getSentWithdrawals());
@@ -2710,8 +2736,10 @@ TEST_F(AdjRibGroupPackingFixture, EorCountedSeparatelyFromUpdate) {
   EXPECT_TRUE(sawV4Eor);
   EXPECT_TRUE(sawV6Eor);
 
-  // No UPDATE PDUs were queued, so the UPDATE counter stays 0 — the EoRs are
-  // NOT folded into it (the regression being guarded against).
+  /*
+   * No UPDATE PDUs were queued, so the UPDATE counter stays 0 — the EoRs are
+   * NOT folded into it (the regression being guarded against).
+   */
   EXPECT_EQ(0, adjRibOutGroup_->getStats().getSentUpdateMsgs());
   // Both negotiated AFIs (v4 + v6) emit an EoR PDU, counted separately.
   EXPECT_EQ(2, adjRibOutGroup_->getStats().getSentEndOfRibMsgs());
@@ -3261,8 +3289,10 @@ TEST_F(AdjRibGroupAddPathFixture, MessageCloning_Nocrash) {
 
   auto message = std::make_shared<nettools::bgplib::BgpUpdate2>();
 
-  // distributeMessageToInSyncPeers should handle message cloning internally
-  // Without peers, this is a smoke test that it doesn't crash
+  /*
+   * distributeMessageToInSyncPeers should handle message cloning internally
+   * Without peers, this is a smoke test that it doesn't crash
+   */
   EXPECT_NO_THROW(
       folly::coro::blockingWait(adjRibOutGroup_->distributeMessageToInSyncPeers(
           message, nullptr, nettools::bgplib::BgpUpdateAfi::AFI_IPv4)));
@@ -3287,8 +3317,10 @@ TEST_F(AdjRibGroupAddPathFixture, NotifyEoR_NoPeersGraceful) {
 TEST_F(AdjRibGroupAddPathFixture, NotifyEoR_BitmapIterationFixed) {
   createGroupWithAddPath(false);
 
-  // Even with sparse bitmap, iteration should work
-  // This tests the fix: for (const auto& [bitPos, adjRib] : bitToAdjRibs_)
+  /*
+   * Even with sparse bitmap, iteration should work
+   * This tests the fix: for (const auto& [bitPos, adjRib] : bitToAdjRibs_)
+   */
   EXPECT_NO_THROW(
       folly::coro::blockingWait(adjRibOutGroup_->distributePendingEoRs()));
 }
@@ -3346,16 +3378,20 @@ TEST_F(AdjRibGroupDistributionFixture, AsyncBuildAndSendMultipleCalls) {
 
   EXPECT_EQ(1, adjRibOutGroup_->getAttrToPrefixMap().size());
 
-  // Build and send second batch - should not throw and should clear packing
-  // list
+  /*
+   * Build and send second batch - should not throw and should clear packing
+   * list
+   */
   EXPECT_NO_THROW(
       folly::coro::blockingWait(
           adjRibOutGroup_->buildAndSendGroupBgpMessages()));
 
   EXPECT_TRUE(adjRibOutGroup_->getAttrToPrefixMap().empty());
 
-  // This validates that async buildAndSendGroupBgpMessages can be called
-  // multiple times without errors, which is the key async refactoring behavior
+  /*
+   * This validates that async buildAndSendGroupBgpMessages can be called
+   * multiple times without errors, which is the key async refactoring behavior
+   */
 }
 
 /**
@@ -3869,8 +3905,10 @@ TEST_F(CanAnnounceForGroupFixture, IBgpNonRRClientGroup_BlocksIBgpToIBgpRoute) {
   auto groupKey = createGroupKey(BgpSessionType::IBGP, false /* isRrClient */);
   createAdjRibOutGroup("ibgp_group", 2, groupKey);
 
-  // IBGP non-RR group should NOT announce routes from IBGP non-RRC peer
-  // This is the IBGP-to-IBGP case without route reflection
+  /*
+   * IBGP non-RR group should NOT announce routes from IBGP non-RRC peer
+   * This is the IBGP-to-IBGP case without route reflection
+   */
   RibOutAnnouncementEntry iBgpEntry(
       kV4Prefix_, kDefaultPathID, iBgpPeer_, testAttrs_);
   EXPECT_FALSE(adjRibOutGroup_->canAnnounceForGroup(iBgpEntry));
@@ -3915,8 +3953,10 @@ TEST_F(AdjRibGroupTest, GetSubTreeFromLiteTreeNonLeafNode) {
   auto peerId = std::make_shared<nettools::bgplib::BgpPeerId>();
   auto peerOwnerKey = AdjRibOutOwnerKey::forPeer(peerId);
 
-  // Populate 10k /24 prefixes: 10.0.0.0/24 through 10.39.15.0/24
-  // (40 * 256 = 10240 prefixes, all under 10.0.0.0/8)
+  /*
+   * Populate 10k /24 prefixes: 10.0.0.0/24 through 10.39.15.0/24
+   * (40 * 256 = 10240 prefixes, all under 10.0.0.0/8)
+   */
   constexpr uint32_t kNumPrefixes = 10000;
   uint32_t count = 0;
   for (uint32_t second = 0; second < 40 && count < kNumPrefixes; ++second) {
@@ -4732,10 +4772,12 @@ TEST_F(
   }
   EXPECT_TRUE(foundStateTransitionLog);
 
-  // With no detached peers, checkAndAcceptReadyToJoinPeers must NOT emit a
-  // rejoin log line. The DBG1 log is gated on a non-empty detached set to
-  // avoid per-tick spam (it previously logged "Skipping 0 detached peers to
-  // try rejoin" on every consume tick).
+  /*
+   * With no detached peers, checkAndAcceptReadyToJoinPeers must NOT emit a
+   * rejoin log line. The DBG1 log is gated on a non-empty detached set to
+   * avoid per-tick spam (it previously logged "Skipping 0 detached peers to
+   * try rejoin" on every consume tick).
+   */
   bool foundRejoinLog = false;
   for (const auto& [msg, _] : messages) {
     if (msg.getMessage().find("detached peers to try rejoin") !=
@@ -4753,8 +4795,10 @@ TEST_F(
 
   folly::coro::blockingWait(adjRibOutGroup_->buildAndSendGroupBgpMessages());
 
-  // With detached peers, checkAndAcceptReadyToJoinPeers should log
-  // "Checking {} detached peers to try rejoin"
+  /*
+   * With detached peers, checkAndAcceptReadyToJoinPeers should log
+   * "Checking {} detached peers to try rejoin"
+   */
   bool foundCheckingDetachedPeersLog = false;
   for (const auto& [msg, _] : messages) {
     if (msg.getMessage().find("Checking 1 detached peers to try rejoin") !=

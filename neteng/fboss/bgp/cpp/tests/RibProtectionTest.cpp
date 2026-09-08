@@ -235,8 +235,10 @@ TEST_F(
       0, network1, attrs, switchLimitConfig));
 
   prefixSet->addPrefix(network2, false);
-  // Golden prefix policy is now applied, so non-golden prefix is dropped.
-  // For more tests, see RibPolicyTest.cpp.
+  /*
+   * Golden prefix policy is now applied, so non-golden prefix is dropped.
+   * For more tests, see RibPolicyTest.cpp.
+   */
   EXPECT_TRUE(adjRib_->dropPrefixForOverloadProtection(
       0, network2, attrs, switchLimitConfig));
 
@@ -292,8 +294,10 @@ TEST_F(
       0, network1, emptyAttrs, switchLimitConfig));
 
   prefixSet->addPrefix(network2, false);
-  // Golden prefix policy is now applied, so non-golden prefix is dropped.
-  // For more tests, see RibPolicyTest.cpp.
+  /*
+   * Golden prefix policy is now applied, so non-golden prefix is dropped.
+   * For more tests, see RibPolicyTest.cpp.
+   */
   EXPECT_TRUE(adjRib_->dropPrefixForOverloadProtection(
       0, network2, emptyAttrs, switchLimitConfig));
 
@@ -312,15 +316,19 @@ TEST_F(
   prefixSet->addPrefix(network3, true);
   EXPECT_EQ(1, prefixSet->goldenVipSize());
 
-  // Attempt to add a golden VIP, which exceeds golden VIP limit, should be
-  // disallowed.
+  /*
+   * Attempt to add a golden VIP, which exceeds golden VIP limit, should be
+   * disallowed.
+   */
   EXPECT_TRUE(adjRib_->dropPrefixForOverloadProtection(
       0, network4, goldenAttrs, switchLimitConfig));
   EXPECT_EQ(1, prefixSet->goldenVipSize());
 }
 
-// verify that when bgp starts and safe mode file already exists, we will run in
-// safe mode immediately without checking switch limit
+/*
+ * verify that when bgp starts and safe mode file already exists, we will run in
+ * safe mode immediately without checking switch limit
+ */
 TEST_F(
     AdjRibInboundFixture,
     DropPrefixForOverloadProtectionStickySafeModeTest) {
@@ -346,8 +354,10 @@ TEST_F(
   adjRib_->setSafeModeOn();
   EXPECT_TRUE(adjRib_->isSafeModeOn());
 
-  // non-golden prefix is dropped immediately without reaching switch level
-  // limit
+  /*
+   * non-golden prefix is dropped immediately without reaching switch level
+   * limit
+   */
   EXPECT_TRUE(adjRib_->dropPrefixForOverloadProtection(
       0, network2, attrs, switchLimitConfig));
 
@@ -366,9 +376,11 @@ TEST_F(
   evb_.loop();
 }
 
-// This test verifies the re-evaluation of AdjRib when recAddPath_ is
-// false(re-evaluation works on AdjRibInLiteTree_ tree) when safe mode is
-// triggered.
+/*
+ * This test verifies the re-evaluation of AdjRib when recAddPath_ is
+ * false(re-evaluation works on AdjRibInLiteTree_ tree) when safe mode is
+ * triggered.
+ */
 TEST_F(AdjRibInboundFixture, ProcessAdjRibReEvaluationForSafeModeTest) {
   setupAdjRib();
 
@@ -397,8 +409,10 @@ TEST_F(AdjRibInboundFixture, ProcessAdjRibReEvaluationForSafeModeTest) {
 
   fm_->addTask([&] {
     fiberSleepFor(10ms);
-    // Verify stats
-    // received 4
+    /*
+     * Verify stats
+     * received 4
+     */
     EXPECT_EQ(4, adjRib_->getStats().getPreInPrefixCount());
     // accepted by BGP 4
     EXPECT_EQ(4, adjRib_->getStats().getPostInPrefixCount());
@@ -432,9 +446,11 @@ TEST_F(AdjRibInboundFixture, ProcessAdjRibReEvaluationForSafeModeTest) {
   evb_.loop();
 }
 
-// This test verifies the re-evaluation of AdjRib for golden VIP when
-// recAddPath_ is false(re-evaluation works on AdjRibInLiteTree_ tree) when safe
-// mode is triggered.
+/*
+ * This test verifies the re-evaluation of AdjRib for golden VIP when
+ * recAddPath_ is false(re-evaluation works on AdjRibInLiteTree_ tree) when safe
+ * mode is triggered.
+ */
 TEST_F(
     AdjRibInboundFixture,
     ProcessAdjRibReEvaluationForSafeModeGoldenVIPsTest) {
@@ -451,8 +467,10 @@ TEST_F(
   setupAdjRib();
   adjRib_->switchLimitConfig_ = switchLimitConfig;
 
-  // Announce 4 prefixes, including 1 golden non-VIP prefix, and 2 golden VIPs
-  // and 1 non-golden non-VIP prefix
+  /*
+   * Announce 4 prefixes, including 1 golden non-VIP prefix, and 2 golden VIPs
+   * and 1 non-golden non-VIP prefix
+   */
 
   const std::vector<folly::CIDRNetwork> inputPrefixSet{
       goldenNonVip, nonGoldenNonVip};
@@ -476,8 +494,10 @@ TEST_F(
   fm_->addTask([&] {
     // Sleep for 50ms to allow all updates to be processed
     fiberSleepFor(50ms);
-    // Verify stats
-    // received 4
+    /*
+     * Verify stats
+     * received 4
+     */
     EXPECT_EQ(4, adjRib_->getStats().getPreInPrefixCount());
     // accepted by BGP 4
     EXPECT_EQ(4, adjRib_->getStats().getPostInPrefixCount());
@@ -507,8 +527,10 @@ TEST_F(
         fb303::ThreadCachedServiceData::get()->getCounter(
             PeerStats::kTotalGoldenVipPrefixes));
     EXPECT_EQ(1, prefixSet->goldenVipSize());
-    // verify mark an existing golden VIP won't cause kTotalGoldenVipPrefixes
-    // increase
+    /*
+     * verify mark an existing golden VIP won't cause kTotalGoldenVipPrefixes
+     * increase
+     */
     auto markedGoldenVip = goldenVip1Entry ? goldenVip1 : goldenVip2;
     prefixSet->markGoldenVip(markedGoldenVip);
     EXPECT_EQ(
@@ -523,9 +545,11 @@ TEST_F(
   evb_.loop();
 }
 
-// This test verifies the re-evaluation of AdjRib when recAddPath_ is
-// true(re-evaluation works on AdjRibInPathTree_ tree) when safe mode is
-// triggered.
+/*
+ * This test verifies the re-evaluation of AdjRib when recAddPath_ is
+ * true(re-evaluation works on AdjRibInPathTree_ tree) when safe mode is
+ * triggered.
+ */
 TEST_F(
     AdjRibInboundFixture,
     ProcessAdjRibReEvaluationForSafeModeWithRecAddPathTest) {
@@ -558,8 +582,10 @@ TEST_F(
 
   fm_->addTask([&] {
     fiberSleepFor(10ms);
-    // Verify stats
-    // received 5
+    /*
+     * Verify stats
+     * received 5
+     */
     EXPECT_EQ(5, adjRib_->getStats().getPreInPrefixCount());
     // accepted by BGP 5
     EXPECT_EQ(5, adjRib_->getStats().getPostInPrefixCount());
@@ -571,8 +597,10 @@ TEST_F(
     // Expect adjRibEntry to be kept for 1 golden prefix
     EXPECT_NE(nullptr, adjRib_->getRibEntry(/*ingress=*/true, goldenV4Prefix1));
 
-    // Since the subnet limit of 1 is exceeded, expect adjRibEntry to be cleared
-    // for the second golden prefix.
+    /*
+     * Since the subnet limit of 1 is exceeded, expect adjRibEntry to be cleared
+     * for the second golden prefix.
+     */
     EXPECT_EQ(nullptr, adjRib_->getRibEntry(/*ingress=*/true, goldenV4Prefix2));
 
     // Expect adjRibEntry to be cleared for 3 non-golden prefixes
@@ -640,9 +668,11 @@ TEST_F(AdjRibInboundFixture, ProcessAdjRibReEvaluationForSafeModeGrHelperTest) {
       // wait for sometime
       fiberSleepFor(10ms);
 
-      // Verify AdjRibStaleTree size is non-zero since we are in GR
-      // Note that size here is for num prefixes because only prefix
-      // is used as key to radix tree.
+      /*
+       * Verify AdjRibStaleTree size is non-zero since we are in GR
+       * Note that size here is for num prefixes because only prefix
+       * is used as key to radix tree.
+       */
       EXPECT_EQ(prefixSet1.size(), adjRib_->getRibInStaleTreeSize());
       // Verify AdjRibLiteTree size has gone to zero
       EXPECT_EQ(
@@ -675,9 +705,11 @@ TEST_F(AdjRibInboundFixture, ProcessAdjRibReEvaluationForSafeModeGrHelperTest) {
 
       EXPECT_EQ(prefixSet1.size(), adjRib_->getRibInStaleTreeSize());
 
-      // Execute policy re-evaluation
-      // Note: Here re-evaluation happens on prefixes present in AdjRibIn.
-      // prefixes in stale tree are purged after GR timer
+      /*
+       * Execute policy re-evaluation
+       * Note: Here re-evaluation happens on prefixes present in AdjRibIn.
+       * prefixes in stale tree are purged after GR timer
+       */
       folly::coro::blockingWait(
           adjRib_->processAdjRibReEvaluation(RibPauseResumeCause::SAFE_MODE));
 
@@ -727,8 +759,10 @@ TEST_F(AdjRibInboundFixture, SafeModeSubnetLimitAppliesToNewPrefixUpdates) {
             folly::coro::blockingWait(ribInQ_.pop())));
     fiberSleepFor(10ms); // sleep to yield thread to adjrib
 
-    // 2 prefixes were sent, but the second is dropped because the subnet limit
-    // of 1 is exceeded.
+    /*
+     * 2 prefixes were sent, but the second is dropped because the subnet limit
+     * of 1 is exceeded.
+     */
     EXPECT_EQ(1, adjRib_->getStats().getPreInPrefixCount());
     EXPECT_EQ(1, adjRib_->getStats().getPostInPrefixCount());
     EXPECT_EQ(
@@ -754,8 +788,10 @@ TEST_F(AdjRibInboundFixture, SafeModeSubnetLimitAppliesToNewPrefixUpdates) {
 
     // Re-announce goldenV4Prefix2.
     adjRibInQ_->fiberPush(createV4BgpUpdateSingleAnnounce(goldenV4Prefix2));
-    // Since goldenV4Prefix1 is withdrawn, goldenV4Prefix2 is the only subnet,
-    // so it's now accepted and announced.
+    /*
+     * Since goldenV4Prefix1 is withdrawn, goldenV4Prefix2 is the only subnet,
+     * so it's now accepted and announced.
+     */
     ASSERT_TRUE(
         std::holds_alternative<RibInAnnouncement>(
             folly::coro::blockingWait(ribInQ_.pop())));
@@ -1187,12 +1223,16 @@ TEST_F(AdjRibInboundFixture, IsGoldenVipTest) {
   EXPECT_FALSE(AdjRib::isGoldenVip(nonGoldenCommunities));
 }
 
-// Verify percentage set to default if invalid one is provided and verify the
-// case when set to unlimitted
+/*
+ * Verify percentage set to default if invalid one is provided and verify the
+ * case when set to unlimitted
+ */
 TEST_F(AdjRibInboundFixture, CheckLimitAndAlarmInvalidInputTest) {
-  // send 4 prefixes
-  // premax = 0, unlimited, not alarm
-  // % = 200, will be set to default (100%), not alarm
+  /*
+   * send 4 prefixes
+   * premax = 0, unlimited, not alarm
+   * % = 200, will be set to default (100%), not alarm
+   */
   setupAdjRib(
       kShortGrRestartTime,
       std::nullopt, // remoteGrRestartTime
@@ -1227,8 +1267,10 @@ TEST_F(AdjRibInboundFixture, CheckLimitAndAlarmInvalidInputTest) {
 
   fm_->addTask([&] {
     fiberSleepFor(10ms);
-    // Verify stats
-    // received 4
+    /*
+     * Verify stats
+     * received 4
+     */
     EXPECT_EQ(4, adjRib_->getStats().getPreInPrefixCount());
     // accepted 4
     EXPECT_EQ(4, adjRib_->getStats().getPostInPrefixCount());
@@ -1345,8 +1387,10 @@ TEST_F(
     okToSend1.post();
     okToCheck.wait();
     fiberSleepFor(2ms);
-    // route counts going up
-    // received 3, 1 of them get dropped because pre max = 3
+    /*
+     * route counts going up
+     * received 3, 1 of them get dropped because pre max = 3
+     */
     EXPECT_EQ(3, adjRib_->getStats().getPreInPrefixCount());
     // accepted 3
     EXPECT_EQ(3, adjRib_->getStats().getPostInPrefixCount());
@@ -1354,8 +1398,10 @@ TEST_F(
     okToSend2.post();
     okToCheck.wait();
     fiberSleepFor(2ms);
-    // route counts going down (by sending withdrawl)
-    // received 2
+    /*
+     * route counts going down (by sending withdrawl)
+     * received 2
+     */
     EXPECT_EQ(2, adjRib_->getStats().getPreInPrefixCount());
     // accepted 2
     EXPECT_EQ(2, adjRib_->getStats().getPostInPrefixCount());
@@ -1366,8 +1412,10 @@ TEST_F(
     okToSend3.post();
     okToCheck.wait();
     fiberSleepFor(2ms);
-    // route counts going down again (by sending withdrawl)
-    // received 1
+    /*
+     * route counts going down again (by sending withdrawl)
+     * received 1
+     */
     EXPECT_EQ(1, adjRib_->getStats().getPreInPrefixCount());
     // accepted 1
     EXPECT_EQ(1, adjRib_->getStats().getPostInPrefixCount());
@@ -1375,8 +1423,10 @@ TEST_F(
     okToSend4.post();
     okToCheck.wait();
     fiberSleepFor(2ms);
-    // route counts going up again
-    // received 2
+    /*
+     * route counts going up again
+     * received 2
+     */
     EXPECT_EQ(2, adjRib_->getStats().getPreInPrefixCount());
     // accepted 2
     EXPECT_EQ(2, adjRib_->getStats().getPostInPrefixCount());
@@ -1444,8 +1494,10 @@ TEST_F(AdjRibInboundFixture, CheckLimitAndAlarmEnableBothTest) {
     okToSend1.post();
     okToCheck.wait();
     fiberSleepFor(2ms);
-    // route counts going up
-    // received 4, nothing got dropped because we set max to be 5
+    /*
+     * route counts going up
+     * received 4, nothing got dropped because we set max to be 5
+     */
     EXPECT_EQ(2, adjRib_->getStats().getPreInPrefixCount());
     // accepted 2
     EXPECT_EQ(2, adjRib_->getStats().getPostInPrefixCount());
@@ -1510,8 +1562,10 @@ TEST_F(AdjRibInboundFixture, CheckRecCounterCorrectness) {
     okToSend1.post();
     okToCheck.wait();
     fiberSleepFor(2ms);
-    // route counts going up
-    // received 4, nothing got dropped because we set max to be 5
+    /*
+     * route counts going up
+     * received 4, nothing got dropped because we set max to be 5
+     */
     EXPECT_EQ(4, adjRib_->getStats().getPreInPrefixCount());
     // accepted 2
     EXPECT_EQ(2, adjRib_->getStats().getPostInPrefixCount());
@@ -1523,8 +1577,10 @@ TEST_F(AdjRibInboundFixture, CheckRecCounterCorrectness) {
 
 // Verify we do shutdown peer when exceed max limit
 TEST_F(AdjRibInboundFixture, CheckLimitAndAlarmNoWarningOnlyTest) {
-  // send 4 prefixes
-  // max = 3, warning-limit not used, warning-only false
+  /*
+   * send 4 prefixes
+   * max = 3, warning-limit not used, warning-only false
+   */
   setupAdjRib(
       kShortGrRestartTime,
       std::nullopt, // remoteGrRestartTime
@@ -1557,15 +1613,19 @@ TEST_F(AdjRibInboundFixture, CheckLimitAndAlarmNoWarningOnlyTest) {
 
   fm_->addTask([&] {
     fiberSleepFor(10ms);
-    // Verify stats
-    // received 3
+    /*
+     * Verify stats
+     * received 3
+     */
     EXPECT_EQ(3, adjRib_->getStats().getPreInPrefixCount());
     // accepted 3
     EXPECT_EQ(3, adjRib_->getStats().getPostInPrefixCount());
 
-    // The 4th prefix is dropped by the per-peer route cap. No switch-limit /
-    // overload-protection config is set here, so this verifies droppedPrefixes
-    // is populated even when NOT in overload protection mode. See S676351.
+    /*
+     * The 4th prefix is dropped by the per-peer route cap. No switch-limit /
+     * overload-protection config is set here, so this verifies droppedPrefixes
+     * is populated even when NOT in overload protection mode. See S676351.
+     */
     EXPECT_EQ(
         1,
         fb303::ThreadCachedServiceData::get()->getCounter(

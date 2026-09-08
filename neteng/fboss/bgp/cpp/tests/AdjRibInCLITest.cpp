@@ -548,15 +548,19 @@ TEST_F(AdjRibInboundFixture, V4GetNetworks2_Advertised) {
   evb_.loop();
 }
 
-// With update groups, an in-sync peer's RIB-OUT entries are stored under the
-// group owner key. getNetworks2 must surface them — previously it looked up
-// only the peer owner key and returned nothing.
+/*
+ * With update groups, an in-sync peer's RIB-OUT entries are stored under the
+ * group owner key. getNetworks2 must surface them — previously it looked up
+ * only the peer owner key and returned nothing.
+ */
 TEST_F(
     AdjRibInboundFixture,
     V4GetNetworks2_AdvertisedGroupKeyVisibleToInSyncPeer) {
   setupAdjRib();
-  // The fixture's default group is update-group-disabled; attach an enabled
-  // group so the resolver consults the group owner key.
+  /*
+   * The fixture's default group is update-group-disabled; attach an enabled
+   * group so the resolver consults the group owner key.
+   */
   adjRib_->setUpdateGroup(
       std::make_shared<AdjRibOutGroup>(
           evb_, "ug", 1, /*enableUpdateGroup=*/true, UpdateGroupKey{}));
@@ -576,8 +580,10 @@ TEST_F(
     groupEntry->setRibVersion(kEntryVersion);
     group->setLastSeenRibVersion(kEntryVersion);
 
-    // A direct peer-owner-key lookup finds nothing — the entry lives under the
-    // group key (this is precisely the bug the resolver fixes).
+    /*
+     * A direct peer-owner-key lookup finds nothing — the entry lives under the
+     * group key (this is precisely the bug the resolver fixes).
+     */
     EXPECT_EQ(
         nullptr,
         group->getFromLiteTree(
@@ -594,13 +600,17 @@ TEST_F(
   evb_.loop();
 }
 
-// A detached peer shares only group entries at/below its detach version; a
-// post-detach group entry it never saw must be omitted (the "missing" per-peer
-// entry is expected, not a bug).
+/*
+ * A detached peer shares only group entries at/below its detach version; a
+ * post-detach group entry it never saw must be omitted (the "missing" per-peer
+ * entry is expected, not a bug).
+ */
 TEST_F(AdjRibInboundFixture, V4GetNetworks2_AdvertisedDetachedVersionGate) {
   setupAdjRib();
-  // The fixture's default group is update-group-disabled; attach an enabled
-  // group so the resolver consults the group owner key.
+  /*
+   * The fixture's default group is update-group-disabled; attach an enabled
+   * group so the resolver consults the group owner key.
+   */
   adjRib_->setUpdateGroup(
       std::make_shared<AdjRibOutGroup>(
           evb_, "ug", 1, /*enableUpdateGroup=*/true, UpdateGroupKey{}));
@@ -639,9 +649,11 @@ TEST_F(AdjRibInboundFixture, V4GetNetworks2_AdvertisedDetachedVersionGate) {
   evb_.loop();
 }
 
-// With update group disabled, a group-owner-key entry is invisible to the peer:
-// the show consults only the peer owner key. Guards the explicit
-// enableUpdateGroup_ gate in the resolver.
+/*
+ * With update group disabled, a group-owner-key entry is invisible to the peer:
+ * the show consults only the peer owner key. Guards the explicit
+ * enableUpdateGroup_ gate in the resolver.
+ */
 TEST_F(
     AdjRibInboundFixture,
     V4GetNetworks2_AdvertisedDisabledUpdateGroupIgnoresGroupKey) {

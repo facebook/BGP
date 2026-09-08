@@ -44,9 +44,9 @@ namespace facebook::bgp {
 using nettools::bgplib::DeDuplicatedBgpPath;
 using ::testing::ElementsAre;
 
-//
-// The fixture provides fiber manager and evb for outbound related tests
-//
+/*
+ * The fixture provides fiber manager and evb for outbound related tests
+ */
 class AdjRibOutboundFixture : public ::testing::Test {
  public:
   void SetUp() override {
@@ -146,8 +146,10 @@ class AdjRibOutboundFixture : public ::testing::Test {
 
   void TestBody() override {}
 
-  // Sets up all the peer-adjs. It is expected that clients pass 3 or 4
-  // peer parameters to be set up.
+  /*
+   * Sets up all the peer-adjs. It is expected that clients pass 3 or 4
+   * peer parameters to be set up.
+   */
   void setupOutDelayAdjs(
       std::vector<std::tuple<
           std::shared_ptr<AdjRib::AdjRibInQueueT>&,
@@ -338,13 +340,17 @@ bool findPrefixInWithdrawals(
     const folly::CIDRNetwork& expectedCidr,
     uint32_t addPathId = 0);
 
-// Collect every announced (REACH) prefix in an UPDATE, across the v4 and MP
-// NLRI lists, as CIDRs.
+/*
+ * Collect every announced (REACH) prefix in an UPDATE, across the v4 and MP
+ * NLRI lists, as CIDRs.
+ */
 std::vector<folly::CIDRNetwork> getAnnouncedPrefixes(
     const nettools::bgplib::BgpUpdate2& update);
 
-// Collect every withdrawn (UNREACH) prefix in an UPDATE, across the v4 and MP
-// NLRI lists, as CIDRs.
+/*
+ * Collect every withdrawn (UNREACH) prefix in an UPDATE, across the v4 and MP
+ * NLRI lists, as CIDRs.
+ */
 std::vector<folly::CIDRNetwork> getWithdrawnPrefixes(
     const nettools::bgplib::BgpUpdate2& update);
 

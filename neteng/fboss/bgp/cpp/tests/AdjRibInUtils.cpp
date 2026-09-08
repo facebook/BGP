@@ -784,10 +784,12 @@ void AdjRibInboundFixture::reEstablishSession(
     const AfiIpv4Negotiated& isAfiIpv4Negotiated,
     const AfiIpv6Negotiated& isAfiIpv6Negotiated,
     const std::optional<uint32_t>& remoteAs) {
-  // Mimic PeerManagerBase::sessionEstablished by ensuring the async scope is
-  // re-initialized before re-establishing the session. This joins the
-  // cancelled scope from the previous session and creates a fresh one.
-  // Must be called from fiber context (within fm_->addTask).
+  /*
+   * Mimic PeerManagerBase::sessionEstablished by ensuring the async scope is
+   * re-initialized before re-establishing the session. This joins the
+   * cancelled scope from the previous session and creates a fresh one.
+   * Must be called from fiber context (within fm_->addTask).
+   */
   folly::coro::blockingWait(adjRib_->ensureAsyncScopeInitialized());
 
   adjRib_->sessionEstablished(
