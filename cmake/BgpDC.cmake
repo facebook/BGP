@@ -75,6 +75,7 @@ set(BGP_DC_FBOSS_LIBRARY_NAMES
   qsfp_state_cpp2
   qsfp_stats_cpp2
   sensor_service_stats_cpp2
+  te_srv6_agent_stats_cpp2
   # Leaf thrift dependencies pulled in by qsfp_state and sensor_service.
   qsfp_config_cpp2
   port_state_cpp2
