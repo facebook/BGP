@@ -28,6 +28,12 @@
       FiberBgpPeerManagerFixture, ActiveConnectUseAfterFreeViaPeerStart);     \
   FRIEND_TEST(                                                                \
       FiberBgpPeerManagerFixture,                                             \
+      AddressLevelPeerUpIgnoresStaleStaticRouterId);                          \
+  FRIEND_TEST(                                                                \
+      FiberBgpPeerManagerFixture,                                             \
+      AddressLevelPeerUpPreservesDynamicAllSessionsSemantics);                \
+  FRIEND_TEST(                                                                \
+      FiberBgpPeerManagerFixture,                                             \
       ActiveConnectUseAfterFreeViaSessionTeardown);                           \
   FRIEND_TEST(                                                                \
       FiberBgpPeerManagerFixture,                                             \
@@ -400,6 +406,79 @@ TEST(BgpPeerId, BgpPeerIdOdsKeyEqualityTest) {
   EXPECT_NE(bgpPeerId1.peerDescription, bgpPeerId2.peerDescription);
   EXPECT_NE(bgpPeerId2.peerDescription, bgpPeerId3.peerDescription);
   EXPECT_NE(bgpPeerId3.peerDescription, bgpPeerId1.peerDescription);
+}
+
+TEST_F(
+    FiberBgpPeerManagerFixture,
+    AddressLevelPeerUpIgnoresStaleStaticRouterId) {
+  auto& fm = fmWrapper.get();
+  initTwoPeerMgrs(fm);
+
+  fm.addTask([this] {
+    auto peerInfo = std::make_shared<BgpPeerInfoInternal>();
+    auto staleSession = std::make_shared<BgpSessionInfo>();
+    staleSession->numResets = 3;
+    const auto staleBgpId = IPAddressV4("192.0.2.1").toLongHBO();
+    peerInfo->sessionInfos.emplace(staleBgpId, staleSession);
+
+    auto establishedSession = std::make_shared<BgpSessionInfo>();
+    establishedSession->establishedSessionInfo =
+        std::make_shared<BgpPeerActiveSessionInfo>();
+    const auto establishedBgpId = IPAddressV4("192.0.2.2").toLongHBO();
+    peerInfo->sessionInfos.emplace(establishedBgpId, establishedSession);
+    peerMgr1->allPeers_[peerAddr1] = peerInfo;
+
+    EXPECT_EQ(2, peerInfo->sessionInfos.size());
+    EXPECT_TRUE(peerInfo->sessionInfos.contains(staleBgpId));
+    EXPECT_EQ(3, peerInfo->sessionInfos.at(staleBgpId)->numResets);
+    EXPECT_EQ(establishedSession, peerInfo->sessionInfos.at(establishedBgpId));
+    EXPECT_FALSE(peerMgr1->isPeerUp(BgpPeerId{peerAddr1, staleBgpId}));
+    EXPECT_TRUE(peerMgr1->isPeerUp(BgpPeerId{peerAddr1, establishedBgpId}));
+    EXPECT_TRUE(peerMgr1->isPeerUp(peerAddr1));
+
+    peerMgr1->shutdownWithGR(false);
+    peerMgr2->shutdownWithGR(false);
+  });
+
+  evb.loop();
+}
+
+TEST_F(
+    FiberBgpPeerManagerFixture,
+    AddressLevelPeerUpPreservesDynamicAllSessionsSemantics) {
+  auto& fm = fmWrapper.get();
+  initTwoPeerMgrs(fm);
+
+  fm.addTask([this] {
+    auto peerInfo = std::make_shared<BgpPeerInfoInternal>();
+    const auto peerPrefix = folly::IPAddress::createNetwork("127.0.0.0/8");
+    peerInfo->peeringParams.peerPrefix = peerPrefix;
+    peerMgr1->dynamicPeerGroups_[peerPrefix] =
+        std::make_shared<BgpDynamicPeerGroupInfo>();
+
+    const auto staleBgpId = IPAddressV4("192.0.2.1").toLongHBO();
+    auto staleSession = std::make_shared<BgpSessionInfo>();
+    staleSession->numResets = 3;
+    peerInfo->sessionInfos.emplace(staleBgpId, staleSession);
+
+    const auto establishedBgpId = IPAddressV4("192.0.2.2").toLongHBO();
+    auto establishedSession = std::make_shared<BgpSessionInfo>();
+    establishedSession->establishedSessionInfo =
+        std::make_shared<BgpPeerActiveSessionInfo>();
+    peerInfo->sessionInfos.emplace(establishedBgpId, establishedSession);
+    peerMgr1->allPeers_[peerAddr1] = peerInfo;
+
+    EXPECT_EQ(2, peerInfo->sessionInfos.size());
+    EXPECT_TRUE(peerInfo->sessionInfos.contains(staleBgpId));
+    EXPECT_EQ(3, peerInfo->sessionInfos.at(staleBgpId)->numResets);
+    EXPECT_EQ(establishedSession, peerInfo->sessionInfos.at(establishedBgpId));
+    EXPECT_FALSE(peerMgr1->isPeerUp(peerAddr1));
+
+    peerMgr1->shutdownWithGR(false);
+    peerMgr2->shutdownWithGR(false);
+  });
+
+  evb.loop();
 }
 
 TEST_F(

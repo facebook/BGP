@@ -2088,12 +2088,26 @@ bool FiberBgpPeerManager::isPeerUp(const IPAddress& peerAddr) const {
   if (peerInfo->sessionInfos.empty()) {
     return false;
   }
+
+  /*
+   * Preserve the existing lifetime of sessionInfos: detached entries carry
+   * status and reset history and removing them could regress other consumers.
+   * A static address represents one configured neighbor, so any established
+   * entry makes that address live even when an old router-ID entry remains.
+   * Dynamic peer addresses can represent multiple logical speakers and retain
+   * their existing requirement that every known session be established.
+   */
+  // A matching configured prefix identifies this address as a dynamic peer.
+  const bool isDynamicPeer = getPeerPrefix(peerAddr).has_value();
+  bool hasEstablishedSession{false};
   for (const auto& [_, sessionInfo] : peerInfo->sessionInfos) {
-    if (!sessionInfo->establishedSessionInfo) {
+    if (sessionInfo->establishedSessionInfo) {
+      hasEstablishedSession = true;
+    } else if (isDynamicPeer) {
       return false;
     }
   }
-  return true;
+  return hasEstablishedSession;
 }
 
 std::optional<std::vector<BgpPeerDisplayInfo>>

@@ -403,7 +403,10 @@ struct BgpPeerInfoInternal {
       connectionInfos;
   /*
    * BgpEstablishedSessionInfo per remoteBgpId, each created when BGP session is
-   * established. SessionInfo will be kept even after it's down.
+   * established. SessionInfo is intentionally retained after the session goes
+   * down so existing consumers continue to have its reset and status history.
+   * Address-level liveness must ignore detached historical entries rather than
+   * deleting them as part of a liveness check.
    */
   std::
       unordered_map<uint32_t /* remoteBgpId */, std::shared_ptr<BgpSessionInfo>>
@@ -686,7 +689,11 @@ class FiberBgpPeerManager
   folly::Expected<folly::Unit, ErrorCode> sendEndOfRib(
       const BgpPeerId& peerId) const;
 
-  // Returns true if all connections has been fully established with peer
+  /*
+   * Returns true when a static peer has any established session, ignoring
+   * retained state for previous router IDs. Dynamic peers retain the existing
+   * requirement that all known sessions are established.
+   */
   bool isPeerUp(const folly::IPAddress& peerAddr) const;
 
   // Returns true if a connection has been fully established with peer
