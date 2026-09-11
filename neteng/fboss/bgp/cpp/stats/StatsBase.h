@@ -37,6 +37,8 @@ using folly::string_literals::operator""_fs;
 namespace BgpStats {
 constexpr auto kNoPrefixSent = "bgpd.noPrefixSent"_fs;
 constexpr auto kConfiguredPeers = "bgpd.configuredPeers"_fs;
+// Peer groups that currently have at least one Established session
+constexpr auto kNumLivePeerGroups = "bgpd.num_live_peer_groups"_fs;
 constexpr auto kPolicySymlink = "bgpd.policySymlink"_fs;
 constexpr auto kStatefulGR = "bgpd.statefulGR"_fs;
 constexpr auto kEorTimerExpired = "bgpd.eorTimerExpired"_fs;
@@ -288,6 +290,7 @@ void addSessionStateChanges();
  * configured peers.
  */
 void setConfiguredPeers(uint32_t val);
+void setNumLivePeerGroups(uint32_t val);
 
 /*
  * Set 1 if --policy gFlag has valid symbolic link

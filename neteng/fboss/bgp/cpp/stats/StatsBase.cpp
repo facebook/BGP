@@ -67,6 +67,7 @@ void initCounters() {
    * count.
    */
   fb303::ThreadCachedServiceData::get()->setCounter(kRunningSessions, -1);
+  fb303::ThreadCachedServiceData::get()->setCounter(kNumLivePeerGroups, -1);
   fb303::ThreadCachedServiceData::get()->setCounter(kOpenRejectAsnMismatch, 0);
   fb303::ThreadCachedServiceData::get()->addStatExportType(
       kOpenRejectAsnMismatch, fb303::SUM);
@@ -238,6 +239,10 @@ void addSessionStateChanges() {
 
 void setConfiguredPeers(uint32_t val) {
   fb303::ThreadCachedServiceData::get()->setCounter(kConfiguredPeers, val);
+}
+
+void setNumLivePeerGroups(uint32_t val) {
+  fb303::ThreadCachedServiceData::get()->setCounter(kNumLivePeerGroups, val);
 }
 
 void setPolicySymlink(uint32_t val) {

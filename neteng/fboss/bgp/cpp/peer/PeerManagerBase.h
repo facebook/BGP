@@ -1220,6 +1220,18 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
       const folly::IPAddress& peerAddr,
       bool isTerminated) noexcept;
 
+  /*
+   * Refcount a peer group as one of its sessions comes up / goes down,
+   * republishing the gauge only when the distinct-group count actually moves.
+   * Callers skip these for a peer that belongs to no group.
+   *
+   * peerGroupName is fixed for an AdjRib's lifetime (it is copied once into
+   * PeeringParams and never reassigned), so the name seen at teardown is
+   * always the one counted at establish.
+   */
+  void addLivePeerGroup(const std::string& peerGroupName) noexcept;
+  void removeLivePeerGroup(const std::string& peerGroupName) noexcept;
+
   /**
    * @brief Helper method for updateIngressEgressPolicyNames to process each
    * adjRib
@@ -1553,6 +1565,14 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
 
   // Peers in established state with GR capability
   std::unordered_set<nettools::bgplib::BgpPeerId> establishedGrPeers_;
+
+  /*
+   * Peer groups that currently have at least one Established session,
+   * refcounted by session. Many peers share one group name, so the reported
+   * gauge is the map's size, not the sum of its counts. A group drops out only
+   * when its last session goes down.
+   */
+  folly::F14FastMap<std::string, uint32_t> livePeerGroups_;
 
   bool grStateSaved_{false};
   bool grStateLoaded_{false};

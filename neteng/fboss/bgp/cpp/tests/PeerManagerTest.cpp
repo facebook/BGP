@@ -33,6 +33,8 @@
   FRIEND_TEST(PeerManagerTestFixture, StatefulGrConfigDisabled);               \
   FRIEND_TEST(PeerManagerTestFixture, StatefulGrConfigEnabled);                \
   FRIEND_TEST(PeerManagerTestFixture, MultipleFlapTest);                       \
+  FRIEND_TEST(PeerManagerTestFixture, LivePeerGroupsRefcountTest);             \
+  FRIEND_TEST(PeerManagerTestFixture, LivePeerGroupsSessionLifecycleTest);     \
   FRIEND_TEST(PeerManagerTestFixture, MultipleFlapMultiplePeersTest);          \
   FRIEND_TEST(PeerManagerTestFixture, NullLinkBandwidthBpsTest);               \
   FRIEND_TEST(PeerManagerTestFixture, NullLinkBandwidthBpsReceiveTest);        \
@@ -7626,6 +7628,122 @@ TEST_F(PeerManagerTestFixture, RouteRefreshReceived_TriggersRibDumpWithFlag) {
   EXPECT_TRUE(req.routeRefresh);
   ASSERT_TRUE(req.filterAfi.has_value());
   EXPECT_EQ(*req.filterAfi, nettools::bgplib::BgpUpdateAfi::AFI_IPv4);
+}
+
+/**
+ * @brief  bgpd.num_live_peer_groups counts DISTINCT groups holding at least one
+ *         session, so a group must survive until its last session leaves.
+ */
+TEST_F(PeerManagerTestFixture, LivePeerGroupsRefcountTest) {
+  auto mockPeerMgr = setupMockPeerManager(
+      true /* includeStaticPeer */, false /* includeDynamicShivPeer */);
+
+  auto liveGroups = []() {
+    auto tcData = fb303::ThreadCachedServiceData::get();
+    tcData->publishStats();
+    return tcData->getCounter(BgpStats::kNumLivePeerGroups);
+  };
+  const std::string groupA{"GROUP_A"};
+  const std::string groupB{"GROUP_B"};
+
+  // Two sessions in one group count that group once
+  mockPeerMgr->addLivePeerGroup(groupA);
+  EXPECT_EQ(1, liveGroups());
+  mockPeerMgr->addLivePeerGroup(groupA);
+  EXPECT_EQ(1, liveGroups());
+
+  mockPeerMgr->addLivePeerGroup(groupB);
+  EXPECT_EQ(2, liveGroups());
+
+  // GROUP_A still has one session left, so it stays live
+  mockPeerMgr->removeLivePeerGroup(groupA);
+  EXPECT_EQ(2, liveGroups());
+  mockPeerMgr->removeLivePeerGroup(groupA);
+  EXPECT_EQ(1, liveGroups());
+
+  /*
+   * A terminate for a session that was never counted (its establish was
+   * dropped on a fast flap) must not underflow the surviving group.
+   */
+  mockPeerMgr->removeLivePeerGroup(groupA);
+  EXPECT_EQ(1, liveGroups());
+
+  mockPeerMgr->removeLivePeerGroup(groupB);
+  EXPECT_EQ(0, liveGroups());
+}
+
+/**
+ * @brief  The gauge is driven by real session state: it rises on
+ *         sessionEstablished and falls again on sessionTerminated.
+ */
+TEST_F(PeerManagerTestFixture, LivePeerGroupsSessionLifecycleTest) {
+  auto mockPeerMgr = setupMockPeerManager(
+      true /* includeStaticPeer */, true /* includeDynamicShivPeer */);
+  auto sessionMgr = setupMockSessionManager(mockPeerMgr);
+  uint64_t version = 0x100;
+  auto versionNumber = std::make_shared<VersionNumber>(version);
+
+  auto sessionMgrThread = sessionMgr->runInThread();
+
+  auto& evb = mockPeerMgr->getEventBase();
+  auto& fm =
+      folly::fibers::getFiberManager(mockPeerMgr->getEventBase(), options_);
+  fm.addTask([&] {
+    mockPeerMgr->ribInitPathComputationNotified_ = false;
+
+    auto liveGroups = []() {
+      auto tcData = fb303::ThreadCachedServiceData::get();
+      tcData->publishStats();
+      return tcData->getCounter(BgpStats::kNumLivePeerGroups);
+    };
+
+    auto mockInfo = mockInfo1_;
+    mockInfo.peeringParams.peerGroupName = "PEERGROUP_LIVE_TEST";
+
+    auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
+        mockInfo,
+        sessionMgr->iQueue_,
+        sessionMgr->boundedIqueue_,
+        sessionMgr->oQueue_,
+        versionNumber);
+
+    FiberBgpPeer::ObservableStateT stateEvent{
+        .peerId = kPeerId3,
+        .versionNumber = version,
+        .remoteAs = mockInfo.peeringParams.remoteAs,
+        .sessionInfo = sessionInfo};
+
+    folly::coro::blockingWait(mockPeerMgr->sessionEstablished(stateEvent));
+    auto adjRib = mockPeerMgr->findAdjRib(kPeerId3);
+    ASSERT_EQ(true, adjRib->isStateEstablished());
+    EXPECT_EQ(1, liveGroups());
+
+    fiberSleepFor(20ms);
+
+    sessionMgr->oQueue_->open();
+    sessionMgr->oQueue_->fiberPush(
+        FiberBgpPeer::BgpSessionStop{GracefulRestartFlag{false}});
+    stateEvent.versionNumber = ++version;
+    sessionInfo->currentVersion = std::make_shared<VersionNumber>(version);
+
+    folly::coro::blockingWait(mockPeerMgr->sessionTerminated(stateEvent));
+    ASSERT_EQ(false, adjRib->isStateEstablished());
+    EXPECT_EQ(0, liveGroups());
+
+    auto batonIt = mockPeerMgr->sessionTerminateBatons_.find(kPeerId3);
+    ASSERT_NE(batonIt, mockPeerMgr->sessionTerminateBatons_.end());
+    batonIt->second->post();
+
+    folly::LoggerDB::get().getCategory("")->clearHandlers();
+
+    // Explicitly stop the peer manager to cancel all coro tasks
+    mockPeerMgr->stop();
+    sessionMgr->stop();
+  });
+
+  evb.loop();
+  sessionMgrThread.join();
+  SUCCEED();
 }
 
 } // namespace bgp

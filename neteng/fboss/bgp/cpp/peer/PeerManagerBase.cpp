@@ -2554,6 +2554,30 @@ void PeerManagerBase::updateNonGracefulCounters(
   }
 }
 
+void PeerManagerBase::addLivePeerGroup(
+    const std::string& peerGroupName) noexcept {
+  if (++livePeerGroups_[peerGroupName] == 1) {
+    BgpStats::setNumLivePeerGroups(livePeerGroups_.size());
+  }
+}
+
+void PeerManagerBase::removeLivePeerGroup(
+    const std::string& peerGroupName) noexcept {
+  auto it = livePeerGroups_.find(peerGroupName);
+  /*
+   * A terminate can arrive for a session we never counted (the establish was
+   * ignored because the peer flapped before we processed it), so an absent
+   * entry is expected rather than an invariant break.
+   */
+  if (it == livePeerGroups_.end()) {
+    return;
+  }
+  if (--it->second == 0) {
+    livePeerGroups_.erase(it);
+    BgpStats::setNumLivePeerGroups(livePeerGroups_.size());
+  }
+}
+
 folly::coro::Task<void> PeerManagerBase::waitForSessionTerminateBaton(
     const BgpPeerId& peerId) noexcept {
   /*
@@ -2991,6 +3015,18 @@ folly::coro::Task<void> PeerManagerBase::sessionEstablished(
     BgpStats::incrPeerAddrToIdsCount();
   }
 
+  /*
+   * Read the group off the AdjRib, not off peerInfo. A flapping peer keeps its
+   * existing AdjRib (createAdjRib is skipped when one is already present), so
+   * the event's peeringParams can carry a newer config than the AdjRib does.
+   * The AdjRib's copy never changes for its lifetime, so sourcing both the
+   * add and the remove from it keeps them symmetric.
+   */
+  const auto& peerGroupName = adjRib->getPeeringParams().peerGroupName;
+  if (peerGroupName.has_value()) {
+    addLivePeerGroup(*peerGroupName);
+  }
+
   // Track peers which have negotiated graceful restart for stateful GR
   if (*peerInfo->negotiatedCapabilities.gracefulRestart()) {
     if (establishedGrPeers_.insert(peerId).second) {
@@ -3146,6 +3182,11 @@ folly::coro::Task<void> PeerManagerBase::sessionTerminated(
 
   if (evt.lastResetReason == ResetReason::HOLD_TIMER_EXPIRE) {
     PeerStats::incrTotalHoldTimerExpiry();
+  }
+
+  const auto& peerGroupName = adjRib->getPeeringParams().peerGroupName;
+  if (peerGroupName.has_value()) {
+    removeLivePeerGroup(*peerGroupName);
   }
 
   if (establishedGrPeers_.find(peerId) != establishedGrPeers_.end()) {
