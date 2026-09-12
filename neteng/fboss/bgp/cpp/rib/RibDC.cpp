@@ -1346,6 +1346,18 @@ std::pair<bool, bool> RibDC::runBestPathSelection(RibEntry& entry) noexcept {
   return result;
 }
 
+bool RibDC::shouldReadvertiseBestpathOnMultipathSizeChange(
+    const RibEntry& entry) const noexcept {
+  /*
+   * In both UCMP and GAR, a multipath size change will most likely require
+   * best-path re-advertisement because capacity or topology metadata has
+   * changed. UCMP already relies on aggregate link bandwidth as an indicator,
+   * while multipath size is a more deterministic and reliable signal for both.
+   */
+  const auto* bestpath = entry.getBestPathRaw();
+  return bestpath && bestpath->attrs->hasNonTransitiveLbwExtCommunity();
+}
+
 void RibDC::onPrepareFibProgrammingComplete(bool fullSync) noexcept {
   /*
    * The initial pending value publishes an explicit not-drained baseline

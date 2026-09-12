@@ -2272,6 +2272,8 @@ void RibBase::handleFibProgrammedMessage(
         newlyInstalledInLocalRib = true;
       }
 
+      const auto prevAdvertisedMultipathSize =
+          entry.getAdvertisedMultipaths().size();
       if (entry.commitMultipaths() && entry.bestpath_) {
         /*
          * TODO: It looks here that we are re-advertising all paths whether or
@@ -2358,8 +2360,12 @@ void RibBase::handleFibProgrammedMessage(
       entry.setRibVersion(currentRibVersion);
 
       if (!entry.commitBestpath()) {
-        // bestpath did not change, no need for new advertisement
-        continue;
+        if (!shouldReadvertiseBestpathOnMultipathSizeChange(entry) ||
+            prevAdvertisedMultipathSize ==
+                entry.getAdvertisedMultipaths().size()) {
+          // bestpath did not change, no need for new advertisement
+          continue;
+        }
       }
 
       const auto& bestpath = entry.getAdvertisedBestPath();

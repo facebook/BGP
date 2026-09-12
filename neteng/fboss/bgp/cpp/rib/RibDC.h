@@ -156,6 +156,9 @@ class RibDC : public RibBase {
  protected:
   void createFib() override;
 
+  bool shouldReadvertiseBestpathOnMultipathSizeChange(
+      const RibEntry& entry) const noexcept override;
+
   /*
    * [Exit] Destroy the DC-specific routeAttributePolicyTimer_ on the evb
    * thread. Invoked by RibBase::stop() after coroutines are joined and before

@@ -540,6 +540,121 @@ TEST_F(RibFixture, TestStop) {
   });
 }
 
+namespace {
+
+std::shared_ptr<facebook::bgp::BgpPath> buildEqualCostPath(
+    const folly::IPAddress& nexthop,
+    const std::optional<float> lbw = std::nullopt) {
+  auto attrs =
+      std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
+  attrs->setNexthop(nexthop);
+  if (lbw.has_value()) {
+    attrs->setNonTransitiveLbwExtCommunity(kLocalAs1, lbw.value());
+  }
+  attrs->publish();
+  return attrs;
+}
+
+} // namespace
+
+TEST_F(
+    RibFixture,
+    MultipathCardinalityChangeWithoutLbwDoesNotReadvertiseBestPath) {
+  ASSERT_FALSE(eBgpPeer4_.ucmpWeight.has_value());
+  ASSERT_FALSE(eBgpPeer5_.ucmpWeight.has_value());
+
+  const auto prefixBatch = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
+  const auto attrs1 = buildEqualCostPath(kV4Nexthop1);
+  const auto attrs2 = buildEqualCostPath(kV4Nexthop2);
+  ASSERT_FALSE(attrs1->hasNonTransitiveLbwExtCommunity());
+  ASSERT_FALSE(attrs2->hasNonTransitiveLbwExtCommunity());
+
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendAnnouncement(prefixBatch, eBgpPeer5_, attrs1);
+  sendInitialPathComputation();
+  fibFuture.wait();
+
+  auto msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibInitialAnnouncementStart>(msg));
+  msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
+  const auto initialAnnouncement = std::get<RibOutAnnouncement>(msg);
+  ASSERT_EQ(1, initialAnnouncement.entries.size());
+  ASSERT_EQ(1, initialAnnouncement.addPathEntries.size());
+
+  const auto bestpathBefore = rib_->getBestPath(kV4Prefix1);
+  ASSERT_NE(nullptr, bestpathBefore);
+  ASSERT_EQ(eBgpPeer5_, bestpathBefore->peer);
+
+  fibFuture = fib_->getFibProgramFuture();
+  sendAnnouncement(prefixBatch, eBgpPeer4_, attrs2);
+  fibFuture.wait();
+
+  msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
+  const auto announcement = std::get<RibOutAnnouncement>(msg);
+  EXPECT_TRUE(announcement.entries.empty());
+  ASSERT_EQ(2, announcement.addPathEntries.size());
+  for (const auto& entry : announcement.addPathEntries) {
+    ASSERT_TRUE(entry.multiPathSize.has_value());
+    EXPECT_EQ(2, entry.multiPathSize.value());
+  }
+  EXPECT_EQ(bestpathBefore, rib_->getBestPath(kV4Prefix1));
+}
+
+TEST_F(
+    RibFixture,
+    LbwMultipathMembershipChangeWithoutSizeChangeDoesNotReadvertiseBestPath) {
+  ASSERT_FALSE(eBgpPeer4_.ucmpWeight.has_value());
+  ASSERT_FALSE(eBgpPeer5_.ucmpWeight.has_value());
+
+  const auto prefixBatch = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
+  const auto attrs1 = buildEqualCostPath(kV4Nexthop1, kLbw10G);
+  const auto attrs2 = buildEqualCostPath(kV4Nexthop2, kLbw10G);
+  const auto updatedAttrs2 = buildEqualCostPath(kV4Nexthop3, kLbw10G);
+
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendAnnouncement(prefixBatch, eBgpPeer5_, attrs1);
+  sendAnnouncement(prefixBatch, eBgpPeer4_, attrs2);
+  sendInitialPathComputation();
+  fibFuture.wait();
+
+  auto msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibInitialAnnouncementStart>(msg));
+  msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
+  const auto initialAnnouncement = std::get<RibOutAnnouncement>(msg);
+  ASSERT_EQ(1, initialAnnouncement.entries.size());
+  ASSERT_EQ(2, initialAnnouncement.addPathEntries.size());
+
+  const auto bestpathBefore = rib_->getBestPath(kV4Prefix1);
+  ASSERT_NE(nullptr, bestpathBefore);
+  ASSERT_EQ(eBgpPeer5_, bestpathBefore->peer);
+
+  fibFuture = fib_->getFibProgramFuture();
+  sendAnnouncement(prefixBatch, eBgpPeer4_, updatedAttrs2);
+  fibFuture.wait();
+
+  msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibOutWithdrawal>(msg));
+  const auto withdrawal = std::get<RibOutWithdrawal>(msg);
+  EXPECT_TRUE(withdrawal.entries.empty());
+  ASSERT_EQ(1, withdrawal.addPathEntries.size());
+  ASSERT_TRUE(withdrawal.addPathEntries.front().nh.has_value());
+  EXPECT_EQ(kV4Nexthop2, withdrawal.addPathEntries.front().nh.value());
+
+  msg = folly::coro::blockingWait(ribOutQ_.pop());
+  ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
+  const auto announcement = std::get<RibOutAnnouncement>(msg);
+  EXPECT_TRUE(announcement.entries.empty());
+  ASSERT_EQ(2, announcement.addPathEntries.size());
+  for (const auto& entry : announcement.addPathEntries) {
+    ASSERT_TRUE(entry.multiPathSize.has_value());
+    EXPECT_EQ(2, entry.multiPathSize.value());
+  }
+  EXPECT_EQ(bestpathBefore, rib_->getBestPath(kV4Prefix1));
+}
+
 /*
  * If addpath is enabled, then there is a path update which doesn't triger path
  * programming (no best path change and no nexthop change), but the nexthop path

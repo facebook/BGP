@@ -949,6 +949,15 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
   void handleFibSyncReq(const Fib::FibSyncReq& req) noexcept;
 
  protected:
+  /*
+   * Platform hook for multipath cardinality changes that affect best-path
+   * advertisement without changing generic best-path state.
+   */
+  virtual bool shouldReadvertiseBestpathOnMultipathSizeChange(
+      const RibEntry& /*entry*/) const noexcept {
+    return false;
+  }
+
   void schedulePrepareFibProgrammingTimer() noexcept;
 
  private:
