@@ -483,11 +483,6 @@ PeerManagerBase::getShadowRibEntriesCanonical(TBgpAfi afi) {
       }
       const auto& entry = srEntry.second->get();
       auto inputs = buildCanonicalPathInputsFromShadowEntry(entry);
-      /*
-       * CanonicalPathInput string_views (peerDescription) point into the live
-       * ShadowRibEntry/RouteInfo and must not be hoisted out of the per-prefix
-       * iteration.
-       */
       builder.addEntry(prefix, entry.ribVersion, inputs);
     }
   });
@@ -557,11 +552,6 @@ PeerManagerBase::getChangeListEntriesCanonical(TBgpAfi afi) {
         continue;
       }
       auto inputs = buildCanonicalPathInputsFromShadowEntry(srEntry);
-      /*
-       * CanonicalPathInput string_views (peerDescription) point into the live
-       * ShadowRibEntry/RouteInfo and must not be hoisted out of the per-prefix
-       * iteration.
-       */
       builder.addEntry(prefix, srEntry.ribVersion, inputs);
     }
   });

@@ -31,11 +31,11 @@
 
 /*
  * Shared canonical-RIB conversion primitives: the per-path input struct plus
- * the interning-independent projections from a deduplicated BgpPath / its
+ * the interning-independent conversions from a deduplicated BgpPath / its
  * sub-attributes / a peer to their canonical Thrift form. Used by both the
  * one-shot CanonicalRibBuilder and the stateful CanonicalRibEncoder. Each
  * converter layers its own interning and index-lifetime policy on top of these
- * projections; FSDB batching and publication are handled separately by
+ * conversions; FSDB batching and publication are handled separately by
  * CanonicalRibExporter.
  */
 
@@ -47,9 +47,9 @@ namespace bgp_thrift = ::facebook::neteng::fboss::bgp::thrift;
  * One per-path input to the canonical converters: the deduplicated BgpPath plus
  * the per-(prefix, path)-instance fields that TBgpPathCanonical carries.
  *
- * group and peerDescription are non-owning views; the storage they reference
- * (the static path-group constants and the live RouteInfo's peer) must outlive
- * the build/encode call that consumes them.
+ * group is a non-owning view of a static path-group constant. All other fields
+ * own or share their storage so this input can cross an asynchronous
+ * queue safely.
  */
 struct CanonicalPathInput {
   std::shared_ptr<const BgpPath> path;
@@ -60,7 +60,7 @@ struct CanonicalPathInput {
   std::optional<int64_t> nextHopWeight; // UCMP weight
   folly::IPAddress peerAddr; // advertising peer
   int64_t peerRouterId{0};
-  std::string_view peerDescription;
+  std::string peerDescription;
   /* Per-instance operational fields, mirrors TBgpPath */
   std::optional<int64_t> igpCost;
   std::optional<int64_t> lastModifiedTime;
@@ -108,7 +108,7 @@ std::vector<int64_t> toTClusterList(
     const nettools::bgplib::BgpAttrClusterListC& clusterList);
 
 /*
- * EXTENDED COMMUNITIES projection for the canonical form. Only AS-specific
+ * EXTENDED COMMUNITIES conversion for the canonical form. Only AS-specific
  * ext-communities are representable today (two_byte_asn); others are skipped
  * with a warning rather than pushed as an empty union, because
  * TBgpExtCommUnion.raw_values is not yet available (commented out pending the
@@ -128,7 +128,7 @@ toCanonicalExtCommunities(
  * aggregator, topology_info, weight). The list-valued sub-attribute indices are
  * left unset for the caller's interning layer to fill.
  *
- * @param path Deduplicated BGP path to project.
+ * @param path Deduplicated BGP path to convert.
  * @return Partially populated canonical path value.
  */
 neteng::fboss::bgp::thrift::TBgpDedupedPath toTBgpDedupedPathBase(
