@@ -619,7 +619,7 @@ void RibDC::processNexthopResolutionUpdate(
   maybeRunPendingInitialPathComputation();
 }
 
-bool RibDC::publishPartialDrainState() {
+bool RibDC::enqueuePartialDrainState() {
   if (!fsdbSyncer_) {
     return false;
   }
@@ -1360,11 +1360,12 @@ bool RibDC::shouldReadvertiseBestpathOnMultipathSizeChange(
 
 void RibDC::onPrepareFibProgrammingComplete(bool fullSync) noexcept {
   /*
-   * The initial pending value publishes an explicit not-drained baseline
-   * instead of leaving the subtree absent. FsdbSyncer buffers this update
-   * before start(), then includes it in the first atomic /bgp snapshot.
+   * The initial pending value publishes the state computed by the first
+   * path-selection pass instead of leaving the subtree absent. It is false and
+   * empty only when that pass finds no partially drained prefixes. Queue it
+   * before start() so the computed state is present in the first /bgp snapshot.
    */
-  if (partialDrainPublishPending_ && publishPartialDrainState()) {
+  if (partialDrainPublishPending_ && enqueuePartialDrainState()) {
     partialDrainPublishPending_ = false;
   }
 

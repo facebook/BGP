@@ -188,18 +188,18 @@ class RibDC : public RibBase {
 
   /*
    * DC-only end-of-pass hook. Overrides the generic
-   * RibBase::onPrepareFibProgrammingComplete. It retains pending partial-drain
+   * RibBase::onPrepareFibProgrammingComplete. It queues pending partial-drain
    * state and, after the initial full-RIB computation, starts FsdbSyncer so its
    * first snapshot includes that retained state.
    */
   void onPrepareFibProgrammingComplete(bool fullSync) noexcept override;
   /*
-   * Publish the current partial-drain state. DC-only, called only from
+   * Enqueue the current partial-drain state. DC-only, called only from
    * onPrepareFibProgrammingComplete() — never via RibBase&, so it is not a
-   * RibBase virtual. Returns true if the state was published, false if the
-   * publish was skipped (feature gflag off or no syncer wired).
+   * RibBase virtual. Returns true if the state was enqueued, false if the
+   * update was skipped (feature gflag off or no syncer wired).
    */
-  bool publishPartialDrainState();
+  bool enqueuePartialDrainState();
   void postRouteFilterPolicyReplaced() override;
   void processNexthopResolutionUpdate(
       const NexthopResolutionUpdate& nexthopResolutionUpdate) noexcept override;
@@ -410,7 +410,7 @@ class RibDC : public RibBase {
    * Build a single TPartiallyDrainedPrefix from a (prefix, ribEntry) pair.
    * Reads only RibEntry/CIDRNetwork state. Used by the on-demand Thrift RPC
    * path getPartiallyDrainedPrefixes() and (transitively) by the
-   * publish path publishPartialDrainState(). DC-only: partial drain is a
+   * publish path enqueuePartialDrainState(). DC-only: partial drain is a
    * device concept, so this helper lives here rather than in RibBase.
    */
   neteng::fboss::bgp::thrift::TPartiallyDrainedPrefix
@@ -425,9 +425,9 @@ class RibDC : public RibBase {
 
   /*
    * Dirty bit gating the device partial-drain FSDB publish. Constructed true so
-   * the baseline state is published on the first completed FIB pass (a
-   * never-drained device reports a positive is_partially_drained=false without
-   * a separate startup seed); set true again in runBestPathSelection() on each
+   * the first completed FIB pass publishes its computed state: true with the
+   * affected prefixes if that pass enters partial drain, or false with an empty
+   * prefix set otherwise. Set true again in runBestPathSelection() on each
    * drain transition; cleared in onPrepareFibProgrammingComplete() only once a
    * publish actually lands.
    */

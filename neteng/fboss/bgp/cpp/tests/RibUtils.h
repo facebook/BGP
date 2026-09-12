@@ -24,6 +24,7 @@
 #include <gmock/gmock.h>
 
 #include <folly/IPAddress.h>
+#include <folly/io/async/ScopedEventBaseThread.h>
 #include <folly/testing/TestUtil.h>
 
 #include "configerator/structs/neteng/config/gen-cpp2/routing_policy_types.h"
@@ -483,6 +484,7 @@ class RibFixture : public testing::Test {
   std::unique_ptr<facebook::fboss::fsdb::test::FsdbTestServer> fsdbServer_;
   std::unique_ptr<facebook::fboss::fsdb::test::FsdbTestSubscriber>
       fsdbSubscriber_;
+  std::unique_ptr<folly::ScopedEventBaseThread> fsdbSyncerEventBaseThread_;
   std::unique_ptr<FsdbSyncer> fsdbSyncer_{nullptr};
 
   TinyPeerInfo eBgpPeer1_{

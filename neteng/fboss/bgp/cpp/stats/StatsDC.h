@@ -206,7 +206,7 @@ namespace FsdbStatsDC {
 
 constexpr auto kNbrDownPrefix = "bgpd.fsdb."_fs;
 
-// Time waiting for the publication barrier and enqueueing one FSDB patch.
+// Time spent checking eligibility and calling publishState() for one patch.
 inline constexpr auto kFsdbSyncerPublishStateEnqueueTimeMs =
     "bgpcpp.fsdbSyncer.publishStateEnqueueTimeMs";
 DECLARE_quantile_stat(fsdbSyncerPublishStateEnqueueTimeMs);
@@ -248,7 +248,8 @@ void addFsdbSyncerSubtreeEvent(
 /**
  * Increment a dynamic FSDB syncer lifecycle counter.
  *
- * @param event Counter suffix such as numConnect or numSnapshotPublish.
+ * @param event Counter suffix such as numConnect, numSnapshotPublish, or
+ *     numRejectedIncremental.
  */
 void addFsdbSyncerLifecycleEvent(std::string_view event);
 

@@ -40,18 +40,12 @@ class RibFsdbFixture : public RibFixture {
     FLAGS_publish_stats_to_fsdb = true;
     fsdbSubscriber_ = std::make_unique<fboss::fsdb::test::FsdbTestSubscriber>(
         "test-subscriber");
-    fsdbSyncer_ = std::make_unique<FsdbSyncer>();
-    fsdbSyncer_->start();
-    rib_->evb_.runInEventBaseThreadAndWait([this]() {
-      rib_->fsdbSyncer_ = fsdbSyncer_.get();
-      rib_->fsdbSyncerStarted_ = true;
-    });
-
-    // Wait for publisher to register with FSDB server
-    WITH_RETRIES_N(5, {
-      auto metadata = fsdbServer_->getPublisherRootMetadata("bgp", false);
-      ASSERT_EVENTUALLY_TRUE(metadata.has_value());
-    });
+    fsdbSyncerEventBaseThread_ =
+        std::make_unique<folly::ScopedEventBaseThread>("FsdbSyncerTest");
+    fsdbSyncer_ = std::make_unique<FsdbSyncer>(
+        *fsdbSyncerEventBaseThread_->getEventBase());
+    rib_->evb_.runInEventBaseThreadAndWait(
+        [this]() { rib_->fsdbSyncer_ = fsdbSyncer_.get(); });
   }
 };
 

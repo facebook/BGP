@@ -15,10 +15,13 @@
  */
 
 #include <folly/ScopeGuard.h>
+#include <folly/Synchronized.h>
 #include <folly/coro/BlockingWait.h>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include <thrift/lib/cpp2/protocol/Serializer.h>
 
+#include "fboss/fsdb/client/FsdbPubSubManager.h"
 #define RibBase_TEST_FRIENDS friend class RibFsdbFixture;
 
 #include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
@@ -98,7 +101,7 @@ TEST_F(RibFsdbFixture, PartialDrainStatePublishedToFsdbOnTransition) {
         *(*stateLk)->partial_drain_state()->partial_drain_transition_count(),
         1);
     /*
-     * On a drain-status transition, RibDC::publishPartialDrainState builds
+     * On a drain-status transition, RibDC::enqueuePartialDrainState builds
      * the drained-prefix snapshot on demand (getPartialDrainState scans
      * ribEntries_ for getIsPartialDrain() entries) and publishes it
      * alongside the device summary. One path was installed for kV4Prefix1
@@ -167,12 +170,11 @@ TEST_F(RibFsdbFixture, PartialDrainStatePublishedToFsdbOnTransition) {
 }
 
 /*
- * Initial-publish path with no drain transition. With
- * publish_partial_drain_state_to_fsdb enabled, the first completed FIB pass
- * publishes the device partial-drain state even though no prefix ever drains,
- * so a never-drained device reports a populated is_partially_drained=false (not
- * nullopt) with transition_count=0 and an empty drained set. Guards the
- * single-gate behavior that replaced the separate post-start seed.
+ * Initial-publish path with no drain transition. The initial state is computed
+ * from that FIB pass rather than hard-coded false; this test exercises the case
+ * where the pass finds no partially drained prefixes. The first /bgp snapshot
+ * must therefore contain is_partially_drained=false, transition_count=0, and an
+ * empty drained set.
  */
 TEST_F(RibFsdbFixture, PartialDrainStateInitialFalsePublishedWhenNeverDrained) {
   FLAGS_publish_partial_drain_state_to_fsdb = true;
@@ -180,13 +182,46 @@ TEST_F(RibFsdbFixture, PartialDrainStateInitialFalsePublishedWhenNeverDrained) {
     FLAGS_publish_partial_drain_state_to_fsdb = false;
   };
 
+  folly::Synchronized<std::vector<fboss::fsdb::BgpData>> bgpUpdates;
+  fboss::fsdb::FsdbPubSubManager rootSubscriber("bgp-root-subscriber");
+  rootSubscriber.addStatePathSubscription(
+      std::vector<std::string>{"bgp"},
+      [](fboss::fsdb::SubscriptionState /*oldState*/,
+         fboss::fsdb::SubscriptionState /*newState*/,
+         std::optional<bool> /*initialSyncHasData*/) {},
+      [&bgpUpdates](fboss::fsdb::OperState state) {
+        if (state.contents()) {
+          bgpUpdates.wlock()->push_back(
+              apache::thrift::BinarySerializer::deserialize<
+                  fboss::fsdb::BgpData>(*state.contents()));
+        }
+      });
   auto subscribedState = fsdbSubscriber_->subscribe(
       fsdbSubscriber_->getRootStatePath().bgp().partialDrainState());
 
+  EXPECT_FALSE(isFsdbSyncerStarted());
   auto fibFuture = fib_->getFibProgramFuture();
   sendInitialPathComputation();
   fibFuture.wait();
+  EXPECT_TRUE(isFsdbSyncerStarted());
   rib_->setFibBatchTime(milliseconds(2));
+
+  WITH_RETRIES_N(5, {
+    auto updates = bgpUpdates.rlock();
+    ASSERT_EVENTUALLY_FALSE(updates->empty());
+    const auto& initialSnapshot = updates->front();
+    ASSERT_EVENTUALLY_TRUE(initialSnapshot.partialDrainState().has_value());
+    EXPECT_EVENTUALLY_FALSE(*initialSnapshot.partialDrainState()
+                                 ->partial_drain_state()
+                                 ->is_partially_drained());
+    EXPECT_EVENTUALLY_EQ(
+        0,
+        *initialSnapshot.partialDrainState()
+             ->partial_drain_state()
+             ->num_affected_prefixes());
+    EXPECT_EVENTUALLY_TRUE(
+        initialSnapshot.partialDrainState()->drained_prefixes()->empty());
+  })
 
   WITH_RETRIES({ ASSERT_EVENTUALLY_EQ(ribOutQ_.size(), 2); });
   REPEAT_N(2, folly::coro::blockingWait(ribOutQ_.pop()));
@@ -222,7 +257,7 @@ TEST_F(RibFsdbFixture, PartialDrainStateInitialFalsePublishedWhenNeverDrained) {
 
 /*
  * Disabled (default) path: with publish_partial_drain_state_to_fsdb off,
- * publishPartialDrainState is a no-op on both edges. Drives the same drain
+ * enqueuePartialDrainState is a no-op on both edges. Drives the same drain
  * entry/exit as PartialDrainStatePublishedToFsdbOnTransition and asserts the
  * FSDB node stays absent (!has_value()) throughout.
  */

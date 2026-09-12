@@ -734,12 +734,12 @@ void RibFixture::SetUp() {
 
 void RibFixture::TearDown() {
   XLOG(INFO, "Tearing down RibFixture");
-  if (fsdbSyncer_) {
-    fsdbSyncer_->stop();
-  }
   EXPECT_CALL(*fib_, stop()).Times(1);
   // send null msg to ribInQ to stop
   rib_->stop();
+  if (fsdbSyncer_) {
+    fsdbSyncer_->stop();
+  }
   ribThread_.join();
   boost::filesystem::remove(FLAGS_rp_state_file);
   boost::filesystem::remove(FLAGS_rp_change_history_file);
@@ -814,7 +814,10 @@ void RibFixture::setUpFsdb() {
   FLAGS_fsdb_initial_backoff_reconnect_ms = 100;
   FLAGS_fsdb_max_backoff_reconnect_ms = 100;
   fsdbSubscriber_ = std::make_unique<FsdbTestSubscriber>("test-subscriber");
-  fsdbSyncer_ = std::make_unique<FsdbSyncer>();
+  fsdbSyncerEventBaseThread_ =
+      std::make_unique<folly::ScopedEventBaseThread>("FsdbSyncerTest");
+  fsdbSyncer_ =
+      std::make_unique<FsdbSyncer>(*fsdbSyncerEventBaseThread_->getEventBase());
   rib_->evb_.runInEventBaseThreadAndWait(
       [this]() { rib_->fsdbSyncer_ = fsdbSyncer_.get(); });
 }
