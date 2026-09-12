@@ -304,6 +304,18 @@ class GroupWithNoSyncPeersE2ETest : public UpdateGroupPolicyReEvalE2EBase {
         .get();
   }
 
+  /*
+   * The shadow RIB's own version. Group and peer cached versions are stamped
+   * from this counter, not from RibBase::getRibVersion(), so this is what a
+   * group's position must be compared against.
+   */
+  uint64_t getRibVersion() {
+    auto& evb = peerManager_->getEventBase();
+    return folly::via(
+               &evb, [this]() { return peerManager_->getMaxRibVersion(); })
+        .get();
+  }
+
   /* Bring a set of peers down, one at a time. */
   void bringDownPeers(const std::vector<BgpPeerId>& peerIds) {
     for (const auto& peerId : peerIds) {
@@ -514,13 +526,12 @@ class GroupWithNoSyncPeersE2ETest : public UpdateGroupPolicyReEvalE2EBase {
     peerManager_->getEventBase().runInEventBaseThreadAndWait([]() {});
     /*
      * Barrier: publishNextRound only waits for the last prefix to reach the
-     * shadow RIB, and the RIB VERSION bump can still be in flight behind it. A
-     * peer dumping before it lands snapshots the version the group is stalled
-     * at, and comes back level with the group instead of ahead of it.
+     * shadow RIB, and the shadow RIB VERSION bump can still be in flight behind
+     * it. A peer dumping before it lands snapshots the version the group is
+     * stalled at, and comes back level with the group instead of ahead of it.
      */
-    WITH_RETRIES_N(10, {
-      EXPECT_EVENTUALLY_TRUE(rib_->getRibVersion() > stalledVersion);
-    });
+    WITH_RETRIES_N(
+        10, { EXPECT_EVENTUALLY_TRUE(getRibVersion() > stalledVersion); });
     ASSERT_EQ(getGroupRibVersion(stallPeer.peerAddr), stalledVersion)
         << "group kept consuming the change list; the peers coming back will "
            "not be ahead of it and will not be DEP-A";
@@ -817,16 +828,16 @@ TEST_P(GroupWithNoSyncPeersE2ETest, DfpPeersAcceptedIntoGroupWithNoSyncPeers) {
 
     if (idx == 0) {
       /*
-       * Let the group catch up to the RIB before detaching. The consume-timer
-       * callback assigns setLastSeenRibVersion(*maxRibVersion_)
-       * unconditionally, so a group still behind the RIB jumps forward on its
+       * Let the group catch up to the shadow RIB before detaching. The
+       * consume-timer callback assigns setLastSeenRibVersion(*maxRibVersion_)
+       * unconditionally, so a group still behind it jumps forward on its
        * very next tick -- which would break isDFP()'s group-hasn't-moved clause
        * after the detach, with no publish involved. Waiting here removes that
        * race rather than running against it.
        */
       WITH_RETRIES_N(30, {
         EXPECT_EVENTUALLY_EQ(
-            getGroupRibVersion(holder.peerAddr), rib_->getRibVersion());
+            getGroupRibVersion(holder.peerAddr), getRibVersion());
       });
     }
 
@@ -1276,7 +1287,7 @@ TEST_P(GroupWithNoSyncPeersE2ETest, DetachedInitDumpPeerPromotesAfterRelease) {
   const auto frozenVersion = getGroupRibVersion(didPeer.peerAddr);
   publishNextRound();
   WITH_RETRIES_N(
-      10, { EXPECT_EVENTUALLY_TRUE(rib_->getRibVersion() > frozenVersion); });
+      10, { EXPECT_EVENTUALLY_TRUE(getRibVersion() > frozenVersion); });
 
   /* Release the pin: the dump completes and the peer promotes itself. */
   testOnlyDeferInitDump(didPeer.peerAddr, false);
@@ -1390,7 +1401,7 @@ TEST_P(GroupWithNoSyncPeersE2ETest, LevelPeerPromotesAgainstFrozenGroup) {
    */
   publishNextRound();
   WITH_RETRIES_N(
-      10, { EXPECT_EVENTUALLY_TRUE(rib_->getRibVersion() > frozenVersion); });
+      10, { EXPECT_EVENTUALLY_TRUE(getRibVersion() > frozenVersion); });
   EXPECT_EQ(getGroupRibVersion(didPeer.peerAddr), frozenVersion)
       << "the frozen group consumed the new round, so it is not parked "
          "mid-list and this test is not covering the level case";
@@ -1861,7 +1872,7 @@ TEST_P(GroupWithNoSyncPeersE2ETest, PolicyReEvalAfterDfpRecovery) {
        */
       WITH_RETRIES_N(30, {
         EXPECT_EVENTUALLY_EQ(
-            getGroupRibVersion(holder.peerAddr), rib_->getRibVersion());
+            getGroupRibVersion(holder.peerAddr), getRibVersion());
       });
     }
 

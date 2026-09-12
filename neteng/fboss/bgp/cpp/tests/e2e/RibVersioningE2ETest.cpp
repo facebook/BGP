@@ -58,8 +58,8 @@ class RibVersioningE2ETest : public E2ETestFixture {
    */
   uint64_t getRibVersion() {
     uint64_t version = 0;
-    rib_->getEventBase().runInEventBaseThreadAndWait(
-        [&]() { version = rib_->getRibVersion(); });
+    peerManager_->getEventBase().runInEventBaseThreadAndWait(
+        [&]() { version = peerManager_->getMaxRibVersion(); });
     return version;
   }
 };

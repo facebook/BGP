@@ -84,7 +84,8 @@
   FRIEND_TEST(                                                                  \
       PeerManagerTestFixture, SelectiveMultipathNotificationAddPathTest);       \
   FRIEND_TEST(PeerManagerTestFixture, SelectiveMultipathNotificationMixTest);   \
-  FRIEND_TEST(PeerManagerTestFixture, SetMaxRibVersionMonotonicity);
+  FRIEND_TEST(PeerManagerTestFixture, MaxRibVersionCountsPrefixChunks);         \
+  FRIEND_TEST(PeerManagerTestFixture, MaxRibVersionNeverMovesBackwards);
 
 #define AdjRib_TEST_FRIENDS                                                     \
   FRIEND_TEST(PeerManagerTestFixture, RibDumpReqNegativeTest);                  \
@@ -300,7 +301,7 @@ TEST_F(PeerManagerTestFixture, ShadowRibEntryBestpathTest) {
     /*
      * Step 1: push a Rib announcement
      */
-    const auto msg1 = createRibSingleAnnounce(
+    auto msg1 = createRibSingleAnnounce(
         kV4Prefix1, /* prefix */
         kV4Nexthop1, /* nexthop */
         kLocalRouteAs, /* peer */
@@ -319,7 +320,7 @@ TEST_F(PeerManagerTestFixture, ShadowRibEntryBestpathTest) {
      * Step 2: push a different Rib announcement with different path.
      * Make sure path count is still 1 since only bestpath is updated.
      */
-    const auto msg2 = createRibSingleAnnounce(
+    auto msg2 = createRibSingleAnnounce(
         kV4Prefix1, /* prefix */
         kV4Nexthop2, /* nexthop */
         kLocalRouteAs, /* peer */
@@ -395,7 +396,7 @@ TEST_F(PeerManagerTestFixture, ShadowRibEntryMultipathTest) {
     /*
      * Step 1: push a Rib announcement and expect multipath is updated
      */
-    const auto msg1 = createRibSingleAnnounce(
+    auto msg1 = createRibSingleAnnounce(
         kV4Prefix1, /* prefix */
         kV4Nexthop1, /* nexthop */
         kLocalRouteAs, /* peer */
@@ -416,7 +417,7 @@ TEST_F(PeerManagerTestFixture, ShadowRibEntryMultipathTest) {
      * Step 2: push the same announcement with the same path.
      * Make sure path count is NOT incremented as path is updated.
      */
-    const auto msg2 = createRibSingleAnnounce(
+    auto msg2 = createRibSingleAnnounce(
         kV4Prefix1, /* prefix */
         kV4Nexthop1, /* nexthop */
         kLocalAs1, /* peer */
@@ -440,7 +441,7 @@ TEST_F(PeerManagerTestFixture, ShadowRibEntryMultipathTest) {
      * Step 3: push a different Rib announcement with different path.
      * Make sure path count is incremented since multipath is extended.
      */
-    const auto msg3 = createRibSingleAnnounce(
+    auto msg3 = createRibSingleAnnounce(
         kV4Prefix1, /* prefix */
         kV4Nexthop2, /* nexthop */
         kLocalRouteAs, /* peer */
@@ -735,7 +736,7 @@ CO_TEST_F(PeerManagerTestFixture, ShadowRibEntryMultiUpdateTest) {
   /*
    * Step 0.1: pre-populate shadow rib entries with bestpath and multipath
    */
-  const auto msg1 = createRibSingleAnnounce(
+  auto msg1 = createRibSingleAnnounce(
       kV4Prefix1, /* prefix */
       kV4Nexthop1, /* nexthop */
       kLocalRouteAs, /* peer */
@@ -772,7 +773,7 @@ CO_TEST_F(PeerManagerTestFixture, ShadowRibEntryMultiUpdateTest) {
   /*
    * Step 0.3: send Single RIB update immediately followed by withdrawal
    */
-  const auto msg2 = createRibSingleAnnounce(
+  auto msg2 = createRibSingleAnnounce(
       kV4Prefix1, /* prefix */
       kV4Nexthop2, /* nexthop */
       kLocalRouteAs, /* peer */
@@ -879,14 +880,14 @@ CO_TEST_F(PeerManagerTestFixture, RibDumpReqPositiveTest) {
   /*
    * Step 0.1: pre-populate shadow rib entries with bestpath and multipath
    */
-  const auto msg1 = createRibSingleAnnounce(
+  auto msg1 = createRibSingleAnnounce(
       kV4Prefix1, /* prefix */
       kV4Nexthop1, /* nexthop */
       kLocalRouteAs, /* peer */
       false, /* sendWithEoR */
       false /* addPath */
   );
-  const auto msg2 = createRibSingleAnnounce(
+  auto msg2 = createRibSingleAnnounce(
       kV4Prefix2, /* prefix */
       kV4Nexthop1, /* nexthop */
       kLocalRouteAs, /* peer */
@@ -894,7 +895,7 @@ CO_TEST_F(PeerManagerTestFixture, RibDumpReqPositiveTest) {
       true, /* addPath */
       0 /* pathIdToSend */
   );
-  const auto msg3 = createRibSingleAnnounce(
+  auto msg3 = createRibSingleAnnounce(
       kV4Prefix2, /* prefix */
       kV4Nexthop2, /* nexthop */
       kLocalRouteAs, /* peer */
@@ -2492,27 +2493,27 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
    * - kV4Prefix1: bestpath only (no multipaths)
    * - kV4Prefix2: bestpath AND two multipaths
    */
-  const auto msg1 = createRibSingleAnnounce(
+  auto msg1 = createRibSingleAnnounce(
       kV4Prefix1,
       kV4Nexthop1,
       kLocalRouteAs,
       false /* sendWithEoR */,
       false /* addPath */);
-  const auto msg2 = createRibSingleAnnounce(
+  auto msg2 = createRibSingleAnnounce(
       kV4Prefix2,
       kV4Nexthop1,
       kLocalRouteAs,
       false /* sendWithEoR */,
       true /* addPath */,
       kMinPathIDToSend);
-  const auto msg3 = createRibSingleAnnounce(
+  auto msg3 = createRibSingleAnnounce(
       kV4Prefix2,
       kV4Nexthop2,
       kLocalRouteAs,
       false /* sendWithEoR */,
       true /* addPath */,
       kMinPathIDToSend + 1);
-  const auto msg4 = createRibSingleAnnounce(
+  auto msg4 = createRibSingleAnnounce(
       kV4Prefix2,
       kV4Nexthop1,
       kLocalRouteAs,
@@ -2558,14 +2559,14 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
    * This should be delivered to BOTH adjRib1 and adjRib2
    * Add bestpath for kV4Prefix3 (this will also be in multipaths)
    */
-  const auto msg5a = createRibSingleAnnounce(
+  auto msg5a = createRibSingleAnnounce(
       kV4Prefix3,
       kV4Nexthop3,
       kLocalRouteAs,
       false /* sendWithEoR */,
       true /* addPath */,
       kMinPathIDToSend + 2);
-  const auto msg5b = createRibSingleAnnounce(
+  auto msg5b = createRibSingleAnnounce(
       kV4Prefix3,
       kV4Nexthop3,
       kLocalRouteAs,
@@ -2595,7 +2596,7 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
    * This should ONLY be delivered to adjRib2 (addpath peer)
    * This verifies the bitmap filtering is working correctly
    */
-  const auto msg6 = createRibSingleAnnounce(
+  auto msg6 = createRibSingleAnnounce(
       kV4Prefix3,
       kV4Nexthop1, // different nexthop from bestpath
       kLocalRouteAs,
@@ -2638,14 +2639,14 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
    */
 
   // Add kV4Prefix4: First add as multipath, then as bestpath
-  const auto msg7a = createRibSingleAnnounce(
+  auto msg7a = createRibSingleAnnounce(
       kV4Prefix4,
       kV4Nexthop4,
       kLocalRouteAs,
       false /* sendWithEoR */,
       true /* addPath */,
       kMinPathIDToSend + 4);
-  const auto msg7b = createRibSingleAnnounce(
+  auto msg7b = createRibSingleAnnounce(
       kV4Prefix4,
       kV4Nexthop4,
       kLocalRouteAs,
@@ -2657,7 +2658,7 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
       std::get<RibOutAnnouncement>(msg7b));
 
   // Immediately add another multipath BEFORE consuming the bestpath change
-  const auto msg8 = createRibSingleAnnounce(
+  auto msg8 = createRibSingleAnnounce(
       kV4Prefix4,
       kV4Nexthop1, // different nexthop from bestpath
       kLocalRouteAs,
@@ -2687,7 +2688,7 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
    */
 
   // First, add multipath for kV4Prefix5 (non-bestpath nexthop)
-  const auto msg9 = createRibSingleAnnounce(
+  auto msg9 = createRibSingleAnnounce(
       kV4Prefix5,
       kV4Nexthop1,
       kLocalRouteAs,
@@ -2709,7 +2710,7 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
           adjRib1->getChangeListConsumer()->getBitPosition()));
 
   // Add bestpath nexthop as multipath first
-  const auto msg10a = createRibSingleAnnounce(
+  auto msg10a = createRibSingleAnnounce(
       kV4Prefix5,
       kV4Nexthop5,
       kLocalRouteAs,
@@ -2735,7 +2736,7 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
           adjRib1->getChangeListConsumer()->getBitPosition()));
 
   // Now add bestpath BEFORE consuming the multipath changes
-  const auto msg10b = createRibSingleAnnounce(
+  auto msg10b = createRibSingleAnnounce(
       kV4Prefix5,
       kV4Nexthop5,
       kLocalRouteAs,
@@ -2832,7 +2833,7 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationAddPathTest) {
    * Publish an add-path (multipath) announcement (addPath = true)
    * This should ONLY be seen by adjRib1 (add-path capable)
    */
-  const auto msg1 = createRibSingleAnnounce(
+  auto msg1 = createRibSingleAnnounce(
       kV4Prefix1,
       kV4Nexthop1,
       kLocalRouteAs,
@@ -2935,14 +2936,14 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationMixTest) {
    * (should be seen by BOTH adjRibs)
    * First add as multipath, then as bestpath
    */
-  const auto msg1a = createRibSingleAnnounce(
+  auto msg1a = createRibSingleAnnounce(
       kV4Prefix1,
       kV4Nexthop1,
       kLocalRouteAs,
       false,
       true /* addPath */,
       kMinPathIDToSend);
-  const auto msg1b = createRibSingleAnnounce(
+  auto msg1b = createRibSingleAnnounce(
       kV4Prefix1, kV4Nexthop1, kLocalRouteAs, false, false /* addPath */);
   peerMgr->handleShadowRibEntryAnnouncement(
       std::get<RibOutAnnouncement>(msg1a));
@@ -2961,7 +2962,7 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationMixTest) {
    * Test Case 2: Publish an add-path (multipath) announcement
    * (should be seen ONLY by adjRib1)
    */
-  const auto msg2 = createRibSingleAnnounce(
+  auto msg2 = createRibSingleAnnounce(
       kV4Prefix2,
       kV4Nexthop2,
       kLocalRouteAs,
@@ -2984,14 +2985,14 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationMixTest) {
    * Test Case 3: Publish another bestpath to verify system still works
    * First add as multipath, then as bestpath
    */
-  const auto msg3a = createRibSingleAnnounce(
+  auto msg3a = createRibSingleAnnounce(
       kV4Prefix3,
       kV4Nexthop3,
       kLocalRouteAs,
       false,
       true /* addPath */,
       kMinPathIDToSend + 1);
-  const auto msg3b = createRibSingleAnnounce(
+  auto msg3b = createRibSingleAnnounce(
       kV4Prefix3, kV4Nexthop3, kLocalRouteAs, false, false /* addPath */);
   peerMgr->handleShadowRibEntryAnnouncement(
       std::get<RibOutAnnouncement>(msg3a));
@@ -3012,11 +3013,11 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationMixTest) {
 }
 
 /*
- * The max RIB version only advances. A caller passing a lower version is
- * dropped and the attempt is logged, so an out-of-order RIB producer shows up
- * in the logs instead of being silently swallowed.
+ * The shadow RIB version counts the contiguous per-prefix chunks the shadow
+ * RIB has applied: one increment per chunk, no matter how many paths the chunk
+ * carries and no matter what RibVersion the RIB stamped on the entries.
  */
-TEST_F(PeerManagerTestFixture, SetMaxRibVersionMonotonicity) {
+TEST_F(PeerManagerTestFixture, MaxRibVersionCountsPrefixChunks) {
   auto config = getConfig(
       false /* includeStaticPeer */, false /* includeDynamicShivPeer */);
   auto peerMgr = std::make_shared<PeerManagerBase>(
@@ -3026,25 +3027,122 @@ TEST_F(PeerManagerTestFixture, SetMaxRibVersionMonotonicity) {
       ribOutQ_,
       nbrRouteChangeQ_);
 
-  auto& messages = subscribeToLogMessages("", folly::LogLevel::ERR);
-  messages.clear();
+  auto makeAddPathEntry = [](const folly::CIDRNetwork& prefix,
+                             const folly::IPAddress& nexthop,
+                             uint64_t ribVersion) {
+    auto msg = std::get<RibOutAnnouncement>(createRibSingleAnnounce(
+        prefix,
+        nexthop,
+        kLocalRouteAs,
+        false /* sendWithEoR */,
+        true /* addPath */));
+    auto entry = msg.addPathEntries.front();
+    entry.ribVersion = ribVersion;
+    return entry;
+  };
 
-  peerMgr->setMaxRibVersion(10);
-  EXPECT_EQ(10, peerMgr->getMaxRibVersion());
+  /*
+   * Two paths of one prefix followed by a second prefix: two chunks. The RIB
+   * versions are constant and then move backwards, so a version that tracked
+   * them would land somewhere other than 2.
+   */
+  RibOutAnnouncement announcement{};
+  announcement.addPathEntries.push_back(
+      makeAddPathEntry(kV4Prefix1, kV4Nexthop1, 500 /* ribVersion */));
+  announcement.addPathEntries.push_back(
+      makeAddPathEntry(kV4Prefix1, kV4Nexthop2, 500 /* ribVersion */));
+  announcement.addPathEntries.push_back(
+      makeAddPathEntry(kV4Prefix2, kV4Nexthop1, 100 /* ribVersion */));
 
-  /* Re-setting the same version is an ordinary no-op, not a violation. */
-  peerMgr->setMaxRibVersion(10);
-  EXPECT_EQ(10, peerMgr->getMaxRibVersion());
-  EXPECT_TRUE(messages.empty());
+  peerMgr->handleShadowRibEntryAnnouncement(announcement);
 
-  /* A lower version is dropped and reported. */
-  peerMgr->setMaxRibVersion(4);
-  EXPECT_EQ(10, peerMgr->getMaxRibVersion());
-  ASSERT_EQ(1, messages.size());
-  EXPECT_THAT(
-      messages[0].first.getMessage(),
-      testing::HasSubstr(
-          "RIB version monotonicity violation, ignoring attempt to set max RIB version 4 below current 10"));
+  EXPECT_EQ(2, peerMgr->getMaxRibVersion());
+  EXPECT_EQ(1, peerMgr->shadowRibEntries_.at(kV4Prefix1)->get().ribVersion);
+  EXPECT_EQ(2, peerMgr->shadowRibEntries_.at(kV4Prefix2)->get().ribVersion);
+
+  /* A withdrawal for a prefix the shadow RIB never had still opens a chunk. */
+  RibOutWithdrawal withdrawal{};
+  withdrawal.entries.emplace_back(kV4Prefix3, kDefaultPathID);
+  peerMgr->handleShadowRibEntryWithdrawal(withdrawal);
+
+  EXPECT_EQ(3, peerMgr->getMaxRibVersion());
+}
+
+/*
+ * The shadow RIB version is monotonic by construction: it is a counter this
+ * class owns, so no ordering of RIB-supplied versions can move it -- or any
+ * shadow rib entry stamped from it -- backwards.
+ */
+TEST_F(PeerManagerTestFixture, MaxRibVersionNeverMovesBackwards) {
+  auto config = getConfig(
+      false /* includeStaticPeer */, false /* includeDynamicShivPeer */);
+  auto peerMgr = std::make_shared<PeerManagerBase>(
+      std::make_shared<ConfigManager>(config),
+      nullptr,
+      ribInQ_,
+      ribOutQ_,
+      nbrRouteChangeQ_);
+
+  auto announceBestpath = [&](const folly::CIDRNetwork& prefix,
+                              uint64_t ribVersion) {
+    auto msg = std::get<RibOutAnnouncement>(createRibSingleAnnounce(
+        prefix,
+        kV4Nexthop1,
+        kLocalRouteAs,
+        false /* sendWithEoR */,
+        false /* addPath */));
+    msg.entries.back().ribVersion = ribVersion;
+    peerMgr->handleShadowRibEntryAnnouncement(msg);
+  };
+
+  auto withdrawBestpath = [&](const folly::CIDRNetwork& prefix,
+                              uint64_t ribVersion) {
+    RibOutWithdrawal withdrawal{};
+    withdrawal.entries.emplace_back(prefix, kDefaultPathID);
+    withdrawal.entries.back().ribVersion = ribVersion;
+    peerMgr->handleShadowRibEntryWithdrawal(withdrawal);
+  };
+
+  /*
+   * RIB versions that jump forward, repeat, and then collapse to 1. Each step
+   * is one prefix chunk, so the shadow RIB version must simply count 1..6.
+   */
+  const std::vector<uint64_t> kOutOfOrderRibVersions = {9000, 9000, 3, 1, 1, 2};
+  std::vector<uint64_t> observed;
+  uint64_t previous = peerMgr->getMaxRibVersion();
+  ASSERT_EQ(0, previous);
+
+  for (size_t i = 0; i < kOutOfOrderRibVersions.size(); ++i) {
+    const auto& prefix = (i % 2 == 0) ? kV4Prefix1 : kV4Prefix2;
+    const bool isAnnouncement = i < 4;
+    if (isAnnouncement) {
+      announceBestpath(prefix, kOutOfOrderRibVersions[i]);
+    } else {
+      withdrawBestpath(prefix, kOutOfOrderRibVersions[i]);
+    }
+    const auto current = peerMgr->getMaxRibVersion();
+    EXPECT_GT(current, previous)
+        << "step " << i << " with RIB version " << kOutOfOrderRibVersions[i]
+        << " failed to advance the shadow RIB version";
+    previous = current;
+    observed.push_back(current);
+
+    /*
+     * An announced prefix carries the version of the chunk that just touched
+     * it -- never a RIB-supplied number. A withdrawn one is gone: no consumer
+     * is registered here, so the change completes inline and
+     * processChangeItemCompleteCallback erases the entry.
+     */
+    if (isAnnouncement) {
+      EXPECT_EQ(
+          current, peerMgr->shadowRibEntries_.at(prefix)->get().ribVersion);
+    } else {
+      EXPECT_FALSE(peerMgr->shadowRibEntries_.contains(prefix));
+    }
+  }
+
+  const std::vector<uint64_t> expected = {1, 2, 3, 4, 5, 6};
+  EXPECT_EQ(expected, observed);
 }
 
 /*
@@ -3065,14 +3163,14 @@ TEST_F(PeerManagerTestFixture, GetShadowRibEntriesCanonical) {
       ribOutQ_,
       nbrRouteChangeQ_);
 
-  const auto msg1 = createRibSingleAnnounce(
+  auto msg1 = createRibSingleAnnounce(
       kV4Prefix1,
       kV4Nexthop1,
       kLocalRouteAs,
       false /* EoR */,
       false /* addpath */);
   peerMgr->handleShadowRibEntryAnnouncement(std::get<RibOutAnnouncement>(msg1));
-  const auto msg2 = createRibSingleAnnounce(
+  auto msg2 = createRibSingleAnnounce(
       kV4Prefix2,
       kV4Nexthop2,
       kLocalRouteAs,

@@ -1528,7 +1528,7 @@ folly::coro::Task<void> PeerManagerBase::processRibOutMsgLoop() noexcept {
 
     folly::variant_match(
         *msg,
-        [&](const RibOutAnnouncement& announcement) {
+        [&](RibOutAnnouncement& announcement) {
           /*
            * Incremental announcements come to PeerManagerBase, which will be
            * pushed to the individual AdjRibs. The number of RibOutAnnouncement
@@ -1543,7 +1543,6 @@ folly::coro::Task<void> PeerManagerBase::processRibOutMsgLoop() noexcept {
 
           /*
            * Prepare RibOut structure sending to multiple adjRibs
-           * We copy the announcement once to make a shared_ptr.
            */
           if (enableUpdateGroup_ == false) {
             distributeRibOutAnnouncementToAdjRibs(announcement);
@@ -1558,7 +1557,7 @@ folly::coro::Task<void> PeerManagerBase::processRibOutMsgLoop() noexcept {
             markRibInitialAnnouncementDone();
           }
         },
-        [this](const RibOutWithdrawal& withdrawal) {
+        [this](RibOutWithdrawal& withdrawal) {
           XLOG(DBG3, "Passing RibOutWithdrawal to all established peers.");
 
           /*
@@ -1810,7 +1809,7 @@ void PeerManagerBase::processRibDumpReq(
    * the version to the changeList. setLastSeenRibVersion only ever advances.
    */
   if (!skippedEntry) {
-    adjRib->setLastSeenRibVersion(maxRibVersion_);
+    adjRib->setLastSeenRibVersion(getMaxRibVersion());
   }
   /*
    * changeList consumers are to be registered to the tracker
@@ -2123,7 +2122,7 @@ void PeerManagerBase::updateShadowRibEntryUtil(
   srEntry.ribPolicyUcmpWeight = entry.ribPolicyUcmpWeight;
   srEntry.newlyInstalledInLocalRib = entry.newlyInstalledInLocalRib;
   srEntry.installTimeStamp = entry.installTimeStamp;
-  srEntry.ribVersion = entry.ribVersion;
+  srEntry.ribVersion = getMaxRibVersion();
 }
 
 const ConsumerBitmap& PeerManagerBase::getConsumerBitmapForChange(
@@ -2135,41 +2134,24 @@ const ConsumerBitmap& PeerManagerBase::getConsumerBitmapForChange(
   return isBestpathChange ? nonAddPathConsumerBitmap_ : addPathConsumerBitmap_;
 }
 
-/*
- * The RIB version PeerManager reports must never move backwards -- groups and
- * peers derive their own cached versions from it. A caller handing back a
- * lower version means the RIB produced entries out of order; the value is
- * dropped either way, but the attempt points at a real ordering bug, so
- * surface it. Equal versions are ordinary idempotent re-sets, not violations.
- */
-void PeerManagerBase::setMaxRibVersion(uint64_t ribVersion) noexcept {
-  if (FOLLY_UNLIKELY(ribVersion < maxRibVersion_)) {
-    XLOGF_EVERY_MS(
-        ERR,
-        100000,
-        "RIB version monotonicity violation, ignoring attempt to set max RIB "
-        "version {} below current {}",
-        ribVersion,
-        maxRibVersion_);
-    return;
-  }
-  maxRibVersion_ = ribVersion;
+void PeerManagerBase::incrementMaxRibVersion() noexcept {
+  RibStats::incrementRibTableVersion();
+  ++maxRibVersion_;
 }
 
 void PeerManagerBase::handleShadowRibEntryAnnouncement(
-    const RibOutAnnouncement& announcement) {
+    RibOutAnnouncement& announcement) {
   /*
-   * Entries within a RibOutAnnouncement are ordered by ribVersion, so the last
-   * entry of each vector carries the batch's max version. Track it up front so
-   * maxRibVersion_ advances even when the walk below skips/erases entries.
+   * The chunk bump happens before any of the per-entry skip paths below, so a
+   * skipped or erased entry still advances maxRibVersion_.
    */
-  if (!announcement.entries.empty()) {
-    setMaxRibVersion(announcement.entries.back().ribVersion);
-  }
-  if (!announcement.addPathEntries.empty()) {
-    setMaxRibVersion(announcement.addPathEntries.back().ribVersion);
-  }
-  for (const auto& entry : announcement.entries) {
+  const folly::CIDRNetwork* chunkPrefix = nullptr;
+  for (auto& entry : announcement.entries) {
+    if (chunkPrefix == nullptr || *chunkPrefix != entry.prefix) {
+      chunkPrefix = &entry.prefix;
+      incrementMaxRibVersion();
+    }
+    entry.ribVersion = getMaxRibVersion();
     // bestpath only advertisement, hence the pathId will always be 0
     auto srRouteInfo = std::make_shared<ShadowRibRouteInfo>(
         entry.peer, entry.attrs, kDefaultPathID, entry.isPartialDrain);
@@ -2191,7 +2173,7 @@ void PeerManagerBase::handleShadowRibEntryAnnouncement(
               entry.ribPolicyUcmpWeight,
               entry.newlyInstalledInLocalRib,
               entry.installTimeStamp,
-              entry.ribVersion));
+              getMaxRibVersion()));
       auto trackedObject = trackableShadowRibEntry.get();
       shadowRibEntries_.emplace(
           entry.prefix, std::move(trackableShadowRibEntry));
@@ -2217,7 +2199,13 @@ void PeerManagerBase::handleShadowRibEntryAnnouncement(
     }
   }
 
-  for (const auto& entry : announcement.addPathEntries) {
+  chunkPrefix = nullptr;
+  for (auto& entry : announcement.addPathEntries) {
+    if (chunkPrefix == nullptr || *chunkPrefix != entry.prefix) {
+      chunkPrefix = &entry.prefix;
+      incrementMaxRibVersion();
+    }
+    entry.ribVersion = getMaxRibVersion();
     // check before access
     if (!entry.attrs) {
       continue;
@@ -2249,7 +2237,7 @@ void PeerManagerBase::handleShadowRibEntryAnnouncement(
               entry.ribPolicyUcmpWeight,
               entry.newlyInstalledInLocalRib,
               entry.installTimeStamp,
-              entry.ribVersion));
+              getMaxRibVersion()));
       auto trackedObject = trackableShadowRibEntry.get();
       shadowRibEntries_.emplace(
           entry.prefix, std::move(trackableShadowRibEntry));
@@ -2289,20 +2277,19 @@ void PeerManagerBase::handleShadowRibEntryAnnouncement(
 }
 
 void PeerManagerBase::handleShadowRibEntryWithdrawal(
-    const RibOutWithdrawal& withdrawal) {
+    RibOutWithdrawal& withdrawal) {
   /*
-   * Entries within a RibOutWithdrawal are ordered by ribVersion, so the last
-   * entry of each vector carries the batch's max version. Track it up front so
-   * a withdrawal for an already-removed prefix still advances maxRibVersion_.
+   * The chunk bump happens before the lookup below, so a withdrawal for an
+   * already-removed prefix still advances maxRibVersion_.
    */
-  if (!withdrawal.entries.empty()) {
-    setMaxRibVersion(withdrawal.entries.back().ribVersion);
-  }
-  if (!withdrawal.addPathEntries.empty()) {
-    setMaxRibVersion(withdrawal.addPathEntries.back().ribVersion);
-  }
+  const folly::CIDRNetwork* chunkPrefix = nullptr;
   // process bestpath withdrawal
-  for (const auto& entry : withdrawal.entries) {
+  for (auto& entry : withdrawal.entries) {
+    if (chunkPrefix == nullptr || *chunkPrefix != entry.prefix) {
+      chunkPrefix = &entry.prefix;
+      incrementMaxRibVersion();
+    }
+    entry.ribVersion = getMaxRibVersion();
     auto srEntryIter = shadowRibEntries_.find(entry.prefix);
     if (srEntryIter == shadowRibEntries_.end()) {
       XLOGF(
@@ -2317,15 +2304,19 @@ void PeerManagerBase::handleShadowRibEntryWithdrawal(
       setShadowRibRouteState(srEntry.bestpath, SHADOWRIBROUTE_IN_WITHDRAW);
       resetShadowRibRouteState(srEntry.bestpath, SHADOWRIBROUTE_IN_UPDATE);
     }
-    if (entry.ribVersion > srEntry.ribVersion) {
-      srEntry.ribVersion = entry.ribVersion;
-    }
+    srEntry.ribVersion = getMaxRibVersion();
     changeListTracker_->publishChange(
         trackedObject, getConsumerBitmapForChange(true /* isBestpathChange */));
   }
 
   // process multipath withdrawal
-  for (const auto& entry : withdrawal.addPathEntries) {
+  chunkPrefix = nullptr;
+  for (auto& entry : withdrawal.addPathEntries) {
+    if (chunkPrefix == nullptr || *chunkPrefix != entry.prefix) {
+      chunkPrefix = &entry.prefix;
+      incrementMaxRibVersion();
+    }
+    entry.ribVersion = getMaxRibVersion();
     auto srEntryIter = shadowRibEntries_.find(entry.prefix);
     if (srEntryIter == shadowRibEntries_.end()) {
       // skip processing since this prefix does not exist
@@ -2365,9 +2356,7 @@ void PeerManagerBase::handleShadowRibEntryWithdrawal(
         srEntry.multipaths.at(pathId), SHADOWRIBROUTE_IN_WITHDRAW);
     resetShadowRibRouteState(
         srEntry.multipaths.at(pathId), SHADOWRIBROUTE_IN_UPDATE);
-    if (entry.ribVersion > srEntry.ribVersion) {
-      srEntry.ribVersion = entry.ribVersion;
-    }
+    srEntry.ribVersion = getMaxRibVersion();
     const auto& bitmap =
         getConsumerBitmapForChange(false /* isBestpathChange */);
     changeListTracker_->publishChange(trackedObject, bitmap);
@@ -5536,7 +5525,11 @@ PeerManagerBase::processUpdateGroupsEgressPolicyReevaluation() {
 
 void PeerManagerBase::distributeRibOutAnnouncementToAdjRibs(
     const RibOutAnnouncement& announcement) {
-  auto ribMsg = std::make_shared<const RibOutMessage>(announcement);
+  /*
+   * handleShadowRibEntryAnnouncement re-stamped these entries with the shadow
+   * RIB's versions before this call, so what AdjRib records below is on the
+   * same numbering as every other consumer.
+   */
   for (const auto& [_, adjRib] : adjRibs_) {
     if (!adjRib) {
       /* adjrib is not ready. Skip sending. */

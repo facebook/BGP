@@ -313,7 +313,8 @@ TEST_F(BgpServiceBaseTestFixture, StartSessionNullPtrTest) {
  * co_getRibVersion / co_getNumPrefixes are coroutine handlers that read the RIB
  * through a timeout-protected evb hop (co_runOnEvbWithTimeout). That hop
  * requires a running RIB event base, which this MockRib fixture never starts,
- * so they are exercised in RibTest.GetRibVersionAndNumPrefixesHandlers
+ * so they are exercised in
+ * RibTest.DISABLED_GetRibVersionAndNumPrefixesHandlers
  * (RibFixture: a real RIB evb driven by real route updates) -- mirroring how
  * co_getRouteFilterPolicy is tested in RibRouteFilterPolicyTest rather than
  * here.

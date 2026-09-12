@@ -543,9 +543,11 @@ inline constexpr auto kTotalShadowRibEntries = "bgpd.rib.totalShadowRibEntries";
 
 /*
  * BGP table version (ribVersion) - monotonically increasing counter bumped once
- * per prefix at queue-emission time (announcements and withdrawals). Note it
- * advances per emitted prefix, including no-op FIB resyncs, so its rate tracks
- * emission volume rather than only material routing changes.
+ * per contiguous prefix chunk that PeerManager applies to the shadow RIB
+ * (announcements and withdrawals), which is the sequence every peer's cached
+ * version is stamped from. Note it advances per applied prefix, including
+ * no-op FIB resyncs, so its rate tracks emission volume rather than only
+ * material routing changes.
  */
 inline const auto kRibTableVersion =
     fmt::format("{}.rib.tableVersion", kBgpcppTag);

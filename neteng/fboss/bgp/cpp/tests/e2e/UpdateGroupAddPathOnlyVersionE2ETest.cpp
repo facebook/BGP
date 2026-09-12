@@ -96,8 +96,8 @@ class UpdateGroupAddPathOnlyVersionE2ETest : public SlowPeerTestBase {
   /* Current RIB version, read on the RIB event base to avoid a TSAN race. */
   uint64_t getRibVersion() {
     uint64_t version = 0;
-    rib_->getEventBase().runInEventBaseThreadAndWait(
-        [&]() { version = rib_->getRibVersion(); });
+    peerManager_->getEventBase().runInEventBaseThreadAndWait(
+        [&]() { version = peerManager_->getMaxRibVersion(); });
     return version;
   }
 

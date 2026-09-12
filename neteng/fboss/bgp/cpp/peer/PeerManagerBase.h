@@ -473,10 +473,7 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
           std::shared_ptr<nettools::bgplib::BgpPeerDisplayInfo>>&
           allPeers) noexcept;
 
-  /*
-   * Highest RibVersion seen across all RibOutAnnouncement/RibOutWithdrawal
-   * entries processed from the RIB.
-   */
+  // Current version of the shadow RIB. See @maxRibVersion_.
   uint64_t getMaxRibVersion() const noexcept {
     return maxRibVersion_;
   }
@@ -1320,14 +1317,14 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
    *
    * @param: RibOutAnnouncement from ribOutQ to create/update local collection
    */
-  void handleShadowRibEntryAnnouncement(const RibOutAnnouncement& announcement);
+  void handleShadowRibEntryAnnouncement(RibOutAnnouncement& announcement);
 
   /*
    * @brief: delete shadow rib entries to local shadowRib collection
    *
    * @param: RibOutWithdrawal from ribOutQ to remove local collection
    */
-  void handleShadowRibEntryWithdrawal(const RibOutWithdrawal& withdrawal);
+  void handleShadowRibEntryWithdrawal(RibOutWithdrawal& withdrawal);
 
   PathId getPathId(const RibOutAnnouncementEntry& entry);
 
@@ -1337,6 +1334,10 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
    *
    * @param: srEntry - this is the ShadowRibEntry to be updated
    * @param: entry - this is RibOut entry used as the SoT
+   *
+   * The version stamped on @srEntry is @maxRibVersion_, which the entry's
+   * chunk has already advanced. @entry.ribVersion is not used: the shadow RIB
+   * versions its own contents.
    */
   void updateShadowRibEntryUtil(
       ShadowRibEntry& srEntry,
@@ -1476,19 +1477,28 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   ShadowRibEntriesMap shadowRibEntries_;
 
   /*
-   * Highest RibVersion observed across every RibOutAnnouncement and
-   * RibOutWithdrawal entry processed from the RIB. Survives an emptied shadow
-   * RIB (unlike a version derived by walking @shadowRibEntries_). Only accessed
-   * from the EVB thread (same as @shadowRibEntries_).
+   * The maxRibVersion_ represents a numbering space which increments
+   * on every prefix route change seen from RIB. The shadowRibEntry associated
+   * to that prefix will receive its ribVersion value from the
+   * maxRibVersion_.
+   *
+   * Though RIB also maintains its own rib versioning,
+   * we currently are not able to guarantee that the vector of RIB entries
+   * processed by PeerManager is ordered increasing by RIB version.
+   * So, temporarily, we will let the shadowRibEntries_ be enumerated
+   * by maxRibVersion_; and subsequently the changelist will be using
+   * the number space associated to according to PeerManager::maxRibVersion_.
    */
   uint64_t maxRibVersion_{0};
 
   /*
-   * Only ever advances. A caller passing a version below the current one is a
-   * monotonicity violation: the value is dropped and the attempt is logged at
-   * ERR.
+   * Sole mutator of @maxRibVersion_. The counter only ever steps forward, one
+   * step per contiguous prefix chunk, so every write goes through here rather
+   * than touching the member directly. Reads go through getMaxRibVersion().
+   * Also advances the bgpcpp.rib.tableVersion ODS counter, which reports this
+   * sequence rather than the loc-RIB's.
    */
-  void setMaxRibVersion(uint64_t ribVersion) noexcept;
+  void incrementMaxRibVersion() noexcept;
 
   /*
    * AdjRib will post this baton when session is terminated (both message

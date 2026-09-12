@@ -407,7 +407,14 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
    * never wrongly treated as having already seen a post-detach entry.
    */
   uint64_t incrementRibVersion() {
-    RibStats::incrementRibTableVersion();
+    /*
+     * Temporarily commented out until we fix the RIB versioning in RIB. The
+     * bgpcpp.rib.tableVersion counter is advanced by
+     * PeerManagerBase::incrementMaxRibVersion() in the meantime, so it reports
+     * the sequence peers' cached versions are stamped from.
+     *
+     * RibStats::incrementRibTableVersion();
+     */
     // Plain increment: ribVersion_ is mutated only on the RIB event base.
     return ++ribVersion_;
   }
