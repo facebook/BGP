@@ -34,6 +34,36 @@ def _ctx(*args: object) -> MagicMock:
     return ctx
 
 
+class ShowBgpCmdArgsTest(TestCase):
+    """'show bgpcpp ...' token stream -> bgpcli argument list."""
+
+    def test_plain_subcommand_passes_through(self) -> None:
+        args = BgpCli.ShowBgpCmd()._get_args(_ctx("show", "bgpcpp", "summary"))
+        self.assertEqual(args, ["summary"])
+
+    def test_sort_by_keyword_becomes_a_flag(self) -> None:
+        # The EOS grammar spells the option as a bare keyword; bgpcli wants
+        # '--sort-by'. The value is forwarded untouched, commas and all.
+        args = BgpCli.ShowBgpCmd()._get_args(
+            _ctx("show", "bgpcpp", "summary", "sort-by", "pr:desc,peer")
+        )
+        self.assertEqual(args, ["summary", "--sort-by", "pr:desc,peer"])
+
+    def test_sort_by_rewrite_is_scoped_to_summary(self) -> None:
+        # Only 'summary' takes the option, so a same-named token anywhere else
+        # is left alone rather than turned into a flag bgpcli would reject.
+        args = BgpCli.ShowBgpCmd()._get_args(
+            _ctx("show", "bgpcpp", "policy", "sort-by")
+        )
+        self.assertEqual(args, ["policy", "sort-by"])
+
+    def test_list_valued_args_are_flattened(self) -> None:
+        args = BgpCli.ShowBgpCmd()._get_args(
+            _ctx("show", "bgpcpp", "table", "prefix", ["1.1.1.0/24", "2.2.2.0/24"])
+        )
+        self.assertEqual(args, ["table", "prefix", "1.1.1.0/24", "2.2.2.0/24"])
+
+
 class ClearBgpCppCountersTest(TestCase):
     """clear bgpcpp counters -> bgpcli clear bgp counters wiring."""
 

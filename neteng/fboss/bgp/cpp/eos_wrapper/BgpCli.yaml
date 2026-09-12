@@ -10,7 +10,7 @@ commands:
       show bgpcpp
       ( changelist
       | (config [raw])
-      | summary
+      | (summary [(sort-by <sortKeys>)])
       | (summary egress)
       | (neighbors [<ipAddr> [[session-id] <sessionID>]])
       | (neighbors <ipAddr> (advertised | received) (pre-policy | post-policy | rejected) [{<ipPrefix>}])
@@ -41,6 +41,7 @@ commands:
       <peerID>: { integer: { help: Peer ID } }
       <policyName>: { regex: { regex: .+, help: Policy name } }
       <sessionID>: { ipAddress: { help: Session ID } }
+      <sortKeys>: { regex: { regex: .+, help: Comma separated column keys in priority order } }
       advertised: { keyword: { help: Routes advertised to a peer } }
       attrs: { keyword: { help: Show attribute statistics } }
       changelist: { keyword: { help: Show BGP changelist information } }
@@ -68,6 +69,7 @@ commands:
       rejected: { keyword: { help: Rejected routes } }
       rib-policy: { keyword: { help: Show installed BGP RibPolicy } }
       session-id: { keyword: { help: Show BGP neighbor information for specific session-id } }
+      sort-by: { keyword: { help: Sort peers by one or more summary columns } }
       stats: { keyword: { help: Show various statistics } }
       stream: { keyword: { help: Show BGP stream session information } }
       subscriber: { keyword: { help: Show information sent to BGP thrift stream subscriber } }

@@ -238,6 +238,11 @@ class ShowBgpCmd(CliExtension.ShowCommandClass):
 
         Skips the first two positional args ('show' and 'bgpcpp') and
         flattens any list-valued arguments into individual strings.
+
+        'summary' takes a 'sort-by <keys>' option, which the EOS grammar
+        spells as a bare keyword while bgpcli wants '--sort-by'. Only the
+        summary subcommand accepts it, so the rewrite is scoped to that
+        subcommand rather than applied to every token.
         """
         args = []
         for arg in islice(ctx.args.values(), 2, None):
@@ -245,6 +250,9 @@ class ShowBgpCmd(CliExtension.ShowCommandClass):
                 args.extend(str(a) for a in arg)
             else:
                 args.append(str(arg))
+
+        if args and args[0] == "summary":
+            args = ["--sort-by" if arg == "sort-by" else arg for arg in args]
         return args
 
     def handler(self, ctx):

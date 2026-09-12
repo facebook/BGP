@@ -29,6 +29,8 @@ _EXPECTED_SHOW_BGPCPP_TOKENS = (
     "summary",
     "neighbors",
     "profiler",
+    "sort-by",
+    "<sortKeys>",
 )
 
 
