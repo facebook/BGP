@@ -23,7 +23,13 @@ caught at build time rather than on a lab switch.
 """
 
 # Tokens the `show bgpcpp` grammar must always expose.
-_EXPECTED_SHOW_BGPCPP_TOKENS = ("nexthopinfo", "holdtimers", "summary", "neighbors")
+_EXPECTED_SHOW_BGPCPP_TOKENS = (
+    "nexthopinfo",
+    "holdtimers",
+    "summary",
+    "neighbors",
+    "profiler",
+)
 
 
 class BgpCliYamlTest(unittest.TestCase):
@@ -49,6 +55,13 @@ class BgpCliYamlTest(unittest.TestCase):
         self.assertIsInstance(data, dict)
         for token in _EXPECTED_SHOW_BGPCPP_TOKENS:
             self.assertIn(token, data)
+
+    def test_profiler_token_is_reachable_in_syntax(self) -> None:
+        # A token declared only in 'data' is dead: the syntax alternation is
+        # what makes 'show bgpcpp profiler' reachable and forwards it to
+        # 'bgpcli show bgp profiler'.
+        syntax = self._load()["commands"]["showBgpCpp"]["syntax"]
+        self.assertIn("| profiler", syntax)
 
     def test_every_data_entry_is_a_well_formed_mapping(self) -> None:
         # A broken flow scalar can silently produce junk keys or non-mapping

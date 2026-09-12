@@ -17,6 +17,7 @@ commands:
       | originated-routes
       | initialization-events
       | (policy <policyName>)
+      | profiler
       | shadowrib
       | (stream summary)
       | (stream subscriber <peerID> [(pre-policy | post-policy) [{<ipPrefix>}]])
@@ -61,6 +62,7 @@ commands:
       post-policy: { keyword: { help: After policy } }
       pre-policy: { keyword: { help: Before policy } }
       prefix: { keyword: { help: Show BGP route details of exact prefix } }
+      profiler: { keyword: { help: Show BGP coroutine profiler statistics } }
       raw: { keyword: { help: Show BGP configuration in raw config-file format } }
       received: { keyword: { help: Routes received from a peer } }
       rejected: { keyword: { help: Rejected routes } }
