@@ -114,13 +114,17 @@ class BgpServiceBase
   int64_t getTimeElapsedSinceLastFibUpdate() override;
 
   /*
-   * Get the current RIB version. This is a monotonically increasing counter
-   * that increments whenever a material routing change occurs (best path
-   * or multipath changes). ribVersion_ is confined to the RIB event base, so
-   * this handler reads it through a timeout-protected evb hop
-   * (co_runOnEvbWithTimeout, mirroring co_getRibSummary). Returns -1 if the
-   * value is unavailable (session exiting, or the evb hop timed out / failed);
-   * real versions are non-negative.
+   * Get the current RIB version: PeerManager's maxRibVersion_, which is the
+   * counter the shadow RIB, the change list and every peer's cached version
+   * are stamped from -- so it is the sequence TBgpSession.rib_version can be
+   * compared against. The loc-RIB keeps its own counter, but the RIB does not
+   * yet guarantee it increases monotonically across separately flushed
+   * RibOut buffers, so it is not what we report. maxRibVersion_ is confined
+   * to the PeerManager event base, so this handler reads it through a
+   * timeout-protected evb hop (co_runOnEvbWithTimeout, mirroring
+   * co_getRibSummary). Returns -1 if the value is unavailable (session
+   * exiting, or the evb hop timed out / failed); real versions are
+   * non-negative.
    */
   folly::coro::Task<int64_t> co_getRibVersion() override;
 

@@ -1903,8 +1903,8 @@ folly::coro::Task<int64_t> BgpServiceBase::co_getRibVersion() {
   };
 
   auto result = co_await co_runOnEvbWithTimeout(
-      rib_.getEventBase(),
-      [this]() { return rib_.getRibVersion(); },
+      peerMgr_.getEventBase(),
+      [this]() { return peerMgr_.getMaxRibVersion(); },
       kRibThriftHandlerTimeout);
 
   if (result.hasValue()) {
@@ -1912,7 +1912,7 @@ folly::coro::Task<int64_t> BgpServiceBase::co_getRibVersion() {
   }
 
   if (result.exception().is_compatible_with<folly::FutureTimeout>()) {
-    XLOGF(ERR, "getRibVersion timed out — Rib evb unresponsive");
+    XLOGF(ERR, "getRibVersion timed out — PeerManager evb unresponsive");
   } else {
     XLOGF(ERR, "getRibVersion failed: {}", result.exception().what());
   }
