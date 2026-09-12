@@ -977,6 +977,13 @@ class AdjRib : boost::noncopyable,
     return changeListConsumer_;
   }
 
+  /*
+   * Consume all available peer change-list items. If the consumer reaches the
+   * tail, advance the peer's cached version to the Shadow RIB's current
+   * maximum.
+   */
+  void tryIterateChangesToEnd() noexcept;
+
   bool isEnhancedRouteRefreshNegotiated() const noexcept {
     return isEnhancedRouteRefreshNegotiated_;
   }

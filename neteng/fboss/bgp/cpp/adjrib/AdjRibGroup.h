@@ -416,6 +416,15 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   void deactivateChangeListConsumer() noexcept;
 
   /*
+   * Consume all available group change-list items. Reaching the tail means the
+   * group has seen every item offered to it, so advance its cached version to
+   * the Shadow RIB's current maximum. The last applicable change item's
+   * version can be lower because not every RIB change is published or applies
+   * to this consumer.
+   */
+  void tryIterateChangesToEnd() noexcept;
+
+  /*
    * Create the group's change list consume (MRAI) timer for the currently set
    * changeListConsumer_. Shared by registerGroupConsumer() and the consumer
    * swap in promoteDetachedPeerToSync().
@@ -1765,6 +1774,7 @@ class AdjRibOutGroupConsumer : public Consumer<ShadowRibEntry> {
     adjRibOutGroup_->setState(UpdateGroupState::READY);
 
     adjRibOutGroup_->processShadowRibEntryChange(srEntry);
+
     return ProcessResult::CONTINUE;
   }
 

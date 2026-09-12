@@ -3824,7 +3824,7 @@ TEST(ChangeTrackerTest, EmptyBitmapTest) {
 
 /*
  * Test iterator-based consumption with YIELD behavior
- * This test verifies that when using iterateChanges():
+ * This test verifies that when using iterateChangesToEnd():
  * 1. Consumer processes items until YIELD
  * 2. end() is called to add consumer to pending list
  * 3. Marker stays on the item that caused YIELD (not advanced)
@@ -3856,8 +3856,8 @@ TEST(ChangeTrackerTest, IteratorBasedConsumptionWithYield) {
   producer.publishChange(object4);
   producer.publishChange(object5);
 
-  // Call iterateChanges() directly (no coroutine)
-  consumer->iterateChanges();
+  // Call iterateChangesToEnd() directly (no coroutine)
+  consumer->iterateChangesToEnd();
 
   // Verify consumer processed items 1 and 2, then YIELDED on 3
   const auto& processedItems = consumer->getProcessedItems();
@@ -3894,8 +3894,8 @@ TEST(ChangeTrackerTest, IteratorBasedConsumptionWithYield) {
   // Clear the YIELD condition
   consumer->setPendOnValues({});
 
-  // Resume consumption by calling iterateChanges() again
-  consumer->iterateChanges();
+  // Resume consumption by calling iterateChangesToEnd() again
+  consumer->iterateChangesToEnd();
 
   // Verify consumer processed remaining items (3, 4, 5)
   ASSERT_EQ(consumer->getProcessedItems().size(), 5);
@@ -4419,7 +4419,7 @@ TEST(ChangeTrackerTest, ConsumerResetChangeList_PendedConsumer) {
   producer.publishChange(object3);
 
   /* Consume with iterator - will process 1, then yield on 2 */
-  consumer->iterateChanges();
+  consumer->iterateChangesToEnd();
 
   /* Verify consumer processed item 1 and is pended on item 2 */
   ASSERT_EQ(consumer->getProcessedItems().size(), 1);
@@ -4478,7 +4478,7 @@ TEST(ChangeTrackerTest, ConsumerResetChangeList_NullMarker) {
 
   /* Publish and consume everything so consumer reaches ready state */
   producer.publishChange(object1);
-  consumer->iterateChanges();
+  consumer->iterateChangesToEnd();
 
   /* Verify consumer is in ready state (marker == nullptr) */
   ASSERT_EQ(consumer->getMarker(), nullptr);
@@ -4525,8 +4525,8 @@ TEST(ChangeTrackerTest, ConsumerResetChangeList_MultipleConsumers) {
   producer.publishChange(object3);
 
   /* Both consumers consume - both will process 1, yield on 2 */
-  consumer1->iterateChanges();
-  consumer2->iterateChanges();
+  consumer1->iterateChangesToEnd();
+  consumer2->iterateChangesToEnd();
 
   ASSERT_EQ(consumer1->getProcessedItems().size(), 1);
   ASSERT_EQ(consumer2->getProcessedItems().size(), 1);
@@ -4541,7 +4541,7 @@ TEST(ChangeTrackerTest, ConsumerResetChangeList_MultipleConsumers) {
 
   /* Now let consumer2 finish processing */
   consumer2->setPendOnValues({});
-  consumer2->iterateChanges();
+  consumer2->iterateChangesToEnd();
 
   /* Now the change list should be empty */
   EXPECT_TRUE(tracker.getChangeList().empty())
@@ -4569,7 +4569,7 @@ TEST(ChangeTrackerTest, ConsumerResetChangeList_PendedOnLastItem) {
   producer.publishChange(object2);
   producer.publishChange(object3);
 
-  consumer->iterateChanges();
+  consumer->iterateChangesToEnd();
 
   /* Verify consumer processed 1, 2 and is pended on 3 */
   ASSERT_EQ(consumer->getProcessedItems().size(), 2);
@@ -4610,7 +4610,7 @@ TEST(ChangeTrackerTest, ConsumerResetChangeList_PendedOnFirstItem) {
   producer.publishChange(object2);
   producer.publishChange(object3);
 
-  consumer->iterateChanges();
+  consumer->iterateChangesToEnd();
 
   /* Verify consumer processed nothing and is pended on item 1 */
   ASSERT_EQ(consumer->getProcessedItems().size(), 0);
@@ -4648,7 +4648,7 @@ TEST(ChangeTrackerTest, ConsumerResetChangeList_CalledTwice) {
   producer.publishChange(object1);
   producer.publishChange(object2);
 
-  consumer->iterateChanges();
+  consumer->iterateChangesToEnd();
 
   /* First reset */
   tracker.consumerResetChangeList(consumer);
@@ -4678,7 +4678,7 @@ TEST(ChangeTrackerTest, ConsumerResetChangeList_UnregisterStillWorks) {
   producer.publishChange(object2);
   producer.publishChange(object3);
 
-  consumer->iterateChanges();
+  consumer->iterateChangesToEnd();
 
   /* Verify consumer is pended on item 2 */
   ASSERT_EQ(consumer->getProcessedItems().size(), 1);
@@ -4704,7 +4704,7 @@ TEST(ChangeTrackerTest, ConsumerResetChangeList_SingleItem) {
 
   producer.publishChange(object1);
 
-  consumer->iterateChanges();
+  consumer->iterateChangesToEnd();
 
   ASSERT_EQ(consumer->getProcessedItems().size(), 0);
   ASSERT_NE(consumer->getMarker(), nullptr);
@@ -4731,7 +4731,7 @@ TEST(ChangeTrackerTest, JoinConsumerWithExistingMarkerAborts) {
   producer.publishChange(object1);
 
   // Synchronously consume — consumer2 pends on value 1
-  consumer2->iterateChanges();
+  consumer2->iterateChangesToEnd();
 
   auto* markerBefore = consumer2->getMarker();
   ASSERT_NE(markerBefore, nullptr);
@@ -4776,7 +4776,7 @@ TEST(ChangeTrackerTest, DoubleRegistrationPrevented) {
   auto* object1 = producer.createObject(42);
   producer.publishChange(object1);
 
-  consumer->iterateChanges();
+  consumer->iterateChangesToEnd();
 
   /* Must have processed exactly 1 item, not 2 (which would happen with
    * two bit positions both needing to clear their bits) */
@@ -4813,7 +4813,7 @@ TEST(ChangeTrackerTest, StalenessNotStaleImmediatelyAfterPublish) {
   auto* object = producer.createObject(1);
   producer.publishChange(object);
 
-  consumer->iterateChanges();
+  consumer->iterateChangesToEnd();
 
   ASSERT_NE(consumer->getMarker(), nullptr);
   EXPECT_FALSE(consumer->isStale(std::chrono::seconds(60)));
@@ -4831,7 +4831,7 @@ TEST(ChangeTrackerTest, StalenessDetectedAfterThresholdElapsed) {
   auto* object = producer.createObject(1);
   producer.publishChange(object);
 
-  consumer->iterateChanges();
+  consumer->iterateChangesToEnd();
 
   ASSERT_NE(consumer->getMarker(), nullptr);
   /* Backdate timestamp by 11 minutes to simulate elapsed time */
@@ -4851,7 +4851,7 @@ TEST(ChangeTrackerTest, StalenessDurationReturnsReasonableValue) {
   auto* object = producer.createObject(1);
   producer.publishChange(object);
 
-  consumer->iterateChanges();
+  consumer->iterateChangesToEnd();
 
   ASSERT_NE(consumer->getMarker(), nullptr);
   /* Backdate timestamp by 5 minutes to simulate elapsed time */
@@ -4874,7 +4874,7 @@ TEST(ChangeTrackerTest, StalenessLoggedFlagBehavior) {
   auto* object = producer.createObject(1);
   producer.publishChange(object);
 
-  consumer->iterateChanges();
+  consumer->iterateChangesToEnd();
 
   EXPECT_FALSE(consumer->isStalenessLogged());
   consumer->markStalenessLogged();
@@ -4895,7 +4895,7 @@ TEST(ChangeTrackerTest, StalenessResetOnMarkerAdvance) {
   producer.publishChange(object1);
   producer.publishChange(object2);
 
-  consumer->iterateChanges();
+  consumer->iterateChangesToEnd();
 
   /* Consumer processed item 1, then yielded on item 2. */
   ASSERT_EQ(consumer->getProcessedItems().size(), 1);
@@ -4907,7 +4907,7 @@ TEST(ChangeTrackerTest, StalenessResetOnMarkerAdvance) {
 
   /* Resume consumption — marker will advance */
   consumer->setPendOnValues({});
-  consumer->iterateChanges();
+  consumer->iterateChangesToEnd();
 
   /* After processing item 2, marker becomes null (ready state) */
   EXPECT_TRUE(consumer->isReady());
@@ -4927,7 +4927,7 @@ TEST(ChangeTrackerTest, StalenessResetOnNewItemsAfterReady) {
   /* Publish and consume — consumer reaches ready state */
   auto* object1 = producer.createObject(1);
   producer.publishChange(object1);
-  consumer->iterateChanges();
+  consumer->iterateChangesToEnd();
   EXPECT_TRUE(consumer->isReady());
 
   /* Now publish a new item — notifyReadyConsumers will call
@@ -4955,7 +4955,7 @@ TEST(ChangeTrackerTest, StalenessNotResetWhenConsumerYieldsWithoutProgress) {
   producer.publishChange(object);
 
   /* First consumption: yields on item 1 without processing anything */
-  consumer->iterateChanges();
+  consumer->iterateChangesToEnd();
   ASSERT_NE(consumer->getMarker(), nullptr);
 
   /* Backdate timestamp to simulate 11 minutes of being stuck */
@@ -4963,7 +4963,7 @@ TEST(ChangeTrackerTest, StalenessNotResetWhenConsumerYieldsWithoutProgress) {
   EXPECT_TRUE(consumer->isStale(std::chrono::minutes(10)));
 
   /* Second consumption: still yields on the same item — no progress */
-  consumer->iterateChanges();
+  consumer->iterateChangesToEnd();
 
   /* Staleness clock must NOT have been reset since marker didn't move */
   EXPECT_TRUE(consumer->isStale(std::chrono::minutes(10)));
@@ -4986,7 +4986,7 @@ TEST(ChangeTrackerTest, StalenessNotStaleWhileConsumerMakesProgress) {
   producer.publishChange(object3);
 
   /* Consume all items — marker advances through each */
-  consumer->iterateChanges();
+  consumer->iterateChangesToEnd();
 
   ASSERT_EQ(consumer->getProcessedItems().size(), 3);
   EXPECT_TRUE(consumer->isReady());

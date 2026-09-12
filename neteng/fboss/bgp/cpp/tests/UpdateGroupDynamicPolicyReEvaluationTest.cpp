@@ -36,7 +36,10 @@
       ProcessGroupEgressPolicyReEvaluation_UpdatesGroupKey);       \
   FRIEND_TEST(                                                     \
       UpdateGroupDynamicPolicyReEvaluationTest,                    \
-      ProcessRibDumpReq_DetachedPeerAheadOfGroupAfterRibWalk);
+      ProcessRibDumpReq_DetachedPeerAheadOfGroupAfterRibWalk);     \
+  FRIEND_TEST(                                                     \
+      UpdateGroupDynamicPolicyReEvaluationTest,                    \
+      ReEvalAdvancesToMaxRibVersionWhenChangeListTailIsNotForGroup);
 
 #define AdjRib_TEST_FRIENDS                                                \
   friend class UpdateGroupDynamicPolicyReEvaluationTest;                   \
@@ -623,6 +626,122 @@ TEST_F(
     ctx.peerMgr->shadowRibEntries_.clear();
   });
   // Drain any async work triggered by cleanup
+  evb.runInEventBaseThreadAndWait([]() {});
+
+  tearDown(ctx);
+}
+
+/*
+ * A policy re-evaluation must leave the group at the RIB's max version even
+ * when the tail of the change list is not for this group's consumer.
+ *
+ * The walk skips entries already pending on the group's consumer and therefore
+ * declines to advance the version off the walk, delegating that to the drain
+ * that follows. But the drain only ever sees items this consumer subscribes
+ * to, so a trailing add-path-only change -- published with the add-path
+ * bitmap, which a non-add-path group is not in -- carries maxRibVersion past
+ * anything the group can observe item by item.
+ */
+TEST_F(
+    UpdateGroupDynamicPolicyReEvaluationTest,
+    ReEvalAdvancesToMaxRibVersionWhenChangeListTailIsNotForGroup) {
+  /*
+   * maxRibVersion_ counts the contiguous prefix chunks PeerManager applies, so
+   * each of the two single-prefix announcements below moves it by one: the
+   * bestpath change lands on 1 and the add-path-only change on 2. The RIB's own
+   * RibVersion on the entries is overwritten during the walk, so seeding it
+   * here would prove nothing.
+   */
+  constexpr uint64_t kVersionAfterAddPathOnly = 2;
+  const auto kGroupPrefix =
+      folly::CIDRNetwork{folly::IPAddress("10.0.1.0"), 24};
+  const auto kAddPathOnlyPrefix =
+      folly::CIDRNetwork{folly::IPAddress("10.0.2.0"), 24};
+
+  auto ctx = setUp(true /* enableUpdateGroup */);
+  auto& evb = ctx.peerMgr->getEventBase();
+
+  auto announce = [&](bool addPathOnly, const folly::CIDRNetwork& prefix) {
+    auto attrs = std::make_shared<BgpPath>(*buildBgpPathFields(1, 1, 0, 0));
+    attrs->publish();
+    TinyPeerInfo peer(
+        kPeerAddr2, kAsn1, kPeerRouterId2, BgpSessionType::EBGP, false);
+
+    RibOutAnnouncement announcement;
+    auto& entries =
+        addPathOnly ? announcement.addPathEntries : announcement.entries;
+    entries.emplace_back(prefix, addPathOnly ? 1 : kDefaultPathID, peer, attrs);
+    ctx.peerMgr->handleShadowRibEntryAnnouncement(announcement);
+  };
+
+  /*
+   * The group is bound to PeerManager's shadow RIB so getShadowRibMaxVersion()
+   * tracks it, and is non-add-path so its consumer bit lands only in
+   * nonAddPathConsumerBitmap_. No peers are registered: this covers the
+   * group's own version bookkeeping, which does not depend on membership.
+   */
+  UpdateGroupKey groupKey;
+  groupKey.sendAddPath = false;
+  std::shared_ptr<AdjRibOutGroup> group;
+  std::shared_ptr<AdjRibOutGroupConsumer> groupConsumer;
+  evb.runInEventBaseThreadAndWait([&]() {
+    group = std::make_shared<AdjRibOutGroup>(
+        evb,
+        "ReEvalMaxRibVersion",
+        1 /* groupId */,
+        true /* enableUpdateGroup */,
+        groupKey,
+        ShadowRibView{
+            ctx.peerMgr->shadowRibEntries_, ctx.peerMgr->maxRibVersion_});
+    group->setChangeListTracker(
+        ctx.peerMgr->changeListTracker_,
+        ctx.peerMgr->addPathConsumerBitmap_,
+        ctx.peerMgr->nonAddPathConsumerBitmap_);
+    group->registerGroupConsumer();
+    groupConsumer = group->getChangeListConsumer();
+  });
+
+  /*
+   * A bestpath change carries the non-add-path bitmap, so it is pending on the
+   * group's consumer and the re-eval walk will skip it.
+   */
+  evb.runInEventBaseThreadAndWait([&]() { announce(false, kGroupPrefix); });
+
+  /*
+   * An add-path-only change carries the add-path bitmap only: it advances
+   * maxRibVersion but never reaches this group's consumer.
+   */
+  evb.runInEventBaseThreadAndWait(
+      [&]() { announce(true, kAddPathOnlyPrefix); });
+
+  evb.runInEventBaseThreadAndWait([&]() {
+    ASSERT_EQ(kVersionAfterAddPathOnly, ctx.peerMgr->getMaxRibVersion());
+    ASSERT_EQ(0, group->getLastSeenRibVersion());
+
+    group->reEvaluateSyncPeersEgressPolicy();
+
+    /*
+     * Not the bestpath chunk's version (1): the drain reached the tail of the
+     * change list, so the group owns the RIB's max version rather than the
+     * version of the last item it happened to be offered.
+     */
+    EXPECT_EQ(kVersionAfterAddPathOnly, group->getLastSeenRibVersion());
+  });
+
+  evb.runInEventBaseThreadAndWait([&]() {
+    groupConsumer->resetBitmap();
+    groupConsumer->terminate();
+    groupConsumer->deregisterFromTracker();
+    group->resetChangeListConsumeTimer();
+    group->resetChangeListConsumer();
+    groupConsumer.reset();
+    group.reset();
+    /*
+     * Clear shadowRibEntries_ while changeListTracker_ is still alive, so
+     * ChangeItems properly unlink from the change list.
+     */
+    ctx.peerMgr->shadowRibEntries_.clear();
+  });
   evb.runInEventBaseThreadAndWait([]() {});
 
   tearDown(ctx);

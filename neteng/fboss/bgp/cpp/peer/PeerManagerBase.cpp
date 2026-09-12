@@ -5621,8 +5621,8 @@ void PeerManagerBase::processDetachedPeerEgressPolicyReEvaluation(
    * shadow RIB plus every pending change, completing the re-evaluation in this
    * turn rather than leaving items for the async consume timer.
    */
-  if (auto consumer = adjRib->getChangeListConsumer()) {
-    consumer->iterateChanges();
+  if (adjRib->getChangeListConsumer()) {
+    adjRib->tryIterateChangesToEnd();
   }
 }
 

@@ -1338,12 +1338,12 @@ TEST_F(
   ASSERT_EQ(groupConsumer->getMarker(), peerConsumer->getMarker());
   EXPECT_FALSE(adjRib->canWaitForGroupToRejoin());
 
-  peerConsumer->iterateChanges();
+  peerConsumer->iterateChangesToEnd();
   ASSERT_TRUE(peerConsumer->isReady());
   ASSERT_FALSE(groupConsumer->isReady());
   EXPECT_FALSE(adjRib->canWaitForGroupToRejoin());
 
-  groupConsumer->iterateChanges();
+  groupConsumer->iterateChangesToEnd();
   ASSERT_TRUE(peerConsumer->isReady());
   ASSERT_TRUE(groupConsumer->isReady());
   EXPECT_TRUE(adjRib->canWaitForGroupToRejoin());
@@ -1353,7 +1353,7 @@ TEST_F(
   auto secondTrackable =
       std::make_unique<TrackableObject<ShadowRibEntry>>(std::move(secondEntry));
   changeTracker->publishChange(secondTrackable.get());
-  groupConsumer->iterateChanges();
+  groupConsumer->iterateChangesToEnd();
 
   ASSERT_FALSE(peerConsumer->isReady());
   ASSERT_TRUE(groupConsumer->isReady());
@@ -1473,7 +1473,7 @@ TEST_F(UpdateGroupDetachedPeerTest, CanWaitForGroupToRejoinReturnsTrue) {
   auto trackable =
       std::make_unique<TrackableObject<ShadowRibEntry>>(std::move(entry));
   changeTracker->publishChange(trackable.get());
-  groupConsumer->iterateChanges();
+  groupConsumer->iterateChangesToEnd();
   ASSERT_TRUE(groupConsumer->isReady());
 
   // Register detached consumer — joins at group's ready position
@@ -1521,7 +1521,7 @@ TEST_F(UpdateGroupDetachedPeerTest, ActivateDSPTransitionsToReadyToJoin) {
   auto trackable =
       std::make_unique<TrackableObject<ShadowRibEntry>>(std::move(entry));
   changeTracker->publishChange(trackable.get());
-  groupConsumer->iterateChanges();
+  groupConsumer->iterateChangesToEnd();
   EXPECT_TRUE(groupConsumer->isReady());
 
   // Register detached consumer — joins at group's ready position
@@ -1716,7 +1716,7 @@ TEST_F(
   auto trackable =
       std::make_unique<TrackableObject<ShadowRibEntry>>(std::move(entry));
   changeTracker->publishChange(trackable.get());
-  groupConsumer->iterateChanges();
+  groupConsumer->iterateChangesToEnd();
 
   // Register detached consumer — joins at group's ready position
   adjRib->registerDetachedConsumerAtGroupPosition(
@@ -4620,7 +4620,7 @@ TEST_F(UpdateGroupDetachLifecycleTest, DFPDetachAndReadyToJoin) {
    * DFP scenario: group hasn't moved further on CL after this point.
    */
   publishChangeItem(folly::CIDRNetwork{folly::IPAddress("10.0.0.0"), 24});
-  groupConsumer_->iterateChanges();
+  groupConsumer_->iterateChangesToEnd();
   EXPECT_TRUE(groupConsumer_->isReady());
 
   // Add a prefix to the group packing list (group is mid-send)
@@ -4679,7 +4679,7 @@ TEST_F(UpdateGroupDetachLifecycleTest, BlockCountResetOnRejoin) {
 
   // Publish a CL item and consume it so group consumer is ready
   publishChangeItem(folly::CIDRNetwork{folly::IPAddress("10.0.0.0"), 24});
-  groupConsumer_->iterateChanges();
+  groupConsumer_->iterateChangesToEnd();
   EXPECT_TRUE(groupConsumer_->isReady());
 
   // Add a prefix to the group packing list (group is mid-send)

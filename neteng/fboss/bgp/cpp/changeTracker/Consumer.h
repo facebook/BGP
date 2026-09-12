@@ -249,8 +249,8 @@ class Consumer : public std::enable_shared_from_this<Consumer<T>> {
    * @param untilMarker If non-null, stop when the current item equals
    *        untilMarker (exclusive — the boundary item is NOT processed).
    *        The consumer's marker will be left pointing at untilMarker.
-   *        If nullptr, consume all available items (equivalent to the
-   *        old iterateChanges behavior).
+   *        If nullptr, consume all available items (equivalent to
+   *        iterateChangesToEnd()).
    *
    * PRECONDITION: processChangeItemCallback_ MUST be set via
    * setProcessChangeItemCallback() before calling this method.
@@ -274,14 +274,20 @@ class Consumer : public std::enable_shared_from_this<Consumer<T>> {
   void iterateChangesUntilExcluding(ChangeItem<T>* untilMarker);
 
   /**
-   * Consume all available changes using iterator interface.
-   * Convenience wrapper that calls
+   * Consume every available change, leaving the marker at the end of the
+   * change list. Convenience wrapper that calls
    * iterateChangesUntilExcluding(nullptr).
+   *
+   * Named for the guarantee callers depend on: with no boundary marker the
+   * only thing that can stop the walk short is a consumer whose
+   * processChangeItem() returns ProcessResult::YIELD. A consumer that never
+   * yields is therefore guaranteed to be at the tail (isReady()) when this
+   * returns, and callers need not re-check.
    *
    * This should be used when enable_iterable_change_list_tracker flag is
    * enabled.
    */
-  void iterateChanges() {
+  void iterateChangesToEnd() {
     iterateChangesUntilExcluding(nullptr);
   }
 

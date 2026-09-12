@@ -426,6 +426,37 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
     });
   }
 
+  /*
+   * Publish a single add-path-only change. It is published with the add-path
+   * consumer bitmap, so a non-add-path consumer's bit is never set on the
+   * change item: the change advances PeerManager's max RIB version without
+   * ever being offered to those consumers.
+   *
+   * Returns the resulting max RIB version.
+   */
+  uint64_t publishAddPathOnlyUpdate(TestContext& ctx) {
+    auto& evb = ctx.peerMgr->getEventBase();
+    uint64_t maxRibVersion = 0;
+    evb.runInEventBaseThreadAndWait([&]() {
+      TinyPeerInfo peer(
+          kPeerAddr2, kAsn1, kPeerRouterId2, BgpSessionType::EBGP, false);
+      auto attrs = std::make_shared<BgpPath>(*buildBgpPathFields(1, 0, 0, 0));
+      attrs->publish();
+
+      RibOutAnnouncement announcement;
+      announcement.addPathEntries.emplace_back(
+          folly::CIDRNetwork{folly::IPAddress("200.0.0.0"), 24},
+          1 /* pathIdToSend */,
+          peer,
+          attrs);
+      announcement.addPathEntries.back().ribVersion =
+          ctx.peerMgr->getMaxRibVersion() + 1;
+      ctx.peerMgr->handleShadowRibEntryAnnouncement(announcement);
+      maxRibVersion = ctx.peerMgr->getMaxRibVersion();
+    });
+    return maxRibVersion;
+  }
+
   void expectEventualStateOnEvb(
       TestContext& ctx,
       const BgpPeerId& peerId,

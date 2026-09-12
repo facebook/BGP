@@ -1336,6 +1336,24 @@ AdjRib::getPostPolicyAttributesPolicyTermAndInfo(
       std::move(postPolicyInfo)};
 }
 
+void AdjRib::tryIterateChangesToEnd() noexcept {
+  changeListConsumer_->iterateChangesToEnd();
+  /*
+   * The drain reached the end of the change list, so this peer has seen every
+   * item it will be offered and can claim the RIB's max version. Items its
+   * consumer bit was never set on (e.g. add-path-only changes for a
+   * non-add-path peer) are skipped by markProcessed and would otherwise leave
+   * the peer trailing the RIB forever.
+   *
+   * Reaching the tail is guaranteed rather than checked: no boundary marker is
+   * passed, and AdjRibOutConsumer::processChangeItem() always returns
+   * ProcessResult::CONTINUE, never YIELD -- the only other way the walk can
+   * stop short. Nothing tracks the version per item, so introducing a YIELD on
+   * this path would silently stall the peer's version at its pre-drain value.
+   */
+  setLastSeenRibVersion(adjRibOutGroup_->getShadowRibMaxVersion());
+}
+
 /*
  * @brief  Set up this peer's OWN change list consumer to track the FULL change
  *         list. Used by an in-sync peer (and by all peers when update groups
@@ -1343,9 +1361,9 @@ AdjRib::getPostPolicyAttributesPolicyTermAndInfo(
  *
  *         The peer's changeListConsumer_ must already exist; this registers it
  *         with the tracker and schedules a polled timer that, each cycle,
- *         consumes ALL available changes via iterateChanges() — i.e. the peer
- *         independently keeps up with the entire change list and builds/sends
- *         its own BGP updates.
+ *         consumes ALL available changes via iterateChangesToEnd() — i.e. the
+ * peer independently keeps up with the entire change list and builds/sends its
+ * own BGP updates.
  *
  *         To avoid registering twice if accidentally called twice, check for
  *         existence of changeListConsumeTimer_; its presence means the consumer
@@ -1407,18 +1425,7 @@ void AdjRib::activateChangeListConsumer() noexcept {
           }
           // Use iterator-based interface for consuming change items
           auto previousRibVersion = lastSeenRibVersion_;
-          changeListConsumer_->iterateChanges();
-          /*
-           * isReady() means the marker reached the end of the change list, so
-           * this peer has seen every item it will be offered and can claim the
-           * RIB's max version. Items its consumer bit was never set on (e.g.
-           * add-path-only changes for a non-add-path peer) are skipped by
-           * markProcessed and would otherwise leave the peer trailing the RIB
-           * forever.
-           */
-          if (changeListConsumer_->isReady()) {
-            setLastSeenRibVersion(adjRibOutGroup_->getShadowRibMaxVersion());
-          }
+          tryIterateChangesToEnd();
           if (changeListConsumer_->isStale(kConsumerStalenessThreshold) &&
               !changeListConsumer_->isStalenessLogged()) {
             XLOGF(

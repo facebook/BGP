@@ -929,7 +929,7 @@ void AdjRib::maybeEndRrDump(const RibOutAnnouncement& announcement) noexcept {
      *   - memory: ChangeItems can only evict from the global ChangeList
      *     once all consumers' markers move past them; a stuck marker on
      *     this peer pins items resident until the next periodic tick.
-     *   - CPU (deferred): the next periodic iterateChanges()
+     *   - CPU (deferred): the next periodic iterateChangesToEnd()
      *     walks the now-stale items and generates would-be UPDATEs that
      *     AdjRibOut postAttr dedup suppresses anyway — wasted traversal.
      *   - latency: a real new change arriving immediately after RR sits
@@ -945,7 +945,7 @@ void AdjRib::maybeEndRrDump(const RibOutAnnouncement& announcement) noexcept {
      * existing periodic-timer call site at AdjRib.cpp:1224.
      */
     if (changeListConsumer_) {
-      changeListConsumer_->iterateChanges();
+      changeListConsumer_->iterateChangesToEnd();
     }
   }
 }

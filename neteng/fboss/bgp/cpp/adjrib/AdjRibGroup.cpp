@@ -445,6 +445,33 @@ void AdjRibOutGroup::registerGroupConsumer() noexcept {
   createChangeListConsumeTimer();
 }
 
+void AdjRibOutGroup::tryIterateChangesToEnd() noexcept {
+  changeListConsumer_->iterateChangesToEnd();
+  /*
+   * iterateChangesToEnd() runs to the end of the changelist. It is important
+   * for us to set the correct rib version at the end of this call, which is
+   * actually the maxRibVersion_ perceived by PeerManager's shadow RIB.
+   *
+   * This is because:
+   *   1. Not all changes from RIB are published to the changelist
+   *   2. Not all changes published to the changelist are for this consumer.
+   *
+   * If we do not have the opportunity to run processChangeItem on
+   * an actual item, then we can only update to the RIB version of
+   * a change item seen by this consumer. This means we do not
+   * reflect that consuming to the end of the changelist will
+   * update the maxRibVersion_ to the latest snapshot of the RIB, which
+   * is undesired.
+   *
+   * Reaching the tail is guaranteed rather than checked: no boundary marker is
+   * passed, and AdjRibOutGroupConsumer::processChangeItem() always returns
+   * ProcessResult::CONTINUE, never YIELD -- the only other way the walk can
+   * stop short. Nothing tracks the version per item, so introducing a YIELD on
+   * this path would silently stall the group's version at its pre-drain value.
+   */
+  setLastSeenRibVersion(getShadowRibMaxVersion());
+}
+
 void AdjRibOutGroup::createChangeListConsumeTimer() noexcept {
   changeListConsumeTimer_ = folly::AsyncTimeout::make(evb_, [this]() noexcept {
     /*
@@ -470,25 +497,7 @@ void AdjRibOutGroup::createChangeListConsumeTimer() noexcept {
     auto previousRibVersion = lastSeenRibVersion_;
     {
       ScopedProfile profile("AdjRibOutGroup::consumeChangeList");
-      changeListConsumer_->iterateChanges();
-      /*
-       * When the group runs iterateChanges, it runs to the end of the
-       * changelist. It is important for us to set the correct rib version
-       * at the end of this call, which is actually the maxRibVersion_
-       * perceived by PeerManager's shadow RIB.
-       *
-       * This is because:
-       *   1. Not all changes from RIB are published to the changelist
-       *   2. Not all changes published to the changelist are for this consumer.
-       *
-       * If we do not have the opportunity to run processChangeItem on
-       * an actual item, then we can only update to the RIB version of
-       * a change item seen by this consumer. This means we do not
-       * reflect that consuming to the end of the changelist will
-       * update the maxRibVersion_ to the latest snapshot of the RIB, which
-       * is undesired.
-       */
-      setLastSeenRibVersion(maxRibVersion_);
+      tryIterateChangesToEnd();
     }
     if (changeListConsumer_->isStale(kConsumerStalenessThreshold) &&
         !changeListConsumer_->isStalenessLogged()) {
@@ -949,9 +958,10 @@ void AdjRibOutGroup::reEvaluateSyncPeersEgressPolicy() {
    * These change-list entries are not routes that arrived during the walk --
    * the walk is uninterrupted, so nothing is added mid-walk. They are entries
    * that were already pending on this group's consumer before the
-   * re-evaluation. The walk skips those already-pending entries, so draining
-   * them here both applies their latest state and advances the consumer marker
-   * (and lastSeenRibVersion) to the tail.
+   * re-evaluation. The walk skips those already-pending entries -- and declines
+   * to advance the version when it does -- so draining them here both applies
+   * their latest state and advances the consumer marker (and
+   * lastSeenRibVersion) to the tail.
    *
    * A group re-evaluated before its initial dump has no consumer to drain --
    * registration normally happens at the end of the dump. Register it here
@@ -959,7 +969,7 @@ void AdjRibOutGroup::reEvaluateSyncPeersEgressPolicy() {
    * from that point on rather than only once a dump eventually runs.
    */
   if (changeListConsumer_) {
-    changeListConsumer_->iterateChanges();
+    tryIterateChangesToEnd();
   } else {
     registerGroupConsumer();
   }
@@ -999,8 +1009,6 @@ void AdjRibOutGroup::reEvaluateSyncPeersEgressPolicy() {
  */
 void AdjRibOutGroup::processShadowRibEntryChange(
     ShadowRibEntry& srEntry) noexcept {
-  setLastSeenRibVersion(srEntry.ribVersion);
-
   /*
    * Convert shadow RIB entry to announcement entries and feed each directly
    * into the packing list via processRibAnnouncedEntryForGroup(). Unlike the

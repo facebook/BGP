@@ -1644,6 +1644,51 @@ TEST_F(
 }
 
 /*
+ * A detached peer's re-evaluation must leave it at the RIB's max version even
+ * when the tail of the change list is not for its consumer.
+ *
+ * processRibDumpReq skips entries already pending on the peer's consumer and
+ * therefore declines to advance the version off the dump, delegating that to
+ * the drain that follows. But the drain only ever sees items this consumer
+ * subscribes to, so a trailing add-path-only change -- published with the
+ * add-path bitmap, which a non-add-path peer is not in -- carries
+ * maxRibVersion past anything the peer can observe item by item.
+ */
+TEST_F(
+    GroupEgressPolicyReEvalExecution,
+    ProcessPeerEgressPolicyReEvaluation_AdvancesToMaxRibVersionWhenChangeListTailIsNotForPeer) {
+  auto ctx = setUp(2);
+  sendInitialRibDump(ctx);
+  expectEventualStateOnEvb(ctx, makePeerId(0), PeerUpdateState::JOINED_RUNNING);
+  triggerDetachedBlockedFromJoinedOnEvb(ctx, makePeerId(1));
+  expectEventualStateOnEvb(
+      ctx, makePeerId(1), PeerUpdateState::DETACHED_BLOCKED);
+  auto detached = ctx.adjRibs.at(makePeerId(1));
+  ASSERT_FALSE(detached->sendAddPath());
+
+  // Bestpath updates land on the peer's consumer, so the re-eval dump skips
+  // them and leaves the version to the drain.
+  publishRouteUpdates(ctx, /*isInitialDump=*/false);
+
+  const uint64_t maxRibVersion = publishAddPathOnlyUpdate(ctx);
+
+  processDetachedPeerEgressPolicyReEvaluationOnEvb(ctx, detached);
+
+  /*
+   * Not the version of the last item the peer was offered: the drain reached
+   * the end of the change list, so the peer owns the RIB's max version.
+   */
+  auto& evb = ctx.peerMgr->getEventBase();
+  auto peerVersion = folly::via(&evb, [&]() {
+                       return detached->getLastSeenRibVersion();
+                     }).get();
+  EXPECT_EQ(maxRibVersion, peerVersion);
+
+  realignPeerKeysToGroupsOnEvb(ctx);
+  tearDown(ctx);
+}
+
+/*
  * In-sync JOINED_RUNNING peer0 (unblocked) + DETACHED_BLOCKED peer1:
  * re-evaluation advertises all routes to both and moves both consumers to the
  * end of the change list.
