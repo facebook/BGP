@@ -52,8 +52,15 @@ namespace {
 NexthopStatus makeNexthopStatus(
     const folly::IPAddress& nexthop,
     bool isReachable,
-    std::optional<uint32_t> igpCost) {
-  return NexthopStatus(nexthop, isReachable, igpCost, /*isConnected*/ true);
+    std::optional<uint32_t> igpCost,
+    std::optional<std::string> ifName = std::nullopt) {
+  return NexthopStatus(
+      nexthop,
+      isReachable,
+      igpCost,
+      /*isConnected*/ true,
+      /*excludeNexthopWithoutCost*/ true,
+      std::move(ifName));
 }
 
 openr::thrift::ConnectedNextHopStatus makeConnectedNextHopStatus(
@@ -953,23 +960,34 @@ bool NetlinkWrapper::evaluateNexthop(const folly::IPAddress& nexthopIp) {
     return false;
   }
 
-  bool reachable = isInterfaceUp(*ifIndex);
+  /*
+   * Record the covering interface name on the status. The fib agent needs
+   * the name when it puts the route into an EOS nexthop-group. This function
+   * is the only place that knows the interface.
+   */
+  std::optional<std::string> ifName = ifNameForIndex(*ifIndex);
+  bool reachable = ifName.has_value() && isInterfaceUp(*ifName);
   XLOGF(
       DBG2,
-      "evaluateNexthop: {} is directly connected, reachable: {}",
+      "evaluateNexthop: {} is directly connected via {}, reachable: {}",
       nexthopIp.str(),
+      ifName.value_or("<unknown ifIndex>"),
       reachable);
   updateCacheAndNotifyRib({makeNexthopStatus(
-      nexthopIp, reachable, kDirectlyConnectedNexthopWeight)});
+      nexthopIp, reachable, kDirectlyConnectedNexthopWeight, ifName)});
   return true;
 }
 
-bool NetlinkWrapper::isInterfaceUp(int ifIndex) const {
+std::optional<std::string> NetlinkWrapper::ifNameForIndex(int ifIndex) const {
   auto nameIt = ifIndexToName_.find(ifIndex);
   if (nameIt == ifIndexToName_.end()) {
-    return false;
+    return std::nullopt;
   }
-  auto ifaceIt = interfaces_.find(nameIt->second);
+  return nameIt->second;
+}
+
+bool NetlinkWrapper::isInterfaceUp(const std::string& ifName) const {
+  auto ifaceIt = interfaces_.find(ifName);
   return ifaceIt != interfaces_.end() && ifaceIt->second.isUp();
 }
 

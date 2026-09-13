@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+#include <optional>
+#include <string>
+
 #include <fmt/core.h>
 #include <folly/coro/Sleep.h>
 #include <folly/gen/Base.h>
@@ -186,14 +189,31 @@ void FibEbb::updateUnicastRoute(
         nht.isConnected() = isConnected.value();
       }
 
+      /*
+       * The fib agent can put a route into an EOS nexthop-group. Each entry
+       * in a nexthop-group carries a nexthop address and an egress interface.
+       * EOS does not find the interface for such an entry. Thus the entry
+       * must carry the interface name. This applies to a global address and
+       * to a link-local address.
+       *
+       * Set the interface name when the nexthop source knows it. Other
+       * sources leave the field empty. Then the fib agent sends no interface
+       * name.
+       */
+      const std::optional<std::string>& ifName = nextHopInfo.getIfName();
+      if (ifName.has_value()) {
+        nht.address()->ifName() = ifName.value();
+      }
+
       // Log prefix, nexthop address, and isConnected
       XLOGF(
           DBG3,
-          "FibEbb - Prefix: {}, NextHop: {}, isConnected: {}",
+          "FibEbb - Prefix: {}, NextHop: {}, isConnected: {}, ifName: {}",
           folly::IPAddress::networkToString(prefix),
           nh.str(),
           isConnected.has_value() ? std::to_string(isConnected.value())
-                                  : "unset");
+                                  : "unset",
+          ifName.value_or("unset"));
     }
 
     // Locally Originated Route

@@ -76,6 +76,15 @@ class NexthopInfo : public NexthopInfoBase {
     return status_.isConnected();
   }
 
+  /**
+   * @brief Get the interface that the nexthop is reachable through.
+   * @return Interface name in kernel format, or std::nullopt if the source of
+   * the nexthop does not know the interface. See NexthopStatus::getIfName().
+   */
+  const std::optional<std::string>& getIfName() const {
+    return status_.getIfName();
+  }
+
   bool isResolvedForSelection() const override {
     return status_.isResolvedForSelection();
   }

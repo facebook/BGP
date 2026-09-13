@@ -233,14 +233,24 @@ class NetlinkWrapper : public BgpModuleBase {
    *
    * Reachability is answered purely from interface link state (isInterfaceUp);
    * the kernel neighbor (ARP/ND) table is not consulted.
+   *
+   * This also records the covering interface name on the pushed status. The
+   * fib agent needs the name when it puts the route into an EOS
+   * nexthop-group. See NexthopStatus::getIfName.
    */
   bool evaluateNexthop(const folly::IPAddress& nexthopIp);
 
   /**
-   * True if the given interface index maps to a tracked interface that is
-   * currently up. Drives interface-state reachability in evaluateNexthop.
+   * Find the name of the interface that has the index ifIndex. Returns
+   * std::nullopt if no tracked interface has that index.
    */
-  bool isInterfaceUp(int ifIndex) const;
+  std::optional<std::string> ifNameForIndex(int ifIndex) const;
+
+  /**
+   * True if the named interface is tracked and is currently up. Drives
+   * interface-state reachability in evaluateNexthop.
+   */
+  bool isInterfaceUp(const std::string& ifName) const;
 
   /**
    * @brief Read the kernel neighbor table and apply one interface's entries.

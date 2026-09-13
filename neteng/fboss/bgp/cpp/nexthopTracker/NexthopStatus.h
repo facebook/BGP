@@ -18,6 +18,7 @@
 
 #include <folly/IPAddress.h>
 #include <optional>
+#include <string>
 #include <tuple>
 #include "openr/if/gen-cpp2/Network_types.h"
 #include "openr/if/gen-cpp2/Platform_types.h"
@@ -43,18 +44,24 @@ class NexthopStatus {
    * (EBB semantics). If false, such a nexthop stays eligible for best-path
    * selection (FBOSS semantics). Defaults to true. See
    * isResolvedForSelection().
+   * @param ifName Name of the interface that the nexthop is reachable through.
+   * The name uses the kernel format, for example "po1331". Only the
+   * interface-state resolution path sets it. All other sources leave it unset.
+   * See getIfName().
    */
   explicit NexthopStatus(
       const folly::IPAddress& nexthop,
       bool isReachable,
       std::optional<uint32_t> igpCost = std::nullopt,
       std::optional<bool> isConnected = std::nullopt,
-      bool excludeNexthopWithoutCost = true)
+      bool excludeNexthopWithoutCost = true,
+      std::optional<std::string> ifName = std::nullopt)
       : nexthop_(nexthop),
         isReachable_(isReachable),
         igpCost_(isReachable ? igpCost : std::nullopt),
         isConnected_(isConnected),
-        excludeNexthopWithoutCost_(excludeNexthopWithoutCost) {}
+        excludeNexthopWithoutCost_(excludeNexthopWithoutCost),
+        ifName_(std::move(ifName)) {}
 
   /**
    * @brief Constructor for NexthopStatus from openr::thrift::NextHopStatus
@@ -116,6 +123,22 @@ class NexthopStatus {
   }
 
   /**
+   * @brief Get the interface that the nexthop is reachable through.
+   *
+   * The fib agent can put a route into an EOS nexthop-group. Each entry in a
+   * nexthop-group must carry an egress interface. Only the interface-state
+   * resolution path knows the interface. Thus the name is unset for every
+   * other nexthop source. An unset name makes the fib agent send no interface
+   * name.
+   *
+   * @return Interface name in kernel format, for example "po1331". The value
+   * is std::nullopt if the source of the nexthop does not know the interface.
+   */
+  const std::optional<std::string>& getIfName() const {
+    return ifName_;
+  }
+
+  /**
    * @brief Whether this nexthop is resolved for the purpose of best-path
    * selection.
    *
@@ -168,6 +191,14 @@ class NexthopStatus {
    * can rely solely on the isReachable_ flag.
    */
   bool excludeNexthopWithoutCost_{true};
+
+  /*
+   * Name of the interface that the nexthop is reachable through, in kernel
+   * format. Only NetlinkWrapper sets it, and only when
+   * bgp_resolve_nexthops_from_interface_state is true. The value stays unset
+   * for every other nexthop source.
+   */
+  std::optional<std::string> ifName_;
 };
 
 /**
