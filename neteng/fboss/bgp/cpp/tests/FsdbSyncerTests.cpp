@@ -26,18 +26,23 @@ class FsdbSyncerTests;
 #include "fboss/fsdb/client/FsdbPubSubManager.h"
 #include "fboss/fsdb/tests/utils/FsdbTestServer.h"
 #include "fboss/fsdb/tests/utils/FsdbTestSubscriber.h"
+#include "neteng/fboss/bgp/cpp/fsdb/CanonicalRibUpdateQueue.h"
 #include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 #include "neteng/fboss/bgp/if/gen-cpp2/bgp_thrift_types.h"
 
 #include <fmt/format.h>
+#include <folly/IPAddress.h>
 #include <folly/ScopeGuard.h>
 #include <folly/Synchronized.h>
 #include <folly/coro/BlockingWait.h>
+#include <folly/io/async/AsyncTimeout.h>
 #include <folly/io/async/ScopedEventBaseThread.h>
 #include <folly/synchronization/Baton.h>
 #include <gtest/gtest.h>
 #include <thrift/lib/cpp2/protocol/Serializer.h>
 #include <atomic>
+#include <chrono>
+#include <initializer_list>
 #include <map>
 #include <thread>
 
@@ -72,6 +77,20 @@ bgp_thrift::TPartialDrainState partialDrainState(bool isPartiallyDrained) {
   state.partial_drain_state()->num_affected_prefixes() = 0;
   return state;
 }
+
+CanonicalRibFullSnapshotInput fullSnapshot(
+    std::initializer_list<folly::CIDRNetwork> prefixes = {}) {
+  CanonicalRibFullSnapshotInput snapshot;
+  snapshot.entries.reserve(prefixes.size());
+  for (const auto& prefix : prefixes) {
+    snapshot.entries.push_back(
+        CanonicalRibPrefixUpdate{
+            .prefix = prefix,
+            .entry = CanonicalRibEntryInput{},
+        });
+  }
+  return snapshot;
+}
 } // namespace
 
 class FsdbSyncerTests : public ::testing::Test {
@@ -81,6 +100,7 @@ class FsdbSyncerTests : public ::testing::Test {
     FLAGS_fsdbPort = fsdbTestServer_->getFsdbPort();
     FLAGS_publish_state_to_fsdb = true;
     FLAGS_publish_stats_to_fsdb = true;
+    FLAGS_publish_rib_to_fsdb = false;
     subscriber_ = std::make_unique<FsdbTestSubscriber>("test-subscriber");
     fsdbSyncer_ = std::make_unique<FsdbSyncer>(*syncerThread_.getEventBase());
   }
@@ -129,6 +149,45 @@ class FsdbSyncerTests : public ::testing::Test {
         FsdbSyncer::PublicationKind::INCREMENTAL, expectedGeneration);
   }
 
+  void waitForSyncerThread() {
+    fsdbSyncer_->syncerEventBase_.runInEventBaseThreadAndWait([]() {});
+  }
+
+  std::shared_ptr<CanonicalRibUpdateQueue> enableCanonicalRib(
+      std::atomic<uint32_t>& snapshotRequests) {
+    fsdbSyncer_.reset();
+    fsdbSyncer_ = std::make_unique<FsdbSyncer>(
+        *syncerThread_.getEventBase(), /*publishRibToFsdb=*/true);
+    canonicalSink_ = fsdbSyncer_->registerCanonicalRibSource(
+        [&snapshotRequests]() { ++snapshotRequests; });
+    return canonicalSink_;
+  }
+
+  bool transportConnected() const {
+    return fsdbSyncer_->publicationState_.rlock()->connected;
+  }
+
+  void accumulateCanonicalPrefixUpdate(CanonicalRibPrefixUpdate update) {
+    fsdbSyncer_->syncerEventBase_.runInEventBaseThreadAndWait(
+        [this, update = std::move(update)]() mutable {
+          fsdbSyncer_->accumulateCanonicalPrefixUpdate(std::move(update));
+        });
+  }
+
+  void waitForCanonicalBatchDuration() {
+    folly::Baton<> elapsed;
+    std::unique_ptr<folly::AsyncTimeout> timer;
+    fsdbSyncer_->syncerEventBase_.runInEventBaseThreadAndWait([&]() {
+      timer = folly::AsyncTimeout::make(
+          fsdbSyncer_->syncerEventBase_,
+          [&elapsed]() noexcept { elapsed.post(); });
+      timer->scheduleTimeout(std::chrono::milliseconds{250});
+    });
+    elapsed.wait();
+    fsdbSyncer_->syncerEventBase_.runInEventBaseThreadAndWait(
+        [&timer]() { timer.reset(); });
+  }
+
   bool publisherCreated(const FsdbSyncer& syncer) const {
     return syncer.publisherCreated_;
   }
@@ -157,6 +216,7 @@ class FsdbSyncerTests : public ::testing::Test {
 
   folly::ScopedEventBaseThread syncerThread_{"FsdbSyncerTests"};
   std::unique_ptr<FsdbSyncer> fsdbSyncer_;
+  std::shared_ptr<CanonicalRibUpdateQueue> canonicalSink_;
   std::unique_ptr<FsdbTestServer> fsdbTestServer_;
   std::unique_ptr<FsdbTestSubscriber> subscriber_;
   std::vector<std::vector<std::string>> subscriptions_;
@@ -308,6 +368,295 @@ TEST_F(FsdbSyncerTests, StopDrainsUpdatesQueuedBeforeProducerQuiescence) {
   EXPECT_TRUE(callbackRan);
 }
 
+TEST_F(FsdbSyncerTests, DisabledCanonicalRibNeedsNoProducer) {
+  std::atomic<uint32_t> snapshotRequests{0};
+  EXPECT_EQ(
+      nullptr,
+      this->fsdbSyncer_->registerCanonicalRibSource(
+          [&snapshotRequests]() { ++snapshotRequests; }));
+
+  this->fsdbSyncer_->start();
+  SCOPE_EXIT {
+    this->fsdbSyncer_->stop();
+  };
+  WITH_RETRIES({
+    EXPECT_EVENTUALLY_TRUE(this->fsdbSyncer_->isIncrementalPublicationReady());
+  })
+  EXPECT_EQ(0, snapshotRequests.load());
+}
+
+TEST_F(FsdbSyncerTests, DisabledStatePublicationDisablesCanonicalRibSource) {
+  this->fsdbSyncer_.reset();
+  FLAGS_publish_state_to_fsdb = false;
+  SCOPE_EXIT {
+    FLAGS_publish_state_to_fsdb = true;
+  };
+  this->fsdbSyncer_ = std::make_unique<FsdbSyncer>(
+      *this->syncerThread_.getEventBase(), /*publishRibToFsdb=*/true);
+
+  std::atomic<uint32_t> snapshotRequests{0};
+  EXPECT_EQ(
+      nullptr,
+      this->fsdbSyncer_->registerCanonicalRibSource(
+          [&snapshotRequests]() { ++snapshotRequests; }));
+  EXPECT_EQ(0, snapshotRequests.load());
+}
+
+TEST_F(FsdbSyncerTests, CanonicalSnapshotGatesIncrementalPublication) {
+  std::atomic<uint32_t> snapshotRequests{0};
+  auto sink = this->enableCanonicalRib(snapshotRequests);
+  ASSERT_NE(nullptr, sink);
+  auto subscribedRib = this->subscriber_->subscribe(
+      this->subscriber_->getRootStatePath().bgp().canonicalRib());
+
+  this->fsdbSyncer_->start();
+  SCOPE_EXIT {
+    this->fsdbSyncer_->stop();
+  };
+  WITH_RETRIES({ EXPECT_EVENTUALLY_EQ(1, snapshotRequests.load()); })
+  EXPECT_FALSE(this->fsdbSyncer_->isIncrementalPublicationReady());
+
+  const auto initialPrefix = folly::IPAddress::createNetwork("10.0.0.0/24");
+  sink->pushFullSnapshot(fullSnapshot({initialPrefix}));
+
+  WITH_RETRIES({
+    auto rib = subscribedRib.rlock();
+    ASSERT_EVENTUALLY_TRUE(rib->has_value());
+    EXPECT_EVENTUALLY_TRUE((*rib)->rib_entries()->contains("10.0.0.0/24"));
+    EXPECT_EVENTUALLY_TRUE(this->fsdbSyncer_->isIncrementalPublicationReady());
+  })
+
+  CanonicalRibPrefixUpdate incrementalUpdate;
+  incrementalUpdate.prefix = folly::IPAddress::createNetwork("10.0.1.0/24");
+  incrementalUpdate.entry = CanonicalRibEntryInput{};
+  sink->pushPrefixUpdate(std::move(incrementalUpdate));
+  WITH_RETRIES({
+    auto rib = subscribedRib.rlock();
+    ASSERT_EVENTUALLY_TRUE(rib->has_value());
+    EXPECT_EVENTUALLY_TRUE((*rib)->rib_entries()->contains("10.0.1.0/24"));
+  })
+}
+
+TEST_F(FsdbSyncerTests, CanonicalPrefixQueueItemsPublishAsOneDrainedBatch) {
+  std::atomic<uint32_t> snapshotRequests{0};
+  auto sink = this->enableCanonicalRib(snapshotRequests);
+  ASSERT_NE(nullptr, sink);
+  auto subscribedRib = this->subscriber_->subscribe(
+      this->subscriber_->getRootStatePath().bgp().canonicalRib());
+
+  this->fsdbSyncer_->start();
+  SCOPE_EXIT {
+    this->fsdbSyncer_->stop();
+  };
+  WITH_RETRIES({ EXPECT_EVENTUALLY_EQ(1, snapshotRequests.load()); })
+  sink->pushFullSnapshot(fullSnapshot());
+  WITH_RETRIES({
+    EXPECT_EVENTUALLY_TRUE(this->fsdbSyncer_->isIncrementalPublicationReady());
+  })
+
+  const auto publishesBefore =
+      sumCounter(subtreeCounter("canonicalRib", "numIncrementalPublish"));
+  this->waitForCanonicalBatchDuration();
+  folly::Baton<> syncerThreadBlocked;
+  folly::Baton<> releaseSyncerThread;
+  this->blockSyncerThread(syncerThreadBlocked, releaseSyncerThread);
+  syncerThreadBlocked.wait();
+
+  sink->pushPrefixUpdate(
+      CanonicalRibPrefixUpdate{
+          .prefix = folly::IPAddress::createNetwork("10.0.0.0/24"),
+          .entry = CanonicalRibEntryInput{},
+      });
+  sink->pushPrefixUpdate(
+      CanonicalRibPrefixUpdate{
+          .prefix = folly::IPAddress::createNetwork("10.0.1.0/24"),
+          .entry = CanonicalRibEntryInput{},
+      });
+  releaseSyncerThread.post();
+
+  WITH_RETRIES({
+    EXPECT_EVENTUALLY_EQ(
+        publishesBefore + 1,
+        sumCounter(subtreeCounter("canonicalRib", "numIncrementalPublish")));
+    auto rib = subscribedRib.rlock();
+    ASSERT_EVENTUALLY_TRUE(rib->has_value());
+    EXPECT_EVENTUALLY_TRUE((*rib)->rib_entries()->contains("10.0.0.0/24"));
+    EXPECT_EVENTUALLY_TRUE((*rib)->rib_entries()->contains("10.0.1.0/24"));
+  })
+}
+
+TEST_F(FsdbSyncerTests, CanonicalIncrementalBatchFlushesAfterBatchDuration) {
+  std::atomic<uint32_t> snapshotRequests{0};
+  auto sink = this->enableCanonicalRib(snapshotRequests);
+  ASSERT_NE(nullptr, sink);
+  auto subscribedRib = this->subscriber_->subscribe(
+      this->subscriber_->getRootStatePath().bgp().canonicalRib());
+
+  this->fsdbSyncer_->start();
+  SCOPE_EXIT {
+    this->fsdbSyncer_->stop();
+  };
+  WITH_RETRIES({ EXPECT_EVENTUALLY_EQ(1, snapshotRequests.load()); })
+  sink->pushFullSnapshot(fullSnapshot());
+  WITH_RETRIES({
+    EXPECT_EVENTUALLY_TRUE(this->fsdbSyncer_->isIncrementalPublicationReady());
+  })
+
+  const auto publishesBefore =
+      sumCounter(subtreeCounter("canonicalRib", "numIncrementalPublish"));
+  this->accumulateCanonicalPrefixUpdate(
+      CanonicalRibPrefixUpdate{
+          .prefix = folly::IPAddress::createNetwork("10.0.0.0/24"),
+          .entry = CanonicalRibEntryInput{},
+      });
+  this->waitForCanonicalBatchDuration();
+  folly::Baton<> syncerThreadBlocked;
+  folly::Baton<> releaseSyncerThread;
+  this->blockSyncerThread(syncerThreadBlocked, releaseSyncerThread);
+  syncerThreadBlocked.wait();
+
+  sink->pushPrefixUpdate(
+      CanonicalRibPrefixUpdate{
+          .prefix = folly::IPAddress::createNetwork("10.0.1.0/24"),
+          .entry = CanonicalRibEntryInput{},
+      });
+  sink->pushPrefixUpdate(
+      CanonicalRibPrefixUpdate{
+          .prefix = folly::IPAddress::createNetwork("10.0.2.0/24"),
+          .entry = CanonicalRibEntryInput{},
+      });
+  releaseSyncerThread.post();
+
+  WITH_RETRIES({
+    EXPECT_EVENTUALLY_EQ(
+        publishesBefore + 2,
+        sumCounter(subtreeCounter("canonicalRib", "numIncrementalPublish")));
+    auto rib = subscribedRib.rlock();
+    ASSERT_EVENTUALLY_TRUE(rib->has_value());
+    EXPECT_EVENTUALLY_TRUE((*rib)->rib_entries()->contains("10.0.0.0/24"));
+    EXPECT_EVENTUALLY_TRUE((*rib)->rib_entries()->contains("10.0.1.0/24"));
+    EXPECT_EVENTUALLY_TRUE((*rib)->rib_entries()->contains("10.0.2.0/24"));
+  })
+}
+
+TEST_F(FsdbSyncerTests, PrefixUpdateBeforeFullSnapshotIsExcluded) {
+  std::atomic<uint32_t> snapshotRequests{0};
+  auto sink = this->enableCanonicalRib(snapshotRequests);
+  ASSERT_NE(nullptr, sink);
+  auto subscribedRib = this->subscriber_->subscribe(
+      this->subscriber_->getRootStatePath().bgp().canonicalRib());
+
+  this->fsdbSyncer_->start();
+  SCOPE_EXIT {
+    this->fsdbSyncer_->stop();
+  };
+  WITH_RETRIES({ EXPECT_EVENTUALLY_EQ(1, snapshotRequests.load()); })
+
+  CanonicalRibPrefixUpdate staleUpdate;
+  staleUpdate.prefix = folly::IPAddress::createNetwork("10.0.0.0/24");
+  staleUpdate.entry = CanonicalRibEntryInput{};
+  sink->pushPrefixUpdate(std::move(staleUpdate));
+  sink->pushFullSnapshot(fullSnapshot());
+
+  WITH_RETRIES({
+    EXPECT_EVENTUALLY_TRUE(this->fsdbSyncer_->isIncrementalPublicationReady());
+    auto rib = subscribedRib.rlock();
+    ASSERT_EVENTUALLY_TRUE(rib->has_value());
+    EXPECT_EVENTUALLY_FALSE((*rib)->rib_entries()->contains("10.0.0.0/24"));
+  })
+}
+
+TEST_F(FsdbSyncerTests, OutstandingSnapshotFromPreviousConnectionIsDiscarded) {
+  std::atomic<uint32_t> snapshotRequests{0};
+  auto sink = this->enableCanonicalRib(snapshotRequests);
+  ASSERT_NE(nullptr, sink);
+  auto subscribedRib = this->subscriber_->subscribe(
+      this->subscriber_->getRootStatePath().bgp().canonicalRib());
+
+  this->fsdbSyncer_->start();
+  SCOPE_EXIT {
+    this->fsdbSyncer_->stop();
+  };
+  WITH_RETRIES({ EXPECT_EVENTUALLY_EQ(1, snapshotRequests.load()); })
+
+  const auto fsdbPort = this->fsdbTestServer_->getFsdbPort();
+  this->fsdbTestServer_.reset();
+  WITH_RETRIES({ EXPECT_EVENTUALLY_FALSE(this->transportConnected()); })
+  this->fsdbTestServer_ = std::make_unique<FsdbTestServer>(fsdbPort);
+  WITH_RETRIES({ EXPECT_EVENTUALLY_TRUE(this->transportConnected()); })
+  this->waitForSyncerThread();
+  EXPECT_EQ(1, snapshotRequests.load());
+  EXPECT_FALSE(this->fsdbSyncer_->isIncrementalPublicationReady());
+
+  const auto stalePrefix = folly::IPAddress::createNetwork("10.0.0.0/24");
+  sink->pushFullSnapshot(fullSnapshot({stalePrefix}));
+  WITH_RETRIES({
+    EXPECT_EVENTUALLY_EQ(2, snapshotRequests.load());
+    EXPECT_EVENTUALLY_FALSE(this->fsdbSyncer_->isIncrementalPublicationReady());
+  })
+
+  const auto freshPrefix = folly::IPAddress::createNetwork("10.0.1.0/24");
+  sink->pushFullSnapshot(fullSnapshot({freshPrefix}));
+  WITH_RETRIES({
+    EXPECT_EVENTUALLY_TRUE(this->fsdbSyncer_->isIncrementalPublicationReady());
+    auto rib = subscribedRib.rlock();
+    ASSERT_EVENTUALLY_TRUE(rib->has_value());
+    EXPECT_EVENTUALLY_FALSE((*rib)->rib_entries()->contains("10.0.0.0/24"));
+    EXPECT_EVENTUALLY_TRUE((*rib)->rib_entries()->contains("10.0.1.0/24"));
+  })
+}
+
+TEST_F(FsdbSyncerTests, SnapshotConsumedWhileDisconnectedIsDiscarded) {
+  std::atomic<uint32_t> snapshotRequests{0};
+  auto sink = this->enableCanonicalRib(snapshotRequests);
+  ASSERT_NE(nullptr, sink);
+  auto subscribedRib = this->subscriber_->subscribe(
+      this->subscriber_->getRootStatePath().bgp().canonicalRib());
+
+  this->fsdbSyncer_->start();
+  SCOPE_EXIT {
+    this->fsdbSyncer_->stop();
+  };
+  WITH_RETRIES({ EXPECT_EVENTUALLY_EQ(1, snapshotRequests.load()); })
+
+  const auto fsdbPort = this->fsdbTestServer_->getFsdbPort();
+  this->fsdbTestServer_.reset();
+  WITH_RETRIES({ EXPECT_EVENTUALLY_FALSE(this->transportConnected()); })
+  sink->pushFullSnapshot(
+      fullSnapshot({folly::IPAddress::createNetwork("10.0.0.0/24")}));
+  WITH_RETRIES({ EXPECT_EVENTUALLY_TRUE(sink->empty()); })
+  this->waitForSyncerThread();
+  EXPECT_EQ(1, snapshotRequests.load());
+  EXPECT_FALSE(this->fsdbSyncer_->isIncrementalPublicationReady());
+
+  this->fsdbTestServer_ = std::make_unique<FsdbTestServer>(fsdbPort);
+  WITH_RETRIES({
+    EXPECT_EVENTUALLY_TRUE(this->transportConnected());
+    EXPECT_EVENTUALLY_EQ(2, snapshotRequests.load());
+  })
+  EXPECT_FALSE(this->fsdbSyncer_->isIncrementalPublicationReady());
+
+  sink->pushFullSnapshot(
+      fullSnapshot({folly::IPAddress::createNetwork("10.0.1.0/24")}));
+  WITH_RETRIES({
+    EXPECT_EVENTUALLY_TRUE(this->fsdbSyncer_->isIncrementalPublicationReady());
+    auto rib = subscribedRib.rlock();
+    ASSERT_EVENTUALLY_TRUE(rib->has_value());
+    EXPECT_EVENTUALLY_FALSE((*rib)->rib_entries()->contains("10.0.0.0/24"));
+    EXPECT_EVENTUALLY_TRUE((*rib)->rib_entries()->contains("10.0.1.0/24"));
+  })
+
+  CanonicalRibPrefixUpdate incrementalUpdate;
+  incrementalUpdate.prefix = folly::IPAddress::createNetwork("10.0.2.0/24");
+  incrementalUpdate.entry = CanonicalRibEntryInput{};
+  sink->pushPrefixUpdate(std::move(incrementalUpdate));
+  WITH_RETRIES({
+    auto rib = subscribedRib.rlock();
+    ASSERT_EVENTUALLY_TRUE(rib->has_value());
+    EXPECT_EVENTUALLY_TRUE((*rib)->rib_entries()->contains("10.0.2.0/24"));
+  })
+}
+
 TEST_F(FsdbSyncerTests, testConfigPublish) {
   auto subscribedConfig = this->subscriber_->subscribe(
       this->subscriber_->getRootStatePath().bgp().config());
@@ -393,6 +742,7 @@ TEST_F(FsdbSyncerTests, FirstSnapshotContainsAllRetainedSubtrees) {
     EXPECT_EVENTUALLY_FALSE(*firstUpdate.partialDrainState()
                                  ->partial_drain_state()
                                  ->is_partially_drained());
+    EXPECT_EVENTUALLY_FALSE(firstUpdate.canonicalRib().has_value());
   })
 }
 

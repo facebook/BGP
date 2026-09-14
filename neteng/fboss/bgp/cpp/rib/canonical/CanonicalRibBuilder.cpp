@@ -38,16 +38,8 @@ void CanonicalRibBuilder::addEntry(
       ribVersion,
       paths,
       /*includeBestPath=*/false,
-      /*includePaths=*/true);
-  if (entryFields.pathSelectionPending.has_value()) {
-    entry.path_selection_pending() = entryFields.pathSelectionPending.value();
-  }
-  if (entryFields.activeCpsCriteria.has_value()) {
-    entry.active_cps_criteria() = entryFields.activeCpsCriteria.value();
-  }
-  if (entryFields.activeCteUcmpAction.has_value()) {
-    entry.active_cte_ucmp_action() = entryFields.activeCteUcmpAction.value();
-  }
+      /*includePaths=*/true,
+      entryFields);
   canonicalRibEntries_.emplace(std::move(key), std::move(entry));
 }
 

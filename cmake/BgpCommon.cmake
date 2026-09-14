@@ -391,6 +391,7 @@ target_link_libraries(bgp_changetracker
 #
 
 add_library(bgp_config_policy
+  neteng/fboss/bgp/cpp/BgpServiceUtil.cpp
   neteng/fboss/bgp/cpp/config/Config.cpp
   neteng/fboss/bgp/cpp/config/ConfigManager.cpp
   neteng/fboss/bgp/cpp/config/ConfigStructs.cpp
@@ -493,7 +494,6 @@ target_link_libraries(bgp_fib_dev
 add_library(bgp_rib_base
   neteng/fboss/bgp/cpp/rib/canonical/CanonicalConvert.cpp
   neteng/fboss/bgp/cpp/rib/canonical/CanonicalRibBuilder.cpp
-  neteng/fboss/bgp/cpp/rib/canonical/CanonicalRibEncoder.cpp
   neteng/fboss/bgp/cpp/rib/RibBase.cpp
   neteng/fboss/bgp/cpp/rib/RibEntry.cpp
   neteng/fboss/bgp/cpp/rib/RibPolicy.cpp
@@ -576,7 +576,6 @@ add_library(bgp_service_base
   neteng/fboss/bgp/cpp/BgpServiceBase.cpp
   neteng/fboss/bgp/cpp/BgpServiceStream.cpp
   neteng/fboss/bgp/cpp/BgpServiceEventHandler.cpp
-  neteng/fboss/bgp/cpp/BgpServiceUtil.cpp
   neteng/fboss/bgp/cpp/BgpConfigValidator.cpp
   neteng/fboss/bgp/cpp/BgpProfiler.cpp
   neteng/fboss/bgp/cpp/health/HealthValidator.cpp

@@ -31,8 +31,8 @@ namespace facebook::bgp::canonical {
 /*
  * Intern pool for continuous encoding.
  *
- * Unlike StrongInternPool, this pool must not extend the lifetime of values in
- * the live RIB. The raw pointer provides a cheap lookup key and the weak_ptr
+ * Unlike StrongInternPool, this pool does not itself extend the lifetime of
+ * source values. The raw pointer provides a cheap lookup key and the weak_ptr
  * proves that the object at that address is still the one originally
  * interned. A non-expired weak_ptr means the original object remains alive, so
  * its existing ID is reusable. If the weak_ptr expired, the raw address is
@@ -113,7 +113,7 @@ class WeakInternPool {
   }
 
   /**
-   * Remove slots whose source objects are no longer retained by the Loc-RIB.
+   * Remove slots whose source objects are no longer retained by the caller.
    *
    * @return True if at least one slot was removed. Retired IDs are never
    *     reassigned.

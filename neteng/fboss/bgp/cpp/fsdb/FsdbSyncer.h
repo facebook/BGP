@@ -17,22 +17,36 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
+#include <cstdint>
 #include <memory>
 #include <optional>
 
 #include <folly/Function.h>
 #include <folly/Synchronized.h>
+#include <folly/coro/AsyncScope.h>
+#include <folly/coro/Task.h>
 #include <folly/io/async/EventBase.h>
+#include <gflags/gflags.h>
 
 #include "fboss/fsdb/client/FsdbPubSubManager.h"
 #include "fboss/fsdb/if/FsdbModel.h"
+#include "neteng/fboss/bgp/cpp/fsdb/CanonicalRibUpdateQueue.h"
 #include "neteng/fboss/bgp/if/gen-cpp2/bgp_route_types_types.h"
 
 namespace bgp_thrift = facebook::neteng::fboss::bgp::thrift;
 
+namespace facebook::fboss::thrift_cow {
+class StructPatch;
+}
+
 DECLARE_bool(publish_rib_to_fsdb);
 
 namespace facebook::bgp {
+
+class CanonicalRibExporter;
+struct CanonicalRibFullSnapshot;
+struct CanonicalRibIncrementalPayload;
 
 /*
  * Publishes BgpData subtrees to FSDB via the raw FsdbPubSubManager patch API
@@ -41,11 +55,25 @@ namespace facebook::bgp {
  * partial-drain subtrees are retained as plain values on a dedicated EventBase
  * so they can be re-published on reconnect.
  *
+ * Canonical RIB publication follows this data path:
+ *
+ *   RibDC -> CanonicalRibUpdateQueue -> FsdbSyncer
+ *       -> CanonicalRibExporter -> FsdbSyncer patch assembly
+ *       -> FsdbPubSubManager -> FSDB.
+ *
+ * CanonicalRibExporter owns encoding and canonical-pool lifetime but never
+ * publishes. FsdbSyncer owns queue consumption, connection ordering, patch
+ * assembly, and the final handoff to FsdbPubSubManager.
+ *
  * FSDB drops any publish issued before the publisher reaches CONNECTED and
  * resets the publish queue on every disconnect, so publishers must re-sync
  * their full state on each CONNECTED. Public setters only enqueue work onto
  * the FsdbSyncer EventBase. FsdbSyncer retains the latest small values and
- * publishes them without involving the RIB computation boundary.
+ * publishes them without involving the RIB computation boundary. When
+ * canonical RIB publication is enabled, FsdbSyncer also drains immutable
+ * per-prefix inputs, performs encoding and interning, and publishes the
+ * resulting patches. The RIB sees only a nullable queue capability and never
+ * observes FSDB connection state.
  *
  * Threading: retained state, patch assembly, and publication run only on the
  * caller-supplied syncerEventBase_. FSDB lifecycle callbacks normally run on
@@ -62,11 +90,15 @@ class FsdbSyncer {
    *
    * @param syncerEventBase Serial executor for retained-state updates, patch
    *     construction, and calls to FsdbPubSubManager.
+   * @param publishRibToFsdb Whether to create the canonical RIB update channel
+   *     and encoder. When false, reconnect publishes retained state directly.
    *
    * The EventBase must remain alive and running through stop() and destruction.
    * FsdbSyncer drains its own work but never terminates the EventBase.
    */
-  explicit FsdbSyncer(folly::EventBase& syncerEventBase);
+  explicit FsdbSyncer(
+      folly::EventBase& syncerEventBase,
+      bool publishRibToFsdb = FLAGS_publish_rib_to_fsdb);
   ~FsdbSyncer();
 
   FsdbSyncer(const FsdbSyncer&) = delete;
@@ -126,6 +158,25 @@ class FsdbSyncer {
    */
   void setPartialDrainState(
       std::optional<bgp_thrift::TPartialDrainState>&& partialDrainState);
+
+  /**
+   * Register the RIB-side producer for canonical snapshots.
+   *
+   * This startup-only operation returns a nullable capability. When canonical
+   * RIB publication is disabled, the return value is null and the callback is
+   * not retained. Otherwise the callback is invoked on the FsdbSyncer thread
+   * whenever an authoritative full-RIB walk is required. The callback must
+   * only schedule work on the RIB EventBase; it must not walk or mutate the
+   * RIB inline. The scheduled producer captures one complete owning snapshot
+   * input and enqueues it as a single full-snapshot message.
+   *
+   * @param requestFullSnapshot Lightweight callback that schedules an
+   *     authoritative walk on the RIB EventBase.
+   * @return Producer queue when canonical publication is enabled, or nullptr
+   *     when it is disabled.
+   */
+  std::shared_ptr<CanonicalRibUpdateQueue> registerCanonicalRibSource(
+      folly::Function<void()> requestFullSnapshot);
 
   /**
    * Return whether the current connection has submitted its initial snapshot.
@@ -220,7 +271,8 @@ class FsdbSyncer {
    *     submitted its complete state and enables later incremental submission.
    *     `INCREMENTAL` requires that the initial snapshot was already submitted.
    * @param expectedGeneration Publisher-state generation captured before
-   *     building the patch. A different generation rejects stale work.
+   *     building the patch. When set, a different current generation rejects
+   *     stale work.
    * @return True when the current connection, generation, and ordering checks
    *     pass and `publishState()` is called. This is not bounded-queue
    *     acceptance or an FSDB acknowledgement.
@@ -233,15 +285,17 @@ class FsdbSyncer {
   bool trySubmitPatch(
       fboss::fsdb::Patch&& patch,
       PublicationKind kind,
-      uint64_t expectedGeneration);
+      std::optional<uint64_t> expectedGeneration);
 
   /**
    * Build and submit the initial `/bgp` snapshot from retained state.
    *
    * This layer owns config, policy, and partial-drain state. Route-state fields
-   * are intentionally left unset; their producer is separate from
-   * retained-state publication. trySubmitPatch() performs the shared connection
-   * and ordering checks before submission.
+   * (`ribMap` and `canonicalRib`) are intentionally left unset. This is the
+   * complete snapshot when canonical RIB publication is disabled; the
+   * canonical path uses publishCanonicalFullSnapshot() instead.
+   * trySubmitPatch() performs the shared connection and ordering checks before
+   * submission.
    */
   void publishRetainedStateSnapshot();
 
@@ -251,6 +305,89 @@ class FsdbSyncer {
    * FsdbPubSubManager.
    */
   void publishPendingRetainedState();
+
+  /**
+   * Merge canonical and dirty retained changes into one incremental `/bgp`
+   * patch and submit it for the current connection.
+   *
+   * @param bgpChanges Canonical child changes, or an empty patch for a
+   *     retained-state-only update.
+   * @param includesCanonicalRib Whether successful accounting should include
+   *     the canonical RIB subtree.
+   * @param expectedGeneration Optional publisher-state generation captured
+   *     while accumulating canonical updates.
+   * @return True when a non-empty patch was submitted for the current
+   *     connection.
+   */
+  bool publishIncrementalPatch(
+      fboss::thrift_cow::StructPatch&& bgpChanges,
+      bool includesCanonicalRib,
+      std::optional<uint64_t> expectedGeneration = std::nullopt);
+
+  /**
+   * Convert one exporter payload into the canonical incremental patch shape.
+   *
+   * @param payload Encoded pool replacements and final per-prefix changes.
+   * @param expectedGeneration Publisher-state generation captured before the
+   *     corresponding queue turn was encoded.
+   * @return True when the combined canonical and retained patch was submitted.
+   */
+  bool publishCanonicalIncremental(
+      CanonicalRibIncrementalPayload&& payload,
+      uint64_t expectedGeneration);
+
+  /**
+   * Compose retained state with a canonical build and submit the complete
+   * `/bgp` snapshot.
+   *
+   * @param snapshot Canonical build to consume for this publication attempt.
+   * @param expectedGeneration Publisher generation for which the RIB walk was
+   *     requested.
+   * @return True when the complete snapshot was submitted.
+   */
+  bool publishCanonicalFullSnapshot(
+      CanonicalRibFullSnapshot&& snapshot,
+      uint64_t expectedGeneration);
+
+  /**
+   * Process one canonical queue item, then yield the FsdbSyncer thread before
+   * dequeuing another. Prefix updates accumulate until the queue drains or the
+   * current batch has been open for 200 ms.
+   */
+  folly::coro::Task<void> processCanonicalRibUpdates() noexcept;
+
+  /**
+   * Encode and submit one complete RIB-thread snapshot.
+   * A response requested for an older publisher generation is discarded before
+   * encoding, then a fresh snapshot is requested for the current connection.
+   *
+   * @param snapshot Owning input captured atomically on the RIB thread.
+   */
+  void processCanonicalFullSnapshot(CanonicalRibFullSnapshotInput snapshot);
+
+  /**
+   * Encode one prefix update into the current incremental publication batch.
+   *
+   * @param update Complete state for one prefix, or a withdrawal.
+   */
+  void accumulateCanonicalPrefixUpdate(CanonicalRibPrefixUpdate&& update);
+
+  /** Publish and clear the accumulated canonical incremental batch. */
+  void publishCanonicalIncrementalBatch();
+
+  /** Clear the exporter and its pending incremental-publication metadata. */
+  void resetCanonicalExporterAndPendingIncremental();
+
+  /**
+   * Request one authoritative RIB walk unless another request is outstanding.
+   *
+   * @param publisherStateGeneration Connected publisher generation requiring
+   *     the snapshot.
+   */
+  void requestCanonicalFullSnapshot(uint64_t publisherStateGeneration);
+
+  /** Build the current retained config, policy, and partial-drain state. */
+  fboss::fsdb::BgpData makeRetainedSnapshot() const;
 
   /** Clear dirty bits after retained state is included in a submitted patch. */
   void clearRetainedDirty();
@@ -279,8 +416,30 @@ class FsdbSyncer {
     uint64_t generation{0};
   };
 
+  struct PendingCanonicalIncrementalPublication {
+    std::chrono::steady_clock::time_point firstUpdateTime;
+    uint64_t publisherGeneration;
+  };
+
+  struct CanonicalRibPublicationProgress {
+    /*
+     * Only one untagged RIB snapshot request may be outstanding. Preserve its
+     * generation across disconnect so its eventual response can be rejected
+     * before requesting a fresh snapshot for the current connection.
+     */
+    std::optional<uint64_t> outstandingFullSnapshotRequestGeneration;
+    std::optional<PendingCanonicalIncrementalPublication>
+        pendingIncrementalPublication;
+  };
+
   folly::EventBase& syncerEventBase_;
   std::unique_ptr<fboss::fsdb::FsdbPubSubManager> fsdbPubSubMgr_;
+  std::shared_ptr<CanonicalRibUpdateQueue> canonicalRibUpdateQueue_;
+  std::unique_ptr<CanonicalRibExporter> canonicalRibExporter_;
+  CanonicalRibPublicationProgress canonicalRibPublicationProgress_;
+  folly::Function<void()> requestCanonicalFullSnapshot_;
+  folly::coro::CancellableAsyncScope canonicalRibConsumerTasks_;
+  std::atomic<bool> started_{false};
   bool publisherCreated_{false};
   /* Rejects publisher callbacks once teardown begins. */
   std::atomic<bool> stopping_{false};

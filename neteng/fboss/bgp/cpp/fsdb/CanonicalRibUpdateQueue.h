@@ -33,6 +33,8 @@ namespace facebook::bgp {
 struct CanonicalRibEntryInput {
   std::vector<CanonicalPathInput> paths;
   CanonicalEntryFields fields;
+  /* Whether the canonical entry includes the paths collection beyond best. */
+  bool includePaths{true};
 };
 
 /* A complete latest state for one prefix; nullopt represents a withdrawal. */

@@ -35,8 +35,8 @@
  * sub-attributes / a peer to their canonical Thrift form. Used by both the
  * one-shot CanonicalRibBuilder and the stateful CanonicalRibEncoder. Each
  * converter layers its own interning and index-lifetime policy on top of these
- * conversions; FSDB batching and publication are handled separately by
- * CanonicalRibExporter.
+ * conversions; the exporter encodes them on the FsdbSyncer thread, which also
+ * owns queue consumption and publication.
  */
 
 namespace facebook::bgp {

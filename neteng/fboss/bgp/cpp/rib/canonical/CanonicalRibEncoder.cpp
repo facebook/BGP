@@ -25,29 +25,28 @@ constexpr auto kPoolSweepInterval = std::chrono::minutes(3);
 
 bgp_thrift::TRibEntryCanonical CanonicalRibEncoder::buildEntry(
     const folly::CIDRNetwork& prefix,
-    int64_t ribVersion,
+    std::optional<int64_t> ribVersion,
     const std::vector<CanonicalPathInput>& paths,
-    bool exportMultipaths) {
+    bool exportMultipaths,
+    const CanonicalEntryFields& entryFields) {
   auto result = encoding_.buildEntryReportingChanges(
       prefix,
       ribVersion,
       paths,
       /*includeBestPath=*/true,
-      /*includePaths=*/exportMultipaths);
+      /*includePaths=*/exportMultipaths,
+      entryFields);
   poolDirty_ |= result.poolsChanged;
   return std::move(result.entry);
 }
 
-void CanonicalRibEncoder::markReclamationPending() {
-  reclamationPending_ = true;
-}
-
 bool CanonicalRibEncoder::consumeDirtyAndSweep(TimePoint now) {
   bool reclaimed = false;
-  if (reclamationPending_ && now - lastSweepTime_ >= kPoolSweepInterval) {
+  if (!nextSweepAt_.has_value()) {
+    nextSweepAt_ = now + kPoolSweepInterval;
+  } else if (now >= nextSweepAt_.value()) {
     reclaimed = encoding_.sweep();
-    lastSweepTime_ = now;
-    reclamationPending_ = false;
+    nextSweepAt_ = now + kPoolSweepInterval;
   }
   const bool full = poolDirty_ || reclaimed;
   poolDirty_ = false;

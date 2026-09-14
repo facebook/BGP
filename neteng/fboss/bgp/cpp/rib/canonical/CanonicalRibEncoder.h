@@ -17,7 +17,9 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include <folly/IPAddress.h>
@@ -34,8 +36,8 @@ namespace bgp_thrift = ::facebook::neteng::fboss::bgp::thrift;
  * Stateful encoder for continuous Loc-RIB export.
  *
  * The encoder assigns monotonic IDs to BGP's deduplicated path values while
- * retaining only weak references to them. It is intended to be confined to the
- * RIB EventBase; its methods do not provide internal synchronization. Callers
+ * retaining only weak references to them. It is confined to the FsdbSyncer
+ * EventBase; its methods do not provide internal synchronization. Callers
  * encode changed prefixes, use consumeDirtyAndSweep() to choose patch scope,
  * and materialize pool snapshots only when that method returns true.
  */
@@ -53,23 +55,18 @@ class CanonicalRibEncoder {
     PoolStats clusterList;
   };
 
-  /**
-   * Construct an empty encoder epoch.
-   *
-   * @param now Initial monotonic time used by reclamation rate limiting. The
-   *     default is production behavior; tests may inject a deterministic time.
-   */
-  explicit CanonicalRibEncoder(TimePoint now = Clock::now())
-      : lastSweepTime_(now) {}
+  CanonicalRibEncoder() = default;
 
   /**
    * Encode one Loc-RIB prefix and update shared intern pools.
    *
    * @param prefix Prefix represented by the entry.
-   * @param ribVersion Loc-RIB version associated with the update.
+   * @param ribVersion Version associated with the update, or nullopt when the
+   *     source does not own the versioning domain.
    * @param paths Best path and candidate paths projected from the Loc-RIB.
    * @param exportMultipaths When true, emit grouped path references for every
    *     input; when false, emit only the separate best_path value.
+   * @param entryFields Optional per-prefix policy and selection metadata.
    * @return Canonical representation of the supplied prefix.
    *
    * Any new pool value makes the next consumeDirtyAndSweep() return true so
@@ -77,18 +74,15 @@ class CanonicalRibEncoder {
    */
   bgp_thrift::TRibEntryCanonical buildEntry(
       const folly::CIDRNetwork& prefix,
-      int64_t ribVersion,
+      std::optional<int64_t> ribVersion,
       const std::vector<CanonicalPathInput>& paths,
-      bool exportMultipaths);
+      bool exportMultipaths,
+      const CanonicalEntryFields& entryFields = {});
 
   /**
-   * Record that a path removal may leave reclaimable weak-pool slots.
-   * Reclamation remains rate-limited and occurs from consumeDirtyAndSweep().
-   */
-  void markReclamationPending();
-
-  /**
-   * Consume pool mutations and perform a due reclamation sweep.
+   * Consume pool mutations and opportunistically perform a due reclamation
+   * sweep. Calls establish a three-minute minimum interval between sweeps;
+   * reaching the deadline does not schedule a timer or wake an idle caller.
    *
    * @param now Current monotonic time; injectable for deterministic tests.
    * @return True when the caller must include all pool snapshots in the same
@@ -115,18 +109,13 @@ class CanonicalRibEncoder {
   size_t liveDictEntryCount() const {
     return encoding_.liveDictEntryCount();
   }
-  /** @return Whether an upstream reclamation request awaits a due sweep. */
-  bool reclamationPending() const {
-    return reclamationPending_;
-  }
   /** @return Current cardinality and high-water mark for each weak pool. */
   PoolStatsSnapshot poolStats() const;
 
  private:
   canonical::Encoding<canonical::WeakInternPool> encoding_;
   bool poolDirty_{false};
-  bool reclamationPending_{false};
-  TimePoint lastSweepTime_;
+  std::optional<TimePoint> nextSweepAt_;
 };
 
 } // namespace facebook::bgp

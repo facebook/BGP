@@ -165,11 +165,28 @@ target_link_libraries(bgp_fib_fboss
   ${BGP_BASE_LIBS}
 )
 
+add_library(bgp_canonical_rib
+  neteng/fboss/bgp/cpp/fsdb/CanonicalRibExporter.cpp
+  neteng/fboss/bgp/cpp/rib/canonical/CanonicalRibEncoder.cpp
+)
+
+target_link_libraries(bgp_canonical_rib
+  bgp_common
+  bgp_config_policy
+  bgp_lib_core
+  bgp_rib_base
+  ${BGP_THRIFT_LIBS}
+  ${BGP_BASE_LIBS}
+  FBThrift::thriftcpp2
+)
+
 add_library(bgp_fsdb_syncer
   neteng/fboss/bgp/cpp/fsdb/FsdbSyncer.cpp
 )
 
 target_link_libraries(bgp_fsdb_syncer
+  bgp_canonical_rib
+  bgp_stats_dc
   fb303::fb303
   ${BGP_THRIFT_LIBS}
   ${BGP_BASE_LIBS}
@@ -181,6 +198,7 @@ add_library(bgp_rib_dc
 )
 
 target_link_libraries(bgp_rib_dc
+  bgp_canonical_rib
   bgp_fib_fboss
   bgp_fsdb_syncer
   bgp_rib_base
@@ -212,6 +230,7 @@ install(TARGETS
   bgp_stats_dc
   bgp_fsdb_fib_watcher
   bgp_fib_fboss
+  bgp_canonical_rib
   bgp_fsdb_syncer
   bgp_rib_dc
   bgp_neighbor_watcher

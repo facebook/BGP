@@ -60,10 +60,10 @@ class CanonicalRibEncoderTest : public ::testing::Test {
 
   /*
    * Evict deduplicator entries that no longer have an external owner, then
-   * sweep the encoder. This mirrors production, where PeerManager's periodic
-   * deduplicator eviction destroys withdrawn paths/sub-attrs and the encoder
-   * reclaims their slots on the next publish. Without an external strong ref,
-   * a path/sub-attr is destroyed here and its encoder slot becomes reclaimable.
+   * sweep the encoder. In production, the exporter releases its shared path
+   * reference when an entry is replaced or withdrawn; PeerManager eviction can
+   * then destroy the retired path and sub-attributes before a later
+   * publication sweeps them.
    */
   void evictAndSweep() {
     /*
@@ -76,7 +76,7 @@ class CanonicalRibEncoderTest : public ::testing::Test {
     DeDuplicatedCommunities::evictDeletedEntriesFromDeduplicator();
     DeDuplicatedExtCommunities::evictDeletedEntriesFromDeduplicator();
     DeDuplicatedClusterList::evictDeletedEntriesFromDeduplicator();
-    encoder_.markReclamationPending();
+    encoder_.consumeDirtyAndSweep(now_);
     now_ += std::chrono::minutes(3);
     encoder_.consumeDirtyAndSweep(now_);
   }
@@ -118,7 +118,7 @@ class CanonicalRibEncoderTest : public ::testing::Test {
   }
 
   CanonicalRibEncoder::TimePoint now_{};
-  CanonicalRibEncoder encoder_{now_};
+  CanonicalRibEncoder encoder_;
 };
 
 /*
@@ -243,7 +243,6 @@ TEST_F(CanonicalRibEncoderTest, LazySweep_ReclaimsDestroyedPath) {
   // Still owned (p) -> sweep retains the slot.
   evictAndSweep();
   EXPECT_EQ(1, encoder_.livePathAttrsCount());
-  EXPECT_FALSE(encoder_.reclamationPending());
 
   // Drop the last owner -> sweep reclaims the slot and its dict references.
   p.reset();
@@ -370,7 +369,8 @@ TEST_F(CanonicalRibEncoderTest, PoolDirty_OnlyWhenPoolChanges) {
   EXPECT_FALSE(encoder_.consumeDirtyAndSweep(now_));
 }
 
-TEST_F(CanonicalRibEncoderTest, ElapsedIntervalWithoutRetirementDoesNotSweep) {
+TEST_F(CanonicalRibEncoderTest, DueSweepWithoutRetirementDoesNotPublishPools) {
+  EXPECT_FALSE(encoder_.consumeDirtyAndSweep(now_));
   now_ += std::chrono::minutes(20);
   EXPECT_FALSE(encoder_.consumeDirtyAndSweep(now_));
 }
@@ -386,16 +386,35 @@ TEST_F(CanonicalRibEncoderTest, ReclamationWaitsForThreeMinuteInterval) {
 
   path.reset();
   clearAllDeduplicators();
-  encoder_.markReclamationPending();
+  EXPECT_FALSE(encoder_.consumeDirtyAndSweep(now_));
+  EXPECT_EQ(1, encoder_.livePathAttrsCount());
+
   now_ += std::chrono::minutes(2);
   EXPECT_FALSE(encoder_.consumeDirtyAndSweep(now_));
   EXPECT_EQ(1, encoder_.livePathAttrsCount());
-  EXPECT_TRUE(encoder_.reclamationPending());
 
   now_ += std::chrono::minutes(1);
   EXPECT_TRUE(encoder_.consumeDirtyAndSweep(now_));
   EXPECT_EQ(0, encoder_.livePathAttrsCount());
-  EXPECT_FALSE(encoder_.reclamationPending());
+}
+
+TEST_F(CanonicalRibEncoderTest, IntermediatePublishDoesNotPostponeSweep) {
+  auto path = makePath(2, 1, folly::IPAddress("10.0.0.1"));
+  encoder_.buildEntry(
+      prefix("10.1.0.0/24"),
+      kRibVersion,
+      {bestPath(path)},
+      /*exportMultipaths=*/true);
+  EXPECT_TRUE(encoder_.consumeDirtyAndSweep(now_));
+
+  path.reset();
+  clearAllDeduplicators();
+  now_ += std::chrono::minutes(2);
+  EXPECT_FALSE(encoder_.consumeDirtyAndSweep(now_));
+  now_ += std::chrono::minutes(1);
+
+  EXPECT_TRUE(encoder_.consumeDirtyAndSweep(now_));
+  EXPECT_EQ(0, encoder_.livePathAttrsCount());
 }
 
 /*

@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -197,7 +198,8 @@ class Encoding {
    * Encode one prefix without exposing whether shared pools changed.
    *
    * @param prefix Prefix written into the resulting entry.
-   * @param ribVersion Loc-RIB version written into the resulting entry.
+   * @param ribVersion Version written into the resulting entry, or nullopt to
+   *     omit the field when the source does not own that versioning domain.
    * @param paths Candidate inputs. Best-path-only callers may pass the full
    *     candidate set; non-selected inputs are ignored when includePaths=false.
    * @param includeBestPath Populate the entry's separate best_path field. At
@@ -205,17 +207,24 @@ class Encoding {
    *     DFATAL in debug builds and the first selection wins in production.
    * @param includePaths Populate grouped path references and intern whole paths
    *     and peers for every input.
+   * @param entryFields Optional per-prefix policy and selection metadata.
    * @return The encoded entry. At least one of includeBestPath or includePaths
    *     should be true for a useful result.
    */
   bgp_thrift::TRibEntryCanonical buildEntry(
       const folly::CIDRNetwork& prefix,
-      int64_t ribVersion,
+      std::optional<int64_t> ribVersion,
       const std::vector<CanonicalPathInput>& paths,
       bool includeBestPath,
-      bool includePaths) {
+      bool includePaths,
+      const CanonicalEntryFields& entryFields = {}) {
     return buildEntryReportingChanges(
-               prefix, ribVersion, paths, includeBestPath, includePaths)
+               prefix,
+               ribVersion,
+               paths,
+               includeBestPath,
+               includePaths,
+               entryFields)
         .entry;
   }
 
@@ -225,16 +234,19 @@ class Encoding {
    */
   BuildEntryResult buildEntryReportingChanges(
       const folly::CIDRNetwork& prefix,
-      int64_t ribVersion,
+      std::optional<int64_t> ribVersion,
       const std::vector<CanonicalPathInput>& paths,
       bool includeBestPath,
-      bool includePaths) {
+      bool includePaths,
+      const CanonicalEntryFields& entryFields = {}) {
     XCHECK(includeBestPath || includePaths)
         << "canonical entry encoding requires at least one path output";
     BuildEntryResult result;
     auto& entry = result.entry;
     entry.prefix() = createTIpPrefix(prefix);
-    entry.rib_version() = ribVersion;
+    if (ribVersion.has_value()) {
+      entry.rib_version() = ribVersion.value();
+    }
     std::string_view currentGroup;
     std::vector<bgp_thrift::TBgpPathCanonical>* currentPaths{nullptr};
     for (const auto& input : paths) {
@@ -268,7 +280,7 @@ class Encoding {
         /*
          * Best-path-only encoding intentionally ignores every non-selected
          * input. Callers may pass the complete candidate set so that the same
-         * input projection can serve both best-path-only and multipath modes.
+         * entry input can serve both best-path-only and multipath modes.
          */
         continue;
       }
@@ -285,6 +297,15 @@ class Encoding {
         currentPaths = &entry.paths().value()[std::string(currentGroup)];
       }
       currentPaths->push_back(std::move(path));
+    }
+    if (entryFields.pathSelectionPending.has_value()) {
+      entry.path_selection_pending() = entryFields.pathSelectionPending.value();
+    }
+    if (entryFields.activeCpsCriteria.has_value()) {
+      entry.active_cps_criteria() = entryFields.activeCpsCriteria.value();
+    }
+    if (entryFields.activeCteUcmpAction.has_value()) {
+      entry.active_cte_ucmp_action() = entryFields.activeCteUcmpAction.value();
     }
     return result;
   }
