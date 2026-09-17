@@ -119,42 +119,39 @@ inline constexpr auto ribFullSyncRouteAttributeOverwriteTimeMs =
     "bgpd.rib.fullSyncRouteAttributeOverwriteTimeMs";
 DECLARE_quantile_stat(ribFullSyncRouteAttributeOverwriteTimeMs);
 
-// Prefix changes encoded as present canonical entries.
+// Prefix upserts included in submitted canonical updates.
 inline constexpr auto kCanonicalRibExportUpsert =
     "bgpcpp.rib.canonicalExporter.numPrefixUpsert";
 DECLARE_timeseries(canonicalRibExportUpsert);
-// Prefix changes encoded as canonical entry deletions.
+// Prefix deletions included in submitted canonical updates.
 inline constexpr auto kCanonicalRibExportDelete =
     "bgpcpp.rib.canonicalExporter.numPrefixDelete";
 DECLARE_timeseries(canonicalRibExportDelete);
-// Incremental FSDB transactions containing one coalesced prefix batch.
+// Incremental patch submissions containing one coalesced prefix batch.
 inline constexpr auto kCanonicalRibExportIncrementalBatchUpdate =
     "bgpcpp.rib.canonicalExporter.numIncrementalBatchUpdate";
 DECLARE_timeseries(canonicalRibExportIncrementalBatchUpdate);
-// Complete canonical snapshots built for initial sync or reconnect.
+// Complete canonical snapshots submitted after connect.
 inline constexpr auto kCanonicalRibExportFullSnapshotUpdate =
     "bgpcpp.rib.canonicalExporter.numFullSnapshotUpdate";
 DECLARE_timeseries(canonicalRibExportFullSnapshotUpdate);
-// FSDB reconnect generations received by the canonical exporter.
+// Authoritative full-walk requests sent from FsdbSyncer to the RIB.
 inline constexpr auto kCanonicalRibExportReconnectRebuildRequest =
     "bgpcpp.rib.canonicalExporter.numReconnectRebuildRequest";
 DECLARE_timeseries(canonicalRibExportReconnectRebuildRequest);
-// RIB-sized reconnect walks actually started after all scheduling gates.
+// Authoritative full Loc-RIB walks started by RibDC.
 inline constexpr auto kCanonicalRibExportReconnectRebuildStart =
     "bgpcpp.rib.canonicalExporter.numReconnectRebuildStart";
 DECLARE_timeseries(canonicalRibExportReconnectRebuildStart);
-// Time spent encoding canonical entries before each publication boundary.
+// Time spent encoding canonical entries for an incremental batch or full
+// snapshot materialization.
 inline constexpr auto kCanonicalRibExportBuildTimeMs =
     "bgpcpp.rib.canonicalExporter.buildTimeMs";
 DECLARE_quantile_stat(canonicalRibExportBuildTimeMs);
-// End-to-end time spent preparing and handing one update to FsdbSyncer.
+// FsdbSyncer-thread canonical patch preparation and publishState enqueue time.
 inline constexpr auto kCanonicalRibExportPublishTimeMs =
     "bgpcpp.rib.canonicalExporter.publishTimeMs";
 DECLARE_quantile_stat(canonicalRibExportPublishTimeMs);
-// Total time canonical export occupies the RIB EventBase for one batch.
-inline constexpr auto kCanonicalRibExportRibThreadTimeMs =
-    "bgpcpp.rib.canonicalExporter.ribThreadTimeMs";
-DECLARE_quantile_stat(canonicalRibExportRibThreadTimeMs);
 
 /**
  * Set point-in-time fb303 counters describing one canonical interning pool.
@@ -236,7 +233,7 @@ void setFsdbNhtConnected(int64_t val);
  *
  * Counters use `bgpcpp.fsdbSyncer.<subtree>.<event>`. `numUpdate` counts every
  * update received, `numClear` explicit clears, and `numIncrementalPublish`
- * successful incremental patches containing the subtree.
+ * incremental patch submissions containing the subtree.
  *
  * @param subtree Stable BgpData subtree label.
  * @param event Counter suffix such as numUpdate or numIncrementalPublish.

@@ -17,26 +17,30 @@
 #pragma once
 
 #include <atomic>
+#include <memory>
 #include <optional>
 #include <string_view>
+#include <vector>
 
+#include <folly/container/F14Set.h>
 #include <folly/logging/xlog.h>
 #include <gflags/gflags.h>
 
 #include "configerator/structs/neteng/bgp_policy/thrift/gen-cpp2/rib_policy_types.h"
 #include "neteng/fboss/bgp/cpp/common/platform/dc/PlatformConstant.h"
+#include "neteng/fboss/bgp/cpp/fsdb/CanonicalRibUpdateQueue.h"
 #include "neteng/fboss/bgp/cpp/rib/RibBase.h"
 #include "neteng/fboss/bgp/cpp/rib/RibPolicyLogger.h"
 
-DECLARE_bool(publish_rib_to_fsdb);
+DECLARE_bool(publish_multipaths_to_fsdb);
 DECLARE_bool(publish_partial_drain_state_to_fsdb);
 DECLARE_string(crf_policy_file);
 DECLARE_string(cps_policy_file);
 
 namespace facebook::bgp {
 
-struct CanonicalPathInput;
 class CanonicalRibBuilder;
+class CanonicalRibSnapshotRequests;
 class FsdbSyncer;
 class NeighborWatcher;
 
@@ -61,6 +65,8 @@ class RibDC : public RibBase {
        */
       std::shared_ptr<NeighborWatcher> neighborWatcher = nullptr);
   ~RibDC() override = default;
+
+  void run() noexcept override;
 
   /*
    * DC-only thrift surfaces for CPS. These do not exist on RibBase —
@@ -95,7 +101,6 @@ class RibDC : public RibBase {
       std::unique_ptr<std::string> community);
   neteng::fboss::bgp::thrift::TCanonicalRibState getRibSubprefixesCanonical(
       std::unique_ptr<std::string> prefix);
-
   /*
    * Result of resolving the file-based CRF artifact against the cached
    * RibPolicy at startup, returned by resolveCrfPolicy(). Bundles the two
@@ -189,15 +194,16 @@ class RibDC : public RibBase {
   /*
    * DC-only end-of-pass hook. Overrides the generic
    * RibBase::onPrepareFibProgrammingComplete. It queues pending partial-drain
-   * state and, after the initial full-RIB computation, starts FsdbSyncer so its
-   * first snapshot includes that retained state.
+   * state, releases a deferred canonical snapshot, and starts FsdbSyncer after
+   * the initial full-RIB computation so its first snapshot is complete.
    */
   void onPrepareFibProgrammingComplete(bool fullSync) noexcept override;
   /*
-   * Enqueue the current partial-drain state. DC-only, called only from
+   * Enqueue the current partial-drain state into the cache owned by
+   * FsdbSyncer. DC-only, called only from
    * onPrepareFibProgrammingComplete() — never via RibBase&, so it is not a
-   * RibBase virtual. Returns true if the state was enqueued, false if the
-   * update was skipped (feature gflag off or no syncer wired).
+   * RibBase virtual. Returns true if it was enqueued, false if the feature is
+   * disabled or no syncer is wired.
    */
   bool enqueuePartialDrainState();
   void postRouteFilterPolicyReplaced() override;
@@ -331,11 +337,11 @@ class RibDC : public RibBase {
   /*
    * Whether CPS native criteria (e.g. bgp_native_path_selection_min_nexthop /
    * min_agg_lbw) are violated for this prefix -- when true, no path is "best
-   * path". Shared by canonical and legacy RIB entry construction.
+   * path". Used by both legacy Thrift entry construction and canonical entry
+   * construction so the two surfaces apply the same demotion.
    */
   bool computeFailedCpsNativeCriteria(
       const facebook::bgp::RibEntry& ribEntry) const;
-
   std::unique_ptr<RibPolicyLogger> ribPolicyLogger_{nullptr};
 
   /*
@@ -349,14 +355,41 @@ class RibDC : public RibBase {
   FsdbSyncer* fsdbSyncer_{nullptr};
 
  private:
+  /* FSDB reconnect notification and canonical update-queue wiring. */
+  void configureCanonicalRibExport(FsdbSyncer& fsdbSyncer);
+  folly::coro::Task<void> consumeCanonicalRibSnapshotRequests(
+      std::shared_ptr<CanonicalRibSnapshotRequests> requests) noexcept;
+
+  /*
+   * Encoding shared by one-shot getters and continuous FSDB export.
+   * includePath supports community-scoped getters; singlePath avoids an
+   * all-path walk for best-path-only publication.
+   */
   std::vector<CanonicalPathInput> buildCanonicalPathInputs(
       const RibEntry& ribEntry,
-      folly::FunctionRef<bool(const RouteInfo&)> pathFilter);
-  bool addCanonicalEntry(
+      bool failedCpsNativeCriteria,
+      folly::FunctionRef<bool(const RouteInfo&)> includePath,
+      RouteInfo* singlePath = nullptr);
+
+  CanonicalEntryFields buildCanonicalEntryFields(const RibEntry& ribEntry);
+  bool addCanonicalGetterEntry(
       CanonicalRibBuilder& builder,
       const folly::CIDRNetwork& prefix,
       const RibEntry& ribEntry,
-      folly::FunctionRef<bool(const RouteInfo&)> pathFilter);
+      folly::FunctionRef<bool(const RouteInfo&)> includePath);
+
+  /* Continuous FSDB export after the current RIB computation completes. */
+  std::optional<CanonicalRibEntryInput> buildCanonicalRibEntryInput(
+      const RibEntry& ribEntry);
+  void enqueueCanonicalRibUpdatesAfterCompute(
+      const folly::F14FastSet<folly::CIDRNetwork>& processedPrefixes) noexcept;
+  void enqueueCanonicalRibFullSnapshot(std::string_view reason);
+
+  /* Null when canonical RIB publication is disabled. */
+  std::shared_ptr<CanonicalRibUpdateQueue> canonicalRibUpdateQueue_;
+  /* A reconnect received while the current RIB state is unsafe to snapshot. */
+  bool canonicalSnapshotPending_{false};
+
   /* DC-only CTE message handlers called from processRibPolicyMsgLoop. */
   void handleRouteAttributePolicySetMsg(
       const RouteAttributePolicySetMsg& msg) noexcept;
@@ -376,6 +409,10 @@ class RibDC : public RibBase {
       const std::vector<folly::IPAddress>& nexthopIps,
       MessageProcessor&& processMessage) noexcept;
 
+  /*
+   * Set after the initial full RIB computation starts FsdbSyncer. Continuous
+   * canonical updates are ignored until this becomes true.
+   */
   bool fsdbSyncerStarted_{false};
 
   std::unique_ptr<folly::AsyncTimeout> routeAttributePolicyTimer_;
@@ -410,7 +447,7 @@ class RibDC : public RibBase {
    * Build a single TPartiallyDrainedPrefix from a (prefix, ribEntry) pair.
    * Reads only RibEntry/CIDRNetwork state. Used by the on-demand Thrift RPC
    * path getPartiallyDrainedPrefixes() and (transitively) by the
-   * publish path enqueuePartialDrainState(). DC-only: partial drain is a
+   * FSDB path enqueuePartialDrainState(). DC-only: partial drain is a
    * device concept, so this helper lives here rather than in RibBase.
    */
   neteng::fboss::bgp::thrift::TPartiallyDrainedPrefix
@@ -428,10 +465,9 @@ class RibDC : public RibBase {
    * the first completed FIB pass publishes its computed state: true with the
    * affected prefixes if that pass enters partial drain, or false with an empty
    * prefix set otherwise. Set true again in runBestPathSelection() on each
-   * drain transition; cleared in onPrepareFibProgrammingComplete() only once a
-   * publish actually lands.
+   * drain transition; cleared once the latest state is handed to FsdbSyncer.
    */
-  bool partialDrainPublishPending_{true};
+  bool partialDrainEnqueuePending_{true};
 
 /*
  * Per-class placeholder for test code injection. Test files that need to

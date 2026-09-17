@@ -236,6 +236,14 @@ class MockRib : public RibDC {
 
   std::shared_ptr<RouteInfo> getBestPath(const folly::CIDRNetwork& prefix);
 
+  void configureCanonicalRibProducerForTest(
+      std::shared_ptr<CanonicalRibUpdateQueue> updateQueue);
+  void processSingleRibInUpdateForTest(
+      const TinyPeerInfo& peer,
+      std::shared_ptr<const BgpPath> attrs,
+      const PrefixPathId& prefixPathId);
+  void enqueueCanonicalRibFullSnapshotForTest();
+
   folly::F14NodeMap<uint32_t, std::shared_ptr<RouteInfo>> getMultipath(
       const folly::CIDRNetwork& prefix);
 
@@ -439,9 +447,11 @@ class RibFixture : public testing::Test {
    */
   void updateCacheAndNotifyRib(const std::vector<NexthopStatus>& updates);
 
+  void createFsdbTestResources();
   void setUpFsdb();
   void completeFibProgrammingPass(bool fullSync);
   bool isFsdbSyncerStarted() const;
+  bool isCanonicalRibUpdateQueueEmpty() const;
   // True once Rib has run its initial path computation (initial full-sync).
   bool isRibEoRReceived() const;
   /*

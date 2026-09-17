@@ -392,6 +392,24 @@ void MockRib::clearPathSelectionPolicy() {
   EXPECT_GE(counters.at(updateCounter), 0);
 }
 
+void MockRib::configureCanonicalRibProducerForTest(
+    std::shared_ptr<CanonicalRibUpdateQueue> updateQueue) {
+  canonicalRibUpdateQueue_ = std::move(updateQueue);
+  /* These producer-only tests begin after the initial RIB computation. */
+  fsdbSyncerStarted_ = true;
+}
+
+void MockRib::processSingleRibInUpdateForTest(
+    const TinyPeerInfo& peer,
+    std::shared_ptr<const BgpPath> attrs,
+    const PrefixPathId& prefixPathId) {
+  processSingleRibInUpdate(peer, std::move(attrs), prefixPathId);
+}
+
+void MockRib::enqueueCanonicalRibFullSnapshotForTest() {
+  enqueueCanonicalRibFullSnapshot("test");
+}
+
 void MockRib::setRouteFilterPolicy(
     std::unique_ptr<TRouteFilterPolicy> policy,
     bool forceUpdate) {
@@ -761,7 +779,7 @@ std::unique_ptr<MockRib> RibFixture::createMockRib(
       ribInQ_,
       ribOutQ_,
       kDevPlatform,
-      nullptr,
+      fsdbSyncer_.get(),
       nexthopCache);
 }
 
@@ -804,7 +822,7 @@ folly::coro::Task<void> RibFixture::delayedFibProgramSchedule() {
   rib_->schedulePrepareFibProgrammingTimer();
 }
 
-void RibFixture::setUpFsdb() {
+void RibFixture::createFsdbTestResources() {
   fsdbServer_ = std::make_unique<FsdbTestServer>();
   FLAGS_fsdbPort = fsdbServer_->getFsdbPort();
   FLAGS_publish_state_to_fsdb = true;
@@ -818,8 +836,14 @@ void RibFixture::setUpFsdb() {
       std::make_unique<folly::ScopedEventBaseThread>("FsdbSyncerTest");
   fsdbSyncer_ =
       std::make_unique<FsdbSyncer>(*fsdbSyncerEventBaseThread_->getEventBase());
-  rib_->evb_.runInEventBaseThreadAndWait(
-      [this]() { rib_->fsdbSyncer_ = fsdbSyncer_.get(); });
+}
+
+void RibFixture::setUpFsdb() {
+  createFsdbTestResources();
+  rib_->evb_.runInEventBaseThreadAndWait([this]() {
+    rib_->fsdbSyncer_ = fsdbSyncer_.get();
+    rib_->configureCanonicalRibExport(*fsdbSyncer_);
+  });
 }
 
 void RibFixture::completeFibProgrammingPass(bool fullSync) {
@@ -832,6 +856,15 @@ bool RibFixture::isFsdbSyncerStarted() const {
   rib_->evb_.runInEventBaseThreadAndWait(
       [this, &started]() { started = rib_->fsdbSyncerStarted_; });
   return started;
+}
+
+bool RibFixture::isCanonicalRibUpdateQueueEmpty() const {
+  bool empty = false;
+  rib_->evb_.runInEventBaseThreadAndWait([this, &empty]() {
+    empty = rib_->canonicalRibUpdateQueue_ &&
+        rib_->canonicalRibUpdateQueue_->empty();
+  });
+  return empty;
 }
 
 bool RibFixture::isRibEoRReceived() const {

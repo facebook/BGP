@@ -202,12 +202,6 @@ DEFINE_quantile_stat(
     fb303::ExportTypeConsts::kAvg,
     fb303::QuantileConsts::kP50_P95_P99,
     fb303::SlidingWindowPeriodConsts::kOneMinTenMin);
-DEFINE_quantile_stat(
-    canonicalRibExportRibThreadTimeMs,
-    kCanonicalRibExportRibThreadTimeMs,
-    fb303::ExportTypeConsts::kAvg,
-    fb303::QuantileConsts::kP50_P95_P99,
-    fb303::SlidingWindowPeriodConsts::kOneMinTenMin);
 
 void setCanonicalRibPoolStats(
     std::string_view pool,

@@ -14,9 +14,15 @@
  * limitations under the License.
  */
 
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <variant>
+
 #include <folly/ScopeGuard.h>
 #include <folly/Synchronized.h>
 #include <folly/coro/BlockingWait.h>
+#include <gflags/gflags.h>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <thrift/lib/cpp2/protocol/Serializer.h>
@@ -24,6 +30,7 @@
 #include "fboss/fsdb/client/FsdbPubSubManager.h"
 #define RibBase_TEST_FRIENDS friend class RibFsdbFixture;
 
+#include "neteng/fboss/bgp/cpp/fsdb/CanonicalRibUpdateQueue.h"
 #include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/RibFsdbPolicyTestFixture.h"
 #include "neteng/fboss/bgp/cpp/tests/RibPolicyUtils.h"
@@ -36,6 +43,321 @@ using ::testing::_;
 
 namespace facebook {
 namespace bgp {
+
+class CanonicalRibProducerFixture : public RibFixture {
+ public:
+  void SetUp() override {
+    RibFixture::SetUp();
+    updateQueue_ = std::make_shared<CanonicalRibUpdateQueue>();
+    rib_->getEventBase().runInEventBaseThreadAndWait(
+        [this]() { rib_->configureCanonicalRibProducerForTest(updateQueue_); });
+  }
+
+ protected:
+  std::shared_ptr<CanonicalRibUpdateQueue> updateQueue_;
+};
+
+TEST_F(CanonicalRibProducerFixture, PreCycleChangesPublishOnlyTheFinalState) {
+  const PrefixPathId prefixPathId{kV4Prefix1, kDefaultPathID};
+  rib_->getEventBase().runInEventBaseThreadAndWait([this, &prefixPathId]() {
+    rib_->processSingleRibInUpdateForTest(eBgpPeer1_, attr_, prefixPathId);
+    rib_->processSingleRibInUpdateForTest(eBgpPeer1_, nullptr, prefixPathId);
+  });
+  EXPECT_TRUE(updateQueue_->empty());
+
+  rib_->getEventBase().runInEventBaseThreadAndWait([this, &prefixPathId]() {
+    rib_->processSingleRibInUpdateForTest(eBgpPeer1_, attr_, prefixPathId);
+    rib_->prepareFibProgramming();
+  });
+
+  ASSERT_EQ(updateQueue_->size(), 1);
+  auto queued = folly::coro::blockingWait(updateQueue_->pop());
+  ASSERT_TRUE(std::holds_alternative<CanonicalRibPrefixUpdate>(queued));
+  const auto& update = std::get<CanonicalRibPrefixUpdate>(queued);
+  EXPECT_EQ(update.prefix, kV4Prefix1);
+  ASSERT_TRUE(update.entry.has_value());
+  EXPECT_EQ(update.entry->paths.size(), 1);
+}
+
+TEST_F(
+    CanonicalRibProducerFixture,
+    PreCycleAnnouncementAndWithdrawalPublishNothing) {
+  const PrefixPathId prefixPathId{kV4Prefix1, kDefaultPathID};
+  rib_->getEventBase().runInEventBaseThreadAndWait([this, &prefixPathId]() {
+    rib_->processSingleRibInUpdateForTest(eBgpPeer1_, attr_, prefixPathId);
+    rib_->processSingleRibInUpdateForTest(eBgpPeer1_, nullptr, prefixPathId);
+  });
+  EXPECT_TRUE(updateQueue_->empty());
+
+  rib_->getEventBase().runInEventBaseThreadAndWait(
+      [this]() { rib_->prepareFibProgramming(); });
+
+  EXPECT_TRUE(updateQueue_->empty());
+}
+
+TEST_F(CanonicalRibProducerFixture, ComputedWithdrawalPublishesAtNextCycle) {
+  const PrefixPathId prefixPathId{kV4Prefix1, kDefaultPathID};
+  auto fibFuture = fib_->getFibProgramFuture();
+  rib_->getEventBase().runInEventBaseThreadAndWait([this, &prefixPathId]() {
+    rib_->processSingleRibInUpdateForTest(eBgpPeer1_, attr_, prefixPathId);
+    EXPECT_TRUE(updateQueue_->empty());
+    rib_->prepareFibProgramming(/* fullSync */ true);
+  });
+  fibFuture.wait();
+
+  ASSERT_EQ(updateQueue_->size(), 1);
+  auto announcementMessage = folly::coro::blockingWait(updateQueue_->pop());
+  ASSERT_TRUE(
+      std::holds_alternative<CanonicalRibPrefixUpdate>(announcementMessage));
+  const auto& announcement =
+      std::get<CanonicalRibPrefixUpdate>(announcementMessage);
+  EXPECT_EQ(announcement.prefix, kV4Prefix1);
+  EXPECT_TRUE(announcement.entry.has_value());
+
+  fibFuture = fib_->getFibProgramFuture();
+  rib_->getEventBase().runInEventBaseThreadAndWait([this, &prefixPathId]() {
+    rib_->processSingleRibInUpdateForTest(eBgpPeer1_, nullptr, prefixPathId);
+    EXPECT_TRUE(updateQueue_->empty());
+    rib_->prepareFibProgramming();
+  });
+  fibFuture.wait();
+
+  ASSERT_EQ(updateQueue_->size(), 1);
+  auto withdrawalMessage = folly::coro::blockingWait(updateQueue_->pop());
+  ASSERT_TRUE(
+      std::holds_alternative<CanonicalRibPrefixUpdate>(withdrawalMessage));
+  const auto& withdrawal =
+      std::get<CanonicalRibPrefixUpdate>(withdrawalMessage);
+  EXPECT_EQ(withdrawal.prefix, kV4Prefix1);
+  EXPECT_FALSE(withdrawal.entry.has_value());
+}
+
+TEST_F(CanonicalRibProducerFixture, FullSnapshotIsOneOwningQueueMessage) {
+  const PrefixPathId first{kV4Prefix1, kDefaultPathID};
+  const PrefixPathId second{kV4Prefix2, kDefaultPathID};
+  rib_->getEventBase().runInEventBaseThreadAndWait([this, &first, &second]() {
+    rib_->processSingleRibInUpdateForTest(eBgpPeer1_, attr_, first);
+    rib_->processSingleRibInUpdateForTest(eBgpPeer1_, attr_, second);
+    rib_->enqueueCanonicalRibFullSnapshotForTest();
+  });
+
+  ASSERT_EQ(updateQueue_->size(), 1);
+  auto queued = folly::coro::blockingWait(updateQueue_->pop());
+  const auto& snapshot = std::get<CanonicalRibFullSnapshotInput>(queued);
+  ASSERT_EQ(snapshot.entries.size(), 2);
+  const auto containsPrefix = [&snapshot](const folly::CIDRNetwork& prefix) {
+    return std::any_of(
+        snapshot.entries.begin(),
+        snapshot.entries.end(),
+        [&prefix](const auto& entry) {
+          return entry.prefix == prefix && entry.entry.has_value();
+        });
+  };
+  EXPECT_TRUE(containsPrefix(kV4Prefix1));
+  EXPECT_TRUE(containsPrefix(kV4Prefix2));
+}
+
+class CanonicalRibFsdbFixture : public RibFixture {
+ public:
+  void SetUp() override {
+    FLAGS_publish_rib_to_fsdb = true;
+    createFsdbTestResources();
+    RibFixture::SetUp();
+    EXPECT_FALSE(isFsdbSyncerStarted());
+  }
+
+  void installNoBestPathPolicy(const folly::CIDRNetwork& prefix) {
+    TPathSelector selector;
+    selector.bgp_native_path_selection_min_nexthop() = 2;
+    selector.drain_on_min_nexthop_violation() = false;
+    sendPathSelectionPolicySet(
+        createTPathSelectionPolicyWithPathSelector({prefix}, selector));
+    rib_->waitForPathSelectionPolicyUpdate();
+  }
+
+ protected:
+  gflags::FlagSaver flagSaver_;
+};
+
+class CanonicalRibPathModeFixture : public CanonicalRibFsdbFixture,
+                                    public ::testing::WithParamInterface<bool> {
+ public:
+  void SetUp() override {
+    FLAGS_publish_multipaths_to_fsdb = GetParam();
+    CanonicalRibFsdbFixture::SetUp();
+  }
+};
+
+TEST_P(CanonicalRibPathModeFixture, PublishesConfiguredPathShape) {
+  auto subscribedRib = fsdbSubscriber_->subscribe(
+      fsdbSubscriber_->getRootStatePath().bgp().canonicalRib());
+  const PrefixPathIds prefixBatch{{kV4Prefix1, kDefaultPathID}};
+  auto backupAttr = attr_->clone();
+  backupAttr->setLocalPref(90);
+  backupAttr->publish();
+
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendAnnouncement(prefixBatch, eBgpPeer1_, attr_);
+  sendAnnouncement(prefixBatch, eBgpPeer2_, attr_);
+  sendAnnouncement(prefixBatch, eBgpPeer3_, std::move(backupAttr));
+  sendInitialPathComputation();
+  fibFuture.wait();
+  waitForFsdbPublisherConnected();
+  WITH_RETRIES_N(100, {
+    EXPECT_EVENTUALLY_TRUE(fsdbSyncer_->isIncrementalPublicationReady());
+  });
+
+  const auto prefix = folly::IPAddress::networkToString(kV4Prefix1);
+  WITH_RETRIES_N(100, {
+    const auto rib = subscribedRib.rlock();
+    ASSERT_EVENTUALLY_TRUE(rib->has_value());
+    ASSERT_EVENTUALLY_TRUE((*rib)->rib_entries()->contains(prefix));
+    const auto& entry = (*rib)->rib_entries()->at(prefix);
+    ASSERT_EVENTUALLY_TRUE(entry.best_path().has_value());
+    if (!GetParam()) {
+      EXPECT_EVENTUALLY_TRUE(entry.paths()->empty());
+    } else {
+      EXPECT_EVENTUALLY_EQ(1, entry.paths()->size());
+      const auto bestGroup = entry.paths()->find(std::string{kBestPathGroup});
+      ASSERT_EVENTUALLY_NE(bestGroup, entry.paths()->end());
+      EXPECT_EVENTUALLY_EQ(2, bestGroup->second.size());
+      for (const auto& path : bestGroup->second) {
+        EXPECT_EVENTUALLY_TRUE(
+            (*rib)->deduped_paths()->contains(*path.path_idx()));
+        ASSERT_EVENTUALLY_TRUE(path.peer_idx().has_value());
+        EXPECT_EVENTUALLY_TRUE((*rib)->peers()->contains(*path.peer_idx()));
+      }
+    }
+  });
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    BestPathOnlyAndMultipath,
+    CanonicalRibPathModeFixture,
+    ::testing::Values(false, true),
+    [](const ::testing::TestParamInfo<bool>& info) {
+      return info.param ? "Multipath" : "BestPathOnly";
+    });
+
+TEST_F(CanonicalRibFsdbFixture, ReconnectPublishesFreshCanonicalSnapshot) {
+  auto subscribedRib = fsdbSubscriber_->subscribe(
+      fsdbSubscriber_->getRootStatePath().bgp().canonicalRib());
+
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendInitialPathComputation();
+  fibFuture.wait();
+  waitForFsdbPublisherConnected();
+  rib_->setFibBatchTime(milliseconds(2));
+
+  const auto prefixBatch = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
+  fibFuture = fib_->getFibProgramFuture();
+  sendAnnouncement(prefixBatch, eBgpPeer1_, attr_);
+  fibFuture.wait();
+  const auto prefix = folly::IPAddress::networkToString(kV4Prefix1);
+  WITH_RETRIES_N(10, {
+    const auto rib = subscribedRib.rlock();
+    ASSERT_EVENTUALLY_TRUE(rib->has_value());
+    EXPECT_EVENTUALLY_TRUE((*rib)->rib_entries()->contains(prefix));
+  });
+
+  const auto fsdbPort = fsdbServer_->getFsdbPort();
+
+  fsdbServer_.reset();
+  WITH_RETRIES_N(10, {
+    EXPECT_EVENTUALLY_FALSE(fsdbSyncer_->isIncrementalPublicationReady());
+  });
+
+  const auto replacementPrefixBatch =
+      PrefixPathIds{{kV4Prefix2, kDefaultPathID}};
+  auto ribFuture = rib_->getRibPrepareFibProgrammingFuture(
+      /*numRibEntriesToProgram=*/2);
+  sendWithdrawal(prefixBatch, eBgpPeer1_);
+  sendAnnouncement(replacementPrefixBatch, eBgpPeer1_, attr_);
+  ribFuture.wait();
+  WITH_RETRIES_N(
+      100, { EXPECT_EVENTUALLY_TRUE(isCanonicalRibUpdateQueueEmpty()); });
+
+  fsdbServer_ = std::make_unique<fboss::fsdb::test::FsdbTestServer>(fsdbPort);
+
+  WITH_RETRIES_N(10, {
+    EXPECT_EVENTUALLY_TRUE(fsdbSyncer_->isIncrementalPublicationReady());
+    const auto rib = subscribedRib.rlock();
+    ASSERT_EVENTUALLY_TRUE(rib->has_value());
+    EXPECT_EVENTUALLY_FALSE((*rib)->rib_entries()->contains(prefix));
+    EXPECT_EVENTUALLY_TRUE((*rib)->rib_entries()->contains(
+        folly::IPAddress::networkToString(kV4Prefix2)));
+  });
+}
+
+// TODO: Re-enable after the stale-FIB bug reproduced by D120004127 is fixed.
+TEST_F(
+    CanonicalRibFsdbFixture,
+    DISABLED_WithdrawsPublishedEntryWithoutBestPath) {
+  auto subscribedRib = fsdbSubscriber_->subscribe(
+      fsdbSubscriber_->getRootStatePath().bgp().canonicalRib());
+  rib_->setFibBatchTime(milliseconds(2));
+
+  installNoBestPathPolicy(kV4Prefix1);
+
+  const auto prefixBatch = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendAnnouncement(prefixBatch, eBgpPeer1_, attr_);
+  sendInitialPathComputation();
+  fibFuture.wait();
+  waitForFsdbPublisherConnected();
+
+  const auto prefix = folly::IPAddress::networkToString(kV4Prefix1);
+  WITH_RETRIES_N(10, {
+    const auto rib = subscribedRib.rlock();
+    ASSERT_EVENTUALLY_TRUE(rib->has_value());
+    ASSERT_EVENTUALLY_TRUE((*rib)->rib_entries()->contains(prefix));
+    const auto& entry = (*rib)->rib_entries()->at(prefix);
+    EXPECT_EVENTUALLY_FALSE(entry.best_path().has_value());
+    EXPECT_EVENTUALLY_FALSE(entry.paths()->empty());
+  });
+
+  auto ribFuture = rib_->getRibPrepareFibProgrammingFuture();
+  sendWithdrawal(prefixBatch, eBgpPeer1_);
+  ribFuture.wait();
+
+  WITH_RETRIES_N(10, {
+    const auto rib = subscribedRib.rlock();
+    ASSERT_EVENTUALLY_TRUE(rib->has_value());
+    EXPECT_EVENTUALLY_FALSE((*rib)->rib_entries()->contains(prefix));
+  });
+}
+
+TEST_F(CanonicalRibFsdbFixture, WithdrawsPublishedBestPathEntry) {
+  auto subscribedRib = fsdbSubscriber_->subscribe(
+      fsdbSubscriber_->getRootStatePath().bgp().canonicalRib());
+  rib_->setFibBatchTime(milliseconds(2));
+
+  const auto prefixBatch = PrefixPathIds{{kV4Prefix1, kDefaultPathID}};
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendAnnouncement(prefixBatch, eBgpPeer1_, attr_);
+  sendInitialPathComputation();
+  fibFuture.wait();
+  waitForFsdbPublisherConnected();
+
+  const auto prefix = folly::IPAddress::networkToString(kV4Prefix1);
+  WITH_RETRIES_N(10, {
+    const auto rib = subscribedRib.rlock();
+    ASSERT_EVENTUALLY_TRUE(rib->has_value());
+    ASSERT_EVENTUALLY_TRUE((*rib)->rib_entries()->contains(prefix));
+    EXPECT_EVENTUALLY_TRUE(
+        (*rib)->rib_entries()->at(prefix).best_path().has_value());
+  });
+
+  fibFuture = fib_->getFibProgramFuture();
+  sendWithdrawal(prefixBatch, eBgpPeer1_);
+  fibFuture.wait();
+
+  WITH_RETRIES_N(10, {
+    const auto rib = subscribedRib.rlock();
+    ASSERT_EVENTUALLY_TRUE(rib->has_value());
+    EXPECT_EVENTUALLY_FALSE((*rib)->rib_entries()->contains(prefix));
+  });
+}
 
 /*
  * End-to-end publish path with publish_partial_drain_state_to_fsdb enabled.

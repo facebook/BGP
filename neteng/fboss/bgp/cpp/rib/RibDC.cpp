@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <folly/coro/BoundedQueue.h>
 #include <folly/coro/CurrentExecutor.h>
 #include <folly/logging/xlog.h>
 
@@ -22,6 +23,7 @@
 #include "neteng/fboss/bgp/cpp/common/BgpError.h"
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
 #include "neteng/fboss/bgp/cpp/common/FeatureFlags.h"
+#include "neteng/fboss/bgp/cpp/fsdb/CanonicalRibUpdateQueue.h"
 #include "neteng/fboss/bgp/cpp/fsdb/FsdbSyncer.h"
 #include "neteng/fboss/bgp/cpp/peer/NeighborWatcher.h"
 #include "neteng/fboss/bgp/cpp/rib/FibDev.h"
@@ -34,6 +36,13 @@
 #include "neteng/fboss/bgp/cpp/rib/canonical/CanonicalRibBuilder.h"
 #include "neteng/fboss/bgp/cpp/stats/StatsDC.h"
 #include "neteng/fboss/bgp/if/gen-cpp2/bgp_thrift_types.h"
+
+DEFINE_bool(
+    publish_multipaths_to_fsdb,
+    false,
+    "When publishing the canonical RIB to FSDB, export the full ECMP multipath "
+    "set per prefix instead of just the selected best path. Entries without "
+    "a usable best path include all candidates regardless of this flag");
 
 DEFINE_string(
     crf_policy_file,
@@ -50,85 +59,128 @@ using namespace facebook::neteng::fboss::bgp::thrift;
 
 namespace facebook::bgp {
 
+/* Cross-thread, capacity-one notification for authoritative snapshot work. */
+class CanonicalRibSnapshotRequests {
+ public:
+  void notify() noexcept {
+    requests_.try_enqueue(folly::unit);
+  }
+
+  folly::coro::Task<void> wait() {
+    co_await requests_.dequeue();
+  }
+
+ private:
+  folly::coro::BoundedQueue<folly::Unit, true, true> requests_{1};
+};
+
 std::vector<CanonicalPathInput> RibDC::buildCanonicalPathInputs(
     const facebook::bgp::RibEntry& ribEntry,
-    folly::FunctionRef<bool(const RouteInfo&)> pathFilter) {
-  const auto& bestpath = ribEntry.getBestPath();
+    bool failedCpsNativeCriteria,
+    folly::FunctionRef<bool(const RouteInfo&)> includePath,
+    RouteInfo* singlePath) {
+  auto* bestpath = ribEntry.bestpath_.get();
   const auto& multipathRouteinfos = ribEntry.getMultipaths();
   auto weightedNexthops = ribEntry.getMultipathWeightedNexthops();
 
-  /*
-   * Mirror RibDC grouping logic: demote to default when CPS native criteria
-   * (min_nexthop / min_agg_lbw) is violated.
-   */
-  const bool failedCps = canonicalFailedCpsNativeCriteria(ribEntry);
   const bool nexthopTrackingEnabled =
       FeatureFlags::getBgpBestpathFeatures().enableNextHopTracking;
 
-  const auto& routeinfos = ribEntry.getAllPaths();
   std::vector<CanonicalPathInput> inputs;
-  inputs.reserve(routeinfos.size());
-  for (const auto& routeinfo : routeinfos) {
-    if (!pathFilter(*routeinfo)) {
-      continue;
+  inputs.reserve(singlePath ? 1 : ribEntry.getAllPathsCnt());
+  const auto appendPath = [&](RouteInfo& routeinfo) {
+    if (!includePath(routeinfo)) {
+      return;
     }
-    CanonicalPathInput in;
-    in.path = routeinfo->attrs;
-    in.peerAddr = routeinfo->peer.addr;
-    in.peerRouterId = routeinfo->peer.routerId;
-    in.peerDescription = routeinfo->peer.description;
-    in.pathId = routeinfo->receivedPathId;
+    CanonicalPathInput input;
+    input.path = routeinfo.attrs;
+    input.peerAddr = routeinfo.peer.addr;
+    input.peerRouterId = routeinfo.peer.routerId;
+    input.peerDescription = routeinfo.peer.description;
+    input.pathId = routeinfo.receivedPathId;
     if (weightedNexthops) {
-      auto it = weightedNexthops->find(routeinfo->peer.addr);
+      auto it = weightedNexthops->find(routeinfo.peer.addr);
       if (it != weightedNexthops->end()) {
-        in.nextHopWeight = it->second;
+        input.nextHopWeight = it->second;
       }
     }
     /* Per-instance operational fields, mirror createTRibEntryWithFilter */
-    if (routeinfo->isNextHopReachable()) {
-      in.igpCost = routeinfo->getIgpCostValue();
+    if (routeinfo.isNextHopReachable()) {
+      input.igpCost = routeinfo.getIgpCostValue();
     }
-    in.bestPathFilterDescr = routeinfo->getBestPathFilterDescr();
-    in.lastModifiedTime = routeinfo->lastModifiedTime_;
-    if (routeinfo->pathIdToSend.has_value()) {
-      in.pathIdToSend = routeinfo->pathIdToSend.value();
+    input.bestPathFilterDescr = routeinfo.getBestPathFilterDescr();
+    input.lastModifiedTime = routeinfo.lastModifiedTime_;
+    if (routeinfo.pathIdToSend.has_value()) {
+      input.pathIdToSend = routeinfo.pathIdToSend.value();
     }
-    in.isInactive =
-        nexthopTrackingEnabled && !routeinfo->isResolvedForSelection();
-    const bool inMultipath = routeinfo->pathIdToSend.has_value() &&
-        multipathRouteinfos.contains(routeinfo->pathIdToSend.value());
+    input.isInactive =
+        nexthopTrackingEnabled && !routeinfo.isResolvedForSelection();
+    const bool inMultipath = routeinfo.pathIdToSend.has_value() &&
+        multipathRouteinfos.contains(routeinfo.pathIdToSend.value());
     /*
-     * A scoped pathFilter may drop the bestpath while keeping other multipath
-     * members; those survivors still land in kBestPathGroup but none carries
-     * is_best_path. Consumers must not assume the best group always holds
-     * exactly one is_best_path entry. We do not demote such entries to default.
+     * A community-scoped getter may omit the best path while retaining other
+     * multipath members. Keep those paths in kBestPathGroup even though none
+     * carries is_best_path.
      */
-    if (inMultipath && !failedCps) {
-      if (bestpath && routeinfo == bestpath) {
-        in.isBestPath = true;
+    if (inMultipath && !failedCpsNativeCriteria) {
+      if (bestpath && &routeinfo == bestpath) {
+        input.isBestPath = true;
       }
-      in.group = facebook::bgp::kBestPathGroup;
+      input.group = facebook::bgp::kBestPathGroup;
     } else {
-      in.group = facebook::bgp::kDefaultPathGroup;
+      input.group = facebook::bgp::kDefaultPathGroup;
     }
-    inputs.push_back(std::move(in));
+    inputs.push_back(std::move(input));
+  };
+
+  if (singlePath) {
+    appendPath(*singlePath);
+    return inputs;
+  }
+  for (const auto& peerRouteInfos : ribEntry.routeInfos_) {
+    for (const auto& pathRouteInfo : peerRouteInfos.second) {
+      appendPath(*pathRouteInfo.second);
+    }
   }
   return inputs;
 }
 
-bool RibDC::addCanonicalEntry(
-    CanonicalRibBuilder& builder,
-    const folly::CIDRNetwork& prefix,
-    const facebook::bgp::RibEntry& ribEntry,
-    folly::FunctionRef<bool(const RouteInfo&)> pathFilter) {
-  auto inputs = buildCanonicalPathInputs(ribEntry, pathFilter);
-
-  /* Nothing to export if no paths passed the filter */
-  if (inputs.empty()) {
-    return false;
+std::optional<CanonicalRibEntryInput> RibDC::buildCanonicalRibEntryInput(
+    const RibEntry& ribEntry) {
+  auto* bestPath = ribEntry.bestpath_.get();
+  const bool failedCpsNativeCriteria =
+      canonicalFailedCpsNativeCriteria(ribEntry);
+  const bool includeAllCandidates =
+      bestPath == nullptr || failedCpsNativeCriteria;
+  CanonicalRibEntryInput entryInput;
+  if (!FLAGS_publish_multipaths_to_fsdb && !includeAllCandidates) {
+    entryInput.paths = buildCanonicalPathInputs(
+        ribEntry,
+        failedCpsNativeCriteria,
+        [](const RouteInfo&) { return true; },
+        bestPath);
+    entryInput.includePaths = false;
+  } else {
+    const auto& multipaths = ribEntry.getMultipaths();
+    entryInput.paths = buildCanonicalPathInputs(
+        ribEntry,
+        failedCpsNativeCriteria,
+        [includeAllCandidates, &multipaths](const RouteInfo& routeInfo) {
+          return includeAllCandidates ||
+              (routeInfo.pathIdToSend.has_value() &&
+               multipaths.contains(routeInfo.pathIdToSend.value()));
+        });
+    entryInput.includePaths = true;
   }
+  if (entryInput.paths.empty()) {
+    return std::nullopt;
+  }
+  entryInput.fields = buildCanonicalEntryFields(ribEntry);
+  return entryInput;
+}
 
-  /* Build entry-level fields only when we have paths to export */
+CanonicalEntryFields RibDC::buildCanonicalEntryFields(
+    const RibEntry& ribEntry) {
   CanonicalEntryFields entryFields;
   if (ribEntry.needPathSelection()) {
     entryFields.pathSelectionPending = true;
@@ -141,16 +193,34 @@ bool RibDC::addCanonicalEntry(
       entryFields.activeCteUcmpAction = std::move(*activeCteUcmpAction);
     }
   }
+  return entryFields;
+}
 
-  builder.addEntry(prefix, ribEntry.getRibVersion(), inputs, entryFields);
+bool RibDC::addCanonicalGetterEntry(
+    CanonicalRibBuilder& builder,
+    const folly::CIDRNetwork& prefix,
+    const facebook::bgp::RibEntry& ribEntry,
+    folly::FunctionRef<bool(const RouteInfo&)> includePath) {
+  auto inputs = buildCanonicalPathInputs(
+      ribEntry, canonicalFailedCpsNativeCriteria(ribEntry), includePath);
+
+  /* Nothing to export if no paths passed the filter */
+  if (inputs.empty()) {
+    return false;
+  }
+
+  builder.addEntry(
+      prefix,
+      ribEntry.getRibVersion(),
+      inputs,
+      buildCanonicalEntryFields(ribEntry));
   return true;
 }
 
 /*
- * Full-RIB canonical export. Routes every entry through the shared
- * addCanonicalEntry, so it applies the same CPS native-criteria demotion as the
- * legacy getRibEntries / RibDC::createTRibEntryWithFilter path -- intentional
- * parity, not a new grouping behavior for the bulk getter.
+ * Full-RIB canonical getter. Routes every entry through
+ * addCanonicalGetterEntry, applying the same CPS native-criteria demotion as
+ * the legacy getRibEntries / RibDC::createTRibEntryWithFilter path.
  */
 neteng::fboss::bgp::thrift::TCanonicalRibState RibDC::getRibEntriesCanonical(
     TBgpAfi afi) {
@@ -167,7 +237,7 @@ neteng::fboss::bgp::thrift::TCanonicalRibState RibDC::getRibEntriesCanonical(
       if (expectIPv4 != isIPv4) {
         continue;
       }
-      addCanonicalEntry(
+      addCanonicalGetterEntry(
           builder, prefix, ribEntry, [](const RouteInfo&) { return true; });
     }
   });
@@ -192,7 +262,7 @@ neteng::fboss::bgp::thrift::TCanonicalRibState RibDC::getRibPrefixCanonical(
   evb_.runImmediatelyOrRunInEventBaseThreadAndWait([&]() {
     auto entry = ribEntries_.find(network);
     if (entry != ribEntries_.end()) {
-      addCanonicalEntry(
+      addCanonicalGetterEntry(
           builder, entry->first, entry->second, [](const RouteInfo&) {
             return true;
           });
@@ -222,7 +292,7 @@ RibDC::getRibEntriesForCommunitiesCanonical(
           ((afi == TBgpAfi::AFI_IPV6) && (prefix.first.family() != AF_INET6))) {
         continue;
       }
-      addCanonicalEntry(
+      addCanonicalGetterEntry(
           builder,
           prefix,
           ribEntry,
@@ -292,7 +362,7 @@ RibDC::getRibSubprefixesCanonical(std::unique_ptr<std::string> prefix) {
       if (!isSubnet(subPrefix, parentPrefix)) {
         continue;
       }
-      addCanonicalEntry(
+      addCanonicalGetterEntry(
           builder, subPrefix, ribEntry, [](const RouteInfo&) { return true; });
     }
   });
@@ -516,6 +586,19 @@ RibDC::RibDC(
   setCpsFileModeEnabled(cpsFileMode);
 }
 
+void RibDC::configureCanonicalRibExport(FsdbSyncer& fsdbSyncer) {
+  auto snapshotRequests = std::make_shared<CanonicalRibSnapshotRequests>();
+  canonicalRibUpdateQueue_ = fsdbSyncer.registerCanonicalRibSource(
+      [snapshotRequests]() { snapshotRequests->notify(); });
+  if (!canonicalRibUpdateQueue_) {
+    return;
+  }
+  getRibAsyncScope().add(
+      folly::coro::co_withExecutor(
+          &evb_,
+          consumeCanonicalRibSnapshotRequests(std::move(snapshotRequests))));
+}
+
 bool RibDC::isCrfFileModeEnabled() const {
   return crfFileModeEnabled_;
 }
@@ -559,6 +642,77 @@ void RibDC::setCpsFileModeEnabled(bool fileModeActive) {
    * never reflect FILE_MODE.
    */
   BgpStatsDC::setCpsFileModeEnabled(fileModeActive);
+}
+
+void RibDC::run() noexcept {
+  if (fsdbSyncer_) {
+    configureCanonicalRibExport(*fsdbSyncer_);
+  }
+  RibBase::run();
+}
+
+folly::coro::Task<void> RibDC::consumeCanonicalRibSnapshotRequests(
+    std::shared_ptr<CanonicalRibSnapshotRequests> requests) noexcept {
+  while (true) {
+    auto request = co_await folly::coro::co_awaitTry(requests->wait());
+    if (request.hasException()) {
+      if (!request.hasException<folly::OperationCancelled>()) {
+        XLOGF(
+            ERR,
+            "Canonical RIB snapshot request consumer failed: {}",
+            request.exception().what());
+      }
+      co_return;
+    }
+    const auto& cancellationToken =
+        co_await folly::coro::co_current_cancellation_token;
+    if (cancellationToken.isCancellationRequested()) {
+      co_return;
+    }
+    canonicalSnapshotPending_ = true;
+    if (pauseBestPathAndFibProgramming_ || fibBatchTimer_->isScheduled()) {
+      continue;
+    }
+    enqueueCanonicalRibFullSnapshot("fsdb_connect");
+  }
+}
+
+void RibDC::enqueueCanonicalRibFullSnapshot(std::string_view reason) {
+  if (!canonicalRibUpdateQueue_) {
+    return;
+  }
+  canonicalSnapshotPending_ = false;
+  const auto start = std::chrono::steady_clock::now();
+  XLOGF(
+      INFO,
+      "[CanonicalRib] Starting full RIB walk: reason={}, ribEntries={}",
+      reason,
+      ribEntries_.size());
+  RibStatsDC::STATS_canonicalRibExportReconnectRebuildStart.add(1);
+  CanonicalRibFullSnapshotInput snapshot;
+  snapshot.entries.reserve(ribEntries_.size());
+  for (const auto& [prefix, entry] : ribEntries_) {
+    auto entryInput = buildCanonicalRibEntryInput(entry);
+    if (!entryInput) {
+      continue;
+    }
+    snapshot.entries.push_back(
+        CanonicalRibPrefixUpdate{
+            .prefix = prefix,
+            .entry = std::move(*entryInput),
+        });
+  }
+  const auto snapshotPrefixCount = snapshot.entries.size();
+  canonicalRibUpdateQueue_->pushFullSnapshot(std::move(snapshot));
+  const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                              std::chrono::steady_clock::now() - start)
+                              .count();
+  XLOGF(
+      INFO,
+      "[CanonicalRib] Full RIB snapshot enqueued: reason={}, prefixes={}, durationMs={}",
+      reason,
+      snapshotPrefixCount,
+      durationMs);
 }
 
 void RibDC::createFib() {
@@ -1297,6 +1451,8 @@ void RibDC::overwriteRouteAttributes(
     RibStatsDC::STATS_ribFullSyncRouteAttributeOverwriteTimeMs.addValue(
         routeAttributeOverwriteTimeMs.count());
   }
+
+  enqueueCanonicalRibUpdatesAfterCompute(prefixes);
 }
 
 std::pair<bool, bool> RibDC::runBestPathSelection(RibEntry& entry) noexcept {
@@ -1329,18 +1485,16 @@ std::pair<bool, bool> RibDC::runBestPathSelection(RibEntry& entry) noexcept {
       globalConfig_.ucmpWidth,
       std::optional<BgpUcmpQuantizer>(globalConfig_.ucmpQuantizer),
       pathSelectionPolicy_);
-
   recordBestpathSourceDelta(
       entry.getPrefix(), oldSource, entry.getBestPathRaw());
   recordInactivePathDelta(entry.getPrefix(), oldInactivePathCount, entry);
 
   /*
-   * Mark a publish pending across the pass; onPrepareFibProgrammingComplete()
-   * consumes it to drive a single end-of-pass state publish.
+   * Defer the partial-drain summary until this path-selection pass completes.
    */
   if (recordPartialDrainTransition(
           oldIsPartialDrain, entry.getIsPartialDrain())) {
-    partialDrainPublishPending_ = true;
+    partialDrainEnqueuePending_ = true;
   }
 
   return result;
@@ -1365,14 +1519,44 @@ void RibDC::onPrepareFibProgrammingComplete(bool fullSync) noexcept {
    * empty only when that pass finds no partially drained prefixes. Queue it
    * before start() so the computed state is present in the first /bgp snapshot.
    */
-  if (partialDrainPublishPending_ && enqueuePartialDrainState()) {
-    partialDrainPublishPending_ = false;
+  if (partialDrainEnqueuePending_ && enqueuePartialDrainState()) {
+    partialDrainEnqueuePending_ = false;
   }
 
   if (fullSync && fsdbSyncer_ && !fsdbSyncerStarted_) {
+    /*
+     * start() blocks this RIB EventBase turn. A connection may notify the
+     * snapshot consumer concurrently, but that consumer cannot run on this
+     * EventBase until the flag below is set and this callback returns.
+     */
     XLOG(INFO, "Starting FsdbSyncer after initial full RIB computation");
     fsdbSyncer_->start();
     fsdbSyncerStarted_ = true;
+  }
+}
+
+void RibDC::enqueueCanonicalRibUpdatesAfterCompute(
+    const folly::F14FastSet<folly::CIDRNetwork>& processedPrefixes) noexcept {
+  if (!canonicalRibUpdateQueue_ || !fsdbSyncerStarted_) {
+    return;
+  }
+
+  if (canonicalSnapshotPending_) {
+    enqueueCanonicalRibFullSnapshot("fsdb_connect");
+    return;
+  }
+
+  for (const auto& prefix : processedPrefixes) {
+    CanonicalRibPrefixUpdate update;
+    update.prefix = prefix;
+    auto entryIt = ribEntries_.find(prefix);
+    if (entryIt != ribEntries_.end()) {
+      auto entryInput = buildCanonicalRibEntryInput(entryIt->second);
+      if (entryInput) {
+        update.entry = std::move(*entryInput);
+      }
+    }
+    canonicalRibUpdateQueue_->pushPrefixUpdate(std::move(update));
   }
 }
 

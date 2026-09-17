@@ -166,15 +166,11 @@ TEST(StatsDCTest, FsdbSyncerEventCounters) {
       1, stats->getCounter("bgpcpp.fsdbSyncer.numUnitTestConnect.sum.60"));
 }
 
-TEST(StatsDCTest, CanonicalExportLatencyCounters) {
-  RibStatsDC::STATS_canonicalRibExportRibThreadTimeMs.addValue(7);
+TEST(StatsDCTest, FsdbPublishStateEnqueueLatencyCounter) {
   FsdbStatsDC::STATS_fsdbSyncerPublishStateEnqueueTimeMs.addValue(3);
   facebook::fb303::ServiceData::get()->getQuantileStatMap()->flushAll();
 
   auto* stats = fb303::ThreadCachedServiceData::get();
-  EXPECT_EQ(
-      7,
-      stats->getCounter("bgpcpp.rib.canonicalExporter.ribThreadTimeMs.avg.60"));
   EXPECT_EQ(
       3,
       stats->getCounter("bgpcpp.fsdbSyncer.publishStateEnqueueTimeMs.avg.60"));
