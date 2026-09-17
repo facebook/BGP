@@ -400,6 +400,7 @@ void setUpdateGroupEnabled(bool val);
 // Number of adjacency RIB out groups
 inline const auto kAdjRibOutGroupsCount =
     fmt::format("{}.adj_rib_out_groups.count", kBgpcppTag);
+void setAdjRibOutGroupsCount(uint64_t count);
 void incrAdjRibOutGroupsCount();
 void decrAdjRibOutGroupsCount();
 

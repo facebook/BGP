@@ -222,6 +222,11 @@ TEST(StatsTest, AdjRibOutGroupsCountTest) {
   BgpStats::decrAdjRibOutGroupsCount();
   tcData->publishStats();
   EXPECT_EQ(1, tcData->getCounter(BgpStats::kAdjRibOutGroupsCount));
+
+  // Reset to 0 in one step, as done during teardown
+  BgpStats::setAdjRibOutGroupsCount(0);
+  tcData->publishStats();
+  EXPECT_EQ(0, tcData->getCounter(BgpStats::kAdjRibOutGroupsCount));
 }
 
 TEST(StatsTest, UpdateGroupEnabledCounterTest) {

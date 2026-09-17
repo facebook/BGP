@@ -348,10 +348,8 @@ PeerManagerBase::~PeerManagerBase() {
   RibStats::setAdjRibCount(0);
 
   // Step 3: Destroy adjRibOutGroups (trees already cleared)
-  for (size_t i = 0; i < adjRibOutGroups_.size(); ++i) {
-    BgpStats::decrAdjRibOutGroupsCount();
-  }
   adjRibOutGroups_.clear();
+  BgpStats::setAdjRibOutGroupsCount(0);
 
   // terminate evb to deterministically shutdown PeerManagerBase evb
   evb_.terminateLoopSoon();

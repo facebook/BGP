@@ -160,6 +160,11 @@ void setUpdateGroupEnabled(bool val) {
       kUpdateGroupEnabled, val ? 1 : 0);
 }
 
+void setAdjRibOutGroupsCount(uint64_t count) {
+  fb303::ThreadCachedServiceData::get()->setCounter(
+      kAdjRibOutGroupsCount, count);
+}
+
 void incrAdjRibOutGroupsCount() {
   fb303::ThreadCachedServiceData::get()->incrementCounter(
       kAdjRibOutGroupsCount, 1);
