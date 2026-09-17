@@ -47,12 +47,14 @@
 namespace facebook {
 namespace bgp {
 
+class FsdbSyncer;
+
 /*
  * Construct the platform-specific E2E TestRib (a TestRibT<RibBB|RibDC>) as a
  * RibBase. The concrete platform is decided by which definition of this
  * function is linked into the test binary. The argument list mirrors the
- * common RibBase ctor surface; the DC definition supplies fsdbSyncer=nullptr
- * internally (the BB ctor has no fsdbSyncer parameter).
+ * common RibBase ctor surface. The DC fixture can inject FsdbSyncer; the BB
+ * fixture rejects a non-null syncer because RibBB has no FSDB integration.
  */
 std::unique_ptr<RibBase> makeTestRib(
     const std::unordered_map<folly::CIDRNetwork, thrift::BgpNetwork>&
@@ -61,7 +63,8 @@ std::unique_ptr<RibBase> makeTestRib(
     const std::optional<bgp_policy::BgpPolicies>& policyConfig,
     nettools::bgplib::MonitoredBackPressuredQueue<RibInMessage>& ribInQ,
     MonitoredMPMCQueue<RibOutMessage>& ribOutQ,
-    std::shared_ptr<NexthopCache> nexthopCache);
+    std::shared_ptr<NexthopCache> nexthopCache,
+    FsdbSyncer* fsdbSyncer = nullptr);
 
 } // namespace bgp
 } // namespace facebook

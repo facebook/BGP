@@ -37,11 +37,8 @@ std::unique_ptr<RibBase> makeTestRib(
     const std::optional<bgp_policy::BgpPolicies>& policyConfig,
     nettools::bgplib::MonitoredBackPressuredQueue<RibInMessage>& ribInQ,
     MonitoredMPMCQueue<RibOutMessage>& ribOutQ,
-    std::shared_ptr<NexthopCache> nexthopCache) {
-  /*
-   * FsdbSyncer is null in tests — partial-drain FSDB publish paths gate on its
-   * presence and become no-ops.
-   */
+    std::shared_ptr<NexthopCache> nexthopCache,
+    FsdbSyncer* fsdbSyncer) {
   return std::make_unique<TestRibT<RibDC>>(
       localRoutes,
       globalConfig,
@@ -49,7 +46,7 @@ std::unique_ptr<RibBase> makeTestRib(
       ribInQ,
       ribOutQ,
       kDevPlatform,
-      /*fsdbSyncer=*/nullptr,
+      fsdbSyncer,
       nexthopCache);
 }
 

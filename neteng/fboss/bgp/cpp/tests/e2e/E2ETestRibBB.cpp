@@ -23,6 +23,8 @@
 
 #include "neteng/fboss/bgp/cpp/tests/e2e/E2ETestRibFactory.h"
 
+#include <folly/logging/xlog.h>
+
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
 #include "neteng/fboss/bgp/cpp/rib/RibBB.h"
 #include "neteng/fboss/bgp/cpp/tests/e2e/E2ETestUtils.h"
@@ -37,7 +39,10 @@ std::unique_ptr<RibBase> makeTestRib(
     const std::optional<bgp_policy::BgpPolicies>& policyConfig,
     nettools::bgplib::MonitoredBackPressuredQueue<RibInMessage>& ribInQ,
     MonitoredMPMCQueue<RibOutMessage>& ribOutQ,
-    std::shared_ptr<NexthopCache> nexthopCache) {
+    std::shared_ptr<NexthopCache> nexthopCache,
+    FsdbSyncer* fsdbSyncer) {
+  XCHECK(fsdbSyncer == nullptr)
+      << "FSDB synchronization is unsupported by the RibBB test fixture";
   return std::make_unique<TestRibT<RibBB>>(
       localRoutes,
       globalConfig,

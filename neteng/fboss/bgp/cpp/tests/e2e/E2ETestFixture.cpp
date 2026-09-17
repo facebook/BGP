@@ -1102,7 +1102,8 @@ void E2ETestFixture::TearDown() {
 void E2ETestFixture::createRib(
     bool enableNexthopTracking,
     const std::unordered_map<folly::CIDRNetwork, thrift::BgpNetwork>&
-        localRoutes) {
+        localRoutes,
+    FsdbSyncer* fsdbSyncer) {
   XLOG(INFO, "=== Creating RIB... ===");
   XLOGF(
       INFO,
@@ -1195,7 +1196,8 @@ void E2ETestFixture::createRib(
       policyConfig_,
       ribInQ_,
       ribOutQ_,
-      nexthopCache);
+      nexthopCache,
+      fsdbSyncer);
 
   rib_->createFib();
 

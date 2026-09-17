@@ -52,6 +52,8 @@
 namespace facebook {
 namespace bgp {
 
+class FsdbSyncer;
+
 using nettools::bgplib::BgpEndOfRib;
 using nettools::bgplib::BgpPeerDisplayInfo;
 using nettools::bgplib::BgpSessionState;
@@ -302,7 +304,8 @@ class E2ETestFixture : public ::testing::Test {
   void createRib(
       bool enableNexthopTracking = false,
       const std::unordered_map<folly::CIDRNetwork, thrift::BgpNetwork>&
-          localRoutes = {});
+          localRoutes = {},
+      FsdbSyncer* fsdbSyncer = nullptr);
 
   // Access the injected TestFib regardless of which RIB base is linked.
   TestFib* getTestFib();
