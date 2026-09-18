@@ -16,6 +16,8 @@
 
 #include "neteng/fboss/bgp/cpp/tests/e2e/TestSessionManager.h"
 
+#include <vector>
+
 #include <folly/logging/xlog.h>
 
 #include "neteng/fboss/bgp/cpp/lib/fibers/FiberBgpPeer.h"
@@ -45,6 +47,21 @@ void E2ETestSessionManager::run() noexcept {
 void E2ETestSessionManager::stop() noexcept {
   if (!alreadyShutdown_) {
     facebook::nettools::bgplib::FiberBgpPeerManager::shutdownWithGR(false);
+
+    /*
+     * Production peer workers emit session-termination events as they stop.
+     * Simulated sessions have no peer workers, so emit the equivalent events
+     * after initiating shutdown of the underlying manager.
+     */
+    std::vector<BgpPeerId> establishedPeers;
+    for (const auto& [peerId, state] : peerStates_) {
+      if (state.established) {
+        establishedPeers.push_back(peerId);
+      }
+    }
+    for (const auto& peerId : establishedPeers) {
+      simulateSessionTerminated(peerId);
+    }
   }
   if (mainFiber_.valid()) {
     std::move(mainFiber_).get();

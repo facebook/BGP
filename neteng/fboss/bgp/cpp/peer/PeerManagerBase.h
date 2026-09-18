@@ -335,9 +335,9 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   /**
    * @brief Mark all AdjRibs for BGP daemon shutdown
    *
-   * @details When called before stop(), this allows
-   * sessionTerminated() to skip expensive O(n) cleanup operations that would
-   * otherwise cause systemd timeout during shutdown.
+   * @details When called before stop(), this prevents sessionTerminated() from
+   * racing shutdown cleanup or calling back into SessionManager after its
+   * shutdown has started.
    */
   void markDaemonShutdown();
 

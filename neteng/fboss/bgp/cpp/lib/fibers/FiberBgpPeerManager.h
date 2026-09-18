@@ -744,14 +744,11 @@ class FiberBgpPeerManager
       const std::vector<folly::IPAddress>& peers);
 
   /*
-   * Remove the exact DOWN session after revalidating its configuration and
-   * lifecycle state on the SessionManager EventBase. Removal requires the
-   * peer address and expected remote AS to still match, the address to belong
-   * to a configured dynamic peer group, and the BGP-ID session to have the
-   * terminated version with no live connection or established state. The
-   * address-level allPeers_ entry is retained.
+   * Schedule removal of the exact DOWN session on the SessionManager
+   * EventBase and return immediately. Removal revalidates the configuration
+   * and lifecycle state; the address-level allPeers_ entry is retained.
    */
-  folly::coro::Task<bool> co_deleteTerminatedSession(
+  void scheduleDeleteTerminatedSession(
       const BgpPeerId& peerId,
       uint64_t terminatedVersion,
       uint32_t expectedRemoteAs) noexcept;
@@ -826,6 +823,11 @@ class FiberBgpPeerManager
   void shutdownSession(const folly::CIDRNetwork& peerPrefix) noexcept;
 
  private:
+  folly::coro::Task<void> deleteTerminatedSessionTask(
+      BgpPeerId peerId,
+      uint64_t terminatedVersion,
+      uint32_t expectedRemoteAs) noexcept;
+
   // Main function to setup and run fibers for a Bgp peer
   folly::Expected<folly::Unit, ErrorCode> runBgpPeer(
       FiberSocket&& socket) noexcept;

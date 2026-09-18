@@ -25,6 +25,7 @@ class PeerManagerTestFixture_CleanupPeerState_DelPeersIntegration_Test;
 class PeerManagerTestFixture_DelPeers_NotEstablishedPeer_FallbackCleansUp_Test;
 class PeerManagerTestFixture_DelPeers_AfterFlap_FallbackCleansUp_Test;
 class PeerManagerTestFixture_SessionTerminated_VipWithoutAdjRibKeepsPeer_Test;
+class PeerManagerTestFixture_SessionTerminated_ShutdownSkipsProcessing_Test;
 } // namespace facebook::bgp
 
 #define FiberBgpPeerManager_TEST_FRIENDS                                        \
@@ -38,7 +39,9 @@ class PeerManagerTestFixture_SessionTerminated_VipWithoutAdjRibKeepsPeer_Test;
   friend class facebook::bgp::                                                  \
       PeerManagerTestFixture_DelPeers_AfterFlap_FallbackCleansUp_Test;          \
   friend class facebook::bgp::                                                  \
-      PeerManagerTestFixture_SessionTerminated_VipWithoutAdjRibKeepsPeer_Test;
+      PeerManagerTestFixture_SessionTerminated_VipWithoutAdjRibKeepsPeer_Test;  \
+  friend class facebook::bgp::                                                  \
+      PeerManagerTestFixture_SessionTerminated_ShutdownSkipsProcessing_Test;
 
 #define PeerManager_TEST_FRIENDS                                              \
   FRIEND_TEST(PeerManagerTestFixture, AddPeersToSessionMgrTest);              \
@@ -64,6 +67,8 @@ class PeerManagerTestFixture_SessionTerminated_VipWithoutAdjRibKeepsPeer_Test;
       PeerManagerTestFixture, SessionTerminated_VipWithoutAdjRibKeepsPeer);   \
   FRIEND_TEST(                                                                \
       PeerManagerTestFixture, SessionTerminated_VipErasesDynamicEorState);    \
+  FRIEND_TEST(                                                                \
+      PeerManagerTestFixture, SessionTerminated_ShutdownSkipsProcessing);     \
   FRIEND_TEST(                                                                \
       PeerManagerTestFixture,                                                 \
       SessionTerminated_StaticPeerWithVipAsnKeepsAdjRib);                     \
@@ -984,6 +989,72 @@ CO_TEST_F(PeerManagerTestFixture, SessionTerminated_VipErasesDynamicEorState) {
 
   EXPECT_EQ(0, peerMgr->adjRibs_.count(kDynamicPeerId4));
   EXPECT_EQ(0, peerMgr->dynamicPeerEoRReceived_.count(kDynamicPeerId4));
+}
+
+CO_TEST_F(PeerManagerTestFixture, SessionTerminated_ShutdownSkipsProcessing) {
+  auto peerMgr = setupMockPeerManager(
+      false /* includeStaticPeer */,
+      false /* includeDynamicShivPeer */,
+      false /* includeDynamicMonitorPeer */,
+      true /* includeDynamicVipInjectorPeer */);
+  auto sessionMgr = std::dynamic_pointer_cast<MockSessionManager>(
+      peerMgr->getSessionManager());
+  CO_ASSERT_NE(nullptr, sessionMgr);
+  auto& evb = peerMgr->getEventBase();
+
+  constexpr uint64_t kTerminatedVersion = 7;
+  auto peerInfo = std::make_shared<nettools::bgplib::BgpPeerInfoInternal>();
+  peerInfo->peeringParams.remoteAs = kVipAsn;
+  auto sessionInfo = std::make_shared<nettools::bgplib::BgpSessionInfo>();
+  sessionInfo->versionNumber =
+      std::make_shared<VersionNumber>(kTerminatedVersion);
+  peerInfo->sessionInfos.emplace(kDynamicPeerId4.remoteBgpId, sessionInfo);
+  sessionMgr->allPeers_[kDynamicPeerAddr4] = std::move(peerInfo);
+  BgpStats::incrAllPeersCount();
+
+  auto terminateBaton = std::make_shared<folly::coro::Baton>();
+  auto mockAdjRib =
+      setupMockAdjRib(evb, kDynamicPeerId4, AsNum(kVipAsn), terminateBaton);
+  mockAdjRib->sessionEstablished(
+      kVipAsn,
+      std::nullopt,
+      std::make_shared<AdjRib::AdjRibInQueueT>(),
+      std::make_shared<AdjRib::AdjRibOutQueueT>(),
+      std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+          kMaxEgressQueueSize,
+          kEgressQueueHighWatermark,
+          kEgressQueueLowWatermark));
+  mockAdjRib->markStateEstablished();
+
+  peerMgr->initialized_ = true;
+  peerMgr->daemonShutdown_ = true;
+  peerMgr->runningSessions_ = 1;
+  peerMgr->runningVipSessions_ = 1;
+  peerMgr->adjRibs_[kDynamicPeerId4] = mockAdjRib;
+  RibStats::incrAdjRibCount();
+  peerMgr->sessionTerminateBatons_[kDynamicPeerId4] = terminateBaton;
+  peerMgr->peerAddrToIds_[kDynamicPeerAddr4].insert(kDynamicPeerId4);
+  peerMgr->establishedGrPeers_.insert(kDynamicPeerId4);
+  EXPECT_CALL(*mockAdjRib, stop()).Times(0);
+
+  FiberBgpPeer::ObservableStateT evt{
+      .peerId = kDynamicPeerId4,
+      .state = nettools::bgplib::BgpSessionState::IDLE,
+      .versionNumber = kTerminatedVersion,
+      .peerDelete = false,
+  };
+  co_await peerMgr->sessionTerminated(evt);
+
+  EXPECT_TRUE(sessionMgr->getBgpSessionInfo(kDynamicPeerId4).has_value());
+  EXPECT_EQ(1, peerMgr->adjRibs_.count(kDynamicPeerId4));
+  EXPECT_TRUE(mockAdjRib->isStateEstablished());
+  EXPECT_EQ(1, peerMgr->runningSessions_);
+  EXPECT_EQ(1, peerMgr->runningVipSessions_);
+  EXPECT_EQ(1, peerMgr->establishedGrPeers_.count(kDynamicPeerId4));
+  EXPECT_EQ(1, peerMgr->sessionTerminateBatons_.count(kDynamicPeerId4));
+
+  sessionMgr->allPeers_.erase(kDynamicPeerAddr4);
+  BgpStats::decrAllPeersCount();
 }
 
 CO_TEST_F(

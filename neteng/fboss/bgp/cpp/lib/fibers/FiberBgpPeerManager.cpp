@@ -2387,60 +2387,77 @@ folly::coro::Task<void> FiberBgpPeerManager::co_clearSocketCounters(
       }());
 }
 
-folly::coro::Task<bool> FiberBgpPeerManager::co_deleteTerminatedSession(
+void FiberBgpPeerManager::scheduleDeleteTerminatedSession(
     const BgpPeerId& peerId,
     uint64_t terminatedVersion,
     uint32_t expectedRemoteAs) noexcept {
-  co_return co_await co_withExecutor(
-      &evb_,
-      [this, peerId, terminatedVersion, expectedRemoteAs]()
-          -> folly::coro::Task<bool> {
-        const auto peerIt = allPeers_.find(peerId.peerAddr);
-        if (peerIt == allPeers_.end()) {
-          co_return false;
-        }
+  /*
+   * PeerManagerBase::markDaemonShutdown() runs synchronously on the
+   * PeerManager EventBase before SessionManager::stop() requests cancellation
+   * here. An in-flight sessionTerminated() therefore finishes this check and
+   * add before cancellation starts, while later calls stop at its shutdown
+   * guard.
+   */
+  if (!asyncScope_.isScopeCancellationRequested()) {
+    /*
+     * deleteTerminatedSessionTask() takes peerId by value, so constructing the
+     * Task copies it into the coroutine frame before this borrowed reference
+     * can go out of scope.
+     */
+    asyncScope_.add(co_withExecutor(
+        &evb_,
+        deleteTerminatedSessionTask(
+            peerId, terminatedVersion, expectedRemoteAs)));
+  }
+}
 
-        const auto& peerInfo = peerIt->second;
-        /*
-         * Accept either configured ASN: the caller gates on the ASN the
-         * session was established with, which during an ASN migration can be
-         * additionalRemoteAs rather than the configured primary. Comparing
-         * against remoteAs alone would reject such a peer and leak its
-         * terminated sessionInfos entry.
-         */
-        if (!peerInfo->peeringParams.acceptsRemoteAs(expectedRemoteAs)) {
-          co_return false;
-        }
+folly::coro::Task<void> FiberBgpPeerManager::deleteTerminatedSessionTask(
+    BgpPeerId peerId,
+    uint64_t terminatedVersion,
+    uint32_t expectedRemoteAs) noexcept {
+  const auto peerIt = allPeers_.find(peerId.peerAddr);
+  if (peerIt == allPeers_.end()) {
+    co_return;
+  }
 
-        /*
-         * A static peer can use the VIP ASN. Require a configured dynamic
-         * prefix so this path only removes state created from a peer group.
-         */
-        const auto peerPrefix = getPeerPrefix(peerId.peerAddr);
-        if (!peerPrefix || !dynamicPeerGroups_.contains(*peerPrefix)) {
-          co_return false;
-        }
+  const auto& peerInfo = peerIt->second;
+  /*
+   * Accept either configured ASN: the caller gates on the ASN the
+   * session was established with, which during an ASN migration can be
+   * additionalRemoteAs rather than the configured primary. Comparing
+   * against remoteAs alone would reject such a peer and leak its
+   * terminated sessionInfos entry.
+   */
+  if (!peerInfo->peeringParams.acceptsRemoteAs(expectedRemoteAs)) {
+    co_return;
+  }
 
-        auto& sessionInfos = peerInfo->sessionInfos;
-        const auto sessionIt = sessionInfos.find(peerId.remoteBgpId);
-        if (sessionIt == sessionInfos.end()) {
-          co_return false;
-        }
+  /*
+   * A static peer can use the VIP ASN. Require a configured dynamic
+   * prefix so this path only removes state created from a peer group.
+   */
+  const auto peerPrefix = getPeerPrefix(peerId.peerAddr);
+  if (!peerPrefix || !dynamicPeerGroups_.contains(*peerPrefix)) {
+    co_return;
+  }
 
-        /*
-         * The address and BGP ID can be reused by a newer session. Delete
-         * only the terminated incarnation after it has released live state.
-         */
-        const auto& sessionInfo = sessionIt->second;
-        if (sessionInfo->versionNumber->getWithoutLock() != terminatedVersion ||
-            sessionInfo->connectionInfo ||
-            sessionInfo->establishedSessionInfo) {
-          co_return false;
-        }
+  auto& sessionInfos = peerInfo->sessionInfos;
+  const auto sessionIt = sessionInfos.find(peerId.remoteBgpId);
+  if (sessionIt == sessionInfos.end()) {
+    co_return;
+  }
 
-        sessionInfos.erase(sessionIt);
-        co_return true;
-      }());
+  /*
+   * The address and BGP ID can be reused by a newer session. Delete
+   * only the terminated incarnation after it has released live state.
+   */
+  const auto& sessionInfo = sessionIt->second;
+  if (sessionInfo->versionNumber->getWithoutLock() != terminatedVersion ||
+      sessionInfo->connectionInfo || sessionInfo->establishedSessionInfo) {
+    co_return;
+  }
+
+  sessionInfos.erase(sessionIt);
 }
 
 std::optional<std::shared_ptr<BgpSessionInfo>>

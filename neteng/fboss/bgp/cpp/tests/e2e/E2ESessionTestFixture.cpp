@@ -32,36 +32,38 @@ namespace facebook::bgp {
 void E2ESessionTestFixture::TearDown() {
   XLOG(INFO, "=== E2ESessionTestFixture TearDown starting ===");
 
-  auto allQueues = getAllPeerQueues();
+  if (!componentsShutdown_) {
+    auto allQueues = getAllPeerQueues();
 
-  for (const auto& [peerId, queues] : allQueues) {
-    if (queues.boundedAdjRibOutQ) {
-      queues.boundedAdjRibOutQ->close();
+    for (const auto& [peerId, queues] : allQueues) {
+      if (queues.boundedAdjRibOutQ) {
+        queues.boundedAdjRibOutQ->close();
+      }
     }
-  }
 
-  for (const auto& [peerId, queues] : allQueues) {
-    queues.adjRibInQ->fiberPush(FiberBgpPeer::BgpSessionStop{});
-  }
-
-  if (peerManager_) {
-    peerManager_->stop();
-    if (peerMgrThread_.joinable()) {
-      peerMgrThread_.join();
+    for (const auto& [peerId, queues] : allQueues) {
+      queues.adjRibInQ->fiberPush(FiberBgpPeer::BgpSessionStop{});
     }
-  }
 
-  if (testSessionManager_) {
-    testSessionManager_->stop();
-    if (sessionMgrThread_ && sessionMgrThread_->joinable()) {
-      sessionMgrThread_->join();
+    if (peerManager_) {
+      peerManager_->stop();
+      if (peerMgrThread_.joinable()) {
+        peerMgrThread_.join();
+      }
     }
-  }
 
-  if (rib_) {
-    rib_->stop();
-    if (ribThread_.joinable()) {
-      ribThread_.join();
+    if (testSessionManager_) {
+      testSessionManager_->stop();
+      if (sessionMgrThread_ && sessionMgrThread_->joinable()) {
+        sessionMgrThread_->join();
+      }
+    }
+
+    if (rib_) {
+      rib_->stop();
+      if (ribThread_.joinable()) {
+        ribThread_.join();
+      }
     }
   }
 
@@ -70,6 +72,44 @@ void E2ESessionTestFixture::TearDown() {
   rib_.reset();
 
   XLOG(INFO, "=== E2ESessionTestFixture TearDown complete ===");
+}
+
+void E2ESessionTestFixture::shutdownComponents() {
+  if (componentsShutdown_) {
+    return;
+  }
+
+  if (rib_) {
+    rib_->stop();
+  }
+
+  if (peerManager_) {
+    peerManager_->markDaemonShutdown();
+    peerManager_->saveGrState();
+  }
+
+  if (testSessionManager_) {
+    testSessionManager_->stop();
+  }
+
+  if (peerManager_) {
+    peerManager_->stop();
+  }
+
+  if (rib_) {
+    if (ribThread_.joinable()) {
+      ribThread_.join();
+    }
+  }
+  if (peerManager_ && peerMgrThread_.joinable()) {
+    peerMgrThread_.join();
+  }
+  if (testSessionManager_ && sessionMgrThread_ &&
+      sessionMgrThread_->joinable()) {
+    sessionMgrThread_->join();
+  }
+
+  componentsShutdown_ = true;
 }
 
 void E2ESessionTestFixture::createPeerManager(

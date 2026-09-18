@@ -40,6 +40,9 @@
       DeleteTerminatedSessionPreservesPeerWithoutConnectionInfo);             \
   FRIEND_TEST(                                                                \
       FiberBgpPeerManagerFixture,                                             \
+      ScheduleDeleteTerminatedSessionSkipsCancelledScope);                    \
+  FRIEND_TEST(                                                                \
+      FiberBgpPeerManagerFixture,                                             \
       DeleteTerminatedSessionPreservesNewerSession);                          \
   FRIEND_TEST(                                                                \
       FiberBgpPeerManagerFixture,                                             \
@@ -56,7 +59,7 @@
 
 #include <folly/Random.h>
 #include <folly/ScopeGuard.h>
-#include <folly/coro/BlockingWait.h>
+#include <folly/fibers/Baton.h>
 #include <folly/io/async/EventBaseManager.h>
 #include <folly/io/async/test/ScopedBoundPort.h>
 #include <folly/logging/xlog.h>
@@ -216,16 +219,10 @@ class FiberBgpPeerManagerFixture : public ::testing::Test {
   TestFiberBgpPeerCallback callback2;
   shared_ptr<TestFiberBgpPeerManager> peerMgr2;
 
-  template <typename T>
-  T runCoroOnEventBase(folly::coro::Task<T>&& task) {
-    return folly::fibers::await([this, task = std::move(task)](
-                                    folly::fibers::Promise<T> promise) mutable {
-      folly::coro::co_withExecutor(&evb, std::move(task))
-          .start(
-              [promise = std::move(promise)](folly::Try<T>&& result) mutable {
-                promise.setValue(std::move(result));
-              });
-    });
+  void drainEventBase() {
+    folly::fibers::Baton baton;
+    evb.runInEventBaseThread([&baton] { baton.post(); });
+    baton.wait();
   }
 
   void initTwoPeerMgrs(
@@ -506,8 +503,10 @@ TEST_F(
     facebook::bgp::BgpStats::incrDynamicPeersCount();
 
     EXPECT_TRUE(peerMgr1->getBgpSessionInfo(peerId1).has_value());
-    EXPECT_TRUE(runCoroOnEventBase(peerMgr1->co_deleteTerminatedSession(
-        peerId1, kTerminatedVersion, facebook::bgp::kVipAsn)));
+    peerMgr1->scheduleDeleteTerminatedSession(
+        peerId1, kTerminatedVersion, facebook::bgp::kVipAsn);
+    EXPECT_TRUE(peerMgr1->getBgpSessionInfo(peerId1).has_value());
+    drainEventBase();
     EXPECT_FALSE(peerMgr1->getBgpSessionInfo(peerId1).has_value());
     EXPECT_TRUE(peerMgr1->allPeers_.contains(peerAddr1));
     EXPECT_TRUE(dynamicPeerInfo->activePeers.contains(peerAddr1));
@@ -524,6 +523,41 @@ TEST_F(
   evb.loop();
 }
 
+TEST_F(
+    FiberBgpPeerManagerFixture,
+    ScheduleDeleteTerminatedSessionSkipsCancelledScope) {
+  auto& fm = fmWrapper.get();
+  initTwoPeerMgrs(fm);
+
+  fm.addTask([this] {
+    constexpr uint64_t kTerminatedVersion = 7;
+    auto peerInfo = std::make_shared<BgpPeerInfoInternal>();
+    peerInfo->peeringParams.remoteAs =
+        facebook::bgp::AsNum(facebook::bgp::kVipAsn);
+    auto sessionInfo = std::make_shared<BgpSessionInfo>();
+    sessionInfo->versionNumber =
+        std::make_shared<VersionNumber>(kTerminatedVersion);
+    peerInfo->sessionInfos.emplace(peerId1.remoteBgpId, sessionInfo);
+    peerMgr1
+        ->dynamicPeerGroups_[folly::IPAddress::createNetwork("127.0.0.0/8")] =
+        std::make_shared<BgpDynamicPeerGroupInfo>();
+    peerMgr1->allPeers_[peerAddr1] = std::move(peerInfo);
+
+    peerMgr1->asyncScope_.requestCancellation();
+    peerMgr1->scheduleDeleteTerminatedSession(
+        peerId1, kTerminatedVersion, facebook::bgp::kVipAsn);
+    drainEventBase();
+
+    EXPECT_TRUE(peerMgr1->getBgpSessionInfo(peerId1).has_value());
+    peerMgr1->allPeers_.erase(peerAddr1);
+
+    peerMgr1->shutdownWithGR(false);
+    peerMgr2->shutdownWithGR(false);
+  });
+
+  evb.loop();
+}
+
 /*
  * During an ASN migration a dynamic VIP peer can carry the VIP ASN as its
  * *additional* remote AS while the configured primary stays non-VIP.
@@ -531,7 +565,7 @@ TEST_F(
  * PeerManagerBase::sessionTerminated gates this call on
  * isDynamicVipPeer(peerAddr, adjRib->getRemoteAs()) -- the ASN the session was
  * actually established with -- so a session that came up on the additional VIP
- * ASN does reach co_deleteTerminatedSession. The revalidation here compares
+ * ASN does reach deleteTerminatedSession. The revalidation here compares
  * against peeringParams.remoteAs (the configured primary), so it rejects that
  * peer and the terminated session is never erased from sessionInfos.
  */
@@ -561,10 +595,9 @@ TEST_F(
     facebook::bgp::BgpStats::incrDynamicPeersCount();
 
     EXPECT_TRUE(peerMgr1->getBgpSessionInfo(peerId1).has_value());
-    EXPECT_TRUE(runCoroOnEventBase(peerMgr1->co_deleteTerminatedSession(
-        peerId1, kTerminatedVersion, facebook::bgp::kVipAsn)))
-        << "session established on additionalRemoteAs == kVipAsn was not "
-           "deleted; its sessionInfos entry leaks for the process lifetime";
+    peerMgr1->scheduleDeleteTerminatedSession(
+        peerId1, kTerminatedVersion, facebook::bgp::kVipAsn);
+    drainEventBase();
     EXPECT_FALSE(peerMgr1->getBgpSessionInfo(peerId1).has_value());
     EXPECT_TRUE(peerMgr1->allPeers_.contains(peerAddr1));
     EXPECT_TRUE(dynamicPeerInfo->activePeers.contains(peerAddr1));
@@ -605,8 +638,9 @@ TEST_F(
         dynamicPeerInfo;
     peerMgr1->allPeers_[peerAddr1] = std::move(peerInfo);
 
-    EXPECT_FALSE(runCoroOnEventBase(peerMgr1->co_deleteTerminatedSession(
-        peerId1, kTerminatedVersion, facebook::bgp::kVipAsn)));
+    peerMgr1->scheduleDeleteTerminatedSession(
+        peerId1, kTerminatedVersion, facebook::bgp::kVipAsn);
+    drainEventBase();
     const auto retainedSessionInfo = peerMgr1->getBgpSessionInfo(peerId1);
     ASSERT_TRUE(retainedSessionInfo.has_value());
     EXPECT_EQ(sessionInfo, retainedSessionInfo.value());
@@ -665,8 +699,9 @@ TEST_F(
     ASSERT_EQ(connectionInfos.size(), 1);
     ASSERT_NE(connectionInfos.begin()->second->activeConnectInfo, nullptr);
 
-    EXPECT_TRUE(runCoroOnEventBase(peerMgr1->co_deleteTerminatedSession(
-        peerId1, kTerminatedVersion, facebook::bgp::kVipAsn)));
+    peerMgr1->scheduleDeleteTerminatedSession(
+        peerId1, kTerminatedVersion, facebook::bgp::kVipAsn);
+    drainEventBase();
     EXPECT_FALSE(peerMgr1->getBgpSessionInfo(peerId1).has_value());
     EXPECT_TRUE(peerMgr1->allPeers_.contains(peerAddr1));
     EXPECT_TRUE(dynamicPeerInfo->activePeers.contains(peerAddr1));

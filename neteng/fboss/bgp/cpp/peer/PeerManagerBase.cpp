@@ -3054,6 +3054,10 @@ folly::coro::Task<void> PeerManagerBase::sessionEstablished(
 folly::coro::Task<void> PeerManagerBase::sessionTerminated(
     const FiberBgpPeer::ObservableStateT& evt) noexcept {
   ScopedProfile profile("PeerManagerBase::sessionTerminated");
+  if (daemonShutdown_) {
+    co_return;
+  }
+
   const auto& peerId = evt.peerId;
   const auto& peerAddr = peerId.peerAddr;
   const auto& versionNumber = evt.versionNumber;
@@ -3078,17 +3082,8 @@ folly::coro::Task<void> PeerManagerBase::sessionTerminated(
   const auto remoteAs = adjRib->getRemoteAs();
   const bool isVipPeer = isDynamicVipPeer(peerAddr, remoteAs);
   if (isVipPeer) {
-    co_await sessionMgr_->co_deleteTerminatedSession(
+    sessionMgr_->scheduleDeleteTerminatedSession(
         peerId, versionNumber, kVipAsn);
-    if (findAdjRib(peerId) != adjRib || !adjRib->isStateEstablished()) {
-      XLOGF(
-          DBG2,
-          "Ignoring session terminate for peer {} version {}: "
-          "AdjRib changed while deleting terminated session.",
-          peerId.str(),
-          versionNumber);
-      co_return;
-    }
   }
 
   XLOGF(

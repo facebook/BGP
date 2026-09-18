@@ -40,6 +40,9 @@ class E2ESessionTestFixture : public E2ETestFixture {
       bool enableEgressBackpressure = true,
       bool enableSerializeGroupPdu = false);
 
+  /* Stop components in the same order as the bgpd main shutdown path. */
+  void shutdownComponents();
+
   void bringUpPeer(
       const folly::IPAddress& peerAddr,
       uint64_t versionNumber = 0);
@@ -93,6 +96,8 @@ class E2ESessionTestFixture : public E2ETestFixture {
       const folly::IPAddress& peerAddr,
       std::optional<uint32_t> remoteAs,
       uint64_t versionNumber);
+
+  bool componentsShutdown_{false};
 };
 
 } // namespace facebook::bgp

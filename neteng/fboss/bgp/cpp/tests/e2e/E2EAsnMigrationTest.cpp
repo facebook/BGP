@@ -460,6 +460,40 @@ TEST_F(E2EAsnMigrationTest, EffectiveVipAsDrivesDynamicPeerCleanup) {
   EXPECT_EQ(0, stats->getCounter(BgpStats::kRunningVipSessions));
 }
 
+TEST_F(E2EAsnMigrationTest, ShutdownWithEstablishedVipSessionCompletes) {
+  /*
+   * Verify the production shutdown order completes when SessionManager emits
+   * a VIP termination. PeerManager must leave final AdjRib teardown to its
+   * stop path instead of calling back into the stopping SessionManager.
+   */
+  auto peer = createBgpPeer(
+      kVipAsn,
+      kLocalAddr2,
+      kPeerPrefix4,
+      kNextHopV4_2,
+      kNextHopV6_2,
+      true,
+      kPeerTypeShiv);
+  peers_.push_back(std::move(peer));
+  createRib();
+  createPeerManager(
+      /*enableUpdateGroup=*/false,
+      /*enableEgressBackpressure=*/false);
+
+  bringUpPeerWithRemoteAs(kDynamicPeerAddr4, kVipAsn);
+  ASSERT_TRUE(waitForSessionEstablished(kDynamicPeerAddr4));
+  const BgpPeerId peerId{
+      kDynamicPeerAddr4, kDynamicPeerAddr4.asV4().toLongHBO()};
+
+  shutdownComponents();
+
+  const auto peerState = testSessionManager_->getPeerStates().find(peerId);
+  ASSERT_NE(peerState, testSessionManager_->getPeerStates().end());
+  EXPECT_FALSE(peerState->second.established);
+  EXPECT_FALSE(testSessionManager_->getEventBase().isRunning());
+  EXPECT_FALSE(peerManager_->getEventBase().isRunning());
+}
+
 TEST_F(
     E2EAsnMigrationTest,
     ConfiguredVipDoesNotDriveDynamicCleanupForNonVipSession) {
