@@ -82,6 +82,9 @@
       RibNexthopTrackingFixture,                                               \
       RibInAnnouncementRequestsNexthopSubscription);                           \
   FRIEND_TEST(RibNexthopTrackingFixture, RibInNexthopUpdate);                  \
+  FRIEND_TEST(                                                                 \
+      RibNexthopTrackingFixture,                                               \
+      StaleQueuedNexthopUpdateDoesNotRecreateUntrackedState);                  \
   FRIEND_TEST(RibNexthopTrackingFixture, RouteInfoStoresRibEntryPointer);      \
   FRIEND_TEST(RibNexthopTrackingFixture, RouteFlappingWithUniqueNexthop);      \
   FRIEND_TEST(RibNexthopTrackingFixture, GetNexthopInfoForNexthop);            \
@@ -8147,6 +8150,47 @@ TEST_F(RibNexthopTrackingFixture, RibInNexthopUpdate) {
   // After update: kPeerAddr1 is now reachable, counter should be 0
   tcData->publishStats();
   EXPECT_EQ(0, tcData->getCounter(RibStats::kRibUnresolvableNexthopsCount));
+}
+
+TEST_F(
+    RibNexthopTrackingFixture,
+    StaleQueuedNexthopUpdateDoesNotRecreateUntrackedState) {
+  rib_->evb_.runInEventBaseThreadAndWait([&]() {
+    auto* nexthopCache = rib_->nexthopCache_.get();
+    nexthopCache->addOrUpdateNextHopStatus(
+        {NexthopStatus(kPeerAddr1, /*isReachable=*/true, /*igpCost=*/100)});
+    nexthopCache->registerAndGetNexthopStatus(kPeerAddr1);
+
+    auto queuedStatuses = nexthopCache->addOrUpdateNextHopStatus(
+        {NexthopStatus(kPeerAddr1, /*isReachable=*/false)});
+    ASSERT_EQ(1, queuedStatuses.size());
+    EXPECT_TRUE(nexthopCache->unregisterAndRemoveNexthopStatus(kPeerAddr1));
+
+    rib_->processRibInNexthopUpdate(
+        RibInNexthopUpdate(std::move(queuedStatuses)));
+    EXPECT_EQ(
+        rib_->nexthopInfoMap_.end(), rib_->nexthopInfoMap_.find(kPeerAddr1));
+
+    EXPECT_TRUE(nexthopCache
+                    ->addOrUpdateNextHopStatus({NexthopStatus(
+                        kPeerAddr1, /*isReachable=*/true, /*igpCost=*/100)})
+                    .empty());
+  });
+
+  auto attrs =
+      std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(4, 4, 4, 4));
+  attrs->setNexthop(kPeerAddr1);
+  attrs->publish();
+  sendAnnouncement(
+      PrefixPathIds{{kV4Prefix1, kDefaultPathID}}, iBgpPeer_, attrs);
+
+  rib_->evb_.runInEventBaseThreadAndWait([&]() {
+    auto nexthopInfoIt = rib_->nexthopInfoMap_.find(kPeerAddr1);
+    ASSERT_NE(rib_->nexthopInfoMap_.end(), nexthopInfoIt);
+    EXPECT_TRUE(nexthopInfoIt->second.isReachable());
+    EXPECT_EQ(std::optional<uint32_t>(100), nexthopInfoIt->second.getIgpCost());
+    EXPECT_TRUE(rib_->nexthopCache_->isRegistered(kPeerAddr1));
+  });
 }
 
 namespace {

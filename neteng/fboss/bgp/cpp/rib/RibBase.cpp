@@ -1347,25 +1347,15 @@ void RibBase::processRibInNexthopUpdate(
       }
     } else {
       /*
-       * If the nexthop is not in NexthopInfoMap_, create a new entry
-       * This can happen if we receive a nexthop update before any routes using
-       * this nexthop
+       * NexthopCache only queues updates for nexthops registered by the RIB.
+       * A missing NexthopInfo therefore means all associated routes were
+       * removed after this update was queued. Recreating it here would leave
+       * an unregistered, orphaned entry that cannot receive later updates.
        */
       XLOGF(
           INFO,
-          "Creating new NexthopInfo for nexthop {} (reachable: {}, igpCost: {})",
-          nexthopIp.str(),
-          isReachable,
-          igpCost.has_value() ? std::to_string(igpCost.value()) : "unset");
-
-      auto [emIt, inserted] =
-          nexthopInfoMap_.emplace(nexthopIp, NexthopInfo(nexthopStatus));
-      if (inserted) {
-        RibStats::incrNexthopInfoCount();
-      }
-      if (!isReachable) {
-        ribCounters_.onUnresolvableNexthopAdded();
-      }
+          "Ignoring stale nexthop update for untracked nexthop {}",
+          nexthopIp.str());
     }
   }
 
