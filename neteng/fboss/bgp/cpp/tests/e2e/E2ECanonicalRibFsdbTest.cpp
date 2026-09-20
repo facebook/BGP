@@ -17,13 +17,32 @@
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <optional>
+
 #include <folly/io/async/ScopedEventBaseThread.h>
+#include <folly/synchronization/Baton.h>
+
+namespace facebook::bgp {
+class E2ECanonicalRibFsdbTest;
+}
+
+#define FSDB_SYNCER_TEST_FRIENDS \
+  friend class ::facebook::bgp::E2ECanonicalRibFsdbTest;
+#define FsdbPubSubManager_TEST_FRIENDS \
+  friend class ::facebook::bgp::E2ECanonicalRibFsdbTest
+
+#include "fboss/fsdb/client/FsdbPatchPublisher.h"
+#include "neteng/fboss/bgp/cpp/fsdb/FsdbSyncer.h"
+
+#undef FsdbPubSubManager_TEST_FRIENDS
+#undef FSDB_SYNCER_TEST_FRIENDS
 
 #include "fboss/fsdb/tests/utils/FsdbTestServer.h"
 #include "fboss/fsdb/tests/utils/FsdbTestSubscriber.h"
 #include "neteng/fboss/bgp/cpp/BgpServiceUtil.h"
-#include "neteng/fboss/bgp/cpp/fsdb/FsdbSyncer.h"
 #include "neteng/fboss/bgp/cpp/rib/RibDC.h"
+#include "neteng/fboss/bgp/cpp/tests/BoundedWaitUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/e2e/E2ETestFixture.h"
 
@@ -31,6 +50,46 @@ namespace facebook::bgp {
 
 using fboss::fsdb::test::FsdbTestServer;
 using fboss::fsdb::test::FsdbTestSubscriber;
+
+class ScopedEventBaseBlocker {
+ public:
+  explicit ScopedEventBaseBlocker(folly::EventBase& eventBase)
+      : eventBase_(eventBase) {
+    eventBase_.runInEventBaseThread([this]() {
+      blocked_.post();
+      if (!release_.try_wait_for(test::kDefaultPopTimeout)) {
+        timedOut_.store(true);
+      }
+    });
+  }
+
+  ~ScopedEventBaseBlocker() {
+    release();
+  }
+
+  void waitUntilBlocked(folly::StringPiece context) {
+    test::boundedBatonWait(blocked_, context);
+  }
+
+  void release() {
+    if (released_.exchange(true)) {
+      return;
+    }
+    release_.post();
+    eventBase_.runInEventBaseThreadAndWait([]() {});
+  }
+
+  bool timedOut() const {
+    return timedOut_.load();
+  }
+
+ private:
+  folly::EventBase& eventBase_;
+  folly::Baton<> blocked_;
+  folly::Baton<> release_;
+  std::atomic<bool> released_{false};
+  std::atomic<bool> timedOut_{false};
+};
 
 class E2ECanonicalRibFsdbTest : public E2ETestFixture {
  protected:
@@ -43,7 +102,11 @@ class E2ECanonicalRibFsdbTest : public E2ETestFixture {
     FLAGS_publish_multipaths_to_fsdb = publishMultipathsToFsdb();
 
     fsdbServer_ = std::make_unique<FsdbTestServer>();
-    FLAGS_fsdbPort = fsdbServer_->getFsdbPort();
+    fsdbPort_ = fsdbServer_->getFsdbPort();
+    FLAGS_fsdbPort = fsdbPort_;
+    if (!fsdbAvailableAtStartup()) {
+      fsdbServer_.reset();
+    }
     subscriber_ = std::make_unique<FsdbTestSubscriber>("rib-e2e-subscriber");
     syncer_ = std::make_unique<FsdbSyncer>(
         *fsdbSyncerEventBaseThread_.getEventBase());
@@ -70,6 +133,40 @@ class E2ECanonicalRibFsdbTest : public E2ETestFixture {
     ASSERT_TRUE(waitForEoR(peer5));
   }
 
+  void assertBgpPipelineProgress(
+      const std::string& prefix,
+      uint8_t prefixLength,
+      const folly::IPAddress& expectedFibNexthop) {
+    const folly::CIDRNetwork network{folly::IPAddress(prefix), prefixLength};
+    const auto networkString = folly::IPAddress::networkToString(network);
+
+    ASSERT_TRUE(waitForPathCountInRib(networkString, 1));
+    ASSERT_NE(nullptr, getBestPath(network));
+    WITH_RETRIES({
+      const auto fibNexthops = getFibWeightedNexthops(networkString);
+      EXPECT_EVENTUALLY_TRUE(
+          fibNexthops && fibNexthops->contains(expectedFibNexthop));
+    });
+    EXPECT_TRUE(drainAndFindRouteAdvertised(
+        "v4", prefix, prefixLength, kPeerAddr5, kNextHopV4_5.str()));
+  }
+
+  folly::EventBase* fsdbPublisherStreamEventBase() const {
+    if (!syncer_ || !syncer_->fsdbPubSubMgr_) {
+      return nullptr;
+    }
+    return syncer_->fsdbPubSubMgr_->statePublisherEvb_;
+  }
+
+  std::optional<ssize_t> fsdbPublisherQueueSize() const {
+    if (!syncer_ || !syncer_->fsdbPubSubMgr_) {
+      return std::nullopt;
+    }
+    const auto* publisher = syncer_->fsdbPubSubMgr_->getPatchPublisher();
+    return publisher ? std::optional<ssize_t>{publisher->queueSize()}
+                     : std::nullopt;
+  }
+
   /*
    * Returns whether multipath publication must be enabled before RIB startup.
    */
@@ -80,6 +177,11 @@ class E2ECanonicalRibFsdbTest : public E2ETestFixture {
   /* Returns the GR restart time configured before the peers start. */
   virtual int grRestartTimeSeconds() const {
     return 1;
+  }
+
+  /* Returns whether the FSDB endpoint is available when BGP starts. */
+  virtual bool fsdbAvailableAtStartup() const {
+    return true;
   }
 
   static std::vector<bgp_thrift::TBgpDedupedPath> pathsForPrefix(
@@ -197,6 +299,7 @@ class E2ECanonicalRibFsdbTest : public E2ETestFixture {
   }
 
   gflags::FlagSaver flagSaver_;
+  uint16_t fsdbPort_{0};
   std::unique_ptr<FsdbTestServer> fsdbServer_;
   std::unique_ptr<FsdbTestSubscriber> subscriber_;
   folly::ScopedEventBaseThread fsdbSyncerEventBaseThread_{"FsdbSyncerE2E"};
@@ -214,6 +317,13 @@ class E2ECanonicalLongGrRibFsdbTest : public E2ECanonicalRibFsdbTest {
  protected:
   int grRestartTimeSeconds() const override {
     return 30;
+  }
+};
+
+class E2ECanonicalNoFsdbAtStartupTest : public E2ECanonicalRibFsdbTest {
+ protected:
+  bool fsdbAvailableAtStartup() const override {
+    return false;
   }
 };
 
@@ -240,6 +350,158 @@ TEST_F(E2ECanonicalRibFsdbTest, SubscriberResyncsAfterPublisherRestart) {
     auto state = subscribed.rlock();
     ASSERT_EVENTUALLY_TRUE(state->has_value());
     EXPECT_EVENTUALLY_FALSE((*state)->rib_entries()->contains("10.0.0.0/8"));
+  });
+}
+
+TEST_F(
+    E2ECanonicalNoFsdbAtStartupTest,
+    UnavailableFsdbDoesNotBlockBgpPipeline) {
+  auto subscribed = subscriber_->subscribe(
+      subscriber_->getRootStatePath().bgp().canonicalRib());
+  EXPECT_FALSE(syncer_->isIncrementalPublicationReady());
+  bringUpPeers();
+
+  addRoute("v4", "10.13.0.0", 16, kPeerAddr3, "11.0.0.13", "65013");
+  assertBgpPipelineProgress("10.13.0.0", 16, folly::IPAddress("11.0.0.13"));
+
+  fsdbServer_ = std::make_unique<FsdbTestServer>(fsdbPort_);
+  WITH_RETRIES_N_TIMED(100, std::chrono::milliseconds(100), {
+    auto state = subscribed.rlock();
+    ASSERT_EVENTUALLY_TRUE(state->has_value());
+    EXPECT_EVENTUALLY_TRUE((*state)->rib_entries()->contains("10.13.0.0/16"));
+    EXPECT_EVENTUALLY_TRUE(
+        hasNexthop(**state, "10.13.0.0/16", folly::IPAddress("11.0.0.13")));
+  });
+}
+
+TEST_F(E2ECanonicalRibFsdbTest, StalledFsdbSyncerDoesNotBlockBgpPipeline) {
+  auto subscribed = subscriber_->subscribe(
+      subscriber_->getRootStatePath().bgp().canonicalRib());
+  bringUpPeers();
+  WITH_RETRIES({
+    auto state = subscribed.rlock();
+    ASSERT_EVENTUALLY_TRUE(state->has_value());
+    EXPECT_EVENTUALLY_TRUE(syncer_->isIncrementalPublicationReady());
+  });
+
+  constexpr auto kWithdrawnPrefix = "10.14.254.0";
+  constexpr auto kWithdrawnPrefixWithLength = "10.14.254.0/24";
+  addRoute("v4", kWithdrawnPrefix, 24, kPeerAddr3, "11.0.0.14", "65014");
+  assertBgpPipelineProgress(
+      kWithdrawnPrefix, 24, folly::IPAddress("11.0.0.14"));
+  WITH_RETRIES({
+    auto state = subscribed.rlock();
+    ASSERT_EVENTUALLY_TRUE(state->has_value());
+    EXPECT_EVENTUALLY_TRUE(
+        (*state)->rib_entries()->contains(kWithdrawnPrefixWithLength));
+  });
+
+  ScopedEventBaseBlocker syncerBlocker(
+      *fsdbSyncerEventBaseThread_.getEventBase());
+  ASSERT_NO_THROW(
+      syncerBlocker.waitUntilBlocked("FsdbSyncer EventBase to become blocked"));
+
+  deleteRoute("v4", kWithdrawnPrefix, 24, kPeerAddr3);
+  ASSERT_TRUE(waitForRouteWithdrawnFromRib(kWithdrawnPrefixWithLength));
+  WITH_RETRIES({
+    EXPECT_EVENTUALLY_EQ(
+        nullptr, getFibWeightedNexthops(kWithdrawnPrefixWithLength));
+  });
+  ASSERT_TRUE(waitForPeerEgressQueueNonEmpty(kPeerAddr5));
+  EXPECT_TRUE(verifyRouteWithdraw("v4", kWithdrawnPrefix, 24, kPeerAddr5));
+
+  constexpr auto kReplacedPrefix = "10.14.253.0";
+  constexpr auto kReplacedPrefixWithLength = "10.14.253.0/24";
+  addRoute("v4", kReplacedPrefix, 24, kPeerAddr3, "11.0.0.14", "65014");
+  assertBgpPipelineProgress(kReplacedPrefix, 24, folly::IPAddress("11.0.0.14"));
+  addRoute("v4", kReplacedPrefix, 24, kPeerAddr3, "11.0.0.15", "65015");
+  assertBgpPipelineProgress(kReplacedPrefix, 24, folly::IPAddress("11.0.0.15"));
+
+  constexpr uint8_t kLastRouteOctet = 63;
+  for (uint8_t octet = 0; octet <= kLastRouteOctet; ++octet) {
+    addRoute(
+        "v4",
+        "10.14." + std::to_string(octet) + ".0",
+        24,
+        kPeerAddr3,
+        "11.0.0.14",
+        "65014");
+  }
+  const auto lastPrefix = "10.14." + std::to_string(kLastRouteOctet) + ".0";
+  const auto lastPrefixWithLength = lastPrefix + "/24";
+  assertBgpPipelineProgress(lastPrefix, 24, folly::IPAddress("11.0.0.14"));
+  ASSERT_FALSE(syncerBlocker.timedOut())
+      << "FsdbSyncer EventBase blocker timed out before stalled-state checks";
+  {
+    auto state = subscribed.rlock();
+    ASSERT_TRUE(state->has_value());
+    EXPECT_TRUE((*state)->rib_entries()->contains(kWithdrawnPrefixWithLength));
+    EXPECT_FALSE((*state)->rib_entries()->contains(kReplacedPrefixWithLength));
+    EXPECT_FALSE((*state)->rib_entries()->contains(lastPrefixWithLength));
+  }
+
+  syncerBlocker.release();
+  EXPECT_FALSE(syncerBlocker.timedOut());
+
+  WITH_RETRIES_N_TIMED(100, std::chrono::milliseconds(100), {
+    auto state = subscribed.rlock();
+    ASSERT_EVENTUALLY_TRUE(state->has_value());
+    EXPECT_EVENTUALLY_FALSE(
+        (*state)->rib_entries()->contains(kWithdrawnPrefixWithLength));
+    EXPECT_EVENTUALLY_TRUE(hasNexthop(
+        **state, kReplacedPrefixWithLength, folly::IPAddress("11.0.0.15")));
+    EXPECT_EVENTUALLY_FALSE(hasNexthop(
+        **state, kReplacedPrefixWithLength, folly::IPAddress("11.0.0.14")));
+    EXPECT_EVENTUALLY_TRUE(
+        (*state)->rib_entries()->contains(lastPrefixWithLength));
+    EXPECT_EVENTUALLY_TRUE(hasNexthop(
+        **state, lastPrefixWithLength, folly::IPAddress("11.0.0.14")));
+  });
+}
+
+TEST_F(
+    E2ECanonicalRibFsdbTest,
+    StalledFsdbPublisherStreamDoesNotBlockBgpPipeline) {
+  auto subscribed = subscriber_->subscribe(
+      subscriber_->getRootStatePath().bgp().canonicalRib());
+  bringUpPeers();
+  WITH_RETRIES({
+    auto state = subscribed.rlock();
+    ASSERT_EVENTUALLY_TRUE(state->has_value());
+    EXPECT_EVENTUALLY_TRUE(syncer_->isIncrementalPublicationReady());
+  });
+
+  auto* publisherStreamEventBase = fsdbPublisherStreamEventBase();
+  ASSERT_NE(nullptr, publisherStreamEventBase);
+  ScopedEventBaseBlocker publisherStreamBlocker(*publisherStreamEventBase);
+  ASSERT_NO_THROW(publisherStreamBlocker.waitUntilBlocked(
+      "FSDB publisher stream EventBase to become blocked"));
+
+  addRoute("v4", "10.15.0.0", 16, kPeerAddr3, "11.0.0.15", "65015");
+  assertBgpPipelineProgress("10.15.0.0", 16, folly::IPAddress("11.0.0.15"));
+  ASSERT_FALSE(publisherStreamBlocker.timedOut())
+      << "publisher EventBase blocker timed out before queue checks";
+  WITH_RETRIES({
+    const auto queueSize = fsdbPublisherQueueSize();
+    EXPECT_EVENTUALLY_TRUE(queueSize.has_value());
+    EXPECT_EVENTUALLY_GT(queueSize.value_or(0), 0);
+  });
+  ASSERT_FALSE(publisherStreamBlocker.timedOut())
+      << "publisher EventBase blocker timed out before stalled-state checks";
+  {
+    auto state = subscribed.rlock();
+    ASSERT_TRUE(state->has_value());
+    EXPECT_FALSE((*state)->rib_entries()->contains("10.15.0.0/16"));
+  }
+
+  publisherStreamBlocker.release();
+  EXPECT_FALSE(publisherStreamBlocker.timedOut());
+  WITH_RETRIES_N_TIMED(100, std::chrono::milliseconds(100), {
+    auto state = subscribed.rlock();
+    ASSERT_EVENTUALLY_TRUE(state->has_value());
+    EXPECT_EVENTUALLY_TRUE((*state)->rib_entries()->contains("10.15.0.0/16"));
+    EXPECT_EVENTUALLY_TRUE(
+        hasNexthop(**state, "10.15.0.0/16", folly::IPAddress("11.0.0.15")));
   });
 }
 

@@ -3604,17 +3604,23 @@ E2ETestFixture::getFibWeightedNexthops(const std::string& prefixStr) {
     return nullptr;
   }
 
-  auto prefix = folly::IPAddress::createNetwork(prefixStr);
-  const auto& programmedRoutes = testFib->getProgrammedRoutes();
+  const auto prefix = folly::IPAddress::createNetwork(prefixStr);
+  std::shared_ptr<const WeightedNexthopMap> weightedNexthops;
+  rib_->getEventBase().runInEventBaseThreadAndWait([&]() {
+    const auto& programmedRoutes = testFib->getProgrammedRoutes();
+    if (const auto it = programmedRoutes.find(prefix);
+        it != programmedRoutes.end()) {
+      weightedNexthops = it->second;
+    }
+  });
 
-  auto it = programmedRoutes.find(prefix);
-  if (it != programmedRoutes.end()) {
+  if (weightedNexthops) {
     XLOGF(
         DBG2,
         "getFibWeightedNexthops: Found {} nexthops for prefix {}",
-        it->second->size(),
+        weightedNexthops->size(),
         prefixStr);
-    return it->second;
+    return weightedNexthops;
   }
 
   XLOGF(WARN, "getFibWeightedNexthops: Prefix {} not found in FIB", prefixStr);
