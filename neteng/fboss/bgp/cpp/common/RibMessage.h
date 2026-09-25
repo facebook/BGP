@@ -243,6 +243,16 @@ struct RibOutAnnouncementEntry {
 
   bool isPartialDrain{false};
 
+  /*
+   * Routes this device originates itself -- configured local routes,
+   * aggregates and conditional local routes -- are injected into RIB under the
+   * kV4LocalPeerInfo pseudo-peer, whose address is zero. They never traverse an
+   * AdjRibIn.
+   */
+  bool isLocalRoute() const {
+    return peer.addr.isZero();
+  }
+
   RibOutAnnouncementEntry(
       const folly::CIDRNetwork& prefix,
       const uint32_t pathIdToSend,

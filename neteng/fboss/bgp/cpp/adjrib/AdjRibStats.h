@@ -40,6 +40,15 @@ extern uint32_t maxPeerRcvdPrefixCount;
 
 class AdjRibStats {
  public:
+  /*
+   * The switch-wide path count: received plus advertised, across all peers.
+   * This is the quantity total_path_limit caps. Static because the underlying
+   * counters are global rather than per-peer state.
+   */
+  static uint32_t getTotalSwitchPathCount() {
+    return totalRcvdPrefixCount + totalSentPrefixCount;
+  }
+
   explicit AdjRibStats(const std::string& peerIdOdsStr)
       : peerIdOdsStr(peerIdOdsStr) {
     PeerStats::initPeerCounters(peerIdOdsStr);

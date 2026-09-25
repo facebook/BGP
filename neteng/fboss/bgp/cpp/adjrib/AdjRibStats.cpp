@@ -235,7 +235,7 @@ void AdjRibStats::incrementPostOutPrefixCount(bool isIpv4, uint32_t numPeers) {
   totalSentPrefixCount += numPeers;
   PeerStats::setPeerPostOutPrefixes(peerIdOdsStr, postOutPrefixCount);
   PeerStats::setTotalSentPrefixes(totalSentPrefixCount);
-  PeerStats::setTotalPaths(totalRcvdPrefixCount + totalSentPrefixCount);
+  PeerStats::setTotalPaths(getTotalSwitchPathCount());
 }
 
 void AdjRibStats::decrementPostOutPrefixCount(bool isIpv4, uint32_t numPeers) {
@@ -276,7 +276,7 @@ void AdjRibStats::decrementPostOutPrefixCount(bool isIpv4, uint32_t numPeers) {
   totalSentPrefixCount -= numPeers;
   PeerStats::setPeerPostOutPrefixes(peerIdOdsStr, postOutPrefixCount);
   PeerStats::setTotalSentPrefixes(totalSentPrefixCount);
-  PeerStats::setTotalPaths(totalRcvdPrefixCount + totalSentPrefixCount);
+  PeerStats::setTotalPaths(getTotalSwitchPathCount());
 }
 
 void AdjRibStats::copyEgressPrefixCountsFrom(const AdjRibStats& other) {
@@ -318,7 +318,7 @@ void AdjRibStats::subtractFromTotalSentPrefixCount(uint32_t count) {
   }
   totalSentPrefixCount -= count;
   PeerStats::setTotalSentPrefixes(totalSentPrefixCount);
-  PeerStats::setTotalPaths(totalRcvdPrefixCount + totalSentPrefixCount);
+  PeerStats::setTotalPaths(getTotalSwitchPathCount());
 }
 
 /*******************************************************************************

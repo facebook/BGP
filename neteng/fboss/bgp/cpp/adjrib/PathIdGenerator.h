@@ -21,15 +21,25 @@
 #include <folly/IPAddress.h>
 #include <folly/container/F14Map.h>
 
+#include <optional>
+
 namespace facebook::bgp {
 
 class PathIdGenerator {
  public:
   explicit PathIdGenerator(bool sendAddPath) : sendAddPath_(sendAddPath) {}
 
+  /* Returns the path id for this (prefix, nextHop), issuing one if none has
+   * been issued yet. */
   uint32_t getPathId(
       const folly::CIDRNetwork& prefix,
       const folly::IPAddress& nextHop);
+
+  /* Looks up the path id without issuing one. std::nullopt when none has been
+   * issued for this (prefix, nextHop) yet. */
+  std::optional<uint32_t> findPathId(
+      const folly::CIDRNetwork& prefix,
+      const folly::IPAddress& nextHop) const;
 
  private:
   folly::F14NodeMap<

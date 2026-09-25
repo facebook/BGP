@@ -47,4 +47,21 @@ uint32_t PathIdGenerator::getPathId(
   return pathIdIter->second;
 }
 
+std::optional<uint32_t> PathIdGenerator::findPathId(
+    const folly::CIDRNetwork& prefix,
+    const folly::IPAddress& nextHop) const {
+  if (!sendAddPath_) {
+    return kDefaultPathID;
+  }
+  const auto prefixIter = PathIdCache_.find(prefix);
+  if (prefixIter == PathIdCache_.end()) {
+    return std::nullopt;
+  }
+  const auto pathIdIter = prefixIter->second.find(nextHop);
+  if (pathIdIter == prefixIter->second.end()) {
+    return std::nullopt;
+  }
+  return pathIdIter->second;
+}
+
 } // namespace facebook::bgp

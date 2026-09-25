@@ -1868,6 +1868,18 @@ class AdjRib : boost::noncopyable,
       const std::shared_ptr<thrift::BgpSwitchLimitConfig>& switchLimitConfig);
 
   /*
+   * Triggers persistent safe mode by notifying PeerManager, which writes
+   * the safe mode file and kicks off RIB-IN re-evaluation.
+   *
+   * Shared by the ingress trigger in dropPrefixForOverloadProtection and the
+   * egress trigger in handleRibAnnouncedEntry. No-op once safe mode is already
+   * on. Note that currently only APPLY_GOLDEN_PREFIX_POLICY enters safe mode.
+   */
+  void triggerSafeMode() noexcept;
+
+  bool canApplyGoldenPrefixPolicyMode() const noexcept;
+
+  /*
    * check whether the current number of unique VIPs is under limit
    * Two cases to allow adding this golden VIP:
    * 1. the VIP is alredy in AdjRibPrefixSet
@@ -2334,6 +2346,18 @@ class AdjRib : boost::noncopyable,
       bool initialDump) noexcept;
 
   /*
+   * Egress counterpart of the ingress limit check in canAddRibInEntry: true
+   * when admitting one more RIB-OUT entry would breach total_path_limit.
+   *
+   * Only total_path_limit applies here, and we have excluded
+   * prefix_limit on egress side. This is because prefix_limit is measured
+   * against AdjRibPrefixSet, which is populated solely by the prefixes learned
+   * from peers in AdjRibIn. We also do not drop local routes (prefixes
+   * originated by ourselves).
+   */
+  bool willExceedEgressSwitchLimit() const noexcept;
+
+  /*
    * Process single prefix best path announcement
    * update: the update to be processed with multiple prefixes
    * deferred: is true if the processing is due to out-delay time out.
@@ -2347,7 +2371,8 @@ class AdjRib : boost::noncopyable,
    */
   AdjRibEntry* FOLLY_NULLABLE tryInsertRibOutEntry(
       const folly::CIDRNetwork& prefix,
-      const folly::IPAddress& nexthop) noexcept;
+      const folly::IPAddress& nexthop,
+      bool isLocalRoute) noexcept;
 
   /*
    * Get post policy attributes (including CRF filtering)

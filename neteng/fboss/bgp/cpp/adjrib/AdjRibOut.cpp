@@ -950,6 +950,27 @@ void AdjRib::maybeEndRrDump(const RibOutAnnouncement& announcement) noexcept {
   }
 }
 
+bool AdjRib::willExceedEgressSwitchLimit() const noexcept {
+  if (!switchLimitConfig_) {
+    return false;
+  }
+  const auto totalPathLimit = switchLimitConfig_->total_path_limit();
+  if (!totalPathLimit) {
+    return false;
+  }
+  const auto totalPathCount = AdjRibStats::getTotalSwitchPathCount() + 1;
+  if (totalPathCount <= *totalPathLimit) {
+    return false;
+  }
+  XLOGF_EVERY_MS(
+      ERR,
+      600000 /* 10 min */,
+      "Total path advertised: {} exceeds max limit {}",
+      totalPathCount,
+      *totalPathLimit);
+  return true;
+}
+
 void AdjRib::handleRibAnnouncedEntry(
     const RibOutAnnouncementEntry& entry,
     bool initialDump) noexcept {
@@ -1167,8 +1188,12 @@ void AdjRib::processRibAnnouncedEntry(
   const std::string updatePeerIdStr =
       BgpPeerId(update.peer.addr, update.peer.routerId).str();
 
-  auto* adjRibEntry = CHECK_NOTNULL(
-      tryInsertRibOutEntry(update.prefix, update.attrs->getNexthop()));
+  auto* adjRibEntry = tryInsertRibOutEntry(
+      update.prefix, update.attrs->getNexthop(), update.isLocalRoute());
+  if (!adjRibEntry) {
+    // Refused by the egress switch limit.
+    return;
+  }
   stats_.updateAttributeSizes(update.attrs);
   adjRibEntry->setPreOut(update.attrs);
   adjRibEntry->setRibVersion(update.ribVersion);
@@ -1323,30 +1348,75 @@ void AdjRib::processRibAnnouncedEntry(
  */
 AdjRibEntry* FOLLY_NULLABLE AdjRib::tryInsertRibOutEntry(
     const folly::CIDRNetwork& prefix,
-    const folly::IPAddress& nexthop) noexcept {
-  auto pathId = pathIdGenerator_->getPathId(prefix, nexthop);
+    const folly::IPAddress& nexthop,
+    bool isLocalRoute) noexcept {
+  /*
+   * Resolve the path id without issuing one where we can: the generator
+   * allocates on a miss, and the limit check below should not leave a path id
+   * behind for a route it goes on to refuse. A (prefix, nexthop) the generator
+   * has never issued an id for cannot have a peer-owned entry.
+   *
+   * getRibEntryWithUpdateGroup() can also match group-owned entries, which the
+   * group keys by pathIdToSend rather than by this generator, so the
+   * update-group path keeps allocating up front as before.
+   */
+  const auto resolvedPathId = enableUpdateGroup_
+      ? std::optional<uint32_t>(pathIdGenerator_->getPathId(prefix, nexthop))
+      : pathIdGenerator_->findPathId(prefix, nexthop);
 
-  auto adjRibEntry = enableUpdateGroup_
-      ? getRibEntryWithUpdateGroup(prefix, pathId)
-      : getRibEntry(/*ingress=*/false, prefix, pathId);
-  if (!adjRibEntry) {
-    // Learning new route
+  auto adjRibEntry = resolvedPathId
+      ? (enableUpdateGroup_
+             ? getRibEntryWithUpdateGroup(prefix, *resolvedPathId)
+             : getRibEntry(/*ingress=*/false, prefix, *resolvedPathId))
+      : nullptr;
+  if (adjRibEntry) {
     XLOGF(
         DBG4,
-        "Learning new prefix from Rib for {}: {}",
-        getPeerName(),
-        folly::IPAddress::networkToString(prefix));
-    stats_.incrementPreOutPrefixCount(prefix.first.isV4());
-    return addRibEntry(/*ingress=*/false, prefix, pathId);
+        "Updating preOut attributes of prefix {} for {}",
+        folly::IPAddress::networkToString(prefix),
+        getPeerName());
+    return adjRibEntry;
+  }
+
+  /*
+   * Learning a new route. The switch limit only applies here: updating an
+   * existing entry adds no rib entry, and refusing it would leave the peer
+   * holding stale attributes. Mirrors canAddRibInEntry, which ingress consults
+   * only when the AdjRibIn entry does not already exist.
+   *
+   * Before S696431 the switch limits were only
+   * enforced at RIB-IN, now we also enforce the total_path_limit on egress.
+   * This is not enforced under update group because total_path_limit
+   * is a heuristic to estimate the memory consumption of total rib entries
+   * created for prefixes for all peers.
+   *
+   * With update group enabled, this is no longer linearly proportional.
+   * Defining the limit for update group is tracked separately.
+   */
+  if (!enableUpdateGroup_ && willExceedEgressSwitchLimit()) {
+    if (canApplyGoldenPrefixPolicyMode()) {
+      triggerSafeMode();
+    }
+    /*
+     * Locally originated routes are advertised regardless; we only drop
+     * routes learned from peers.
+     */
+    if (!isLocalRoute) {
+      incrementPrefixesDroppedByLimit();
+      return nullptr;
+    }
   }
 
   XLOGF(
       DBG4,
-      "Updating preOut attributes of prefix {} for {}",
-      folly::IPAddress::networkToString(prefix),
-      getPeerName());
-
-  return adjRibEntry;
+      "Learning new prefix from Rib for {}: {}",
+      getPeerName(),
+      folly::IPAddress::networkToString(prefix));
+  stats_.incrementPreOutPrefixCount(prefix.first.isV4());
+  const auto pathId = resolvedPathId
+      ? *resolvedPathId
+      : pathIdGenerator_->getPathId(prefix, nexthop);
+  return addRibEntry(/*ingress=*/false, prefix, pathId);
 }
 
 std::pair<const std::shared_ptr<const BgpPath>, const PostPolicyInfo>

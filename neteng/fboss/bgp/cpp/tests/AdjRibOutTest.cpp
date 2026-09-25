@@ -4109,7 +4109,8 @@ TEST_F(AdjRibOutboundFixture, TryInsertRibOutEntryTest) {
   // try inserting a new entry that does not exist yet
   messages.clear();
 
-  auto adjRibEntry1 = adjRib_->tryInsertRibOutEntry(kV4Prefix1, kNextHopV4_1);
+  auto adjRibEntry1 = adjRib_->tryInsertRibOutEntry(
+      kV4Prefix1, kNextHopV4_1, /*isLocalRoute=*/false);
 
   EXPECT_EQ(1, messages.size());
   EXPECT_TRUE(
@@ -4123,7 +4124,8 @@ TEST_F(AdjRibOutboundFixture, TryInsertRibOutEntryTest) {
    */
   messages.clear();
 
-  auto adjRibEntry2 = adjRib_->tryInsertRibOutEntry(kV4Prefix1, kNextHopV4_2);
+  auto adjRibEntry2 = adjRib_->tryInsertRibOutEntry(
+      kV4Prefix1, kNextHopV4_2, /*isLocalRoute=*/false);
 
   EXPECT_EQ(1, messages.size());
   EXPECT_TRUE(
@@ -4135,7 +4137,8 @@ TEST_F(AdjRibOutboundFixture, TryInsertRibOutEntryTest) {
   // try inserting the existing entry
   messages.clear();
 
-  auto adjRibEntry3 = adjRib_->tryInsertRibOutEntry(kV4Prefix1, kNextHopV4_1);
+  auto adjRibEntry3 = adjRib_->tryInsertRibOutEntry(
+      kV4Prefix1, kNextHopV4_1, /*isLocalRoute=*/false);
 
   EXPECT_EQ(1, messages.size());
   EXPECT_TRUE(
@@ -4438,7 +4441,8 @@ TEST_F(AdjRibOutboundFixture, TryDeleteRibOutEntryTest) {
 
   // insert an entry
   adjRib_->pathIdGenerator_ = std::make_unique<PathIdGenerator>(false);
-  adjRib_->tryInsertRibOutEntry(kV4Prefix1, kV4Nexthop1);
+  adjRib_->tryInsertRibOutEntry(
+      kV4Prefix1, kV4Nexthop1, /*isLocalRoute=*/false);
   EXPECT_EQ(
       1,
       adjRib_->getRibTreeSize(/*ingress=*/false, /*isAddPathEnabled=*/false));
@@ -4514,7 +4518,8 @@ TEST_F(AdjRibOutboundFixture, TryDeleteRibOutEntryTestAddPath) {
   // insert an entry
   adjRib_->sendAddPath_ = true;
   adjRib_->pathIdGenerator_ = std::make_unique<PathIdGenerator>(true);
-  adjRib_->tryInsertRibOutEntry(kV4Prefix1, kV4Nexthop1);
+  adjRib_->tryInsertRibOutEntry(
+      kV4Prefix1, kV4Nexthop1, /*isLocalRoute=*/false);
   EXPECT_EQ(
       1, adjRib_->getRibTreeSize(/*ingress=*/false, /*isAddPathEnabled=*/true));
 

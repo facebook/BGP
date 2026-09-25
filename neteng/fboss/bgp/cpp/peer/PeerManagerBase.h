@@ -1630,6 +1630,7 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   // One-time flag, marked when safe mode is triggered
   folly::not_null_shared_ptr<std::atomic<bool>> isSafeModeOn_ =
       std::make_shared<std::atomic<bool>>(false);
+
   std::atomic<bool> goldenPrefixesPolicyActive_{false};
 
   /*

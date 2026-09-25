@@ -47,7 +47,7 @@ void AdjRibStats::incrementPreInPrefixCount(
   // expose the stats to ThreadCachedServiceData
   PeerStats::setPeerPreInPrefixes(peerIdOdsStr, preInPrefixCount);
   PeerStats::setTotalRcvdPrefixes(totalRcvdPrefixCount);
-  PeerStats::setTotalPaths(totalRcvdPrefixCount + totalSentPrefixCount);
+  PeerStats::setTotalPaths(getTotalSwitchPathCount());
   PeerStats::setTotalUniquePrefixes(AdjRibPrefixSet::get()->size());
 
   if (preInPrefixCount > maxPeerRcvdPrefixCount) {
@@ -81,7 +81,7 @@ void AdjRibStats::decrementPreInPrefixCount(const folly::CIDRNetwork& prefix) {
   // expose the stats to ThreadCachedServiceData
   PeerStats::setPeerPreInPrefixes(peerIdOdsStr, preInPrefixCount);
   PeerStats::setTotalRcvdPrefixes(totalRcvdPrefixCount);
-  PeerStats::setTotalPaths(totalRcvdPrefixCount + totalSentPrefixCount);
+  PeerStats::setTotalPaths(getTotalSwitchPathCount());
   PeerStats::setTotalUniquePrefixes(AdjRibPrefixSet::get()->size());
 
   if (vipPrefixes.erase(prefix) > 0 && totalVipPrefixesCount > 0) {
@@ -324,7 +324,7 @@ bool AdjRib::canAddRibInEntry(
     const folly::CIDRNetwork& prefix,
     const std::shared_ptr<const BgpPath>& attrs) {
   if (dropPrefixForOverloadProtection(
-          totalRcvdPrefixCount + 1 + totalSentPrefixCount,
+          AdjRibStats::getTotalSwitchPathCount() + 1,
           prefix,
           *attrs,
           switchLimitConfig_)) {
@@ -1310,6 +1310,28 @@ bool AdjRib::allowGoldenVip(const folly::CIDRNetwork& network) const {
   return false;
 }
 
+void AdjRib::triggerSafeMode() noexcept {
+  if (isSafeModeOn()) {
+    return;
+  }
+  /*
+   * Set safe mode on this peer's AdjRib and send TriggerSafeMode to
+   * PeerManagerBase that saves a safe mode file and initiates the rest
+   * of the safe mode purging process.
+   * See http://fburl.com/bgp_safe_mode for more details
+   */
+  setSafeModeOn();
+  XLOG(INFO, "Prefixes/paths over limit. Safe mode on.");
+  BgpStats::setIsSafeModeOn(true);
+  fromAdjRibQ_.push({*remotePeerId_, TriggerSafeMode{}});
+}
+
+bool AdjRib::canApplyGoldenPrefixPolicyMode() const noexcept {
+  return switchLimitConfig_ &&
+      *switchLimitConfig_->overload_protection_mode() ==
+      thrift::OverloadProtectionMode::APPLY_GOLDEN_PREFIX_POLICY;
+}
+
 bool AdjRib::dropPrefixForOverloadProtection(
     uint64_t totalPathCount,
     const folly::CIDRNetwork& network,
@@ -1359,17 +1381,8 @@ bool AdjRib::dropPrefixForOverloadProtection(
 
   switch (*config.overload_protection_mode()) {
     case thrift::OverloadProtectionMode::APPLY_GOLDEN_PREFIX_POLICY:
-      if (exceededSwitchPrefixLimit && !isSafeModeOn()) {
-        /*
-         * Set safe mode on this peer's AdjRib and send TriggerSafeMode to
-         * PeerManagerBase that saves a safe mode file and initiates the rest
-         * of the safe mode purging process.
-         * See http://fburl.com/bgp_safe_mode for more details
-         */
-        setSafeModeOn();
-        XLOG(INFO, "Prefixes/paths over limit. Safe mode on.");
-        BgpStats::setIsSafeModeOn(true);
-        fromAdjRibQ_.push({*remotePeerId_, TriggerSafeMode{}});
+      if (exceededSwitchPrefixLimit) {
+        triggerSafeMode();
       }
       if (isSafeModeOn() && goldenPrefixPolicy_) {
         // apply golden prefix policy
