@@ -1244,14 +1244,14 @@ folly::coro::Task<TModuleHealthReport> HealthValidator::checkRib() {
 
   /* 1.6.3 Non-zero received routes */
   {
-    auto totalPaths = getCounter("bgpd.rib.totalRibPaths");
+    auto totalPaths = getCounter(RibStats::kTotalPathsCount);
     auto originated = getCounter("bgpd.rib.totalOriginatedRoutes");
     if (!totalPaths.has_value()) {
       checks.emplace_back(makeResult(
           HealthCheckId::RIB_RECEIVED_ROUTES,
           HealthCheckCategory::RIB,
           HealthCheckStatus::FAIL,
-          "Counter bgpd.rib.totalRibPaths not found"));
+          fmt::format("Counter {} not found", RibStats::kTotalPathsCount)));
     } else {
       int64_t received = *totalPaths - originated.value_or(0);
       bool passed = (received > 0);
@@ -1260,7 +1260,7 @@ folly::coro::Task<TModuleHealthReport> HealthValidator::checkRib() {
           HealthCheckCategory::RIB,
           passed ? HealthCheckStatus::PASS : HealthCheckStatus::FAIL,
           fmt::format(
-              "receivedRoutes = {} (total={} - originated={})",
+              "receivedPaths = {} (totalPaths={} - originated={})",
               received,
               *totalPaths,
               originated.value_or(0)),

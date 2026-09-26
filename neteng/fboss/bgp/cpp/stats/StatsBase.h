@@ -576,6 +576,28 @@ inline const auto kInactivePathCount =
     fmt::format("{}.rib.inactive_path.count", kBgpcppTag);
 void setInactivePathCount(int64_t count);
 
+/* Per-address-family breakdown of the above. */
+inline const auto kInactivePathCountIpv4 =
+    fmt::format("{}.rib.inactive_path.ipv4.count", kBgpcppTag);
+inline const auto kInactivePathCountIpv6 =
+    fmt::format("{}.rib.inactive_path.ipv6.count", kBgpcppTag);
+void setInactivePathCountForAfi(bool isV4, int64_t count);
+
+/*
+ * Total BGP paths held in the Loc-RIB, add-path-correct: one per (prefix,
+ * peer, path-id). Not comparable to kTotalRibPaths, which counts
+ * (prefix, peer) pairs and so undercounts under ADD-PATH.
+ */
+inline const auto kTotalPathsCount =
+    fmt::format("{}.rib.total_paths.count", kBgpcppTag);
+void setTotalPathsCount(int64_t count);
+
+inline const auto kTotalPathsCountIpv4 =
+    fmt::format("{}.rib.total_paths.ipv4.count", kBgpcppTag);
+inline const auto kTotalPathsCountIpv6 =
+    fmt::format("{}.rib.total_paths.ipv6.count", kBgpcppTag);
+void setTotalPathCountForAfi(bool isV4, int64_t count);
+
 // Number of nexthop info entries tracked in the RIB
 inline const auto kNexthopInfoCount =
     fmt::format("{}.rib.nexthop_info.count", kBgpcppTag);

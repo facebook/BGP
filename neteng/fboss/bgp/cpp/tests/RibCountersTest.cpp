@@ -86,7 +86,7 @@ TEST(RibCountersTest, PerAfiPrefixAndPerLengthCounts) {
  * Total paths are tracked per address family from signed deltas (positive on
  * announce, negative on withdraw), so add-path -- multiple paths from one peer
  * for a prefix, surfacing as a delta > 1 -- is counted correctly. The fb303
- * mirror is added in a later diff; this verifies the in-memory field only.
+ * mirrors are published once per inbound batch rather than once per path.
  */
 TEST(RibCountersTest, TotalPathsPerAfiFromDeltas) {
   RibStats::initCounters();
@@ -98,15 +98,23 @@ TEST(RibCountersTest, TotalPathsPerAfiFromDeltas) {
   c.onPathsDelta(/*isV4=*/true, 1);
   // v6 prefix gains two paths in one update (e.g. two peers).
   c.onPathsDelta(/*isV4=*/false, 2);
+  c.publishTotalPathCounters();
 
   EXPECT_EQ(2, c.totalPaths(/*isV4=*/true));
   EXPECT_EQ(2, c.totalPaths(/*isV4=*/false));
   EXPECT_EQ(4, c.totalPaths());
+  EXPECT_EQ(4, counter(RibStats::kTotalPathsCount));
+  EXPECT_EQ(2, counter(RibStats::kTotalPathsCountIpv4));
+  EXPECT_EQ(2, counter(RibStats::kTotalPathsCountIpv6));
 
   // Withdrawing one v4 path decrements only v4; v6 is untouched.
   c.onPathsDelta(/*isV4=*/true, -1);
+  c.publishTotalPathCounters();
   EXPECT_EQ(1, c.totalPaths(/*isV4=*/true));
   EXPECT_EQ(2, c.totalPaths(/*isV4=*/false));
+  EXPECT_EQ(3, counter(RibStats::kTotalPathsCount));
+  EXPECT_EQ(1, counter(RibStats::kTotalPathsCountIpv4));
+  EXPECT_EQ(2, counter(RibStats::kTotalPathsCountIpv6));
 
   // A zero delta (an update that did not change the path count) is a no-op.
   c.onPathsDelta(/*isV4=*/true, 0);
@@ -128,17 +136,23 @@ TEST(RibCountersTest, InactivePathsPerAfiFromDeltas) {
   c.onInactivePathsDelta(/*isV4=*/true, 1);
   c.onInactivePathsDelta(/*isV4=*/true, 1);
   c.onInactivePathsDelta(/*isV4=*/false, 2);
+  c.publishInactivePathCounters();
 
   EXPECT_EQ(2, c.inactivePaths(/*isV4=*/true));
   EXPECT_EQ(2, c.inactivePaths(/*isV4=*/false));
   EXPECT_EQ(4, c.inactivePaths());
   EXPECT_EQ(4, counter(RibStats::kInactivePathCount));
+  EXPECT_EQ(2, counter(RibStats::kInactivePathCountIpv4));
+  EXPECT_EQ(2, counter(RibStats::kInactivePathCountIpv6));
 
   // A next-hop resolving decrements only its own address family.
   c.onInactivePathsDelta(/*isV4=*/true, -2);
+  c.publishInactivePathCounters();
   EXPECT_EQ(0, c.inactivePaths(/*isV4=*/true));
   EXPECT_EQ(2, c.inactivePaths(/*isV4=*/false));
   EXPECT_EQ(2, counter(RibStats::kInactivePathCount));
+  EXPECT_EQ(0, counter(RibStats::kInactivePathCountIpv4));
+  EXPECT_EQ(2, counter(RibStats::kInactivePathCountIpv6));
 
   /*
    * A zero delta -- a prefix re-selected with unchanged eligibility, which is
@@ -282,7 +296,11 @@ TEST(RibCountersTest, ResetZeroesInMemoryFields) {
   c.onPrefixAdded(/*isV4=*/true, 24);
   c.onPrefixAdded(/*isV4=*/false, 64);
   c.onPathsDelta(/*isV4=*/true, 3);
+  c.onPathsDelta(/*isV4=*/false, 4);
   c.onInactivePathsDelta(/*isV4=*/true, 2);
+  c.onInactivePathsDelta(/*isV4=*/false, 1);
+  c.publishTotalPathCounters();
+  c.publishInactivePathCounters();
   c.setOriginatedRoutes(5);
   c.onUnresolvableNexthopAdded();
   c.onBestpathSourceChanged(
@@ -298,6 +316,12 @@ TEST(RibCountersTest, ResetZeroesInMemoryFields) {
   EXPECT_EQ(0, c.originatedRoutes());
   EXPECT_EQ(0, c.unresolvableNexthops());
   EXPECT_EQ(0, c.ebgpPrefixes(/*isV4=*/true));
+  EXPECT_EQ(0, counter(RibStats::kInactivePathCount));
+  EXPECT_EQ(0, counter(RibStats::kInactivePathCountIpv4));
+  EXPECT_EQ(0, counter(RibStats::kInactivePathCountIpv6));
+  EXPECT_EQ(0, counter(RibStats::kTotalPathsCount));
+  EXPECT_EQ(0, counter(RibStats::kTotalPathsCountIpv4));
+  EXPECT_EQ(0, counter(RibStats::kTotalPathsCountIpv6));
 }
 
 } // namespace facebook::bgp

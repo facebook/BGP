@@ -96,15 +96,42 @@ class RibCounters {
    * the removal of the whole cached count.
    *
    * A no-op when `delta` is 0 -- the common case, since most prefixes are
-   * re-selected without any change in eligibility. The fb303 mirror is set
-   * absolutely from the aggregate rather than incremented, so it cannot drift.
+   * re-selected without any change in eligibility. The fb303 mirrors are set
+   * absolutely by publishInactivePathCounters rather than incremented, so they
+   * cannot drift.
    */
   void onInactivePathsDelta(bool isV4, int64_t delta) {
     if (delta == 0) {
       return;
     }
-    afiOf(isV4).inactivePaths += delta;
+    auto& afi = afiOf(isV4);
+    afi.inactivePaths += delta;
+    publishInactivePathCounters();
+  }
+
+  /*
+   * Mirror the aggregate and per-family total path gauges to fb303 once per
+   * inbound route batch rather than once per path. This publication is
+   * independent of FIB programming, which may be paused.
+   */
+  void publishTotalPathCounters() const {
+    RibStats::setTotalPathsCount(static_cast<int64_t>(totalPaths()));
+    RibStats::setTotalPathCountForAfi(
+        /*isV4=*/true, static_cast<int64_t>(totalPaths(/*isV4=*/true)));
+    RibStats::setTotalPathCountForAfi(
+        /*isV4=*/false, static_cast<int64_t>(totalPaths(/*isV4=*/false)));
+  }
+
+  /*
+   * Mirror the aggregate and per-family inactive path gauges together, so the
+   * two families always sum to the aggregate.
+   */
+  void publishInactivePathCounters() const {
     RibStats::setInactivePathCount(inactivePaths());
+    RibStats::setInactivePathCountForAfi(
+        /*isV4=*/true, inactivePaths(/*isV4=*/true));
+    RibStats::setInactivePathCountForAfi(
+        /*isV4=*/false, inactivePaths(/*isV4=*/false));
   }
 
   /** The set of locally-originated routes was (re)computed to `count`. */
@@ -147,15 +174,15 @@ class RibCounters {
 
   /**
    * Zero the in-memory counts. Called on the RIB EventBase when the Loc-RIB is
-   * bulk-cleared during controlled shutdown. The fb303 mirrors are
-   * intentionally left untouched here: they are re-initialized on device bootup
-   * (see RibStats::initCounters), matching the existing convention for RIB ODS
-   * counters that are not adjusted on the bulk-clear path.
+   * bulk-cleared during controlled shutdown. Clear the path gauges as part of
+   * the same operation so they cannot retain values from the pre-clear RIB.
    */
   void reset() {
     afis_ = {};
     originatedRoutes_ = 0;
     unresolvableNexthops_ = 0;
+    publishInactivePathCounters();
+    publishTotalPathCounters();
   }
 
   /** Prefix count for one address family (true = IPv4, false = IPv6). */

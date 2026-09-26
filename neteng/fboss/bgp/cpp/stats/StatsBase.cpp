@@ -709,6 +709,11 @@ void initCounters() {
       kRibUnresolvableNexthopsCount, 0);
 
   fb303::ThreadCachedServiceData::get()->setCounter(kInactivePathCount, 0);
+  fb303::ThreadCachedServiceData::get()->setCounter(kInactivePathCountIpv4, 0);
+  fb303::ThreadCachedServiceData::get()->setCounter(kInactivePathCountIpv6, 0);
+  fb303::ThreadCachedServiceData::get()->setCounter(kTotalPathsCount, 0);
+  fb303::ThreadCachedServiceData::get()->setCounter(kTotalPathsCountIpv4, 0);
+  fb303::ThreadCachedServiceData::get()->setCounter(kTotalPathsCountIpv6, 0);
 
   fb303::ThreadCachedServiceData::get()->setCounter(kNexthopInfoCount, 0);
   fb303::ThreadCachedServiceData::get()->setCounter(kNexthopStatusMapCount, 0);
@@ -841,6 +846,20 @@ void decrUnresolvableNexthopsCount() {
 
 void setInactivePathCount(int64_t count) {
   fb303::ThreadCachedServiceData::get()->setCounter(kInactivePathCount, count);
+}
+
+void setInactivePathCountForAfi(bool isV4, int64_t count) {
+  fb303::ThreadCachedServiceData::get()->setCounter(
+      isV4 ? kInactivePathCountIpv4 : kInactivePathCountIpv6, count);
+}
+
+void setTotalPathsCount(int64_t count) {
+  fb303::ThreadCachedServiceData::get()->setCounter(kTotalPathsCount, count);
+}
+
+void setTotalPathCountForAfi(bool isV4, int64_t count) {
+  fb303::ThreadCachedServiceData::get()->setCounter(
+      isV4 ? kTotalPathsCountIpv4 : kTotalPathsCountIpv6, count);
 }
 
 void incrNexthopInfoCount() {

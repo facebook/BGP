@@ -692,6 +692,7 @@ void RibBase::processRibInAnnouncement(
       processSingleRibInUpdate(kV4LocalPeerInfo, bgpAttrs, aggPfxPid);
     }
   }
+  ribCounters_.publishTotalPathCounters();
   // Subscribe any nexthops newly learned while processing this batch.
   maybeFlushNexthopSubscriptions();
   if (ribEoRReceived_) {
@@ -762,6 +763,7 @@ void RibBase::processRibInWithdrawal(
       processSingleRibInUpdate(kV4LocalPeerInfo, bgpAttrs, aggPfxPid);
     }
   }
+  ribCounters_.publishTotalPathCounters();
   // Aggregate/local routes injected above may introduce new nexthops.
   maybeFlushNexthopSubscriptions();
   if (ribEoRReceived_) {
@@ -2001,6 +2003,7 @@ void RibBase::prepareFibProgramming(bool fullSync) noexcept {
    * any such work itself.
    */
   onPrepareFibProgrammingComplete(fullSync);
+  ribCounters_.publishInactivePathCounters();
 
   // If no entry in fib update list and not full sync, skip fib programming
   if (fibBatchList_.empty() && !fullSync) {

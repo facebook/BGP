@@ -900,7 +900,7 @@ CO_TEST_F(HealthValidatorTest, Rib_PathSelection_Skipped_NoStat) {
 }
 
 CO_TEST_F(HealthValidatorTest, Rib_ReceivedRoutes_Pass) {
-  setCounter("bgpd.rib.totalRibPaths", 5000);
+  setCounter(RibStats::kTotalPathsCount, 5000);
   setCounter("bgpd.rib.totalOriginatedRoutes", 24);
 
   auto report = co_await validator_->generateReport();
@@ -913,7 +913,7 @@ CO_TEST_F(HealthValidatorTest, Rib_ReceivedRoutes_Pass) {
 }
 
 CO_TEST_F(HealthValidatorTest, Rib_ReceivedRoutes_Fail_Zero) {
-  setCounter("bgpd.rib.totalRibPaths", 24);
+  setCounter(RibStats::kTotalPathsCount, 24);
   setCounter("bgpd.rib.totalOriginatedRoutes", 24);
 
   auto report = co_await validator_->generateReport();
