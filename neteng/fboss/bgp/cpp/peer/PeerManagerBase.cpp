@@ -1606,7 +1606,8 @@ folly::coro::Task<void> PeerManagerBase::processRibDumpReqCoro(
  * This coroutine is ONLY executed when update group is enabled.
  */
 folly::coro::Task<void> PeerManagerBase::processRibDumpReqWithCancellationCoro(
-    std::shared_ptr<AdjRib> adjRib) {
+    std::shared_ptr<AdjRib> adjRib,
+    RibDumpReq ribDumpReq) {
   auto cancelToken = co_await folly::coro::co_current_cancellation_token;
 
   /*
@@ -1633,7 +1634,7 @@ folly::coro::Task<void> PeerManagerBase::processRibDumpReqWithCancellationCoro(
         "testOnlyDeferInitDump: re-scheduling RibDumpReq for peer {}",
         adjRib->getRemotePeerId().str());
     adjRib->resetRibDumpCancellationSource();
-    scheduleRibDumpForAdjRib(adjRib);
+    scheduleRibDumpForAdjRib(adjRib, std::move(ribDumpReq));
     co_return;
   }
 
@@ -1654,10 +1655,7 @@ folly::coro::Task<void> PeerManagerBase::processRibDumpReqWithCancellationCoro(
     }
   };
 
-  processRibDumpReq(
-      adjRib,
-      RibDumpReq(adjRib->getRemotePeerId(), adjRib->sendAddPath()),
-      /*sendWithEoR=*/true);
+  processRibDumpReq(adjRib, ribDumpReq, /*sendWithEoR=*/true);
 
   /*
    * With update group enabled, register and activate the detached peer's
@@ -1868,6 +1866,13 @@ void PeerManagerBase::cancelRibDumpForAdjRib(
 
 void PeerManagerBase::scheduleRibDumpForAdjRib(
     const std::shared_ptr<AdjRib>& adjRib) {
+  scheduleRibDumpForAdjRib(
+      adjRib, RibDumpReq(adjRib->getRemotePeerId(), adjRib->sendAddPath()));
+}
+
+void PeerManagerBase::scheduleRibDumpForAdjRib(
+    const std::shared_ptr<AdjRib>& adjRib,
+    RibDumpReq ribDumpReq) {
   /*
    * Coalesce: if a rib dump is already pending for this detached peer --
    * buffered in pendingRibDumpAdjRibs_ (the drain will serve it) or scheduled /
@@ -1878,7 +1883,9 @@ void PeerManagerBase::scheduleRibDumpForAdjRib(
     return;
   }
   asyncScope_.add(
-      co_withExecutor(&evb_, processRibDumpReqWithCancellationCoro(adjRib)),
+      co_withExecutor(
+          &evb_,
+          processRibDumpReqWithCancellationCoro(adjRib, std::move(ribDumpReq))),
       adjRib->getCancellationTokenForNewRibDump());
 }
 
@@ -2049,7 +2056,8 @@ PeerManagerBase::handleBufferedRibDumpsForDetachedPeers() {
     pendingRibDumpAdjRibs_.erase(pendingRibDumpAdjRibs_.begin());
     BgpStats::decrPendingRibDumpReqsCount(1);
 
-    co_await processRibDumpReqWithCancellationCoro(adjRib);
+    co_await processRibDumpReqWithCancellationCoro(
+        adjRib, RibDumpReq(adjRib->getRemotePeerId(), adjRib->sendAddPath()));
     co_await folly::coro::sleepReturnEarlyOnCancel(
         std::chrono::milliseconds(1));
   }

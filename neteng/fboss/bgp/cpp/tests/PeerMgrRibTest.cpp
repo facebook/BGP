@@ -42,6 +42,15 @@
       ScheduleRibDumpForAdjRib_CoalescesConcurrentRequests);                    \
   FRIEND_TEST(                                                                  \
       RibInitialAnnouncementTestFixture,                                        \
+      ScheduleRibDumpForAdjRib_PreservesRouteRefreshMetadata);                  \
+  FRIEND_TEST(                                                                  \
+      RibInitialAnnouncementTestFixture,                                        \
+      ScheduleRibDumpForAdjRib_DeferredRequestPreservesMetadata);               \
+  FRIEND_TEST(                                                                  \
+      RibInitialAnnouncementTestFixture,                                        \
+      ScheduleRibDumpForAdjRib_OrdinaryDumpRemainsAllAfi);                      \
+  FRIEND_TEST(                                                                  \
+      RibInitialAnnouncementTestFixture,                                        \
       ScheduleRibDumpForAdjRib_RescheduleAfterCancelDumpsOnce);                 \
   FRIEND_TEST(                                                                  \
       RibInitialAnnouncementTestFixture,                                        \
@@ -1534,6 +1543,148 @@ TEST_F(
   testing::Mock::VerifyAndClearExpectations(mockAdjRib.get());
 }
 
+TEST_F(
+    RibInitialAnnouncementTestFixture,
+    ScheduleRibDumpForAdjRib_PreservesRouteRefreshMetadata) {
+  auto& evb = peerMgr_->getEventBase();
+  auto mockAdjRib =
+      setupMockAdjRib(evb, kPeerId1, AsNum(kAsn1), sessionTerminateBaton_);
+  establishSessionForRibDump(mockAdjRib);
+  peerMgr_->adjRibs_[kPeerId1] = mockAdjRib;
+
+  auto v4Announcement = createRibSingleAnnounce(
+      kV4Prefix1, kV4Nexthop1, kLocalRouteAs, false, false);
+  auto v6Announcement = createRibSingleAnnounce(
+      kV6Prefix1, kV6Nexthop1, kLocalRouteAs, false, false);
+  peerMgr_->handleShadowRibEntryAnnouncement(
+      std::get<RibOutAnnouncement>(v4Announcement));
+  peerMgr_->handleShadowRibEntryAnnouncement(
+      std::get<RibOutAnnouncement>(v6Announcement));
+
+  EXPECT_CALL(*mockAdjRib, processRibMessage(testing::_))
+      .WillOnce([](const RibOutMessage& message) {
+        ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(message));
+        const auto& announcement = std::get<RibOutAnnouncement>(message);
+        EXPECT_TRUE(announcement.routeRefresh);
+        ASSERT_EQ(announcement.entries.size(), 1);
+        EXPECT_EQ(announcement.entries.front().prefix, kV4Prefix1);
+      });
+
+  peerMgr_->scheduleRibDumpForAdjRib(
+      mockAdjRib,
+      RibDumpReq(
+          kPeerId1,
+          false /* sendAddPath */,
+          true /* routeRefresh */,
+          BgpUpdateAfi::AFI_IPv4));
+
+  evb.loop();
+  folly::coro::blockingWait(peerMgr_->asyncScope_.joinAsync());
+  EXPECT_FALSE(mockAdjRib->isRibDumpScheduled());
+
+  mockAdjRib->resetChangeListConsumer();
+  evb.loop();
+  testing::Mock::VerifyAndClearExpectations(mockAdjRib.get());
+}
+
+TEST_F(
+    RibInitialAnnouncementTestFixture,
+    ScheduleRibDumpForAdjRib_DeferredRequestPreservesMetadata) {
+  auto& evb = peerMgr_->getEventBase();
+  auto mockAdjRib =
+      setupMockAdjRib(evb, kPeerId1, AsNum(kAsn1), sessionTerminateBaton_);
+  establishSessionForRibDump(mockAdjRib);
+  peerMgr_->adjRibs_[kPeerId1] = mockAdjRib;
+
+  auto v4Announcement = createRibSingleAnnounce(
+      kV4Prefix1, kV4Nexthop1, kLocalRouteAs, false, false);
+  auto v6Announcement = createRibSingleAnnounce(
+      kV6Prefix1, kV6Nexthop1, kLocalRouteAs, false, false);
+  peerMgr_->handleShadowRibEntryAnnouncement(
+      std::get<RibOutAnnouncement>(v4Announcement));
+  peerMgr_->handleShadowRibEntryAnnouncement(
+      std::get<RibOutAnnouncement>(v6Announcement));
+
+  bool delivered = false;
+  EXPECT_CALL(*mockAdjRib, processRibMessage(testing::_))
+      .WillOnce([&](const RibOutMessage& message) {
+        delivered = true;
+        ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(message));
+        const auto& announcement = std::get<RibOutAnnouncement>(message);
+        EXPECT_TRUE(announcement.routeRefresh);
+        ASSERT_EQ(announcement.entries.size(), 1);
+        EXPECT_EQ(announcement.entries.front().prefix, kV6Prefix1);
+      });
+
+  mockAdjRib->testOnlyDeferInitDump = true;
+  peerMgr_->scheduleRibDumpForAdjRib(
+      mockAdjRib,
+      RibDumpReq(
+          kPeerId1,
+          false /* sendAddPath */,
+          true /* routeRefresh */,
+          BgpUpdateAfi::AFI_IPv6));
+
+  evb.loopOnce();
+  EXPECT_FALSE(delivered);
+  EXPECT_TRUE(mockAdjRib->isRibDumpScheduled());
+
+  mockAdjRib->testOnlyDeferInitDump = false;
+  evb.loop();
+  folly::coro::blockingWait(peerMgr_->asyncScope_.joinAsync());
+  EXPECT_TRUE(delivered);
+  EXPECT_FALSE(mockAdjRib->isRibDumpScheduled());
+
+  mockAdjRib->resetChangeListConsumer();
+  evb.loop();
+  testing::Mock::VerifyAndClearExpectations(mockAdjRib.get());
+}
+
+TEST_F(
+    RibInitialAnnouncementTestFixture,
+    ScheduleRibDumpForAdjRib_OrdinaryDumpRemainsAllAfi) {
+  auto& evb = peerMgr_->getEventBase();
+  auto mockAdjRib =
+      setupMockAdjRib(evb, kPeerId1, AsNum(kAsn1), sessionTerminateBaton_);
+  establishSessionForRibDump(mockAdjRib);
+  peerMgr_->adjRibs_[kPeerId1] = mockAdjRib;
+
+  auto v4Announcement = createRibSingleAnnounce(
+      kV4Prefix1, kV4Nexthop1, kLocalRouteAs, false, false);
+  auto v6Announcement = createRibSingleAnnounce(
+      kV6Prefix1, kV6Nexthop1, kLocalRouteAs, false, false);
+  peerMgr_->handleShadowRibEntryAnnouncement(
+      std::get<RibOutAnnouncement>(v4Announcement));
+  peerMgr_->handleShadowRibEntryAnnouncement(
+      std::get<RibOutAnnouncement>(v6Announcement));
+
+  EXPECT_CALL(*mockAdjRib, processRibMessage(testing::_))
+      .WillOnce([](const RibOutMessage& message) {
+        ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(message));
+        const auto& announcement = std::get<RibOutAnnouncement>(message);
+        EXPECT_FALSE(announcement.routeRefresh);
+        ASSERT_EQ(announcement.entries.size(), 2);
+        bool sawV4 = false;
+        bool sawV6 = false;
+        for (const auto& entry : announcement.entries) {
+          sawV4 |= entry.prefix == kV4Prefix1;
+          sawV6 |= entry.prefix == kV6Prefix1;
+        }
+        EXPECT_TRUE(sawV4);
+        EXPECT_TRUE(sawV6);
+      });
+
+  peerMgr_->scheduleRibDumpForAdjRib(mockAdjRib);
+
+  evb.loop();
+  folly::coro::blockingWait(peerMgr_->asyncScope_.joinAsync());
+  EXPECT_FALSE(mockAdjRib->isRibDumpScheduled());
+
+  mockAdjRib->resetChangeListConsumer();
+  evb.loop();
+  testing::Mock::VerifyAndClearExpectations(mockAdjRib.get());
+}
+
 /*
  * schedule -> cancel -> reschedule leaves two coroutines on asyncScope_ (the
  * cancelled one is still queued, plus the rescheduled one), but the AdjRib
@@ -1556,10 +1707,19 @@ TEST_F(
    */
   EXPECT_CALL(*mockAdjRib, processRibMessage(testing::_))
       .Times(1)
-      .WillOnce(testing::Return());
+      .WillOnce([](const RibOutMessage& message) {
+        ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(message));
+        EXPECT_FALSE(std::get<RibOutAnnouncement>(message).routeRefresh);
+      });
 
-  // Schedule -> one coroutine.
-  peerMgr_->scheduleRibDumpForAdjRib(mockAdjRib);
+  // Schedule an RR dump -> one coroutine.
+  peerMgr_->scheduleRibDumpForAdjRib(
+      mockAdjRib,
+      RibDumpReq(
+          kPeerId1,
+          false /* sendAddPath */,
+          true /* routeRefresh */,
+          BgpUpdateAfi::AFI_IPv4));
   EXPECT_TRUE(mockAdjRib->isRibDumpScheduled());
   EXPECT_EQ(1, peerMgr_->asyncScope_.remaining());
 
@@ -1571,7 +1731,7 @@ TEST_F(
   EXPECT_FALSE(mockAdjRib->isRibDumpScheduled());
   EXPECT_EQ(1, peerMgr_->asyncScope_.remaining());
 
-  // Reschedule -> a second coroutine is queued; two tasks are now pending.
+  // Reschedule an ordinary dump -> two tasks are now pending.
   peerMgr_->scheduleRibDumpForAdjRib(mockAdjRib);
   EXPECT_TRUE(mockAdjRib->isRibDumpScheduled());
   EXPECT_EQ(2, peerMgr_->asyncScope_.remaining());

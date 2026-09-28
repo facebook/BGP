@@ -890,7 +890,8 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
    * superseded or cancelled on teardown.
    */
   folly::coro::Task<void> processRibDumpReqWithCancellationCoro(
-      std::shared_ptr<AdjRib> adjRib);
+      std::shared_ptr<AdjRib> adjRib,
+      RibDumpReq ribDumpReq);
   void processRibDumpReq(
       const std::shared_ptr<AdjRib>& adjRib,
       const RibDumpReq& ribDumpReq,
@@ -917,6 +918,9 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
    * its token is passed into asyncScope_.add().
    */
   void scheduleRibDumpForAdjRib(const std::shared_ptr<AdjRib>& adjRib);
+  void scheduleRibDumpForAdjRib(
+      const std::shared_ptr<AdjRib>& adjRib,
+      RibDumpReq ribDumpReq);
 
   /**
    * When sessionEstablished is called, the peer should eventually
