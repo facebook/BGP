@@ -92,12 +92,10 @@ class RibEntry {
   }
 
   // retrieve size of all paths received from all peers
+  // O(1): maintained incrementally by updatePath(), the sole mutator of
+  // routeInfos_
   uint64_t getAllPathsCnt() const {
-    uint64_t cnt{0};
-    for (const auto& peerItr : routeInfos_) {
-      cnt += peerItr.second.size();
-    }
-    return cnt;
+    return allPathsCount_;
   }
 
   /*
@@ -349,6 +347,14 @@ class RibEntry {
       nettools::bgplib::BgpPeerId,
       folly::F14NodeMap<uint32_t, std::shared_ptr<RouteInfo>>>
       routeInfos_;
+
+  /*
+   * Cached total path count across all peers (sum of inner-map sizes).
+   * Maintained by updatePath(); keeps getAllPathsCnt() O(1). uint32_t is
+   * ample: per-prefix paths are bounded by peer count x path IDs, and a
+   * count anywhere near this width would indicate far bigger problems.
+   */
+  uint32_t allPathsCount_{0};
 
   /*
    * Aggregated value of received UCMP weight of all ECMP paths. Will be 0 if

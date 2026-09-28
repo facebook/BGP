@@ -7904,6 +7904,24 @@ TEST_F(RibFixture, PathsAreUpdatedByPathId) {
       nettools::bgplib::BgpPeerId(eBgpPeer1_.addr, eBgpPeer1_.routerId));
   EXPECT_FALSE(routeInfos.contains(path1Id));
   EXPECT_TRUE(routeInfos.contains(path2Id));
+
+  // announce from a second peer: new outer-map entry bumps the count
+  entry1.updatePath(eBgpPeer2_, attrs1, true, path1Id);
+  EXPECT_EQ(2, entry1.getAllPathsCnt());
+
+  // no-op re-announcement (same attrs, same peer) leaves the count alone
+  EXPECT_FALSE(entry1.updatePath(eBgpPeer2_, attrs1, true, path1Id));
+  EXPECT_EQ(2, entry1.getAllPathsCnt());
+
+  // withdrawing an unknown path ID is a no-op for the count
+  EXPECT_FALSE(entry1.updatePath(eBgpPeer2_, nullptr, true, path2Id));
+  EXPECT_EQ(2, entry1.getAllPathsCnt());
+
+  // withdrawing all remaining paths drains the count to zero
+  entry1.updatePath(eBgpPeer1_, nullptr, true, path2Id);
+  entry1.updatePath(eBgpPeer2_, nullptr, true, path1Id);
+  EXPECT_EQ(0, entry1.getAllPathsCnt());
+  EXPECT_EQ(0, entry1.getAllPaths().size());
 }
 
 TEST_F(RibNexthopTrackingFixture, RibInAnnouncementWithNexthopTracking) {

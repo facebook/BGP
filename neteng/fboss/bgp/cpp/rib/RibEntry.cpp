@@ -48,6 +48,7 @@ bool RibEntry::updatePath(
         unlinkRouteInfoFromNexthop(peerId, receivedPathId, *nexthopInfo);
       }
       auto ret = routeInfos_[peerId].erase(receivedPathId);
+      allPathsCount_ -= ret;
       needPathSelection_ |= ret;
       if (routeInfos_[peerId].empty()) {
         RibStats::decrRibPaths();
@@ -87,8 +88,12 @@ bool RibEntry::updatePath(
     // first time receive a route from peer for this prefix
     RibStats::incrRibPaths();
     routeInfos_.emplace(peerId, std::move(info));
+    ++allPathsCount_;
   } else {
-    iter->second.insert_or_assign(receivedPathId, std::move(routeInfo));
+    if (iter->second.insert_or_assign(receivedPathId, std::move(routeInfo))
+            .second) {
+      ++allPathsCount_;
+    }
   }
   needPathSelection_ = true;
   return true;
