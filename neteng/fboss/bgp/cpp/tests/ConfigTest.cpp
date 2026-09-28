@@ -1885,15 +1885,16 @@ TEST_F(ConfigTestFixture, PeeringParamsPeerGroupName) {
 }
 
 /*
- * Verify the peer > peer-group resolution hierarchy for both
- * route_refresh (RFC 2918) and enhanced_route_refresh (RFC 7313).
+ * Verify the global gate and peer > peer-group resolution hierarchy for
+ * route_refresh (RFC 2918). Enhanced Route Refresh (RFC 7313) retains its
+ * existing peer > peer-group > false behavior.
  *
- * 4 peers cover the matrix per flag:
- *   peer7  — neither peer nor peer-group sets it -> default false
+ * The global Route Refresh setting is a kill switch. When enabled, the
+ * peer/peer-group hierarchy supplies an enabled default:
+ *   peer7  — neither peer nor peer-group sets it -> default true
  *   peer8  — peer-group sets true, peer doesn't override -> inherited true
  *   peer9  — peer overrides peer-group's true with false -> peer wins
- *   peer10 — per-peer sets true with no peer-group -> peer wins (default
- *            cascade through to params)
+ *   peer10 — per-peer sets true with no peer-group -> peer wins
  */
 TEST_F(ConfigTestFixture, RouteRefreshConfigHierarchy) {
   // Local constants for peer10 (Utils.h only defines through index 9).
@@ -1918,7 +1919,7 @@ TEST_F(ConfigTestFixture, RouteRefreshConfigHierarchy) {
   peerGroups->emplace_back(peergroup);
   testConfig.peer_groups().from_optional(peerGroups);
 
-  // peer7: no peer-group, no per-peer flag -> defaults false.
+  // peer7: no peer-group and no per-peer flag.
   {
     thrift::BgpPeer p;
     p.remote_as_4_byte() = kPeerAsn7;
@@ -1965,13 +1966,23 @@ TEST_F(ConfigTestFixture, RouteRefreshConfigHierarchy) {
     testConfig.peers()->emplace_back(p);
   }
 
+  // The global setting defaults false and masks even an explicit peer enable.
+  {
+    Config config(testConfig);
+    const auto& peerToConfig = config.getPeerToConfig();
+    auto params = config.getPeeringParamsForPeer(*peerToConfig.at(kPeerAddr10));
+    EXPECT_FALSE(params.isRouteRefreshConfigured);
+  }
+
+  testConfig.bgp_setting_config() = thrift::BgpSettingConfig();
+  testConfig.bgp_setting_config()->enable_route_refresh() = true;
   Config config(testConfig);
   const auto& peerToConfig = config.getPeerToConfig();
 
-  // peer7: defaults
+  // peer7: global setting supplies the enabled default.
   {
     auto params = config.getPeeringParamsForPeer(*peerToConfig.at(kPeerAddr7));
-    EXPECT_FALSE(params.isRouteRefreshConfigured);
+    EXPECT_TRUE(params.isRouteRefreshConfigured);
     EXPECT_FALSE(params.isEnhancedRouteRefreshConfigured);
   }
   // peer8: inherits from peer-group
@@ -3355,6 +3366,7 @@ TEST_F(ConfigTestFixture, BgpSettingConfigTest) {
     EXPECT_FALSE(globalConfig->enableNextHopTracking);
     EXPECT_FALSE(globalConfig->enableUpdateGroup);
     EXPECT_FALSE(globalConfig->enableOptimizedGR);
+    EXPECT_FALSE(globalConfig->enableRouteRefresh);
 
     std::map<std::string, int64_t> counters;
     fb303::ThreadCachedServiceData::getShared()->getCounters(counters);
@@ -3369,6 +3381,7 @@ TEST_F(ConfigTestFixture, BgpSettingConfigTest) {
     thriftConfig.bgp_setting_config()->enable_update_group() = true;
     thriftConfig.bgp_setting_config()->enable_next_hop_tracking() = true;
     thriftConfig.bgp_setting_config()->enable_optimized_GR() = true;
+    thriftConfig.bgp_setting_config()->enable_route_refresh() = true;
 
     Config config(thriftConfig);
     auto globalConfig = config.getBgpGlobalConfig();
@@ -3377,6 +3390,7 @@ TEST_F(ConfigTestFixture, BgpSettingConfigTest) {
     EXPECT_TRUE(globalConfig->enableNextHopTracking);
     EXPECT_TRUE(globalConfig->enableUpdateGroup);
     EXPECT_TRUE(globalConfig->enableOptimizedGR);
+    EXPECT_TRUE(globalConfig->enableRouteRefresh);
 
     std::map<std::string, int64_t> counters;
     fb303::ThreadCachedServiceData::getShared()->getCounters(counters);

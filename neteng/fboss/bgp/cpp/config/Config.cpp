@@ -971,6 +971,7 @@ void Config::populateConfigDatabase(
   bool enableOptimizedGR{false};
   bool enableAddPathGrReconcile{false};
   bool enableLegacyV4NlriEncoding{false};
+  bool enableRouteRefresh{false};
   std::optional<bool> enableStreamSubscriberBackpressure;
   std::vector<std::string> includeInterfaceRegexes{};
   bool enableNetlinkDampening{false};
@@ -1012,6 +1013,9 @@ void Config::populateConfigDatabase(
     if (auto legacyV4NlriEncodingFlag =
             setting->enable_legacy_v4_nlri_encoding()) {
       enableLegacyV4NlriEncoding = *legacyV4NlriEncodingFlag;
+    }
+    if (auto routeRefreshFlag = setting->enable_route_refresh()) {
+      enableRouteRefresh = *routeRefreshFlag;
     }
     if (auto streamSubscriberBackpressureFlag =
             setting->enable_stream_subscriber_backpressure()) {
@@ -1078,7 +1082,8 @@ void Config::populateConfigDatabase(
       enableAddPathGrReconcile,
       enableLegacyV4NlriEncoding,
       enableStreamSubscriberBackpressure,
-      enableNetlinkDampening);
+      enableNetlinkDampening,
+      enableRouteRefresh);
 
   // populate peer groups
   if (config_.peer_groups().has_value()) {
@@ -1207,8 +1212,8 @@ PeeringParams Config::getPeeringParamsHelper(
   params.enforceFirstAs = config.enforceFirstAs.value_or(false);
   params.isEnhancedRouteRefreshConfigured = EnhancedRouteRefreshConfigured{
       config.enhancedRouteRefresh.value_or(false)};
-  params.isRouteRefreshConfigured =
-      RouteRefreshConfigured{config.routeRefresh.value_or(false)};
+  params.isRouteRefreshConfigured = RouteRefreshConfigured{
+      globalConfig_->enableRouteRefresh && config.routeRefresh.value_or(true)};
   params.ttlSecurityHops = config.ttlSecurityHops;
   if (params.ttlSecurityHops.has_value()) {
     auto hops = params.ttlSecurityHops.value();

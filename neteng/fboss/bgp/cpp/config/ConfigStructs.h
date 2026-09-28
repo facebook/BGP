@@ -143,7 +143,8 @@ struct BgpGlobalConfig {
        * them. Keep new parameters here.
        */
       const EnableNetlinkDampening enableNetlinkDampening =
-          EnableNetlinkDampening{false})
+          EnableNetlinkDampening{false},
+      const bool enableRouteRefresh = false)
       : localAsn(localAsn),
         routerId(routerId),
         clusterId(clusterId),
@@ -178,6 +179,7 @@ struct BgpGlobalConfig {
         enablePolicyDefaultAction(enablePolicyDefaultAction),
         enableAddPathGrReconcile(enableAddPathGrReconcile),
         enableLegacyV4NlriEncoding(enableLegacyV4NlriEncoding),
+        enableRouteRefresh(enableRouteRefresh),
         enableStreamSubscriberBackpressure(enableStreamSubscriberBackpressure) {
   }
 
@@ -328,6 +330,12 @@ struct BgpGlobalConfig {
    * off: every peer keeps MP_REACH and existing update groups are unchanged.
    */
   const bool enableLegacyV4NlriEncoding{false};
+
+  /**
+   * Globally enable RFC 2918 Route Refresh capability advertisement. Peer and
+   * peer-group settings can narrow this enablement but cannot bypass it.
+   */
+  const bool enableRouteRefresh{false};
 
   /**
    * This value controls the bounded egress path of a thrift stream

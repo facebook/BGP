@@ -524,6 +524,7 @@ void BgpServiceBase::getBgpLocalConfig(TBgpLocalConfig& retConfig) {
   retConfig.program_ucmp_weights() = globalConfig->computeUcmpFromLbwComm;
   retConfig.ucmp_width() = globalConfig->ucmpWidth;
   retConfig.enable_update_group() = globalConfig->enableUpdateGroup;
+  retConfig.enable_route_refresh() = globalConfig->enableRouteRefresh;
   decrRequestsInExecution();
 }
 
