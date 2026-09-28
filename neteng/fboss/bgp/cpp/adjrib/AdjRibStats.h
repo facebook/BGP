@@ -265,12 +265,16 @@ class AdjRibStats {
    */
   void incrementTimesDetachedByBlocking();
   void incrementTimesDetachedByPolicy();
+  void incrementTimesDetachedByRouteRefresh();
   void incrementTimesRejoined();
   uint64_t getNumTimesDetachedByBlocking() const {
     return numTimesDetachedByBlocking;
   }
   uint64_t getNumTimesDetachedByPolicy() const {
     return numTimesDetachedByPolicy;
+  }
+  uint64_t getNumTimesDetachedByRouteRefresh() const {
+    return numTimesDetachedByRouteRefresh;
   }
   uint64_t getNumTimesRejoined() const {
     return numTimesRejoined;
@@ -334,6 +338,7 @@ class AdjRibStats {
   uint64_t transientRouteUpdatesSuppressed{0};
   uint64_t numTimesDetachedByBlocking{0}; // Cumulative blocking detachments
   uint64_t numTimesDetachedByPolicy{0}; // Cumulative policy detachments
+  uint64_t numTimesDetachedByRouteRefresh{0}; // Cumulative RR detachments
   uint64_t numTimesRejoined{0}; // Cumulative rejoins into the group
 
   const std::string peerIdOdsStr;

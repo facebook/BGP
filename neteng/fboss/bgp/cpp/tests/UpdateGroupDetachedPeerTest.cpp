@@ -90,6 +90,9 @@
       UpdateGroupDetachedPeerTest,                                             \
       CanAnnounceEntrySkipsSuppressAsLoopWithUpdateGroup);                     \
   FRIEND_TEST(                                                                 \
+      UpdateGroupDetachedPeerTest,                                             \
+      RouteRefreshDoesNotAdvanceJoinedPeerConsumer);                           \
+  FRIEND_TEST(                                                                 \
       UpdateGroupDetachLifecycleTest,                                          \
       DetachCopiesEgressStatsAndCollapseReconciles);                           \
   FRIEND_TEST(                                                                 \
@@ -888,6 +891,7 @@ TEST_F(UpdateGroupDetachedPeerTest, DetachReasonCountsInitiallyZero) {
   auto adjRib0 = createAndRegisterPeer(0);
   EXPECT_EQ(adjRib0->getStats().getNumTimesDetachedByBlocking(), 0);
   EXPECT_EQ(adjRib0->getStats().getNumTimesDetachedByPolicy(), 0);
+  EXPECT_EQ(adjRib0->getStats().getNumTimesDetachedByRouteRefresh(), 0);
 }
 
 TEST_F(UpdateGroupDetachedPeerTest, DetachSlowPeerIncrementsBlockingCount) {
@@ -915,6 +919,65 @@ TEST_F(UpdateGroupDetachedPeerTest, DetachPeerPolicyIncrementsPolicyCount) {
   // Policy detach bumps only the detached peer's policy counter.
   EXPECT_EQ(adjRib0->getStats().getNumTimesDetachedByPolicy(), 1);
   EXPECT_EQ(adjRib0->getStats().getNumTimesDetachedByBlocking(), 0);
+}
+
+TEST_F(
+    UpdateGroupDetachedPeerTest,
+    DetachPeerRouteRefreshMovesOnlyRequesterToPrivateLane) {
+  auto requester = createAndRegisterPeer(0);
+  auto sibling = createAndRegisterPeer(1);
+  requester->setPeerState(PeerUpdateState::JOINED_RUNNING);
+  sibling->setPeerState(PeerUpdateState::JOINED_RUNNING);
+  group_->markPeerInSync(requester);
+  group_->markPeerInSync(sibling);
+  group_->setLastSeenRibVersion(42);
+
+  group_->detachPeer(requester, AdjRibOutGroup::DetachReason::RouteRefresh);
+
+  EXPECT_EQ(requester->getPeerState(), PeerUpdateState::DETACHED_RUNNING);
+  EXPECT_TRUE(group_->getDetachedPeers().contains(requester));
+  EXPECT_FALSE(group_->isPeerInSync(0));
+  EXPECT_EQ(requester->getLastSeenRibVersion(), 42);
+  EXPECT_EQ(requester->getDetachedRibVersion(), 42);
+  EXPECT_EQ(requester->getStats().getNumTimesDetachedByRouteRefresh(), 1);
+  EXPECT_EQ(requester->getStats().getNumTimesDetachedByBlocking(), 0);
+  EXPECT_EQ(requester->getStats().getNumTimesDetachedByPolicy(), 0);
+
+  EXPECT_EQ(sibling->getPeerState(), PeerUpdateState::JOINED_RUNNING);
+  EXPECT_TRUE(group_->isPeerInSync(1));
+  EXPECT_FALSE(group_->getDetachedPeers().contains(sibling));
+}
+
+TEST_F(
+    UpdateGroupDetachedPeerTest,
+    RouteRefreshDoesNotAdvanceJoinedPeerConsumer) {
+  auto adjRib = createAndRegisterPeer(0);
+  adjRib->setPeerState(PeerUpdateState::JOINED_RUNNING);
+
+  auto changeTracker =
+      std::make_shared<ChangeTracker<ShadowRibEntry>>("test_tracker");
+  ConsumerBitmap addPathBitmap;
+  ConsumerBitmap nonAddPathBitmap;
+  ASSERT_TRUE(adjRib->registerDetachedConsumer(
+      changeTracker, addPathBitmap, nonAddPathBitmap));
+  auto consumer = adjRib->getChangeListConsumer();
+  ASSERT_NE(consumer, nullptr);
+
+  ShadowRibEntry entry;
+  entry.prefix = kV4Prefix1;
+  auto trackable =
+      std::make_unique<TrackableObject<ShadowRibEntry>>(std::move(entry));
+  changeTracker->publishChange(trackable.get());
+  ASSERT_FALSE(consumer->isReady());
+
+  RibOutAnnouncement announcement;
+  announcement.routeRefresh = true;
+  announcement.sendWithEoR = true;
+  adjRib->maybeBeginRrDump(announcement);
+  adjRib->maybeEndRrDump(announcement);
+
+  EXPECT_FALSE(consumer->isReady());
+  adjRib->resetChangeListConsumer();
 }
 
 TEST_F(UpdateGroupDetachedPeerTest, RegisterDetachedConsumerSkipsIfAlreadySet) {

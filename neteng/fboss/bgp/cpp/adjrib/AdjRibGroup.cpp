@@ -3718,6 +3718,9 @@ void AdjRibOutGroup::detachPeer(
     case DetachReason::Policy:
       adjRib->incrementTimesDetachedByPolicy();
       break;
+    case DetachReason::RouteRefresh:
+      adjRib->incrementTimesDetachedByRouteRefresh();
+      break;
   }
 
   /*

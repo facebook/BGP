@@ -907,11 +907,12 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
    */
   bool hasBlockedPeers() const noexcept;
 
-  /* Why a peer was detached from the group; selects the cumulative
-   * AdjRibStats counter bumped by detachPeer. */
+  /* Why a peer was detached from the group. Reasons with an associated
+   * AdjRibStats counter select the counter bumped by detachPeer. */
   enum class DetachReason {
     Blocking, // Slow/blocked peer (backpressure)
     Policy, // Egress policy re-evaluation / group move
+    RouteRefresh, // Requester-specific RFC 2918 replay
   };
 
   /*
@@ -919,9 +920,9 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
    * Copies egress prefix counts, clones packing list, marks detached,
    * sets version fields, clears blocked bitmap, cancels slow peer timer,
    * registers detached CL consumer, propagates EoR state, bumps the
-   * cumulative AdjRibStats detachment counter for `reason`, and transitions the
-   * peer to its detached state (DETACHED_BLOCKED if blocked, else
-   * DETACHED_RUNNING).
+   * cumulative AdjRibStats detachment counter for `reason` when one exists, and
+   * transitions the peer to its detached state (DETACHED_BLOCKED if blocked,
+   * else DETACHED_RUNNING).
    * Does NOT handle slow-peer-specific logic (stats, last-synced guard).
    */
   void detachPeer(

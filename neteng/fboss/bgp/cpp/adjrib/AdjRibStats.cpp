@@ -66,6 +66,7 @@ void AdjRibStats::clear() {
   transientRouteUpdatesSuppressed = 0;
   numTimesDetachedByBlocking = 0;
   numTimesDetachedByPolicy = 0;
+  numTimesDetachedByRouteRefresh = 0;
   numTimesRejoined = 0;
   totalIngressRouteFilterDenied = 0;
   preFilterDroppedRouteCount = 0;
@@ -343,6 +344,10 @@ void AdjRibStats::incrementTimesDetachedByBlocking() {
 
 void AdjRibStats::incrementTimesDetachedByPolicy() {
   ++numTimesDetachedByPolicy;
+}
+
+void AdjRibStats::incrementTimesDetachedByRouteRefresh() {
+  ++numTimesDetachedByRouteRefresh;
 }
 
 void AdjRibStats::incrementTimesRejoined() {

@@ -944,7 +944,7 @@ void AdjRib::maybeEndRrDump(const RibOutAnnouncement& announcement) noexcept {
      * processRibOutAnnouncement; sync loop with no co_await; mirrors the
      * existing periodic-timer call site at AdjRib.cpp:1224.
      */
-    if (changeListConsumer_) {
+    if (changeListConsumer_ && !isUpdateGroupEnabled()) {
       changeListConsumer_->iterateChangesToEnd();
     }
   }

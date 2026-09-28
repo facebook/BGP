@@ -721,6 +721,9 @@ class AdjRib : boost::noncopyable,
   void incrementTimesDetachedByPolicy() noexcept {
     stats_.incrementTimesDetachedByPolicy();
   }
+  void incrementTimesDetachedByRouteRefresh() noexcept {
+    stats_.incrementTimesDetachedByRouteRefresh();
+  }
   void incrementTimesRejoined() noexcept {
     stats_.incrementTimesRejoined();
   }

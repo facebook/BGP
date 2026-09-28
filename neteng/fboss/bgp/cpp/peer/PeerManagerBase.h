@@ -922,6 +922,10 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
       const std::shared_ptr<AdjRib>& adjRib,
       RibDumpReq ribDumpReq);
 
+  void scheduleRouteRefreshForUpdateGroupPeer(
+      const std::shared_ptr<AdjRib>& adjRib,
+      RibDumpReq ribDumpReq);
+
   /**
    * When sessionEstablished is called, the peer should eventually
    * receive the routes from this BGP speaker's RIB.

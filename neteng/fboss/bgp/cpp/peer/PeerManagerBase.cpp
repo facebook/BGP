@@ -912,11 +912,20 @@ folly::coro::Task<void> PeerManagerBase::processAdjRibEvent(
             static_cast<int>(routeRefreshMsg.requestedAfi));
         auto peerIdAdjRib = adjRibs_.find(peerId);
         if (peerIdAdjRib != adjRibs_.cend() && peerIdAdjRib->second) {
-          co_await processRibDumpReqCoro(RibDumpReq(
+          auto ribDumpReq = RibDumpReq(
               peerId,
               peerIdAdjRib->second->sendAddPath(),
               true /* routeRefresh */,
-              routeRefreshMsg.requestedAfi /* filterAfi */));
+              routeRefreshMsg.requestedAfi /* filterAfi */);
+          if (enableUpdateGroup_ &&
+              peerIdAdjRib->second->isUpdateGroupEnabled() &&
+              peerIdAdjRib->second->getPeerState() ==
+                  PeerUpdateState::JOINED_RUNNING) {
+            scheduleRouteRefreshForUpdateGroupPeer(
+                peerIdAdjRib->second, std::move(ribDumpReq));
+          } else {
+            co_await processRibDumpReqCoro(std::move(ribDumpReq));
+          }
         }
         co_return;
       });
@@ -1887,6 +1896,32 @@ void PeerManagerBase::scheduleRibDumpForAdjRib(
           &evb_,
           processRibDumpReqWithCancellationCoro(adjRib, std::move(ribDumpReq))),
       adjRib->getCancellationTokenForNewRibDump());
+}
+
+void PeerManagerBase::scheduleRouteRefreshForUpdateGroupPeer(
+    const std::shared_ptr<AdjRib>& adjRib,
+    RibDumpReq ribDumpReq) {
+  if (adjRib->getPeerState() != PeerUpdateState::JOINED_RUNNING) {
+    XLOGF(
+        WARN,
+        "Peer {}: Route Refresh is not yet supported for update-group state {}",
+        adjRib->getPeerName(),
+        adjRib->getPeerState());
+    return;
+  }
+
+  auto updateGroup = adjRib->getUpdateGroup();
+  if (!updateGroup) {
+    XLOGF(
+        ERR,
+        "Peer {}: cannot process update-group Route Refresh without a group",
+        adjRib->getPeerName());
+    return;
+  }
+
+  updateGroup->detachPeer(adjRib, AdjRibOutGroup::DetachReason::RouteRefresh);
+  scheduleRibDumpForAdjRib(adjRib, std::move(ribDumpReq));
+  updateGroup->recoverIfNoSyncPeers();
 }
 
 void PeerManagerBase::maybeBufferRibDumpReq(

@@ -17,16 +17,14 @@
 /* E2E tests: Route Refresh Interactions (PART 11)
  * Prefix range: 30.x.0.0/16
  *
- * Route refresh for JOINED_RUNNING peer — simulate RR via route burst
+ * Route refresh for JOINED_RUNNING peer — real RFC 2918 request
  * Route refresh for DETACHED_BLOCKED peer — already in detached mode
  * Route refresh for DETACHED_INIT_DUMP peer — defer until init complete
  * Route refresh during acceptance procedure — peer in DRJ
  * Route refresh for all peers simultaneously — burst to all
  *
- * No sendRouteRefresh helper exists in the E2E framework. Route refresh is
- * simulated by injecting bursts of routes with different communities (each
- * triggers a separate MRAI cycle), which exercises the same group processing
- * paths that a real route refresh would.
+ * The JOINED_RUNNING case uses a real BGP Route Refresh message. The remaining
+ * state cases are migrated to real requests in the state-completion diffs.
  */
 
 #include "neteng/fboss/bgp/cpp/tests/e2e/UpdateGroupSlowPeerTestCommon.h"
@@ -37,13 +35,12 @@ namespace facebook {
 namespace bgp {
 
 /*
- * Route refresh for JOINED_RUNNING peer
- * Simulate route refresh by injecting a burst of 3 routes with different
- * communities (separate UPDATEs = separate MRAI cycles). Verify both peers
- * receive all routes and remain JOINED_RUNNING. Group cycles normally.
+ * A real Route Refresh from a joined peer detaches only that requester, sends
+ * the requested-AFI replay over its private lane, and rejoins it. The sibling
+ * stays in sync and must not receive the replay.
  */
-TEST_P(UpdateGroupMultiPeerTest, JoinedRunning_RouteRefreshBurst) {
-  XLOG(INFO, "=== TEST: JoinedRunning_RouteRefreshBurst ===");
+TEST_P(UpdateGroupMultiPeerTest, JoinedRunning_RouteRefreshRequesterOnly) {
+  XLOGF(INFO, "=== TEST: JoinedRunning_RouteRefreshRequesterOnly ===");
 
   addPeer(kDefaultPeerSpec3);
   addPeer(kDefaultPeerSpec4);
@@ -63,32 +60,43 @@ TEST_P(UpdateGroupMultiPeerTest, JoinedRunning_RouteRefreshBurst) {
   ASSERT_TRUE(waitForPeerState(kPeerAddr3, PeerUpdateState::JOINED_RUNNING));
   ASSERT_TRUE(waitForPeerState(kPeerAddr4, PeerUpdateState::JOINED_RUNNING));
 
-  /* Simulate route refresh: burst of 3 routes, inject-drain one at a time */
-  for (int i = 1; i <= 3; ++i) {
-    auto prefix = fmt::format("30.{}.0.0/16", i);
-    auto community = fmt::format("30{:02d}:1", i);
-    injectLocalRoutesAtRuntime({prefix}, {community}, 150);
-    ASSERT_TRUE(
-        waitForRouteInShadowRib(folly::IPAddress::createNetwork(prefix)));
-    EXPECT_TRUE(verifyRouteAdd(
-        "v4",
-        fmt::format("30.{}.0.0", i),
-        16,
-        kPeerAddr3,
-        getExpectedNexthop(kPeerAddr3),
-        "4200000001",
-        community));
-    EXPECT_TRUE(verifyRouteAdd(
-        "v4",
-        fmt::format("30.{}.0.0", i),
-        16,
-        kPeerAddr4,
-        getExpectedNexthop(kPeerAddr4),
-        "4200000001",
-        community));
-  }
+  const auto prefix = folly::IPAddress::createNetwork("30.1.0.0/16");
+  injectLocalRoutesAtRuntime({"30.1.0.0/16"}, {"3001:1"}, 150);
+  ASSERT_TRUE(waitForRouteInShadowRib(prefix));
+  EXPECT_TRUE(verifyRouteAdd(
+      "v4",
+      "30.1.0.0",
+      16,
+      kPeerAddr3,
+      getExpectedNexthop(kPeerAddr3),
+      "4200000001",
+      "3001:1"));
+  EXPECT_TRUE(verifyRouteAdd(
+      "v4",
+      "30.1.0.0",
+      16,
+      kPeerAddr4,
+      getExpectedNexthop(kPeerAddr4),
+      "4200000001",
+      "3001:1"));
+  drainPeerQueueCompletely(peerId3);
+  drainPeerQueueCompletely(peerId4);
 
-  /* Both peers still JOINED_RUNNING after burst */
+  sendRouteRefreshToPeer(
+      peerId3, BgpUpdateAfi::AFI_IPv4, BgpUpdateSafi::SAFI_UNICAST);
+
+  EXPECT_TRUE(verifyRouteAdd(
+      "v4",
+      "30.1.0.0",
+      16,
+      kPeerAddr3,
+      getExpectedNexthop(kPeerAddr3),
+      "4200000001",
+      "3001:1"));
+  EXPECT_EQ(drainPeerQueueCompletely(peerId4, 3, 10), 0)
+      << "sibling update-group peer received the requester-only replay";
+
+  drainPeerQueueCompletely(peerId3);
   ASSERT_TRUE(waitForPeerState(kPeerAddr3, PeerUpdateState::JOINED_RUNNING));
   ASSERT_TRUE(waitForPeerState(kPeerAddr4, PeerUpdateState::JOINED_RUNNING));
   EXPECT_TRUE(isPeerInSync(kPeerAddr3));
@@ -96,7 +104,7 @@ TEST_P(UpdateGroupMultiPeerTest, JoinedRunning_RouteRefreshBurst) {
   verifySlowPeerInvariants(kPeerAddr3);
   verifySlowPeerInvariants(kPeerAddr4);
 
-  XLOG(INFO, "=== TEST PASSED: JoinedRunning_RouteRefreshBurst ===");
+  XLOGF(INFO, "=== TEST PASSED: JoinedRunning_RouteRefreshRequesterOnly ===");
 }
 
 /*
