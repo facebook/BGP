@@ -48,7 +48,7 @@ TIpPrefix createTIpPrefix(const folly::CIDRNetwork& prefix) {
   }
   tPrefix.num_bits() = prefixLen;
 
-  // fboss cli use num_bits to distiguish local routes from other routes
+  // fboss cli use num_bits to distinguish local routes from other routes
   if (addr == kLocalRouteV4Nexthop || addr == kLocalRouteV6Nexthop) {
     tPrefix.num_bits() = 0;
   }
