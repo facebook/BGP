@@ -81,6 +81,9 @@
       SendBgpUpdatesNoChangelistDrainsFull);                                   \
   FRIEND_TEST(                                                                 \
       SendBgpMessagesFixtureWithBackpressure,                                  \
+      ActiveSenderRetriesFullDrainViaPackingTimer);                            \
+  FRIEND_TEST(                                                                 \
+      SendBgpMessagesFixtureWithBackpressure,                                  \
       ActivateDetachedModeProcessingDrainsPL);
 
 #define AdjRibStats_TEST_FRIENDS                                               \
@@ -254,6 +257,16 @@ class SendBgpMessagesFixtureWithBackpressure : public SendBgpMessagesFixture {
           *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
     }
     co_return true;
+  }
+
+  folly::coro::Task<bool> WaitForPackingListToDrain() {
+    for (size_t attempts = 0; attempts < 10000; ++attempts) {
+      if (adjRib_->attrToPrefixMap_.empty()) {
+        co_return true;
+      }
+      co_await folly::coro::co_reschedule_on_current_executor;
+    }
+    co_return false;
   }
 };
 
@@ -1819,6 +1832,53 @@ CO_TEST_F(
 
   /* Both the withdrawal and announcement should have been sent. */
   EXPECT_EQ(2, realMessages.size());
+}
+
+CO_TEST_F(
+    SendBgpMessagesFixtureWithBackpressure,
+    ActiveSenderRetriesFullDrainViaPackingTimer) {
+  SetUpAdjRibStateForUnit(false /* eorPending */, true /* eorSent */);
+  UpdateAttrToPrefixMap(nullptr, {kV4Prefix1});
+  UpdateAttrToPrefixMap(GetBgpPath(kV4Nexthop1), {kV4Prefix2});
+
+  /*
+   * A normal sender exits after encountering backpressure. Its tail rearms the
+   * packing timer, which retries the full drain that collided with the sender.
+   */
+  FillQueueToSize(highWm_);
+  adjRib_->changeListConsumeTimer_ =
+      folly::AsyncTimeout::make(evb_, [this]() noexcept {
+        adjRib_->scheduleSendBgpUpdates(false /* tryPullNewChangeItems */);
+      });
+  adjRib_->mraiInterval = 0;
+  adjRib_->scheduleSendBgpUpdates(true /* tryPullNewChangeItems */);
+  evb_.loopOnce();
+  EXPECT_TRUE(adjRib_->sendCoroScheduled_);
+
+  adjRib_->scheduleSendBgpUpdates(false /* tryPullNewChangeItems */);
+  std::thread evbThread([this]() { evb_.loopForever(); });
+
+  auto [packingListDrained, queueDrained] = co_await folly::coro::collectAll(
+      co_withExecutor(&evb_, WaitForPackingListToDrain()),
+      co_withExecutor(&evb_, DrainQueueToLowWm()));
+
+  evb_.terminateLoopSoon();
+  evbThread.join();
+
+  EXPECT_TRUE(packingListDrained);
+  EXPECT_TRUE(queueDrained);
+  EXPECT_TRUE(adjRib_->attrToPrefixMap_.empty());
+
+  size_t updateCount = 0;
+  while (!adjRib_->boundedAdjRibOutQueue_->empty()) {
+    auto message = co_await facebook::bgp::test::boundedPop(
+        *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
+    if (message &&
+        std::get<std::shared_ptr<const BgpUpdate2>>(*message) != nullptr) {
+      ++updateCount;
+    }
+  }
+  EXPECT_EQ(updateCount, 2);
 }
 
 /**

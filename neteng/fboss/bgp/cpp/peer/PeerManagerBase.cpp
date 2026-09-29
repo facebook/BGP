@@ -918,9 +918,7 @@ folly::coro::Task<void> PeerManagerBase::processAdjRibEvent(
               true /* routeRefresh */,
               routeRefreshMsg.requestedAfi /* filterAfi */);
           if (enableUpdateGroup_ &&
-              peerIdAdjRib->second->isUpdateGroupEnabled() &&
-              peerIdAdjRib->second->getPeerState() ==
-                  PeerUpdateState::JOINED_RUNNING) {
+              peerIdAdjRib->second->isUpdateGroupEnabled()) {
             scheduleRouteRefreshForUpdateGroupPeer(
                 peerIdAdjRib->second, std::move(ribDumpReq));
           } else {
@@ -1674,9 +1672,20 @@ folly::coro::Task<void> PeerManagerBase::processRibDumpReqWithCancellationCoro(
    * carries out-delay logic that does not apply under update groups).
    */
   if (adjRib->isDetachedPeer()) {
-    adjRib->registerDetachedConsumer(
-        changeListTracker_, addPathConsumerBitmap_, nonAddPathConsumerBitmap_);
-    adjRib->activateDetachedModeProcessing();
+    if (!adjRib->getChangeListConsumer()) {
+      adjRib->registerDetachedConsumer(
+          changeListTracker_,
+          addPathConsumerBitmap_,
+          nonAddPathConsumerBitmap_);
+    }
+    /*
+     * A peer blocked on a group push must wait for markPeerUnblocked(). A peer
+     * transiently blocked in its private sender already has a sender that will
+     * resume when its queue drains.
+     */
+    if (adjRib->getPeerState() != PeerUpdateState::DETACHED_BLOCKED) {
+      adjRib->activateDetachedModeProcessing();
+    }
   }
   co_return;
 }
@@ -1901,15 +1910,6 @@ void PeerManagerBase::scheduleRibDumpForAdjRib(
 void PeerManagerBase::scheduleRouteRefreshForUpdateGroupPeer(
     const std::shared_ptr<AdjRib>& adjRib,
     RibDumpReq ribDumpReq) {
-  if (adjRib->getPeerState() != PeerUpdateState::JOINED_RUNNING) {
-    XLOGF(
-        WARN,
-        "Peer {}: Route Refresh is not yet supported for update-group state {}",
-        adjRib->getPeerName(),
-        adjRib->getPeerState());
-    return;
-  }
-
   auto updateGroup = adjRib->getUpdateGroup();
   if (!updateGroup) {
     XLOGF(
@@ -1919,9 +1919,39 @@ void PeerManagerBase::scheduleRouteRefreshForUpdateGroupPeer(
     return;
   }
 
-  updateGroup->detachPeer(adjRib, AdjRibOutGroup::DetachReason::RouteRefresh);
+  const auto peerState = adjRib->getPeerState();
+  if (isRibDumpScheduledForAdjRib(adjRib)) {
+    XLOGF(
+        WARN,
+        "Peer {}: rejecting update-group Route Refresh in state {} because "
+        "another RIB dump is already pending or in flight",
+        adjRib->getPeerName(),
+        peerState);
+    return;
+  }
+  switch (peerState) {
+    case PeerUpdateState::JOINED_RUNNING:
+    case PeerUpdateState::JOINED_BLOCKED:
+      updateGroup->detachPeer(
+          adjRib, AdjRibOutGroup::DetachReason::RouteRefresh);
+      updateGroup->recoverIfNoSyncPeers();
+      break;
+    case PeerUpdateState::DETACHED_RUNNING:
+    case PeerUpdateState::DETACHED_BLOCKED:
+      break;
+    case PeerUpdateState::DOWN:
+    case PeerUpdateState::INIT:
+    case PeerUpdateState::DETACHED_INIT_DUMP:
+    case PeerUpdateState::DETACHED_READY_TO_JOIN:
+      XLOGF(
+          WARN,
+          "Peer {}: Route Refresh is not yet supported for update-group state {}",
+          adjRib->getPeerName(),
+          peerState);
+      return;
+  }
+
   scheduleRibDumpForAdjRib(adjRib, std::move(ribDumpReq));
-  updateGroup->recoverIfNoSyncPeers();
 }
 
 void PeerManagerBase::maybeBufferRibDumpReq(

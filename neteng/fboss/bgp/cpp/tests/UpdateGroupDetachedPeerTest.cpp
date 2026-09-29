@@ -116,6 +116,11 @@
       DownPeerDoesNotTransitionOnPeerUpdateState);                             \
   FRIEND_TEST(                                                                 \
       UpdateGroupDetachLifecycleTest,                                          \
+      JoinedPeerDoesNotEnterDetachedRejoinPath);                               \
+  FRIEND_TEST(                                                                 \
+      UpdateGroupDetachLifecycleTest, PendingRibDumpDefersDetachedRejoin);     \
+  FRIEND_TEST(                                                                 \
+      UpdateGroupDetachLifecycleTest,                                          \
       PeerAheadOfGroupDoesNotProceedOnChangelist);                             \
   FRIEND_TEST(                                                                 \
       UpdateGroupDetachLifecycleTest,                                          \
@@ -978,6 +983,30 @@ TEST_F(
 
   EXPECT_FALSE(consumer->isReady());
   adjRib->resetChangeListConsumer();
+}
+
+TEST_F(
+    UpdateGroupDetachedPeerTest,
+    DetachPeerRouteRefreshPreservesBlockedState) {
+  auto requester = createAndRegisterPeer(0);
+  auto sibling = createAndRegisterPeer(1);
+  requester->setPeerState(PeerUpdateState::JOINED_RUNNING);
+  sibling->setPeerState(PeerUpdateState::JOINED_RUNNING);
+  group_->markPeerInSync(requester);
+  group_->markPeerInSync(sibling);
+  group_->setLastSeenRibVersion(42);
+  group_->markPeerBlocked(requester);
+  ASSERT_EQ(requester->getPeerState(), PeerUpdateState::JOINED_BLOCKED);
+
+  group_->detachPeer(requester, AdjRibOutGroup::DetachReason::RouteRefresh);
+
+  EXPECT_EQ(requester->getPeerState(), PeerUpdateState::DETACHED_BLOCKED);
+  EXPECT_TRUE(group_->getDetachedPeers().contains(requester));
+  EXPECT_FALSE(group_->isPeerInSync(0));
+  EXPECT_EQ(requester->getLastSeenRibVersion(), 42);
+  EXPECT_EQ(requester->getDetachedRibVersion(), 42);
+  EXPECT_EQ(sibling->getPeerState(), PeerUpdateState::JOINED_RUNNING);
+  EXPECT_TRUE(group_->isPeerInSync(1));
 }
 
 TEST_F(UpdateGroupDetachedPeerTest, RegisterDetachedConsumerSkipsIfAlreadySet) {
@@ -5950,6 +5979,45 @@ TEST_F(
   EXPECT_EQ(adjRib0->getPeerState(), PeerUpdateState::DETACHED_READY_TO_JOIN);
   EXPECT_FALSE(adjRib0->isAdjRibFlagSet(AdjRib::IS_DETACHED_FAST_PEER));
   EXPECT_EQ(adjRib1->getPeerState(), PeerUpdateState::JOINED_RUNNING);
+}
+
+TEST_F(
+    UpdateGroupDetachLifecycleTest,
+    JoinedPeerDoesNotEnterDetachedRejoinPath) {
+  auto adjRib = createAndRegisterPeer(0);
+  setUpJoinedRunningPeer(adjRib, 0);
+  group_->setLastSeenRibVersion(42);
+  adjRib->setLastSeenRibVersion(42);
+  adjRib->setDetachedRibVersion(42);
+  addPrefixToGroupPL(folly::CIDRNetwork{folly::IPAddress("10.0.0.0"), 24});
+
+  adjRib->transitionPeerUpdateState();
+
+  EXPECT_EQ(adjRib->getPeerState(), PeerUpdateState::JOINED_RUNNING);
+  EXPECT_TRUE(group_->isPeerInSync(0));
+  EXPECT_FALSE(group_->getDetachedPeers().contains(adjRib));
+}
+
+TEST_F(UpdateGroupDetachLifecycleTest, PendingRibDumpDefersDetachedRejoin) {
+  auto adjRib = createAndRegisterPeer(0);
+  auto sibling = createAndRegisterPeer(1);
+  setUpJoinedRunningPeer(adjRib, 0);
+  setUpJoinedRunningPeer(sibling, 1);
+  group_->setLastSeenRibVersion(42);
+  adjRib->setLastSeenRibVersion(42);
+  group_->detachPeer(adjRib, AdjRibOutGroup::DetachReason::RouteRefresh);
+  addPrefixToGroupPL(folly::CIDRNetwork{folly::IPAddress("10.0.0.0"), 24});
+  ASSERT_EQ(adjRib->getPeerState(), PeerUpdateState::DETACHED_RUNNING);
+  ASSERT_TRUE(adjRib->isDFP());
+  adjRib->getCancellationTokenForNewRibDump();
+
+  adjRib->transitionPeerUpdateState();
+
+  EXPECT_EQ(adjRib->getPeerState(), PeerUpdateState::DETACHED_RUNNING);
+  EXPECT_FALSE(adjRib->isAdjRibFlagSet(AdjRib::IS_DETACHED_FAST_PEER));
+  EXPECT_FALSE(group_->isPeerInSync(0));
+  EXPECT_TRUE(group_->getDetachedPeers().contains(adjRib));
+  adjRib->cancelRibDump();
 }
 
 /*

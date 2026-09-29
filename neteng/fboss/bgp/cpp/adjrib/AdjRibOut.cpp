@@ -189,12 +189,15 @@ void AdjRib::processRibMessage(const RibOutMessage& ribMsg) noexcept {
 }
 
 void AdjRib::scheduleSendBgpUpdates(bool tryPullNewChangeItems) noexcept {
-  if (!sendCoroScheduled_ && asyncScope_ &&
-      !asyncScope_->isScopeCancellationRequested()) {
-    asyncScope_->add(
-        co_withExecutor(&evb_, sendBgpUpdates(tryPullNewChangeItems)));
-    sendCoroScheduled_ = true;
+  if (sendCoroScheduled_) {
+    return;
   }
+  if (!asyncScope_ || asyncScope_->isScopeCancellationRequested()) {
+    return;
+  }
+  asyncScope_->add(
+      co_withExecutor(&evb_, sendBgpUpdates(tryPullNewChangeItems)));
+  sendCoroScheduled_ = true;
 }
 
 bool AdjRib::scheduleDeferredPushToPeer(
@@ -2008,14 +2011,16 @@ bool AdjRib::isDetachedPeer() const {
  * Neither: reschedule packing timers to continue processing.
  */
 void AdjRib::transitionPeerUpdateState() noexcept {
-  if (peerState_ == PeerUpdateState::DOWN || !adjRibOutGroup_) {
-    /*
-     * If PeerManager::sessionTerminated runs before adjRib::sessionTerminated,
-     * then we could see PeerUpdateState is DOWN when this method runs. We
-     * should do nothing for peers whose state was set to DOWN and whose
-     * adjRibGroup was set to nullptr via
-     * PeerManager::sessionTerminated -> AdjRibGroup::unregisterPeer.
-     */
+  if (!adjRibOutGroup_ ||
+      (peerState_ != PeerUpdateState::DETACHED_INIT_DUMP &&
+       peerState_ != PeerUpdateState::DETACHED_RUNNING)) {
+    return;
+  }
+  if (isRibDumpScheduled()) {
+    XLOGF(
+        DBG1,
+        "Peer {}: deferring detached rejoin while a RIB dump is scheduled",
+        getPeerName());
     return;
   }
   /*

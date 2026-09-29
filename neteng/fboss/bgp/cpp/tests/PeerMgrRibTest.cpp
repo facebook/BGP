@@ -51,6 +51,12 @@
       ScheduleRibDumpForAdjRib_OrdinaryDumpRemainsAllAfi);                      \
   FRIEND_TEST(                                                                  \
       RibInitialAnnouncementTestFixture,                                        \
+      ScheduleRibDumpForDetachedBlocked_RegistersMissingConsumer);              \
+  FRIEND_TEST(                                                                  \
+      RibInitialAnnouncementTestFixture,                                        \
+      UpdateGroupRouteRefreshWarnsWhenDumpAlreadyScheduled);                    \
+  FRIEND_TEST(                                                                  \
+      RibInitialAnnouncementTestFixture,                                        \
       ScheduleRibDumpForAdjRib_RescheduleAfterCancelDumpsOnce);                 \
   FRIEND_TEST(                                                                  \
       RibInitialAnnouncementTestFixture,                                        \
@@ -1683,6 +1689,74 @@ TEST_F(
   mockAdjRib->resetChangeListConsumer();
   evb.loop();
   testing::Mock::VerifyAndClearExpectations(mockAdjRib.get());
+}
+
+TEST_F(
+    RibInitialAnnouncementTestFixture,
+    ScheduleRibDumpForDetachedBlocked_RegistersMissingConsumer) {
+  auto& evb = peerMgr_->getEventBase();
+  auto config = getConfig(
+      true /* includeStaticPeer */, true /* includeDynamicShivPeer */);
+  auto adjRib = setupAdjRib(
+      evb,
+      peerMgr_->getChangeListTracker(),
+      kPeerId1,
+      AsNum(kAsn1),
+      sessionTerminateBaton_,
+      config);
+  establishSessionForRibDump(adjRib);
+  adjRib->setEnableUpdateGroup(true);
+  adjRib->setPeerState(PeerUpdateState::DETACHED_BLOCKED);
+  adjRib->resetChangeListConsumer();
+  ASSERT_EQ(adjRib->getChangeListConsumer(), nullptr);
+
+  peerMgr_->scheduleRibDumpForAdjRib(adjRib);
+  evb.loop();
+  folly::coro::blockingWait(peerMgr_->asyncScope_.joinAsync());
+
+  EXPECT_NE(adjRib->getChangeListConsumer(), nullptr);
+  EXPECT_EQ(adjRib->getPeerState(), PeerUpdateState::DETACHED_BLOCKED);
+
+  adjRib->resetChangeListConsumer();
+  evb.loop();
+}
+
+TEST_F(
+    RibInitialAnnouncementTestFixture,
+    UpdateGroupRouteRefreshWarnsWhenDumpAlreadyScheduled) {
+  auto& evb = peerMgr_->getEventBase();
+  auto mockAdjRib =
+      setupMockAdjRib(evb, kPeerId1, AsNum(kAsn1), sessionTerminateBaton_);
+  establishSessionForRibDump(mockAdjRib);
+  auto group = std::make_shared<AdjRibOutGroup>(
+      evb, "route-refresh-test", 1, true, UpdateGroupKey{});
+  mockAdjRib->setUpdateGroup(group);
+  mockAdjRib->setEnableUpdateGroup(true);
+  mockAdjRib->setPeerState(PeerUpdateState::DETACHED_RUNNING);
+  auto pendingDumpToken = mockAdjRib->getCancellationTokenForNewRibDump();
+  ASSERT_TRUE(mockAdjRib->isRibDumpScheduled());
+  ASSERT_FALSE(pendingDumpToken.isCancellationRequested());
+
+  auto& messages = subscribeToLogMessages("", folly::LogLevel::WARN);
+  messages.clear();
+  peerMgr_->scheduleRouteRefreshForUpdateGroupPeer(
+      mockAdjRib,
+      RibDumpReq(
+          kPeerId1,
+          false /* sendAddPath */,
+          true /* routeRefresh */,
+          BgpUpdateAfi::AFI_IPv4));
+
+  ASSERT_EQ(messages.size(), 1);
+  EXPECT_THAT(
+      messages.front().first.getMessage(),
+      testing::HasSubstr(
+          "rejecting update-group Route Refresh in state DETACHED_RUNNING"));
+  EXPECT_EQ(peerMgr_->asyncScope_.remaining(), 0);
+
+  mockAdjRib->cancelRibDump();
+  mockAdjRib->resetChangeListConsumer();
+  evb.loop();
 }
 
 /*
