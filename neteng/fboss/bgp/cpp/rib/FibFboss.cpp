@@ -23,6 +23,7 @@
 #include <thrift/lib/cpp/util/EnumUtils.h>
 #include <thrift/lib/cpp2/op/Get.h>
 
+#include "neteng/fboss/bgp/cpp/BgpServiceUtil.h"
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
 #include "neteng/fboss/bgp/cpp/common/ThriftClientUtils.h"
 #include "neteng/fboss/bgp/cpp/rib/FibFboss.h"
@@ -44,6 +45,47 @@ static const int kBgpClientId =
 } // namespace
 
 namespace facebook::bgp {
+
+namespace {
+
+/**
+ * Retain topology metadata only for nexthops in the submitted FBOSS request.
+ *
+ * The source map can contain metadata for nexthops that platform normalization
+ * removes. Filtering keeps retained FIB-out state aligned with the exact
+ * request sent to the agent and avoids retaining unrelated topology entries.
+ * Local routes do not submit topology metadata. The original shared map is
+ * reused when every entry was submitted, which avoids an unnecessary copy.
+ */
+std::shared_ptr<const FibOutTopologyInfoMap> retainSubmittedTopologyInfo(
+    const WeightedNexthopMap& submittedNexthops,
+    bool isLocalRoute,
+    std::shared_ptr<const FibOutTopologyInfoMap> topologyInfo) {
+  if (isLocalRoute || !topologyInfo || topologyInfo->empty()) {
+    return nullptr;
+  }
+
+  bool everyTopologyEntryWasSubmitted = true;
+  for (const auto& [address, _] : *topologyInfo) {
+    if (submittedNexthops.find(address) == submittedNexthops.end()) {
+      everyTopologyEntryWasSubmitted = false;
+      break;
+    }
+  }
+  if (everyTopologyEntryWasSubmitted) {
+    return topologyInfo;
+  }
+
+  auto retained = std::make_shared<FibOutTopologyInfoMap>();
+  for (const auto& [address, info] : *topologyInfo) {
+    if (submittedNexthops.find(address) != submittedNexthops.end()) {
+      retained->emplace(address, info);
+    }
+  }
+  return retained->empty() ? nullptr : std::move(retained);
+}
+
+} // namespace
 
 FibFboss::FibFboss(
     folly::EventBase* evb,
@@ -104,7 +146,7 @@ void FibFboss::disconnectAgent() {
   batch_.reset();
 }
 
-void FibFboss::updateUnicastRoute(
+std::optional<FibOutRoute> FibFboss::updateUnicastRoute(
     const folly::CIDRNetwork& prefix,
     std::shared_ptr<const BgpPath> attrsToBeAdvertised,
     std::shared_ptr<const WeightedNexthopMap> weightedNexthops,
@@ -114,8 +156,9 @@ void FibFboss::updateUnicastRoute(
         nextHopInfoMap,
     const std::optional<uint32_t>& classId,
     std::shared_ptr<const NexthopTopoInfoMap> nexthopTopoInfoMap,
-    const BgpRouteType routeType) {
-  updateUnicastRouteWithBackup(
+    const BgpRouteType routeType,
+    bool enableFibOutTracking) {
+  return updateUnicastRouteWithBackup(
       prefix,
       std::move(attrsToBeAdvertised),
       std::move(weightedNexthops),
@@ -125,10 +168,11 @@ void FibFboss::updateUnicastRoute(
       classId,
       std::move(nexthopTopoInfoMap),
       routeType,
-      std::nullopt);
+      std::nullopt,
+      enableFibOutTracking);
 }
 
-void FibFboss::updateUnicastRouteWithBackup(
+std::optional<FibOutRoute> FibFboss::updateUnicastRouteWithBackup(
     const folly::CIDRNetwork& prefix,
     std::shared_ptr<const BgpPath> attrsToBeAdvertised,
     std::shared_ptr<const WeightedNexthopMap> weightedNexthops,
@@ -137,11 +181,12 @@ void FibFboss::updateUnicastRouteWithBackup(
     const folly::F14NodeMap<folly::IPAddress, facebook::bgp::NexthopInfo>&,
     const std::optional<uint32_t>& classId,
     std::shared_ptr<const NexthopTopoInfoMap> nexthopTopoInfoMap,
-    const BgpRouteType,
-    const std::optional<folly::IPAddress>& backupAddr) {
+    const BgpRouteType /* routeType */,
+    const std::optional<folly::IPAddress>& backupAddr,
+    bool enableFibOutTracking) {
   // if not connected, nothing to do
   if (!client_) {
-    return;
+    return {};
   }
 
   if (!weightedNexthops || weightedNexthops->empty() || !installToFib) {
@@ -155,10 +200,18 @@ void FibFboss::updateUnicastRouteWithBackup(
     batch_->toDelete.push_back(std::move(ipPrefix));
     batch_->waitForAck[attrsToBeAdvertised][prefix] =
         std::move(weightedNexthops);
-    return;
+    return enableFibOutTracking ? std::optional<FibOutRoute>{FibOutRoute{}}
+                                : std::nullopt;
   }
 
+  const bool backupAddrFamilyMatches =
+      backupAddr && prefix.first.family() == backupAddr->family();
   std::vector<fboss::NextHopThrift> tNextHops;
+  FibNexthopSet fibOutNextHops;
+  if (enableFibOutTracking && !isLocalRouteBest) {
+    fibOutNextHops.reserve(
+        weightedNexthops->size() + (backupAddrFamilyMatches ? 1 : 0));
+  }
   for (const auto& nhwt : *weightedNexthops) {
     const auto& nh = nhwt.first;
     fboss::NextHopThrift nht;
@@ -172,10 +225,17 @@ void FibFboss::updateUnicastRouteWithBackup(
       }
     }
     tNextHops.emplace_back(std::move(nht));
+
+    if (enableFibOutTracking && !isLocalRouteBest) {
+      fibOutNextHops.push_back(
+          FibOutNexthop{
+              .address = nh,
+              .weight = nhwt.second,
+              .role = FibOutNexthopRole::PRIMARY,
+          });
+    }
   }
 
-  const bool backupAddrFamilyMatches =
-      backupAddr && prefix.first.family() == backupAddr->family();
   if (backupAddr && !backupAddrFamilyMatches) {
     XLOGF_EVERY_MS(
         ERR,
@@ -185,13 +245,14 @@ void FibFboss::updateUnicastRouteWithBackup(
         folly::IPAddress::networkToString(prefix));
   }
   /*
-   * TODO: For now, treat all bgp routes as EBGP. Change it to be either EBGP
-   * or IBGP depending on the route type
-   * When installToFib is true for local route, we set the nexthop empty.
-   * This is what agent expects to program Null nexthop.
+   * When installToFib is true for a local route, send an empty nexthop list.
+   * This is the representation the agent expects for a null route.
    */
   if (isLocalRouteBest) {
     tNextHops.clear();
+    if (enableFibOutTracking) {
+      fibOutNextHops.clear();
+    }
     XLOGF(
         DBG1,
         "Local route programming with empty nexthop for prefix {}",
@@ -202,6 +263,15 @@ void FibFboss::updateUnicastRouteWithBackup(
     backupNht.weight() = 0;
     backupNht.role() = fboss::NextHopRole::BACKUP;
     tNextHops.emplace_back(std::move(backupNht));
+
+    if (enableFibOutTracking) {
+      fibOutNextHops.push_back(
+          FibOutNexthop{
+              .address = *backupAddr,
+              .weight = 0,
+              .role = FibOutNexthopRole::BACKUP,
+          });
+    }
   }
 
   XLOGF(
@@ -227,12 +297,29 @@ void FibFboss::updateUnicastRouteWithBackup(
   tRoute.dest()->prefixLength() = prefix.second;
   tRoute.adminDistance() = fboss::AdminDistance::EBGP;
   tRoute.nextHops() = std::move(tNextHops);
+  std::optional<int32_t> fibOutClassId;
   if (classId) {
     // no error checking here as config has done validation.
-    tRoute.classID() = static_cast<fboss::cfg::AclLookupClass>(*classId);
+    const auto wireClassId = static_cast<fboss::cfg::AclLookupClass>(*classId);
+    tRoute.classID() = wireClassId;
+    fibOutClassId = static_cast<int32_t>(wireClassId);
   }
   batch_->toAdd.emplace_back(std::move(tRoute));
+  auto fibOutTopologyInfo = enableFibOutTracking
+      ? retainSubmittedTopologyInfo(
+            *weightedNexthops, isLocalRouteBest, std::move(nexthopTopoInfoMap))
+      : nullptr;
   batch_->waitForAck[attrsToBeAdvertised][prefix] = std::move(weightedNexthops);
+
+  return enableFibOutTracking
+      ? std::optional<FibOutRoute>{FibOutRoute{
+            .nexthops = std::move(fibOutNextHops),
+            .metadata = FibOutRouteMetadata::program(
+                static_cast<int32_t>(fboss::AdminDistance::EBGP),
+                fibOutClassId),
+            .topologyInfo = std::move(fibOutTopologyInfo),
+        }}
+      : std::nullopt;
 }
 
 folly::coro::Task<void> FibFboss::program(bool isSync) {

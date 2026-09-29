@@ -16,6 +16,9 @@
 
 #pragma once
 
+#include <cstdint>
+#include <memory>
+
 #include <folly/IPAddress.h>
 #include <folly/IntrusiveList.h>
 #include <folly/logging/xlog.h>
@@ -28,6 +31,7 @@
 #include "neteng/fboss/bgp/cpp/lib/BgpStructs.h"
 #include "neteng/fboss/bgp/cpp/nexthopTracker/NexthopCache.h"
 #include "neteng/fboss/bgp/cpp/nexthopTracker/NexthopInfo.h"
+#include "neteng/fboss/bgp/cpp/rib/FibOut.h"
 #include "neteng/fboss/bgp/cpp/rib/RouteInfoSelector.h"
 
 namespace facebook::bgp {
@@ -402,6 +406,9 @@ class RibEntry {
 
   // Multipath nexthop and associated topology information
   std::shared_ptr<const NexthopTopoInfoMap> nexthopsAndTopoInfo_;
+
+  // Last platform-normalized FIB request submitted for this live RIB entry.
+  std::shared_ptr<const FibOutState> fibOutState_;
 
   // map of add path IDs to routeInfos
   folly::F14NodeMap<uint32_t, std::shared_ptr<RouteInfo>> multipaths_{};

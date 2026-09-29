@@ -25,7 +25,8 @@ class FibDev : public Fib {
  public:
   ~FibDev() override;
 
-  void updateUnicastRoute(
+  /** Stage one development FIB request and return its normalized form. */
+  std::optional<FibOutRoute> updateUnicastRoute(
       const folly::CIDRNetwork& prefix,
       std::shared_ptr<const BgpPath> attrsToBeAdvertised,
       std::shared_ptr<const WeightedNexthopMap> weightedNexthops,
@@ -34,7 +35,8 @@ class FibDev : public Fib {
       const folly::F14NodeMap<folly::IPAddress, facebook::bgp::NexthopInfo>&,
       const std::optional<uint32_t>& classId = std::nullopt,
       std::shared_ptr<const NexthopTopoInfoMap> nexthopTopoInfoMap = nullptr,
-      const BgpRouteType routeType = BgpRouteType::UNKNOWN) override;
+      const BgpRouteType routeType = BgpRouteType::UNKNOWN,
+      bool enableFibOutTracking = false) override;
 
   folly::coro::Task<void> program(bool isSync = false) override;
 

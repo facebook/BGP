@@ -159,6 +159,7 @@ add_library(bgp_fib_fboss
 target_link_libraries(bgp_fib_fboss
   bgp_common
   bgp_fib_holddown
+  bgp_fib_out
   bgp_lib_core
   cfgr_fboss_common_cpp2
   FBThrift::thriftcpp2

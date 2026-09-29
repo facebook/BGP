@@ -20,10 +20,14 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#define MockFibFboss_TEST_FRIENDS                        \
-  friend class FibFixture;                               \
-  FRIEND_TEST(FibFixture, updateUnicastRoute);           \
-  FRIEND_TEST(FibFixture, updateUnicastRouteWithBackup); \
+#define MockFibFboss_TEST_FRIENDS                                    \
+  friend class FibFixture;                                           \
+  FRIEND_TEST(FibFixture, FibOutMatchesExistingAdminDistance);       \
+  FRIEND_TEST(FibFixture, FibOutMatchesFbossPayload);                \
+  FRIEND_TEST(FibFixture, FibOutRetainsOnlySubmittedTopology);       \
+  FRIEND_TEST(FibFixture, FibOutTrackingDisabledSkipsNormalization); \
+  FRIEND_TEST(FibFixture, updateUnicastRoute);                       \
+  FRIEND_TEST(FibFixture, updateUnicastRouteWithBackup);             \
   FRIEND_TEST(FibFixture, TestStopFib);
 
 #define FibFboss_TEST_FRIENDS                    \
@@ -338,7 +342,7 @@ TEST_F(FibFixture, updateUnicastRoute) {
     nextHopTopoInfoMap->emplace(kPeerAddr1, topoInfo);
     nextHopTopoInfoMap->emplace(kPeerAddr2, topoInfo);
 
-    fib_->updateUnicastRoute(
+    const auto fibOut = fib_->updateUnicastRoute(
         kV4Prefix1,
         nullptr,
         nhWts,
@@ -346,13 +350,18 @@ TEST_F(FibFixture, updateUnicastRoute) {
         true,
         nexthopInfoMap_,
         std::nullopt /* classId */,
-        nextHopTopoInfoMap);
+        nextHopTopoInfoMap,
+        BgpRouteType::UNKNOWN,
+        true /* enableFibOutTracking */);
     // expected output
     const auto& expectedToAdd =
         lambdaCreateExpectedToAdd(kV4Prefix1, nhWts, nextHopTopoInfoMap);
     // test
     EXPECT_TRUE(fib_->batch_->toDelete.empty());
     EXPECT_THAT(fib_->batch_->toAdd, UnorderedElementsAreArray(expectedToAdd));
+    ASSERT_TRUE(fibOut.has_value());
+    ASSERT_NE(fibOut->topologyInfo, nullptr);
+    EXPECT_EQ(*fibOut->topologyInfo, *nextHopTopoInfoMap);
     clearTestSetup();
   }
 
@@ -460,6 +469,176 @@ TEST_F(FibFixture, updateUnicastRouteWithBackup) {
   const std::vector expectedLocalRoute{makeExpectedRoute(kV6Prefix1, {})};
   EXPECT_THAT(
       fib_->batch_->toAdd, UnorderedElementsAreArray(expectedLocalRoute));
+
+  folly::coro::blockingWait(asyncScope_.cancelAndJoinAsync());
+}
+
+TEST_F(FibFixture, FibOutMatchesFbossPayload) {
+  auto weightedNexthops = std::make_shared<WeightedNexthopMap>();
+  weightedNexthops->emplace(kV6Nexthop1, 10);
+  const auto backupAddr = folly::IPAddress("2001:db8::1");
+
+  const auto fibOut = fib_->updateUnicastRouteWithBackup(
+      kV6Prefix1,
+      nullptr,
+      weightedNexthops,
+      /*isLocalRouteBest=*/false,
+      /*installToFib=*/true,
+      nexthopInfoMap_,
+      7,
+      nullptr,
+      BgpRouteType::EBGP,
+      backupAddr,
+      /*enableFibOutTracking=*/true);
+
+  ASSERT_TRUE(fibOut.has_value());
+  EXPECT_EQ(fibOut->metadata.operation(), FibOutOperation::PROGRAM);
+  EXPECT_EQ(
+      fibOut->metadata.adminDistance(),
+      static_cast<int32_t>(fboss::AdminDistance::EBGP));
+  EXPECT_EQ(fibOut->metadata.classId(), 7);
+  EXPECT_THAT(
+      fibOut->nexthops,
+      UnorderedElementsAreArray(
+          FibNexthopSet{
+              FibOutNexthop{
+                  .address = kV6Nexthop1,
+                  .weight = 10,
+                  .role = FibOutNexthopRole::PRIMARY,
+              },
+              FibOutNexthop{
+                  .address = backupAddr,
+                  .weight = 0,
+                  .role = FibOutNexthopRole::BACKUP,
+              }}));
+
+  const auto deletedFibOut = fib_->updateUnicastRoute(
+      kV6Prefix1,
+      nullptr,
+      weightedNexthops,
+      /*isLocalRouteBest=*/false,
+      /*installToFib=*/false,
+      nexthopInfoMap_,
+      std::nullopt,
+      nullptr,
+      BgpRouteType::UNKNOWN,
+      /*enableFibOutTracking=*/true);
+  ASSERT_TRUE(deletedFibOut.has_value());
+  EXPECT_EQ(deletedFibOut->metadata.operation(), FibOutOperation::NONE);
+  EXPECT_TRUE(deletedFibOut->nexthops.empty());
+
+  folly::coro::blockingWait(asyncScope_.cancelAndJoinAsync());
+}
+
+TEST_F(FibFixture, FibOutRetainsOnlySubmittedTopology) {
+  auto weightedNexthops = std::make_shared<WeightedNexthopMap>();
+  weightedNexthops->emplace(kV6Nexthop1, 10);
+  auto topologyInfo = std::make_shared<NexthopTopoInfoMap>();
+  topologyInfo->emplace(
+      kV6Nexthop1,
+      std::unordered_map<std::string, int64_t>{
+          {"rack_id", 1}, {"plane_id", 2}});
+  topologyInfo->emplace(
+      kV6Nexthop2,
+      std::unordered_map<std::string, int64_t>{
+          {"rack_id", 3}, {"plane_id", 4}});
+
+  const auto fibOut = fib_->updateUnicastRoute(
+      kV6Prefix1,
+      nullptr,
+      weightedNexthops,
+      /*isLocalRouteBest=*/false,
+      /*installToFib=*/true,
+      nexthopInfoMap_,
+      std::nullopt,
+      topologyInfo,
+      BgpRouteType::EBGP,
+      /*enableFibOutTracking=*/true);
+
+  ASSERT_TRUE(fibOut.has_value());
+  ASSERT_NE(fibOut->topologyInfo, nullptr);
+  ASSERT_EQ(fibOut->topologyInfo->size(), 1);
+  EXPECT_EQ(
+      fibOut->topologyInfo->at(kV6Nexthop1), topologyInfo->at(kV6Nexthop1));
+
+  const auto localFibOut = fib_->updateUnicastRoute(
+      kV6Prefix1,
+      nullptr,
+      weightedNexthops,
+      /*isLocalRouteBest=*/true,
+      /*installToFib=*/true,
+      nexthopInfoMap_,
+      std::nullopt,
+      topologyInfo,
+      BgpRouteType::LOCAL,
+      /*enableFibOutTracking=*/true);
+
+  ASSERT_TRUE(localFibOut.has_value());
+  EXPECT_TRUE(localFibOut->nexthops.empty());
+  EXPECT_EQ(localFibOut->topologyInfo, nullptr);
+
+  folly::coro::blockingWait(asyncScope_.cancelAndJoinAsync());
+}
+
+TEST_F(FibFixture, FibOutMatchesExistingAdminDistance) {
+  const std::vector<BgpRouteType> routeTypes{
+      BgpRouteType::LOCAL,
+      BgpRouteType::EBGP,
+      BgpRouteType::IBGP,
+      BgpRouteType::ConfedEBGP,
+      BgpRouteType::UNKNOWN,
+  };
+
+  for (const auto routeType : routeTypes) {
+    SCOPED_TRACE(static_cast<int>(routeType));
+    auto weightedNexthops = std::make_shared<WeightedNexthopMap>();
+    weightedNexthops->emplace(kV6Nexthop1, 10);
+
+    const auto fibOut = fib_->updateUnicastRoute(
+        kV6Prefix1,
+        nullptr,
+        weightedNexthops,
+        /*isLocalRouteBest=*/routeType == BgpRouteType::LOCAL,
+        /*installToFib=*/true,
+        nexthopInfoMap_,
+        std::nullopt,
+        nullptr,
+        routeType,
+        /*enableFibOutTracking=*/true);
+
+    ASSERT_TRUE(fibOut.has_value());
+    ASSERT_EQ(fib_->batch_->toAdd.size(), 1);
+    EXPECT_EQ(
+        *fib_->batch_->toAdd.front().adminDistance(),
+        fboss::AdminDistance::EBGP);
+    EXPECT_EQ(
+        fibOut->metadata.adminDistance(),
+        static_cast<int32_t>(fboss::AdminDistance::EBGP));
+    fib_->batch_->toAdd.clear();
+  }
+
+  folly::coro::blockingWait(asyncScope_.cancelAndJoinAsync());
+}
+
+TEST_F(FibFixture, FibOutTrackingDisabledSkipsNormalization) {
+  auto weightedNexthops = std::make_shared<WeightedNexthopMap>();
+  weightedNexthops->emplace(kV6Nexthop1, 10);
+
+  const auto fibOut = fib_->updateUnicastRouteWithBackup(
+      kV6Prefix1,
+      nullptr,
+      weightedNexthops,
+      /*isLocalRouteBest=*/false,
+      /*installToFib=*/true,
+      nexthopInfoMap_,
+      std::nullopt,
+      nullptr,
+      BgpRouteType::EBGP,
+      std::nullopt,
+      /*enableFibOutTracking=*/false);
+
+  EXPECT_FALSE(fibOut.has_value());
+  EXPECT_EQ(fib_->batch_->toAdd.size(), 1);
 
   folly::coro::blockingWait(asyncScope_.cancelAndJoinAsync());
 }

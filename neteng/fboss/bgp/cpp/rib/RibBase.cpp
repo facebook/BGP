@@ -321,6 +321,7 @@ void RibBase::cleanupCommon() noexcept {
   XLOGF(
       INFO, "[Exit] Clearing ribEntries_ ({} entries)...", ribEntries_.size());
   ribEntries_.clear();
+  fibNexthopSets_.clear();
   ribCounters_.reset();
   XLOG(INFO, "[Exit] ribEntries_ cleared");
 
@@ -439,7 +440,6 @@ folly::coro::Task<void> RibBase::processFibProgrammingMsgLoop() noexcept {
     auto toFibTotal = 0;
     auto iter = fibBatchList_.begin();
     auto endIter = fibBatchList_.end();
-    facebook::bgp::BgpRouteType routeType = BgpRouteType::UNKNOWN;
 
     {
       ScopedProfile profile("RibBase::fibProgramming_batch");
@@ -449,6 +449,7 @@ folly::coro::Task<void> RibBase::processFibProgrammingMsgLoop() noexcept {
         const auto& weightedNexthops = entry.getMultipathWeightedNexthops();
         const auto& bestPath = entry.getBestPath();
         const auto& nexthopTopoInfoMap = entry.getNexthopTopoInfoMap();
+        auto routeType = BgpRouteType::UNKNOWN;
         bool isLocalRouteBest = false;
         if (bestPath) {
           const auto& bestPathNexthop = bestPath->attrs->getNexthop();
@@ -460,7 +461,7 @@ folly::coro::Task<void> RibBase::processFibProgrammingMsgLoop() noexcept {
         const auto& installToFib = entry.getInstallToFib();
         ++iter;
 
-        fib_->updateUnicastRouteWithBackup(
+        auto fibOutRoute = fib_->updateUnicastRouteWithBackup(
             prefix,
             (bestPath) ? bestPath->attrs : nullptr,
             weightedNexthops,
@@ -471,7 +472,18 @@ folly::coro::Task<void> RibBase::processFibProgrammingMsgLoop() noexcept {
             nexthopTopoInfoMap,
             routeType,
             bestPath ? bestPath->attrs->getBackupAddr()
-                     : std::optional<folly::IPAddress>{});
+                     : std::optional<folly::IPAddress>{},
+            globalConfig_.enableFibOutTracking);
+        if (fibOutRoute) {
+          replaceFibOut(
+              entry,
+              FibOutState{
+                  .nexthops = fibNexthopSets_.getOrCreate(
+                      std::move(fibOutRoute->nexthops)),
+                  .metadata = fibOutRoute->metadata,
+                  .topologyInfo = std::move(fibOutRoute->topologyInfo),
+              });
+        }
         toFibTotal++;
 
         // log per prefix
@@ -715,6 +727,19 @@ void RibBase::maybeFlushNexthopSubscriptions() noexcept {
   pendingNexthopSubscriptions_.clear();
 }
 
+void RibBase::replaceFibOut(RibEntry& entry, FibOutState state) {
+  DCHECK(globalConfig_.enableFibOutTracking);
+  entry.fibOutState_ = std::make_shared<const FibOutState>(std::move(state));
+}
+
+void RibBase::eraseFibOut(RibEntry& entry) {
+  entry.fibOutState_.reset();
+}
+
+const FibOutState* RibBase::findFibOut(const RibEntry& entry) {
+  return entry.fibOutState_.get();
+}
+
 void RibBase::checkWithdrawalBeforeRouteProgrammed(
     folly::CIDRNetwork& prefix,
     RibEntry& entry) noexcept {
@@ -730,6 +755,7 @@ void RibBase::checkWithdrawalBeforeRouteProgrammed(
         folly::IPAddress::networkToString(prefix));
     ribCounters_.onPrefixRemoved(
         prefix.first.isV4(), prefix.second, entry.getInactivePathCnt());
+    eraseFibOut(entry);
     ribEntries_.erase(prefix);
   }
 }
@@ -2195,6 +2221,7 @@ void RibBase::handleFibProgrammedMessage(
                 folly::IPAddress::networkToString(prefix));
             ribCounters_.onPrefixRemoved(
                 prefix.first.isV4(), prefix.second, entry.getInactivePathCnt());
+            eraseFibOut(entry);
             ribEntries_.erase(prefix);
           } else {
             XLOGF(

@@ -47,7 +47,7 @@
 namespace facebook {
 namespace bgp {
 
-// Mock FIB that stages route updates and acknowledges them to RIB
+// Mock FIB that stages route updates and reports completion to the RIB.
 class TestFib : public Fib {
  public:
   using FibMessageQueue = Fib::FibMessageQueue;
@@ -55,8 +55,8 @@ class TestFib : public Fib {
 
   explicit TestFib(FibMessageQueue& toRibQ);
 
-  // Override Fib methods
-  void updateUnicastRoute(
+  /** Stage one test FIB request and return its normalized form. */
+  std::optional<FibOutRoute> updateUnicastRoute(
       const folly::CIDRNetwork& prefix,
       std::shared_ptr<const BgpPath> attrsToBeAdvertised,
       std::shared_ptr<const WeightedNexthopMap> weightedNexthops,
@@ -65,7 +65,8 @@ class TestFib : public Fib {
       const folly::F14NodeMap<folly::IPAddress, NexthopInfo>& nextHopInfoMap,
       const std::optional<uint32_t>& classId = std::nullopt,
       std::shared_ptr<const NexthopTopoInfoMap> nhtTopo = nullptr,
-      const BgpRouteType routeType = BgpRouteType::UNKNOWN) override;
+      const BgpRouteType routeType = BgpRouteType::UNKNOWN,
+      bool enableFibOutTracking = false) override;
 
   bool isConnected() const override;
 
@@ -82,7 +83,7 @@ class TestFib : public Fib {
   }
 
   /*
-   * Make the next program() call fail (not send ack to RIB).
+   * Make the next program() call fail without sending a completion to the RIB.
    * One-shot: resets to false after one failure.
    */
   void setFailNextProgram(bool fail) {

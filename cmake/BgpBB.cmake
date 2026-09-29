@@ -70,6 +70,7 @@ add_library(bgp_fib_ebb
 target_link_libraries(bgp_fib_ebb
   bgp_common
   bgp_fib_holddown
+  bgp_fib_out
   bgp_lib_core
   bgp_stats_base
   FBThrift::thriftcpp2

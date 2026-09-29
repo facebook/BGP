@@ -144,7 +144,8 @@ struct BgpGlobalConfig {
        */
       const EnableNetlinkDampening enableNetlinkDampening =
           EnableNetlinkDampening{false},
-      const bool enableRouteRefresh = false)
+      const bool enableRouteRefresh = false,
+      const bool enableFibOutTracking = false)
       : localAsn(localAsn),
         routerId(routerId),
         clusterId(clusterId),
@@ -180,8 +181,8 @@ struct BgpGlobalConfig {
         enableAddPathGrReconcile(enableAddPathGrReconcile),
         enableLegacyV4NlriEncoding(enableLegacyV4NlriEncoding),
         enableRouteRefresh(enableRouteRefresh),
-        enableStreamSubscriberBackpressure(enableStreamSubscriberBackpressure) {
-  }
+        enableStreamSubscriberBackpressure(enableStreamSubscriberBackpressure),
+        enableFibOutTracking(enableFibOutTracking) {}
 
   const uint32_t localAsn;
   const folly::IPAddress routerId;
@@ -358,6 +359,9 @@ struct BgpGlobalConfig {
    * gflag stays true.
    */
   const std::optional<bool> enableStreamSubscriberBackpressure;
+
+  // Record the last normalized platform FIB request for each RIB entry.
+  const bool enableFibOutTracking{false};
 };
 
 struct BgpCommonPeerGroupConfig {

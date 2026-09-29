@@ -26,16 +26,17 @@ namespace bgp {
 // TestFib Implementation
 TestFib::TestFib(FibMessageQueue& toRibQ) : toRibQ_(toRibQ) {}
 
-void TestFib::updateUnicastRoute(
+std::optional<FibOutRoute> TestFib::updateUnicastRoute(
     const folly::CIDRNetwork& prefix,
     std::shared_ptr<const BgpPath> attrsToBeAdvertised,
     std::shared_ptr<const WeightedNexthopMap> weightedNexthops,
-    const bool /*isLocalRouteBest*/,
-    const bool /*installToFib*/,
+    const bool isLocalRouteBest,
+    const bool installToFib,
     const folly::F14NodeMap<folly::IPAddress, NexthopInfo>& /*nextHopInfoMap*/,
     const std::optional<uint32_t>& /*classId*/,
     std::shared_ptr<const NexthopTopoInfoMap> /*nhtTopo*/,
-    const BgpRouteType /*routeType*/) {
+    const BgpRouteType /*routeType*/,
+    bool enableFibOutTracking) {
   staged_[attrsToBeAdvertised][prefix] = weightedNexthops;
   /*
    * Also store in programmedRoutes_ for test verification.
@@ -43,6 +44,29 @@ void TestFib::updateUnicastRoute(
    */
   programmedRoutes_[prefix] = weightedNexthops;
   programCallCount_++;
+
+  if (!weightedNexthops || weightedNexthops->empty() || !installToFib) {
+    return enableFibOutTracking ? std::optional<FibOutRoute>{FibOutRoute{}}
+                                : std::nullopt;
+  }
+
+  FibNexthopSet nexthops;
+  if (enableFibOutTracking && !isLocalRouteBest) {
+    nexthops.reserve(weightedNexthops->size());
+    for (const auto& [nexthop, weight] : *weightedNexthops) {
+      nexthops.push_back(
+          FibOutNexthop{
+              .address = nexthop,
+              .weight = weight,
+              .role = FibOutNexthopRole::PRIMARY,
+          });
+    }
+  }
+  return enableFibOutTracking ? std::optional<FibOutRoute>{FibOutRoute{
+                                    .nexthops = std::move(nexthops),
+                                    .metadata = FibOutRouteMetadata::program(),
+                                }}
+                              : std::nullopt;
 }
 
 bool TestFib::isConnected() const {

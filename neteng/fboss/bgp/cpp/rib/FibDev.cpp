@@ -36,7 +36,7 @@ void FibDev::stop() {
   waitForAck_.reset();
 }
 
-void FibDev::updateUnicastRoute(
+std::optional<FibOutRoute> FibDev::updateUnicastRoute(
     const folly::CIDRNetwork& prefix,
     std::shared_ptr<const BgpPath> attrsToBeAdvertised,
     std::shared_ptr<const WeightedNexthopMap> weightedNexthops,
@@ -45,7 +45,8 @@ void FibDev::updateUnicastRoute(
     const folly::F14NodeMap<folly::IPAddress, facebook::bgp::NexthopInfo>&,
     const std::optional<uint32_t>& /* classId */,
     std::shared_ptr<const NexthopTopoInfoMap> /* nexthopTopoInfoMap */,
-    const BgpRouteType) {
+    const BgpRouteType,
+    bool enableFibOutTracking) {
   if (!weightedNexthops || weightedNexthops->empty() ||
       (isLocalRouteBest && !installToFib)) {
     XLOGF(
@@ -53,7 +54,8 @@ void FibDev::updateUnicastRoute(
         "Deleting unicast prefix {}",
         folly::IPAddress::networkToString(prefix));
     (*waitForAck_)[attrsToBeAdvertised][prefix] = std::move(weightedNexthops);
-    return;
+    return enableFibOutTracking ? std::optional<FibOutRoute>{FibOutRoute{}}
+                                : std::nullopt;
   }
 
   if (isLocalRouteBest) {
@@ -67,7 +69,25 @@ void FibDev::updateUnicastRoute(
       "Adding unicast prefix {} with {} nexthops",
       folly::IPAddress::networkToString(prefix),
       isLocalRouteBest ? 0 : weightedNexthops->size());
+
+  FibNexthopSet fibOutNextHops;
+  if (enableFibOutTracking && !isLocalRouteBest) {
+    fibOutNextHops.reserve(weightedNexthops->size());
+    for (const auto& [nextHop, weight] : *weightedNexthops) {
+      fibOutNextHops.push_back(
+          FibOutNexthop{
+              .address = nextHop,
+              .weight = weight,
+              .role = FibOutNexthopRole::PRIMARY,
+          });
+    }
+  }
   (*waitForAck_)[attrsToBeAdvertised][prefix] = std::move(weightedNexthops);
+  return enableFibOutTracking ? std::optional<FibOutRoute>{FibOutRoute{
+                                    .nexthops = std::move(fibOutNextHops),
+                                    .metadata = FibOutRouteMetadata::program(),
+                                }}
+                              : std::nullopt;
 }
 
 folly::coro::Task<void> FibDev::program(bool isSync) {

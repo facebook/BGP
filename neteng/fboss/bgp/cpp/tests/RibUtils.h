@@ -150,7 +150,8 @@ class MockFib : public Fib {
 
   bool isFullSynced() const override;
 
-  void updateUnicastRoute(
+  /** Stage one mock FIB request and return its normalized form. */
+  std::optional<FibOutRoute> updateUnicastRoute(
       const folly::CIDRNetwork& prefix,
       std::shared_ptr<const BgpPath> attrsToBeAdvertised,
       std::shared_ptr<const WeightedNexthopMap> weightedNexthops,
@@ -160,7 +161,8 @@ class MockFib : public Fib {
           nexthopInfoMap,
       const std::optional<uint32_t>& classId,
       std::shared_ptr<const NexthopTopoInfoMap> nexthopTopoInfoMap,
-      const BgpRouteType routeType) override;
+      const BgpRouteType routeType,
+      bool enableFibOutTracking = false) override;
 
   folly::coro::Task<void> program(bool isSync = false) override;
 
@@ -364,14 +366,17 @@ class RibFixture : public testing::Test {
   RibFixture() = default;
   ~RibFixture() override = default;
 
+  /** Build the global configuration used by the fixture's RIB. */
   void createGlobalConfig(
       ComputeUcmpFromLbwComm computeUcmpFromLbwComm =
           ComputeUcmpFromLbwComm{true},
       CountConfedsInAsPathLen countConfedsInAsPathLen =
           CountConfedsInAsPathLen{false},
-      EnableNexthopTracking enableNexthopTracking = EnableNexthopTracking{
-          false});
+      EnableNexthopTracking enableNexthopTracking =
+          EnableNexthopTracking{false},
+      bool enableFibOutTracking = false);
 
+  /** Create the standard peer, RIB, FIB, and service test dependencies. */
   void ribFixtureDefaultSetup(
       ComputeUcmpFromLbwComm computeUcmpFromLbwComm =
           ComputeUcmpFromLbwComm{true},
@@ -379,7 +384,8 @@ class RibFixture : public testing::Test {
           CountConfedsInAsPathLen{false},
       EnableNexthopTracking enableNexthopTracking =
           EnableNexthopTracking{false},
-      std::shared_ptr<NexthopCache> nexthopCache = nullptr);
+      std::shared_ptr<NexthopCache> nexthopCache = nullptr,
+      bool enableFibOutTracking = false);
 
   void SetUp() override;
   void TearDown() override;

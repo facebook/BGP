@@ -35,7 +35,8 @@ class FibFboss : public Fib {
  public:
   virtual ~FibFboss();
 
-  void updateUnicastRoute(
+  /** Stage one FBOSS FIB request and return its normalized platform form. */
+  std::optional<FibOutRoute> updateUnicastRoute(
       const folly::CIDRNetwork& prefix,
       std::shared_ptr<const BgpPath> attrsToBeAdvertised,
       std::shared_ptr<const WeightedNexthopMap> weightedNexthops,
@@ -44,9 +45,11 @@ class FibFboss : public Fib {
       const folly::F14NodeMap<folly::IPAddress, facebook::bgp::NexthopInfo>&,
       const std::optional<uint32_t>& classId = std::nullopt,
       std::shared_ptr<const NexthopTopoInfoMap> nexthopTopoInfoMap = nullptr,
-      const BgpRouteType routeType = BgpRouteType::UNKNOWN) override;
+      const BgpRouteType routeType = BgpRouteType::UNKNOWN,
+      bool enableFibOutTracking = false) override;
 
-  void updateUnicastRouteWithBackup(
+  /** Stage one FBOSS request with backup-nexthop support. */
+  std::optional<FibOutRoute> updateUnicastRouteWithBackup(
       const folly::CIDRNetwork& prefix,
       std::shared_ptr<const BgpPath> attrsToBeAdvertised,
       std::shared_ptr<const WeightedNexthopMap> weightedNexthops,
@@ -56,7 +59,8 @@ class FibFboss : public Fib {
       const std::optional<uint32_t>& classId,
       std::shared_ptr<const NexthopTopoInfoMap> nexthopTopoInfoMap,
       const BgpRouteType routeType,
-      const std::optional<folly::IPAddress>& backupAddr) override;
+      const std::optional<folly::IPAddress>& backupAddr,
+      bool enableFibOutTracking = false) override;
 
   folly::coro::Task<void> program(bool isSync = false) override;
 

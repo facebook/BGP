@@ -481,12 +481,22 @@ target_link_libraries(bgp_fib_holddown
   ${BGP_BASE_LIBS}
 )
 
+add_library(bgp_fib_out
+  neteng/fboss/bgp/cpp/rib/FibOut.cpp
+)
+
+target_link_libraries(bgp_fib_out
+  bgp_structs_cpp2
+  ${BGP_BASE_LIBS}
+)
+
 add_library(bgp_fib_dev
   neteng/fboss/bgp/cpp/rib/FibDev.cpp
 )
 
 target_link_libraries(bgp_fib_dev
   bgp_common
+  bgp_fib_out
   bgp_lib_core
   ${BGP_BASE_LIBS}
 )
@@ -507,6 +517,7 @@ target_link_libraries(bgp_rib_base
   bgp_common
   bgp_config_policy
   bgp_fib_dev
+  bgp_fib_out
   bgp_lib_core
   bgp_nexthop
   bgp_routelib
@@ -609,6 +620,7 @@ set(BGP_INSTALL_LIBRARIES
   bgp_lib_transport
   bgp_nexthop
   bgp_fib_holddown
+  bgp_fib_out
   bgp_fib_dev
   bgp_rib_base
   bgp_adjrib

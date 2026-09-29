@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "neteng/fboss/bgp/cpp/rib/FibEbb.h"
+
 #include <optional>
 #include <string>
 
@@ -26,9 +28,9 @@
 #include <openr/if/gen-cpp2/Network_types_custom_protocol.h>
 #include <thrift/lib/cpp2/protocol/DebugProtocol.h>
 
+#include "neteng/fboss/bgp/cpp/BgpServiceUtil.h"
 #include "neteng/fboss/bgp/cpp/common/Consts.h"
 #include "neteng/fboss/bgp/cpp/common/ThriftClientUtils.h"
-#include "neteng/fboss/bgp/cpp/rib/FibEbb.h"
 #include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 
 DEFINE_int32(
@@ -138,7 +140,7 @@ void FibEbb::disconnectAgent() {
   batch_.reset();
 }
 
-void FibEbb::updateUnicastRoute(
+std::optional<FibOutRoute> FibEbb::updateUnicastRoute(
     const folly::CIDRNetwork& prefix,
     std::shared_ptr<const BgpPath> bestPathAttributes,
     std::shared_ptr<const WeightedNexthopMap> weightedNexthops,
@@ -148,7 +150,8 @@ void FibEbb::updateUnicastRoute(
         nexthopInfoMap,
     const std::optional<uint32_t>& classId,
     std::shared_ptr<const NexthopTopoInfoMap> /*nexthopTopoInfoMap*/,
-    const BgpRouteType routeType) {
+    const BgpRouteType routeType,
+    bool enableFibOutTracking) {
   XLOG(DBG3, "Fib EBB Starting fib updateUnicastRoute function");
 
   if (!weightedNexthops || weightedNexthops->empty() || !installToFib) {
@@ -162,13 +165,20 @@ void FibEbb::updateUnicastRoute(
     batch_->toDelete.push_back(std::move(ipPrefix));
     batch_->waitForAck[bestPathAttributes][prefix] =
         std::move(weightedNexthops);
-    return;
+    return enableFibOutTracking ? std::optional<FibOutRoute>{FibOutRoute{}}
+                                : std::nullopt;
   }
 
   std::vector<openr::thrift::NextHopThrift> thriftNextHops;
+  FibNexthopSet fibOutNextHops;
+  if (enableFibOutTracking) {
+    fibOutNextHops.reserve(weightedNexthops->size());
+  }
   for (const std::pair<const folly::IPAddress, uint32_t>& pair :
        *weightedNexthops) {
     const folly::IPAddress& nh = pair.first;
+    const bool isLocalRoute =
+        nh == kLocalRouteV4Nexthop || nh == kLocalRouteV6Nexthop;
     openr::thrift::NextHopThrift nht;
 
     nht.address() = openr::toBinaryAddress(nh);
@@ -180,10 +190,12 @@ void FibEbb::updateUnicastRoute(
     nht.weight() = 1;
 
     auto it = nexthopInfoMap.find(nh);
+    std::optional<bool> isConnected;
+    const std::string* interfaceName{nullptr};
     // Set whether the next hop is directly connected for the next hop
     if (it != nexthopInfoMap.end()) {
       const facebook::bgp::NexthopInfo& nextHopInfo = it->second;
-      std::optional<bool> isConnected = nextHopInfo.isConnected();
+      isConnected = nextHopInfo.isConnected();
 
       if (isConnected.has_value()) {
         nht.isConnected() = isConnected.value();
@@ -200,9 +212,10 @@ void FibEbb::updateUnicastRoute(
        * sources leave the field empty. Then the fib agent sends no interface
        * name.
        */
-      const std::optional<std::string>& ifName = nextHopInfo.getIfName();
-      if (ifName.has_value()) {
-        nht.address()->ifName() = ifName.value();
+      const auto& ifName = nextHopInfo.getIfName();
+      if (ifName) {
+        interfaceName = &*ifName;
+        nht.address()->ifName() = *interfaceName;
       }
 
       // Log prefix, nexthop address, and isConnected
@@ -213,18 +226,37 @@ void FibEbb::updateUnicastRoute(
           nh.str(),
           isConnected.has_value() ? std::to_string(isConnected.value())
                                   : "unset",
-          ifName.value_or("unset"));
+          interfaceName ? interfaceName->c_str() : "unset");
     }
 
-    // Locally Originated Route
-    if ((nh == kLocalRouteV4Nexthop) || (nh == kLocalRouteV6Nexthop)) {
-      // Locally Originated Route
+    if (isLocalRoute) {
       nht.address()->ifName() = "Null0";
       thriftNextHops = {nht};
+      if (enableFibOutTracking) {
+        fibOutNextHops = {FibOutNexthop{
+            .address = nh,
+            .interfaceName = "Null0",
+            .weight = 1,
+            .role = FibOutNexthopRole::PRIMARY,
+            .connected = isConnected,
+        }};
+      }
       break;
     }
 
     thriftNextHops.emplace_back(std::move(nht));
+    if (enableFibOutTracking) {
+      fibOutNextHops.push_back(
+          FibOutNexthop{
+              .address = nh,
+              .interfaceName = interfaceName
+                  ? std::optional<std::string>{*interfaceName}
+                  : std::nullopt,
+              .weight = 1,
+              .role = FibOutNexthopRole::PRIMARY,
+              .connected = isConnected,
+          });
+    }
   }
 
   if (thriftNextHops.size() != weightedNexthops->size()) {
@@ -245,11 +277,21 @@ void FibEbb::updateUnicastRoute(
   openr::thrift::UnicastRoute thriftRoute;
   thriftRoute.dest()->prefixAddress() = openr::toBinaryAddress(prefix.first);
   thriftRoute.dest()->prefixLength() = prefix.second;
-  thriftRoute.adminDistance() = getAdminDistanceForRouteType(routeType);
+  const auto adminDistance = getAdminDistanceForRouteType(routeType);
+  thriftRoute.adminDistance() = adminDistance;
   thriftRoute.nextHops() = std::move(thriftNextHops);
 
   batch_->toAdd.emplace_back(std::move(thriftRoute));
   batch_->waitForAck[bestPathAttributes][prefix] = std::move(weightedNexthops);
+
+  return enableFibOutTracking
+      ? std::optional<FibOutRoute>{FibOutRoute{
+            .nexthops = std::move(fibOutNextHops),
+            /* The EBB route payload has no class-ID field. */
+            .metadata = FibOutRouteMetadata::program(
+                static_cast<int32_t>(adminDistance)),
+        }}
+      : std::nullopt;
 }
 
 folly::coro::Task<void> FibEbb::program(bool isSync) {
@@ -265,9 +307,9 @@ folly::coro::Task<void> FibEbb::program(bool isSync) {
   }
 
   /*
-   * Now handle this batch. And prepare for the new batch. The calls after the
-   * next two lines could be blocked to wait for Ebb Fib agent to ack.
-   * During the wait time, a new batch could be formed.
+   * Isolate the staged batch before the platform RPCs. The RIB programming
+   * coroutine awaits this method, so it cannot stage the next adapter batch
+   * until this call returns.
    */
   std::unique_ptr<FibEbb::Batch> process = std::move(batch_);
   batch_ = std::make_unique<Batch>();

@@ -19,6 +19,7 @@
 
 #define RibBase_TEST_FRIENDS                                                  \
   FRIEND_TEST(RibFixtureAddPathTestSuite, FromFibMessageLoop);                \
+  FRIEND_TEST(FibOutRibFixture, ChangesAtPlatformStagingBoundary);            \
   FRIEND_TEST(                                                                \
       RibFixture, RibAnnouncementDuringPauseBestPathAndFibProgrammingTest);   \
   FRIEND_TEST(                                                                \
@@ -54,6 +55,94 @@ INSTANTIATE_TEST_SUITE_P(
     RibFibInteraction,
     RibFixtureAddPathTestSuite,
     testing::Values(true /* addPath */));
+
+class FibOutRibFixture : public RibFixture {
+ protected:
+  /** Start a RIB with FIB-out tracking enabled. */
+  void SetUp() override {
+    ribFixtureDefaultSetup(
+        ComputeUcmpFromLbwComm{true},
+        CountConfedsInAsPathLen{false},
+        EnableNexthopTracking{false},
+        nullptr,
+        true);
+  }
+};
+
+TEST_F(FibOutRibFixture, ChangesAtPlatformStagingBoundary) {
+  const PrefixPathId prefixPathId{kV4Prefix1, kDefaultPathID};
+  auto firstAttrs = attr_->clone();
+  firstAttrs->setNexthop(kV4Nexthop1);
+  firstAttrs->publish();
+  const FibNexthopSet firstExpected{{
+      .address = kV4Nexthop1,
+      .weight = 0,
+      .role = FibOutNexthopRole::PRIMARY,
+  }};
+
+  auto secondAttrs = attr_->clone();
+  secondAttrs->setNexthop(kV4Nexthop2);
+  secondAttrs->publish();
+  const FibNexthopSet secondExpected{{
+      .address = kV4Nexthop2,
+      .weight = 0,
+      .role = FibOutNexthopRole::PRIMARY,
+  }};
+
+  EXPECT_CALL(*rib_, prepareFibProgramming_()).Times(2);
+  EXPECT_CALL(*fib_, updateUnicastRoute_(Eq(kV4Prefix1), _, _, _, _, _))
+      .Times(2);
+  {
+    InSequence sequence;
+    EXPECT_CALL(*fib_, program_(true)).WillOnce([this, &firstExpected](bool) {
+      const auto& entry = rib_->ribEntries_.at(kV4Prefix1);
+      EXPECT_FALSE(entry.isOnFibBatchList());
+      const auto* fibOut = rib_->findFibOut(entry);
+      ASSERT_NE(fibOut, nullptr);
+      EXPECT_EQ(*fibOut->nexthops, firstExpected);
+      EXPECT_EQ(fibOut->metadata, FibOutRouteMetadata::program());
+    });
+    EXPECT_CALL(*fib_, program_(false)).WillOnce([this, &secondExpected](bool) {
+      const auto& entry = rib_->ribEntries_.at(kV4Prefix1);
+      EXPECT_FALSE(entry.isOnFibBatchList());
+      const auto* fibOut = rib_->findFibOut(entry);
+      ASSERT_NE(fibOut, nullptr);
+      EXPECT_EQ(*fibOut->nexthops, secondExpected);
+      EXPECT_EQ(fibOut->metadata, FibOutRouteMetadata::program());
+    });
+  }
+
+  auto fibFuture = fib_->getFibProgramFuture();
+  rib_->evb_.runInEventBaseThreadAndWait([&]() {
+    rib_->processSingleRibInUpdateForTest(eBgpPeer1_, firstAttrs, prefixPathId);
+    rib_->prepareFibProgramming(true);
+    const auto& entry = rib_->ribEntries_.at(kV4Prefix1);
+    EXPECT_TRUE(entry.isOnFibBatchList());
+    EXPECT_EQ(rib_->findFibOut(entry), nullptr);
+  });
+  fibFuture.wait();
+
+  fibFuture = fib_->getFibProgramFuture();
+  rib_->evb_.runInEventBaseThreadAndWait([&]() {
+    rib_->processSingleRibInUpdateForTest(
+        eBgpPeer1_, secondAttrs, prefixPathId);
+    rib_->prepareFibProgramming(false);
+    const auto& entry = rib_->ribEntries_.at(kV4Prefix1);
+    EXPECT_TRUE(entry.isOnFibBatchList());
+    const auto* fibOut = rib_->findFibOut(entry);
+    ASSERT_NE(fibOut, nullptr);
+    EXPECT_EQ(*fibOut->nexthops, firstExpected);
+  });
+  fibFuture.wait();
+
+  rib_->evb_.runInEventBaseThreadAndWait([&]() {
+    const auto& entry = rib_->ribEntries_.at(kV4Prefix1);
+    EXPECT_FALSE(entry.isOnFibBatchList());
+    const auto* fibOut = rib_->findFibOut(entry);
+    ASSERT_NE(fibOut, nullptr);
+    EXPECT_EQ(*fibOut->nexthops, secondExpected);
+  });
+}
 
 TEST_P(RibFixtureAddPathTestSuite, FromFibMessageLoop) {
   auto& inputQ = rib_->fromFibMessageQ_;

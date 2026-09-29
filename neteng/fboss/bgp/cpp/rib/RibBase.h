@@ -691,6 +691,9 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
   // prefix -> RibEntry map
   folly::F14NodeMap<folly::CIDRNetwork, RibEntry> ribEntries_;
 
+  // Canonical immutable nexthop sets referenced by FIB-out route state.
+  FibNexthopSets fibNexthopSets_;
+
   /*
    * Single authoritative aggregate of RIB-wide counts (mirrors fb303 ODS
    * counters). Mutated only on this module's EventBase alongside ribEntries_.
@@ -768,6 +771,18 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
       const std::string& policyName,
       const folly::CIDRNetwork& prefixes,
       const std::shared_ptr<BgpPath>& preInAttrs);
+
+  /**
+   * Replace the feature-gated FIB-out state for one live RIB entry.
+   * Must run on the RIB event-base thread.
+   */
+  void replaceFibOut(RibEntry& entry, FibOutState state);
+
+  /** Remove feature-gated FIB-out state before erasing a RIB entry. */
+  void eraseFibOut(RibEntry& entry);
+
+  /** Return an entry's submitted FIB-out state, or null if none exists. */
+  const FibOutState* FOLLY_NULLABLE findFibOut(const RibEntry& entry);
 
   // given config, create local route object
   std::optional<facebook::bgp::LocalRoute> createLocalRoute(

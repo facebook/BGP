@@ -225,6 +225,24 @@ TEST_F(ConfigTestFixture, globalConfigTest) {
   }
 }
 
+TEST_F(ConfigTestFixture, FibOutTrackingFeature) {
+  thrift::BgpConfig thriftConfig;
+  thriftConfig.router_id() = kLocalAddr1.str();
+
+  Config disabledConfig(thriftConfig);
+  EXPECT_FALSE(disabledConfig.getBgpGlobalConfig()->enableFibOutTracking);
+
+  thriftConfig.bgp_setting_config() = thrift::BgpSettingConfig();
+  thriftConfig.bgp_setting_config()->enable_fib_out_tracking() = false;
+  Config explicitlyDisabledConfig(thriftConfig);
+  EXPECT_FALSE(
+      explicitlyDisabledConfig.getBgpGlobalConfig()->enableFibOutTracking);
+
+  thriftConfig.bgp_setting_config()->enable_fib_out_tracking() = true;
+  Config enabledConfig(thriftConfig);
+  EXPECT_TRUE(enabledConfig.getBgpGlobalConfig()->enableFibOutTracking);
+}
+
 /*
  * This test verifies the parsing of ThriftServerConfig from the raw
  * thrift::BgpConfig to BgpGlobalConfig with different thrift server field

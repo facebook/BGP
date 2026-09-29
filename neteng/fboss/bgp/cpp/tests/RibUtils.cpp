@@ -221,7 +221,7 @@ bool MockFib::isFullSynced() const {
   return fullSynced_;
 }
 
-void MockFib::updateUnicastRoute(
+std::optional<FibOutRoute> MockFib::updateUnicastRoute(
     const folly::CIDRNetwork& prefix,
     std::shared_ptr<const BgpPath> attrsToBeAdvertised,
     std::shared_ptr<const WeightedNexthopMap> weightedNexthops,
@@ -231,7 +231,8 @@ void MockFib::updateUnicastRoute(
         nexthopInfoMap,
     const std::optional<uint32_t>& classId,
     std::shared_ptr<const NexthopTopoInfoMap> nexthopTopoInfoMap,
-    const BgpRouteType) {
+    const BgpRouteType,
+    bool enableFibOutTracking) {
   if (!classId && !nexthopTopoInfoMap) {
     updateUnicastRoute_(
         prefix,
@@ -262,6 +263,28 @@ void MockFib::updateUnicastRoute(
   }
 
   waitForAck_[attrsToBeAdvertised][prefix] = weightedNexthops;
+  if (!weightedNexthops || weightedNexthops->empty() || !installToFib) {
+    return enableFibOutTracking ? std::optional<FibOutRoute>{FibOutRoute{}}
+                                : std::nullopt;
+  }
+
+  FibNexthopSet nexthops;
+  if (enableFibOutTracking && !isLocalRouteBest) {
+    nexthops.reserve(weightedNexthops->size());
+    for (const auto& [nexthop, weight] : *weightedNexthops) {
+      nexthops.push_back(
+          FibOutNexthop{
+              .address = nexthop,
+              .weight = weight,
+              .role = FibOutNexthopRole::PRIMARY,
+          });
+    }
+  }
+  return enableFibOutTracking ? std::optional<FibOutRoute>{FibOutRoute{
+                                    .nexthops = std::move(nexthops),
+                                    .metadata = FibOutRouteMetadata::program(),
+                                }}
+                              : std::nullopt;
 }
 
 folly::coro::Task<void> MockFib::program(bool isSync) {
@@ -654,7 +677,8 @@ void MockRib::fulfillRibPrepareFibProgrammingPromise(
 void RibFixture::createGlobalConfig(
     ComputeUcmpFromLbwComm computeUcmpFromLbwComm,
     CountConfedsInAsPathLen countConfedsInAsPathLen,
-    EnableNexthopTracking enableNexthopTracking) {
+    EnableNexthopTracking enableNexthopTracking,
+    bool enableFibOutTracking) {
   bgpGlobalConfig1_ = std::make_shared<facebook::bgp::BgpGlobalConfig>(
       kPeerAsn3, // localAsn
       kPeerAddr3, // routerId
@@ -690,7 +714,13 @@ void RibFixture::createGlobalConfig(
       UpdateGroupConfig{}, // updateGroupConfig
       false, // enableRibAllocatedPathId
       false, // enableOptimizedGR
-      false); // enablePolicyDefaultAction
+      false, // enablePolicyDefaultAction
+      false, // enableAddPathGrReconcile
+      false, // enableLegacyV4NlriEncoding
+      std::nullopt, // enableStreamSubscriberBackpressure
+      EnableNetlinkDampening{false},
+      false, // enableRouteRefresh
+      enableFibOutTracking);
 
   /* Own the rib policy files so a concurrent stress job cannot collide. */
   FLAGS_rp_state_file = (ribPolicyDir_.path() / "rp_state.txt").string();
@@ -727,9 +757,13 @@ void RibFixture::ribFixtureDefaultSetup(
     ComputeUcmpFromLbwComm computeUcmpFromLbwComm,
     CountConfedsInAsPathLen countConfedsInAsPathLen,
     EnableNexthopTracking enableNexthopTracking,
-    std::shared_ptr<NexthopCache> nexthopCache) {
+    std::shared_ptr<NexthopCache> nexthopCache,
+    bool enableFibOutTracking) {
   createGlobalConfig(
-      computeUcmpFromLbwComm, countConfedsInAsPathLen, enableNexthopTracking);
+      computeUcmpFromLbwComm,
+      countConfedsInAsPathLen,
+      enableNexthopTracking,
+      enableFibOutTracking);
   createPeerManager();
   // create attributes
   attr_ =
