@@ -330,6 +330,17 @@ target_link_libraries(bgp_lib_core
   ${BGP_BASE_LIBS}
 )
 
+add_library(bgp_ip_prefix_utils
+  neteng/fboss/bgp/cpp/common/IpPrefixUtils.cpp
+)
+
+target_link_libraries(bgp_ip_prefix_utils
+  bgp_attr_cpp2
+  bgp_structs_cpp2
+  network_address_cpp2
+  ${BGP_BASE_LIBS}
+)
+
 add_library(bgp_utils
   neteng/fboss/bgp/cpp/common/Utils.cpp
 )
@@ -409,6 +420,7 @@ add_library(bgp_config_policy
 target_link_libraries(bgp_config_policy
   bgp_lib_core
   bgp_common
+  bgp_ip_prefix_utils
   ${BGP_THRIFT_LIBS}
   ${BGP_BASE_LIBS}
 )
@@ -490,6 +502,18 @@ target_link_libraries(bgp_fib_out
   ${BGP_BASE_LIBS}
 )
 
+add_library(bgp_fib_out_thrift
+  neteng/fboss/bgp/cpp/rib/FibOutThrift.cpp
+)
+
+target_link_libraries(bgp_fib_out_thrift
+  bgp_fib_out
+  bgp_ip_prefix_utils
+  bgp_route_types_cpp2
+  FBThrift::thriftcpp2
+  ${BGP_BASE_LIBS}
+)
+
 add_library(bgp_fib_dev
   neteng/fboss/bgp/cpp/rib/FibDev.cpp
 )
@@ -518,6 +542,7 @@ target_link_libraries(bgp_rib_base
   bgp_config_policy
   bgp_fib_dev
   bgp_fib_out
+  bgp_fib_out_thrift
   bgp_lib_core
   bgp_nexthop
   bgp_routelib
@@ -609,6 +634,7 @@ target_link_libraries(bgp_service_base
 )
 
 set(BGP_INSTALL_LIBRARIES
+  bgp_ip_prefix_utils
   bgp_utils
   bgp_stats_base
   bgp_routelib
@@ -621,6 +647,7 @@ set(BGP_INSTALL_LIBRARIES
   bgp_nexthop
   bgp_fib_holddown
   bgp_fib_out
+  bgp_fib_out_thrift
   bgp_fib_dev
   bgp_rib_base
   bgp_adjrib

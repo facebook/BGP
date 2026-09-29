@@ -17,6 +17,8 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <stdexcept>
+
 #include <folly/ScopeGuard.h>
 #include <folly/coro/BlockingWait.h>
 #include <folly/logging/LoggerDB.h>
@@ -31,10 +33,11 @@
  * co_getNumPrefixes without a running RIB evb -- the exit guard short-circuits
  * before the evb hop.
  */
-#define BgpServiceBase_TEST_FRIENDS                     \
-  FRIEND_TEST(                                          \
-      BgpServiceBaseTestFixture,                        \
-      GetRibVersionAndNumPrefixesReturnNegativeOnExit); \
+#define BgpServiceBase_TEST_FRIENDS                                    \
+  FRIEND_TEST(                                                         \
+      BgpServiceBaseTestFixture,                                       \
+      GetRibVersionAndNumPrefixesReturnNegativeOnExit);                \
+  FRIEND_TEST(BgpServiceBaseTestFixture, GetFibOutPrefixThrowsOnExit); \
   FRIEND_TEST(BgpServiceBaseTestFixture, GetAdjRibStatsReturnsEmptyOnExit);
 
 #include "neteng/fboss/bgp/cpp/BgpServiceBase.h"
@@ -333,6 +336,19 @@ TEST_F(
   service_->exitInitiated_ = true;
   EXPECT_EQ(-1, folly::coro::blockingWait(service_->co_getRibVersion()));
   EXPECT_EQ(-1, folly::coro::blockingWait(service_->co_getNumPrefixes()));
+}
+
+TEST_F(BgpServiceBaseTestFixture, GetFibOutPrefixThrowsOnExit) {
+  service_->exitInitiated_ = true;
+  auto handler = std::shared_ptr<BgpServiceBase>(service_.get(), [](auto*) {});
+  apache::thrift::ScopedServerInterfaceThread server(
+      handler, kLoopBackAddressV4.str(), kEphemeralPort);
+  auto client = server.newClient<apache::thrift::Client<TBgpService>>();
+  TFibOutPrefixRequest request;
+  request.prefix() = "192.0.2.0/24";
+
+  EXPECT_ANY_THROW(
+      folly::coro::blockingWait(client->co_getFibOutPrefix(request)));
 }
 
 TEST_F(BgpServiceBaseTestFixture, GetDeduplicatorStatsReturnsTypedSnapshot) {

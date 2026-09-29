@@ -201,6 +201,7 @@ add_library(bgp_rib_dc
 target_link_libraries(bgp_rib_dc
   bgp_canonical_rib
   bgp_fib_fboss
+  bgp_fib_out_thrift
   bgp_fsdb_syncer
   bgp_rib_base
   bgp_stats_dc

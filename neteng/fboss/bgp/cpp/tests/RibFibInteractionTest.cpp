@@ -19,6 +19,7 @@
 
 #define RibBase_TEST_FRIENDS                                                  \
   FRIEND_TEST(RibFixtureAddPathTestSuite, FromFibMessageLoop);                \
+  FRIEND_TEST(FibOutRibFixture, FibOutPrefixReturnsOnlyExactMatch);           \
   FRIEND_TEST(FibOutRibFixture, ChangesAtPlatformStagingBoundary);            \
   FRIEND_TEST(                                                                \
       RibFixture, RibAnnouncementDuringPauseBestPathAndFibProgrammingTest);   \
@@ -32,6 +33,7 @@
   FRIEND_TEST(RibFixture, FibFlushedCounterTest);
 
 #include "neteng/fboss/bgp/cpp/rib/RibBase.h"
+#include "neteng/fboss/bgp/cpp/rib/Utils.h"
 #include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
 #include "neteng/fboss/bgp/cpp/tests/RetryUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/RibUtils.h"
@@ -69,6 +71,62 @@ class FibOutRibFixture : public RibFixture {
   }
 };
 
+TEST_F(RibFixture, FibOutPrefixReportsTrackingDisabled) {
+  const auto table =
+      rib_->getFibOutPrefix(folly::IPAddress::networkToString(kV4Prefix1));
+
+  EXPECT_FALSE(*table.enabled());
+  EXPECT_TRUE(table.entries()->empty());
+}
+
+TEST_F(RibFixture, FibOutPrefixRejectsInvalidInputWhenTrackingDisabled) {
+  EXPECT_THROW(rib_->getFibOutPrefix("invalid"), std::invalid_argument);
+}
+
+TEST_F(FibOutRibFixture, FibOutPrefixReturnsOnlyExactMatch) {
+  const PrefixPathId prefixPathId{kV4Prefix1, kDefaultPathID};
+  EXPECT_CALL(*rib_, prepareFibProgramming_());
+  EXPECT_CALL(*fib_, updateUnicastRoute_(Eq(kV4Prefix1), _, _, _, _, _));
+  EXPECT_CALL(*fib_, program_(true));
+
+  auto fibFuture = fib_->getFibProgramFuture();
+  rib_->evb_.runInEventBaseThreadAndWait([&]() {
+    rib_->processSingleRibInUpdateForTest(eBgpPeer1_, attr_, prefixPathId);
+    rib_->prepareFibProgramming(true);
+  });
+  fibFuture.wait();
+
+  const auto present =
+      rib_->getFibOutPrefix(folly::IPAddress::networkToString(kV4Prefix1));
+  facebook::neteng::fboss::bgp::thrift::TFibOutNextHop expectedNexthop;
+  expectedNexthop.next_hop() = buildTPrefix({kV4Nexthop1, 32});
+  expectedNexthop.weight() = 0;
+  expectedNexthop.role() =
+      facebook::neteng::fboss::bgp::thrift::TFibOutNextHopRole::PRIMARY;
+  facebook::neteng::fboss::bgp::thrift::TFibOutRoute expectedRoute;
+  expectedRoute.operation() =
+      facebook::neteng::fboss::bgp::thrift::TFibOutOperation::PROGRAM;
+  expectedRoute.next_hops() = {std::move(expectedNexthop)};
+  facebook::neteng::fboss::bgp::thrift::TFibOutEntry expectedEntry;
+  expectedEntry.prefix() = buildTPrefix(kV4Prefix1);
+  expectedEntry.fib_out() = std::move(expectedRoute);
+  EXPECT_EQ(
+      *present.entries(),
+      std::vector<facebook::neteng::fboss::bgp::thrift::TFibOutEntry>{
+          std::move(expectedEntry)});
+
+  const auto presentWithHostBits = rib_->getFibOutPrefix("8.0.0.42/24");
+  EXPECT_EQ(*present.entries(), *presentWithHostBits.entries());
+
+  const auto absent = rib_->getFibOutPrefix("192.0.2.0/24");
+  EXPECT_TRUE(*absent.enabled());
+  EXPECT_TRUE(absent.entries()->empty());
+}
+
+TEST_F(FibOutRibFixture, FibOutPrefixRejectsInvalidInput) {
+  EXPECT_THROW(rib_->getFibOutPrefix("invalid"), std::invalid_argument);
+}
+
 TEST_F(FibOutRibFixture, ChangesAtPlatformStagingBoundary) {
   const PrefixPathId prefixPathId{kV4Prefix1, kDefaultPathID};
   auto firstAttrs = attr_->clone();
@@ -101,6 +159,12 @@ TEST_F(FibOutRibFixture, ChangesAtPlatformStagingBoundary) {
       ASSERT_NE(fibOut, nullptr);
       EXPECT_EQ(*fibOut->nexthops, firstExpected);
       EXPECT_EQ(fibOut->metadata, FibOutRouteMetadata::program());
+      const auto table =
+          rib_->getFibOutPrefix(folly::IPAddress::networkToString(kV4Prefix1));
+      ASSERT_TRUE(*table.enabled());
+      ASSERT_EQ(table.entries()->size(), 1);
+      ASSERT_TRUE(table.entries()->front().fib_out().has_value());
+      EXPECT_FALSE(table.entries()->front().fib_out_pending().has_value());
     });
     EXPECT_CALL(*fib_, program_(false)).WillOnce([this, &secondExpected](bool) {
       const auto& entry = rib_->ribEntries_.at(kV4Prefix1);
@@ -109,6 +173,11 @@ TEST_F(FibOutRibFixture, ChangesAtPlatformStagingBoundary) {
       ASSERT_NE(fibOut, nullptr);
       EXPECT_EQ(*fibOut->nexthops, secondExpected);
       EXPECT_EQ(fibOut->metadata, FibOutRouteMetadata::program());
+      const auto table =
+          rib_->getFibOutPrefix(folly::IPAddress::networkToString(kV4Prefix1));
+      ASSERT_EQ(table.entries()->size(), 1);
+      ASSERT_TRUE(table.entries()->front().fib_out().has_value());
+      EXPECT_FALSE(table.entries()->front().fib_out_pending().has_value());
     });
   }
 
@@ -119,6 +188,11 @@ TEST_F(FibOutRibFixture, ChangesAtPlatformStagingBoundary) {
     const auto& entry = rib_->ribEntries_.at(kV4Prefix1);
     EXPECT_TRUE(entry.isOnFibBatchList());
     EXPECT_EQ(rib_->findFibOut(entry), nullptr);
+    const auto table =
+        rib_->getFibOutPrefix(folly::IPAddress::networkToString(kV4Prefix1));
+    ASSERT_EQ(table.entries()->size(), 1);
+    EXPECT_FALSE(table.entries()->front().fib_out().has_value());
+    EXPECT_FALSE(table.entries()->front().fib_out_pending().has_value());
   });
   fibFuture.wait();
 
@@ -132,6 +206,11 @@ TEST_F(FibOutRibFixture, ChangesAtPlatformStagingBoundary) {
     const auto* fibOut = rib_->findFibOut(entry);
     ASSERT_NE(fibOut, nullptr);
     EXPECT_EQ(*fibOut->nexthops, firstExpected);
+    const auto table =
+        rib_->getFibOutPrefix(folly::IPAddress::networkToString(kV4Prefix1));
+    ASSERT_EQ(table.entries()->size(), 1);
+    ASSERT_TRUE(table.entries()->front().fib_out().has_value());
+    EXPECT_FALSE(table.entries()->front().fib_out_pending().has_value());
   });
   fibFuture.wait();
 
@@ -142,6 +221,13 @@ TEST_F(FibOutRibFixture, ChangesAtPlatformStagingBoundary) {
     ASSERT_NE(fibOut, nullptr);
     EXPECT_EQ(*fibOut->nexthops, secondExpected);
   });
+
+  const auto table =
+      rib_->getFibOutPrefix(folly::IPAddress::networkToString(kV4Prefix1));
+  ASSERT_TRUE(*table.enabled());
+  ASSERT_EQ(table.entries()->size(), 1);
+  ASSERT_TRUE(table.entries()->front().fib_out().has_value());
+  EXPECT_FALSE(table.entries()->front().fib_out_pending().has_value());
 }
 
 TEST_P(RibFixtureAddPathTestSuite, FromFibMessageLoop) {

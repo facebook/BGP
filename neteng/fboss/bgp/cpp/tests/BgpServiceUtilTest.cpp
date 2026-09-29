@@ -554,6 +554,11 @@ TEST_F(BgpServiceUtilTest, TIpPrefixToStringTest) {
   EXPECT_EQ(TIpPrefixToString(prefix), "10.1.2.126/32");
 }
 
+TEST_F(BgpServiceUtilTest, CreateTIpPrefixPreservesLocalRouteSentinels) {
+  EXPECT_EQ(*createTIpPrefix(kLocalRouteV4Nexthop).num_bits(), 0);
+  EXPECT_EQ(*createTIpPrefix(kLocalRouteV6Nexthop).num_bits(), 0);
+}
+
 // test createTAsPathSeg for 2 bytes ASN
 TEST_F(BgpServiceUtilTest, CreateTAsPathSegShortAsnTest) {
   BgpAttrAsPathSegmentC asSet, asSequence, asConfedSet, asConfedSequence;

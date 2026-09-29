@@ -22,7 +22,6 @@
 #include "configerator/structs/neteng/bgp_policy/thrift/gen-cpp2/routing_policy_types.h"
 #include "folly/logging/xlog.h"
 #include "magic_enum/magic_enum.hpp"
-#include "neteng/fboss/bgp/cpp/common/Consts.h"
 #include "neteng/fboss/bgp/cpp/config/Config.h"
 #include "neteng/fboss/bgp/cpp/policy/PolicyManager.h"
 #include "thrift/lib/cpp/util/EnumUtils.h"
@@ -35,34 +34,6 @@ using namespace nettools::bgplib;
 using namespace network;
 
 using std::vector;
-
-TIpPrefix createTIpPrefix(const folly::CIDRNetwork& prefix) {
-  auto addr = prefix.first;
-  auto prefixLen = prefix.second;
-
-  TIpPrefix tPrefix;
-  if (addr.isV4()) {
-    tPrefix.afi() = TBgpAfi::AFI_IPV4;
-  } else {
-    tPrefix.afi() = TBgpAfi::AFI_IPV6;
-  }
-  tPrefix.num_bits() = prefixLen;
-
-  // fboss cli use num_bits to distiguish local routes from other routes
-  if (addr == kLocalRouteV4Nexthop || addr == kLocalRouteV6Nexthop) {
-    tPrefix.num_bits() = 0;
-  }
-
-  tPrefix.prefix_bin() = toBinaryAddress(addr).addr()->toStdString();
-  return tPrefix;
-}
-
-TIpPrefix createTIpPrefix(const folly::IPAddress& addr) {
-  if (addr.isV4()) {
-    return createTIpPrefix(std::make_pair(addr, 32));
-  }
-  return createTIpPrefix(std::make_pair(addr, 128));
-}
 
 folly::CIDRNetwork tIpPrefixToNetwork(const TIpPrefix& prefix) {
   const auto prefixBin = *prefix.prefix_bin();

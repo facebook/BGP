@@ -37,6 +37,7 @@
 #include "neteng/fboss/bgp/cpp/nexthopTracker/NexthopInfo.h"
 #include "neteng/fboss/bgp/cpp/policy/PolicyStructs.h"
 #include "neteng/fboss/bgp/cpp/rib/FibDev.h"
+#include "neteng/fboss/bgp/cpp/rib/FibOutThrift.h"
 #include "neteng/fboss/bgp/cpp/rib/RibBase.h"
 #include "neteng/fboss/bgp/cpp/rib/RibFileUtils.h"
 #include "neteng/fboss/bgp/cpp/rib/RibPolicy.h"
@@ -2484,6 +2485,38 @@ std::vector<TRibEntry> RibBase::getRibEntries(TBgpAfi afi) {
     }
   });
   return tRibEntries;
+}
+
+TFibOutTable RibBase::getFibOutPrefix(const std::string& prefixString) {
+  folly::CIDRNetwork prefix;
+  try {
+    prefix =
+        folly::IPAddress::createNetwork(prefixString, -1, true /* applyMask */);
+  } catch (const std::exception& error) {
+    throw std::invalid_argument(
+        fmt::format(
+            "Invalid FIB-out prefix '{}': {}", prefixString, error.what()));
+  }
+
+  TFibOutTable table;
+  table.enabled() = globalConfig_.enableFibOutTracking;
+  if (!globalConfig_.enableFibOutTracking) {
+    return table;
+  }
+
+  evb_.runImmediatelyOrRunInEventBaseThreadAndWait([&]() {
+    const auto ribEntry = ribEntries_.find(prefix);
+    if (ribEntry == ribEntries_.end()) {
+      return;
+    }
+    TFibOutEntry entry;
+    entry.prefix() = buildTPrefix(ribEntry->first);
+    if (const auto* fibOut = findFibOut(ribEntry->second)) {
+      entry.fib_out() = toThriftFibOutRoute(*fibOut);
+    }
+    table.entries()->push_back(std::move(entry));
+  });
+  return table;
 }
 
 TRibSummary RibBase::getRibSummary(TBgpAfi afi) {

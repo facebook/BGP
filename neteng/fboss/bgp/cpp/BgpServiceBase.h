@@ -194,6 +194,19 @@ class BgpServiceBase
       std::vector<facebook::neteng::fboss::bgp::thrift::TRibEntry>>>
   co_getRibEntries(facebook::neteng::fboss::bgp_attr::TBgpAfi afi) override;
 
+  /**
+   * Return compact FIB-out state for one exact prefix.
+   *
+   * The coroutine propagates exit, admission, timeout, and RIB failures to the
+   * client. Only a successful response can report tracking as disabled.
+   */
+  folly::coro::Task<
+      std::unique_ptr<facebook::neteng::fboss::bgp::thrift::TFibOutTable>>
+  co_getFibOutPrefix(
+      std::unique_ptr<
+          facebook::neteng::fboss::bgp::thrift::TFibOutPrefixRequest> request)
+      override;
+
   folly::coro::Task<
       std::unique_ptr<facebook::neteng::fboss::bgp::thrift::TRibSummary>>
   co_getRibSummary(facebook::neteng::fboss::bgp_attr::TBgpAfi afi) override;

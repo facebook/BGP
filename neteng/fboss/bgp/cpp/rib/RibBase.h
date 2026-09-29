@@ -252,9 +252,19 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
     }
   }
 
-  // Get current ribEntries by address family
+  /** Return current RIB entries for one address family. */
   std::vector<neteng::fboss::bgp::thrift::TRibEntry> getRibEntries(
       neteng::fboss::bgp_attr::TBgpAfi afi);
+
+  /**
+   * Return compact FIB-out state for one exact prefix.
+   *
+   * This method performs one RIB lookup and copies only the prefix and FIB-out
+   * fields. Its RIB event-base work does not grow with total RIB size. Invalid
+   * prefix text raises `std::invalid_argument`.
+   */
+  neteng::fboss::bgp::thrift::TFibOutTable getFibOutPrefix(
+      const std::string& prefix);
 
   /*
    * Get a compact summary (total prefixes + per-prefix-length histogram) of the

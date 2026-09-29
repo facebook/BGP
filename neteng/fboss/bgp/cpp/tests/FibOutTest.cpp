@@ -15,9 +15,11 @@
  */
 
 #include "neteng/fboss/bgp/cpp/rib/FibOut.h"
+#include "neteng/fboss/bgp/cpp/rib/FibOutThrift.h"
 
 #include <algorithm>
 #include <cstdint>
+#include <string>
 
 #include <gtest/gtest.h>
 
@@ -131,6 +133,101 @@ TEST(FibOutTest, DistinguishesMissingOptionalFields) {
   const auto present = nexthopSets.getOrCreate({withValues});
 
   EXPECT_NE(missing, present);
+}
+
+TEST(FibOutTest, MaterializesThriftOnlyForTheRpcBoundary) {
+  FibNexthopSets nexthopSets;
+  const auto nexthops = nexthopSets.getOrCreate({FibOutNexthop{
+      .address = folly::IPAddress::fromLongHBO(0x01000001),
+      .interfaceName = "Ethernet1",
+      .weight = 10,
+      .role = FibOutNexthopRole::BACKUP,
+      .connected = true,
+  }});
+
+  const auto thriftRoute = toThriftFibOutRoute(
+      FibOutState{
+          .nexthops = nexthops,
+          .metadata = FibOutRouteMetadata::program(20, 7),
+      });
+  neteng::fboss::bgp::thrift::TFibOutNextHop expectedNexthop;
+  expectedNexthop.next_hop()->afi() =
+      neteng::fboss::bgp_attr::TBgpAfi::AFI_IPV4;
+  expectedNexthop.next_hop()->num_bits() = 32;
+  expectedNexthop.next_hop()->prefix_bin() = std::string("\x01\x00\x00\x01", 4);
+  expectedNexthop.weight() = 10;
+  expectedNexthop.role() =
+      neteng::fboss::bgp::thrift::TFibOutNextHopRole::BACKUP;
+  expectedNexthop.is_connected() = true;
+  expectedNexthop.interface_name() = "Ethernet1";
+  neteng::fboss::bgp::thrift::TFibOutRoute expectedRoute;
+  expectedRoute.operation() =
+      neteng::fboss::bgp::thrift::TFibOutOperation::PROGRAM;
+  expectedRoute.next_hops() = {std::move(expectedNexthop)};
+  expectedRoute.admin_distance() = 20;
+  expectedRoute.class_id() = 7;
+
+  EXPECT_EQ(thriftRoute, expectedRoute);
+}
+
+TEST(FibOutTest, ConvertsMinimalProgramWithPrimaryAndBackupNexthops) {
+  FibNexthopSets nexthopSets;
+  const auto nexthops = nexthopSets.getOrCreate({
+      FibOutNexthop{
+          .address = folly::IPAddress::fromLongHBO(0x02000001),
+          .weight = 10,
+          .role = FibOutNexthopRole::PRIMARY,
+      },
+      FibOutNexthop{
+          .address = folly::IPAddress::fromLongHBO(0x02000002),
+          .weight = 0,
+          .role = FibOutNexthopRole::BACKUP,
+      },
+  });
+
+  const auto topologyInfo = std::make_shared<FibOutTopologyInfoMap>();
+  topologyInfo->emplace(
+      folly::IPAddress::fromLongHBO(0x02000001),
+      std::unordered_map<std::string, int64_t>{{"rack_id", 3}});
+  topologyInfo->emplace(
+      folly::IPAddress::fromLongHBO(0x02000002),
+      std::unordered_map<std::string, int64_t>{{"rack_id", 4}});
+  const auto thriftRoute = toThriftFibOutRoute(
+      FibOutState{
+          .nexthops = nexthops,
+          .metadata = FibOutRouteMetadata::program(),
+          .topologyInfo = topologyInfo,
+      });
+  neteng::fboss::bgp::thrift::TFibOutNextHop primary;
+  primary.next_hop()->afi() = neteng::fboss::bgp_attr::TBgpAfi::AFI_IPV4;
+  primary.next_hop()->num_bits() = 32;
+  primary.next_hop()->prefix_bin() = std::string("\x02\x00\x00\x01", 4);
+  primary.weight() = 10;
+  primary.role() = neteng::fboss::bgp::thrift::TFibOutNextHopRole::PRIMARY;
+  primary.topology_info() = {{"rack_id", 3}};
+  neteng::fboss::bgp::thrift::TFibOutNextHop backup;
+  backup.next_hop()->afi() = neteng::fboss::bgp_attr::TBgpAfi::AFI_IPV4;
+  backup.next_hop()->num_bits() = 32;
+  backup.next_hop()->prefix_bin() = std::string("\x02\x00\x00\x02", 4);
+  backup.weight() = 0;
+  backup.role() = neteng::fboss::bgp::thrift::TFibOutNextHopRole::BACKUP;
+  neteng::fboss::bgp::thrift::TFibOutRoute expected;
+  expected.operation() = neteng::fboss::bgp::thrift::TFibOutOperation::PROGRAM;
+  expected.next_hops() = {std::move(primary), std::move(backup)};
+  EXPECT_EQ(thriftRoute, expected);
+}
+
+TEST(FibOutTest, ConvertsEmptyFibOutState) {
+  FibNexthopSets nexthopSets;
+  const auto emptyNexthops = nexthopSets.getOrCreate({});
+  const auto none = toThriftFibOutRoute(
+      FibOutState{
+          .nexthops = emptyNexthops,
+          .metadata = FibOutRouteMetadata{},
+      });
+  neteng::fboss::bgp::thrift::TFibOutRoute expected;
+  expected.operation() = neteng::fboss::bgp::thrift::TFibOutOperation::NONE;
+  EXPECT_EQ(none, expected);
 }
 
 } // namespace

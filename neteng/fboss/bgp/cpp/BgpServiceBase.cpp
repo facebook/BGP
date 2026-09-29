@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <stdexcept>
 #include <unordered_set>
 
 #include <fb303/FollyLoggingHandler.h>
@@ -2413,6 +2414,53 @@ BgpServiceBase::co_getRibEntries(TBgpAfi afi) {
         magic_enum::enum_name(afi));
   }
   co_return std::make_unique<std::vector<TRibEntry>>();
+}
+
+folly::coro::Task<std::unique_ptr<TFibOutTable>>
+BgpServiceBase::co_getFibOutPrefix(
+    std::unique_ptr<TFibOutPrefixRequest> request) {
+  // LogThriftCall accepts and handles a null request context.
+  // @lint-ignore NULLSAFECLANG nullable-argument
+  auto log = LOG_THRIFT_CALL(DBG2);
+  if (exitInitiated_ || request == nullptr) {
+    const auto reason =
+        exitInitiated_ ? "service is exiting" : "request is null";
+    co_yield folly::coro::co_error(
+        std::runtime_error(
+            fmt::format("getFibOutPrefix unavailable: {}", reason)));
+  }
+
+  if (!continueExecution(true)) {
+    co_yield folly::coro::co_error(
+        std::runtime_error(
+            "getFibOutPrefix unavailable: request admission failed"));
+  }
+  SCOPE_EXIT {
+    decrRequestsInExecution();
+  };
+
+  const auto& prefixString = *request->prefix();
+  auto result = co_await co_runOnEvbWithTimeout(
+      rib_.getEventBase(),
+      [this, prefixString]() { return rib_.getFibOutPrefix(prefixString); },
+      kRibThriftHandlerTimeout);
+
+  if (result.hasValue()) {
+    co_return std::make_unique<TFibOutTable>(std::move(result.value()));
+  }
+
+  const auto message =
+      result.exception().is_compatible_with<folly::FutureTimeout>()
+      ? fmt::format(
+            "getFibOutPrefix timed out: RIB event base is unresponsive, "
+            "prefix={}",
+            prefixString)
+      : fmt::format(
+            "getFibOutPrefix failed: {}, prefix={}",
+            result.exception().what(),
+            prefixString);
+  XLOGF(ERR, "{}", message);
+  co_yield folly::coro::co_error(std::runtime_error(message));
 }
 
 folly::coro::Task<std::unique_ptr<TRibSummary>>

@@ -28,6 +28,7 @@
 #include "configerator/structs/neteng/bgp_policy/thrift/gen-cpp2/rib_policy_types.h"
 #include "configerator/structs/neteng/fboss/bgp/gen-cpp2/bgp_config_types.h"
 #include "neteng/fboss/bgp/cpp/common/BgpPath.h"
+#include "neteng/fboss/bgp/cpp/common/IpPrefixUtils.h"
 #include "neteng/fboss/bgp/cpp/config/Config.h"
 #include "neteng/fboss/bgp/cpp/lib/BgpStructs.h"
 #include "neteng/fboss/bgp/cpp/policy/PolicyManager.h"
@@ -81,14 +82,6 @@ constexpr auto kUpdateGroupEgressFilterError =
  */
 constexpr auto kBestPathGroup = "best";
 constexpr auto kMultiPathGroup = "multiPaths";
-
-/**
- * Utility method to create TIpPrefix from IPAddress
- */
-neteng::fboss::bgp_attr::TIpPrefix createTIpPrefix(
-    const folly::IPAddress& addr);
-neteng::fboss::bgp_attr::TIpPrefix createTIpPrefix(
-    const folly::CIDRNetwork& prefix);
 
 std::string TIpPrefixToString(const neteng::fboss::bgp_attr::TIpPrefix& prefix);
 
