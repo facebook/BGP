@@ -32,6 +32,7 @@
   FRIEND_TEST(RibFixture, FibSyncReqWhilePausedTest);                         \
   FRIEND_TEST(RibFixture, FibFlushedCounterTest);
 
+#include "neteng/fboss/bgp/cpp/BgpServiceUtil.h"
 #include "neteng/fboss/bgp/cpp/rib/RibBase.h"
 #include "neteng/fboss/bgp/cpp/rib/Utils.h"
 #include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
@@ -107,6 +108,7 @@ TEST_F(FibOutRibFixture, FibOutPrefixReturnsOnlyExactMatch) {
   expectedRoute.operation() =
       facebook::neteng::fboss::bgp::thrift::TFibOutOperation::PROGRAM;
   expectedRoute.next_hops() = {std::move(expectedNexthop)};
+  expectedRoute.nexthop_set_ref_count() = 1;
   facebook::neteng::fboss::bgp::thrift::TFibOutEntry expectedEntry;
   expectedEntry.prefix() = buildTPrefix(kV4Prefix1);
   expectedEntry.fib_out() = std::move(expectedRoute);
@@ -165,6 +167,15 @@ TEST_F(FibOutRibFixture, ChangesAtPlatformStagingBoundary) {
       ASSERT_EQ(table.entries()->size(), 1);
       ASSERT_TRUE(table.entries()->front().fib_out().has_value());
       EXPECT_FALSE(table.entries()->front().fib_out_pending().has_value());
+      EXPECT_EQ(
+          *table.entries()->front().fib_out()->nexthop_set_ref_count(), 1);
+      const auto database = rib_->getFibNexthopDatabase();
+      ASSERT_EQ(database.nexthop_sets()->size(), 1);
+      ASSERT_EQ(database.nexthop_sets()->front().next_hops()->size(), 1);
+      EXPECT_EQ(
+          *database.nexthop_sets()->front().next_hops()->front().next_hop(),
+          createTIpPrefix(kV4Nexthop1));
+      EXPECT_EQ(*database.nexthop_sets()->front().ref_count(), 1);
     });
     EXPECT_CALL(*fib_, program_(false)).WillOnce([this, &secondExpected](bool) {
       const auto& entry = rib_->ribEntries_.at(kV4Prefix1);
@@ -178,6 +189,15 @@ TEST_F(FibOutRibFixture, ChangesAtPlatformStagingBoundary) {
       ASSERT_EQ(table.entries()->size(), 1);
       ASSERT_TRUE(table.entries()->front().fib_out().has_value());
       EXPECT_FALSE(table.entries()->front().fib_out_pending().has_value());
+      EXPECT_EQ(
+          *table.entries()->front().fib_out()->nexthop_set_ref_count(), 1);
+      const auto database = rib_->getFibNexthopDatabase();
+      ASSERT_EQ(database.nexthop_sets()->size(), 1);
+      ASSERT_EQ(database.nexthop_sets()->front().next_hops()->size(), 1);
+      EXPECT_EQ(
+          *database.nexthop_sets()->front().next_hops()->front().next_hop(),
+          createTIpPrefix(kV4Nexthop2));
+      EXPECT_EQ(*database.nexthop_sets()->front().ref_count(), 1);
     });
   }
 
@@ -193,6 +213,7 @@ TEST_F(FibOutRibFixture, ChangesAtPlatformStagingBoundary) {
     ASSERT_EQ(table.entries()->size(), 1);
     EXPECT_FALSE(table.entries()->front().fib_out().has_value());
     EXPECT_FALSE(table.entries()->front().fib_out_pending().has_value());
+    EXPECT_TRUE(rib_->getFibNexthopDatabase().nexthop_sets()->empty());
   });
   fibFuture.wait();
 
@@ -211,6 +232,13 @@ TEST_F(FibOutRibFixture, ChangesAtPlatformStagingBoundary) {
     ASSERT_EQ(table.entries()->size(), 1);
     ASSERT_TRUE(table.entries()->front().fib_out().has_value());
     EXPECT_FALSE(table.entries()->front().fib_out_pending().has_value());
+    EXPECT_EQ(*table.entries()->front().fib_out()->nexthop_set_ref_count(), 1);
+    const auto database = rib_->getFibNexthopDatabase();
+    ASSERT_EQ(database.nexthop_sets()->size(), 1);
+    ASSERT_EQ(database.nexthop_sets()->front().next_hops()->size(), 1);
+    EXPECT_EQ(
+        *database.nexthop_sets()->front().next_hops()->front().next_hop(),
+        createTIpPrefix(kV4Nexthop1));
   });
   fibFuture.wait();
 

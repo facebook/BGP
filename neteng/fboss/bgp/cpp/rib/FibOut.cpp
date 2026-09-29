@@ -36,8 +36,8 @@ bool FibOutNexthop::operator<(const FibOutNexthop& other) const {
   if (address != other.address) {
     return address < other.address;
   }
-  return std::tie(weight, role, connected, interfaceName) <
-      std::tie(other.weight, other.role, other.connected, other.interfaceName);
+  return std::tie(interfaceName, weight, role, connected) <
+      std::tie(other.interfaceName, other.weight, other.role, other.connected);
 }
 
 FibOutRouteMetadata FibOutRouteMetadata::program(
@@ -196,6 +196,21 @@ size_t FibNexthopSets::size() const {
     result += candidates.size();
   }
   return result;
+}
+
+void FibNexthopSets::forEach(
+    folly::FunctionRef<void(const FibNexthopSet&, size_t)> visitor) const {
+  for (const auto& [_, candidates] : state_->setsByHash) {
+    for (const auto& candidate : candidates) {
+      const auto externalOwnerCount = candidate.owner.use_count();
+      auto owner = candidate.owner.lock();
+      if (!owner) {
+        throw std::logic_error(
+            "FibNexthopSets contains an expired registry entry");
+      }
+      visitor(owner->nexthops, static_cast<size_t>(externalOwnerCount));
+    }
+  }
 }
 
 void FibNexthopSets::clear() {

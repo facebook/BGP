@@ -211,6 +211,16 @@ class BgpServiceBase
       std::unique_ptr<facebook::neteng::fboss::bgp::thrift::TRibSummary>>
   co_getRibSummary(facebook::neteng::fboss::bgp_attr::TBgpAfi afi) override;
 
+  /**
+   * Return canonical FIB-out nexthop sets and their route reference counts.
+   *
+   * The RIB traverses its event-base-owned canonical-set registry. Work grows
+   * with unique complete sets and does not scan RIB entries.
+   */
+  folly::coro::Task<std::unique_ptr<
+      facebook::neteng::fboss::bgp::thrift::TFibNexthopDatabase>>
+  co_getFibNexthopDatabase() override;
+
   folly::coro::Task<std::unique_ptr<
       std::vector<facebook::neteng::fboss::bgp::thrift::TRibEntry>>>
   co_getRibEntriesForCommunity(

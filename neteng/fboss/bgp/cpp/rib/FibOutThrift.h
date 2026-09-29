@@ -27,4 +27,9 @@ namespace facebook::bgp {
 neteng::fboss::bgp::thrift::TFibOutRoute toThriftFibOutRoute(
     const FibOutState& state);
 
+/** Convert one canonical nexthop set and its route count to Thrift. */
+neteng::fboss::bgp::thrift::TFibNexthopSet toThriftFibNexthopSet(
+    const FibNexthopSet& nexthops,
+    int64_t routeRefCount);
+
 } // namespace facebook::bgp

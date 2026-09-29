@@ -24,6 +24,8 @@
 #include <folly/Function.h>
 #include <folly/IPAddress.h>
 #include <folly/IntrusiveList.h>
+#include <folly/Synchronized.h>
+#include <folly/container/F14Map.h>
 #include <folly/container/F14Set.h>
 #include <folly/coro/AsyncScope.h>
 #include <folly/coro/Task.h>
@@ -266,12 +268,26 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
   neteng::fboss::bgp::thrift::TFibOutTable getFibOutPrefix(
       const std::string& prefix);
 
+  /** Return the immutable FIB-out tracking configuration value. */
+  bool isFibOutTrackingEnabled() const noexcept {
+    return globalConfig_.enableFibOutTracking;
+  }
+
   /*
    * Get a compact summary (total prefixes + per-prefix-length histogram) of the
    * RIB for one address family, read from ribCounters_ on this module's evb.
    */
   neteng::fboss::bgp::thrift::TRibSummary getRibSummary(
       neteng::fboss::bgp_attr::TBgpAfi afi);
+
+  /**
+   * Return canonical FIB-out nexthop sets and their shared owner counts.
+   *
+   * The method returns immediately when the immutable startup flag is off.
+   * When enabled, it traverses the canonical-set registry on the RIB event-base
+   * thread and does not scan the RIB.
+   */
+  neteng::fboss::bgp::thrift::TFibNexthopDatabase getFibNexthopDatabase();
 
   /*
    * Get ribEntries by prefixes:
@@ -703,7 +719,6 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
 
   // Canonical immutable nexthop sets referenced by FIB-out route state.
   FibNexthopSets fibNexthopSets_;
-
   /*
    * Single authoritative aggregate of RIB-wide counts (mirrors fb303 ODS
    * counters). Mutated only on this module's EventBase alongside ribEntries_.
@@ -782,13 +797,10 @@ class RibBase : public BgpModuleBase, public MonitoredModule {
       const folly::CIDRNetwork& prefixes,
       const std::shared_ptr<BgpPath>& preInAttrs);
 
-  /**
-   * Replace the feature-gated FIB-out state for one live RIB entry.
-   * Must run on the RIB event-base thread.
-   */
+  /** Replace one entry's FIB-out state with a canonical nexthop set. */
   void replaceFibOut(RibEntry& entry, FibOutState state);
 
-  /** Remove feature-gated FIB-out state before erasing a RIB entry. */
+  /** Remove one entry's FIB-out state on the RIB event-base thread. */
   void eraseFibOut(RibEntry& entry);
 
   /** Return an entry's submitted FIB-out state, or null if none exists. */

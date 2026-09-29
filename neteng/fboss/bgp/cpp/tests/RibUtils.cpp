@@ -337,7 +337,13 @@ void MockRib::prepareFibProgramming(bool fullSync) noexcept {
   RibDC::prepareFibProgramming(fullSync);
   fibItems.clear();
   for (auto it = fibBatchList_.begin(); it != fibBatchList_.end(); ++it) {
-    fibItems.emplace(it->getPrefix(), *it);
+    auto [snapshot, inserted] = fibItems.emplace(it->getPrefix(), *it);
+    CHECK(inserted);
+    /*
+     * fibItems is a test-only copy of the batch input, not another live route.
+     * Do not let it contribute an owner to the canonical FIB-out set count.
+     */
+    eraseFibOut(snapshot->second);
   }
   fulfillRibPrepareFibProgrammingPromise(fibItems.size());
 }

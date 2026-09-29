@@ -23,6 +23,7 @@
 #include <string>
 #include <vector>
 
+#include <folly/Function.h>
 #include <folly/IPAddress.h>
 
 #include "neteng/fboss/bgp/cpp/common/Structs.h"
@@ -56,7 +57,7 @@ struct FibOutNexthop {
   bool operator==(const FibOutNexthop& other) const;
 
   /**
-   * Order every equality field so sort-and-unique preserves pool identity.
+   * Order every equality field so sort-and-unique preserves canonical identity.
    */
   bool operator<(const FibOutNexthop& other) const;
 };
@@ -148,6 +149,18 @@ class FibNexthopSets {
 
   /** Return the number of canonical sets currently registered. */
   size_t size() const;
+
+  /**
+   * Visit each canonical set and its current number of strong owners.
+   *
+   * The caller must serialize this operation with `getOrCreate()` and
+   * `clear()`. The registry keeps only weak references, so the reported count
+   * is the number of external aliases and the temporary traversal owner is
+   * excluded. Iteration is linear in the number of registered sets and does
+   * not scan RIB entries or allocate a second collection.
+   */
+  void forEach(
+      folly::FunctionRef<void(const FibNexthopSet&, size_t)> visitor) const;
 
   /** Remove every weak registry entry. */
   void clear();

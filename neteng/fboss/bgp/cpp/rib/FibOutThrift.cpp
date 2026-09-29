@@ -23,6 +23,7 @@
 namespace facebook::bgp {
 namespace {
 
+using neteng::fboss::bgp::thrift::TFibNexthopSet;
 using neteng::fboss::bgp::thrift::TFibOutNextHop;
 using neteng::fboss::bgp::thrift::TFibOutNextHopRole;
 using neteng::fboss::bgp::thrift::TFibOutOperation;
@@ -94,6 +95,18 @@ TFibOutRoute toThriftFibOutRoute(const FibOutState& state) {
         toThriftNexthop(nexthop, state.topologyInfo.get()));
   }
   return route;
+}
+
+TFibNexthopSet toThriftFibNexthopSet(
+    const FibNexthopSet& nexthops,
+    int64_t routeRefCount) {
+  TFibNexthopSet thriftSet;
+  thriftSet.next_hops()->reserve(nexthops.size());
+  for (const auto& nexthop : nexthops) {
+    thriftSet.next_hops()->push_back(toThriftNexthop(nexthop, nullptr));
+  }
+  thriftSet.ref_count() = routeRefCount;
+  return thriftSet;
 }
 
 } // namespace facebook::bgp

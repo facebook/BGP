@@ -2511,6 +2511,50 @@ BgpServiceBase::co_getRibSummary(TBgpAfi afi) {
   co_return emptySummary();
 }
 
+folly::coro::Task<std::unique_ptr<TFibNexthopDatabase>>
+BgpServiceBase::co_getFibNexthopDatabase() {
+  // LogThriftCall accepts and handles a null request context.
+  // @lint-ignore NULLSAFECLANG nullable-argument
+  auto log = LOG_THRIFT_CALL(DBG2);
+  if (exitInitiated_) {
+    co_yield folly::coro::co_error(
+        std::runtime_error(
+            "getFibNexthopDatabase unavailable: service is exiting"));
+  }
+
+  if (!continueExecution(true)) {
+    co_yield folly::coro::co_error(
+        std::runtime_error(
+            "getFibNexthopDatabase unavailable: request admission failed"));
+  }
+  SCOPE_EXIT {
+    decrRequestsInExecution();
+  };
+
+  if (!rib_.isFibOutTrackingEnabled()) {
+    auto database = std::make_unique<TFibNexthopDatabase>();
+    database->enabled() = false;
+    co_return database;
+  }
+
+  auto result = co_await co_runOnEvbWithTimeout(
+      rib_.getEventBase(),
+      [this]() { return rib_.getFibNexthopDatabase(); },
+      kRibThriftHandlerTimeout);
+
+  if (result.hasValue()) {
+    co_return std::make_unique<TFibNexthopDatabase>(std::move(result.value()));
+  }
+
+  const auto message =
+      result.exception().is_compatible_with<folly::FutureTimeout>()
+      ? "getFibNexthopDatabase timed out: RIB event base is unresponsive"
+      : fmt::format(
+            "getFibNexthopDatabase failed: {}", result.exception().what());
+  XLOGF(ERR, "{}", message);
+  co_yield folly::coro::co_error(std::runtime_error(message));
+}
+
 folly::coro::Task<std::unique_ptr<std::vector<TRibEntry>>>
 BgpServiceBase::co_getRibPrefix(std::unique_ptr<std::string> prefix) {
   auto log = LOG_THRIFT_CALL(DBG2);

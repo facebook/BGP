@@ -135,6 +135,95 @@ TEST(FibOutTest, DistinguishesMissingOptionalFields) {
   EXPECT_NE(missing, present);
 }
 
+TEST(FibOutTest, SetIdentityIncludesEveryNormalizedNexthopField) {
+  const FibOutNexthop base{
+      .address = folly::IPAddress("fe80::1"),
+      .interfaceName = "eth1/1",
+      .weight = 1,
+      .role = FibOutNexthopRole::PRIMARY,
+      .connected = true,
+  };
+  auto otherInterface = base;
+  otherInterface.interfaceName = "eth1/2";
+  auto otherWeight = base;
+  otherWeight.weight = 2;
+  auto otherRole = base;
+  otherRole.role = FibOutNexthopRole::BACKUP;
+  auto otherConnected = base;
+  otherConnected.connected = false;
+
+  FibNexthopSets nexthopSets;
+  const auto baseSet = nexthopSets.getOrCreate({base});
+  EXPECT_NE(baseSet, nexthopSets.getOrCreate({otherInterface}));
+  EXPECT_NE(baseSet, nexthopSets.getOrCreate({otherWeight}));
+  EXPECT_NE(baseSet, nexthopSets.getOrCreate({otherRole}));
+  EXPECT_NE(baseSet, nexthopSets.getOrCreate({otherConnected}));
+}
+
+TEST(FibOutTest, TraversalReportsExternalOwnerCounts) {
+  const auto nexthop1 = makeNexthop(0x01000001);
+  const auto nexthop2 = makeNexthop(0x01000002);
+  FibNexthopSets nexthopSets;
+  const auto first = nexthopSets.getOrCreate({nexthop1});
+  const auto firstAlias = nexthopSets.getOrCreate({nexthop1});
+  const auto second = nexthopSets.getOrCreate({nexthop2});
+  ASSERT_EQ(first, firstAlias);
+  ASSERT_NE(first, second);
+  size_t visited{0};
+
+  nexthopSets.forEach(
+      [&](const FibNexthopSet& nexthops, size_t externalOwnerCount) {
+        ++visited;
+        if (nexthops == FibNexthopSet{nexthop1}) {
+          EXPECT_EQ(externalOwnerCount, 2);
+        } else if (nexthops == FibNexthopSet{nexthop2}) {
+          EXPECT_EQ(externalOwnerCount, 1);
+        } else {
+          ADD_FAILURE() << "visited an unknown canonical nexthop set";
+        }
+      });
+
+  EXPECT_EQ(visited, 2);
+}
+
+TEST(FibOutTest, TraversalIncludesEmptyCanonicalSet) {
+  FibNexthopSets nexthopSets;
+  const auto empty = nexthopSets.getOrCreate({});
+  ASSERT_TRUE(empty->empty());
+  size_t visited{0};
+
+  nexthopSets.forEach(
+      [&](const FibNexthopSet& nexthops, size_t externalOwnerCount) {
+        ++visited;
+        EXPECT_TRUE(nexthops.empty());
+        EXPECT_EQ(externalOwnerCount, 1);
+      });
+
+  EXPECT_EQ(visited, 1);
+}
+
+TEST(FibOutTest, ReplacingLastExternalOwnerRemovesPreviousSet) {
+  FibNexthopSets nexthopSets;
+  auto routeState = std::make_shared<const FibOutState>(FibOutState{
+      .nexthops = nexthopSets.getOrCreate({makeNexthop(0x01000001)}),
+      .metadata = FibOutRouteMetadata::program(),
+  });
+  nexthopSets.forEach([](const FibNexthopSet&, size_t ownerCount) {
+    EXPECT_EQ(ownerCount, 1);
+  });
+
+  routeState = std::make_shared<const FibOutState>(FibOutState{
+      .nexthops = nexthopSets.getOrCreate({makeNexthop(0x01000002)}),
+      .metadata = FibOutRouteMetadata::program(),
+  });
+
+  EXPECT_EQ(nexthopSets.size(), 1);
+  nexthopSets.forEach([&](const FibNexthopSet& nexthops, size_t ownerCount) {
+    EXPECT_EQ(nexthops, FibNexthopSet{makeNexthop(0x01000002)});
+    EXPECT_EQ(ownerCount, 1);
+  });
+}
+
 TEST(FibOutTest, MaterializesThriftOnlyForTheRpcBoundary) {
   FibNexthopSets nexthopSets;
   const auto nexthops = nexthopSets.getOrCreate({FibOutNexthop{
@@ -228,6 +317,31 @@ TEST(FibOutTest, ConvertsEmptyFibOutState) {
   neteng::fboss::bgp::thrift::TFibOutRoute expected;
   expected.operation() = neteng::fboss::bgp::thrift::TFibOutOperation::NONE;
   EXPECT_EQ(none, expected);
+}
+
+TEST(FibOutTest, ConvertsCanonicalNexthopSetWithRouteReferenceCount) {
+  const FibNexthopSet nexthops{FibOutNexthop{
+      .address = folly::IPAddress::fromLongHBO(0x01000001),
+      .interfaceName = "Ethernet1",
+      .weight = 10,
+      .role = FibOutNexthopRole::BACKUP,
+      .connected = true,
+  }};
+  neteng::fboss::bgp::thrift::TFibOutNextHop expectedNexthop;
+  expectedNexthop.next_hop()->afi() =
+      neteng::fboss::bgp_attr::TBgpAfi::AFI_IPV4;
+  expectedNexthop.next_hop()->num_bits() = 32;
+  expectedNexthop.next_hop()->prefix_bin() = std::string("\x01\x00\x00\x01", 4);
+  expectedNexthop.weight() = 10;
+  expectedNexthop.role() =
+      neteng::fboss::bgp::thrift::TFibOutNextHopRole::BACKUP;
+  expectedNexthop.is_connected() = true;
+  expectedNexthop.interface_name() = "Ethernet1";
+  neteng::fboss::bgp::thrift::TFibNexthopSet expected;
+  expected.next_hops() = {std::move(expectedNexthop)};
+  expected.ref_count() = 7;
+
+  EXPECT_EQ(toThriftFibNexthopSet(nexthops, 7), expected);
 }
 
 } // namespace

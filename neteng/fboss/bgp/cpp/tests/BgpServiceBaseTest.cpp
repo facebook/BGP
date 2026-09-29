@@ -33,11 +33,12 @@
  * co_getNumPrefixes without a running RIB evb -- the exit guard short-circuits
  * before the evb hop.
  */
-#define BgpServiceBase_TEST_FRIENDS                                    \
-  FRIEND_TEST(                                                         \
-      BgpServiceBaseTestFixture,                                       \
-      GetRibVersionAndNumPrefixesReturnNegativeOnExit);                \
-  FRIEND_TEST(BgpServiceBaseTestFixture, GetFibOutPrefixThrowsOnExit); \
+#define BgpServiceBase_TEST_FRIENDS                                          \
+  FRIEND_TEST(                                                               \
+      BgpServiceBaseTestFixture,                                             \
+      GetRibVersionAndNumPrefixesReturnNegativeOnExit);                      \
+  FRIEND_TEST(BgpServiceBaseTestFixture, GetFibOutPrefixThrowsOnExit);       \
+  FRIEND_TEST(BgpServiceBaseTestFixture, GetFibNexthopDatabaseThrowsOnExit); \
   FRIEND_TEST(BgpServiceBaseTestFixture, GetAdjRibStatsReturnsEmptyOnExit);
 
 #include "neteng/fboss/bgp/cpp/BgpServiceBase.h"
@@ -349,6 +350,30 @@ TEST_F(BgpServiceBaseTestFixture, GetFibOutPrefixThrowsOnExit) {
 
   EXPECT_ANY_THROW(
       folly::coro::blockingWait(client->co_getFibOutPrefix(request)));
+}
+
+TEST_F(BgpServiceBaseTestFixture, GetFibNexthopDatabaseThrowsOnExit) {
+  service_->exitInitiated_ = true;
+  auto handler = std::shared_ptr<BgpServiceBase>(service_.get(), [](auto*) {});
+  apache::thrift::ScopedServerInterfaceThread server(
+      handler, kLoopBackAddressV4.str(), kEphemeralPort);
+  auto client = server.newClient<apache::thrift::Client<TBgpService>>();
+
+  EXPECT_ANY_THROW(
+      folly::coro::blockingWait(client->co_getFibNexthopDatabase()));
+}
+
+TEST_F(BgpServiceBaseTestFixture, GetFibNexthopDatabaseReturnsDisabledState) {
+  auto handler = std::shared_ptr<BgpServiceBase>(service_.get(), [](auto*) {});
+  apache::thrift::ScopedServerInterfaceThread server(
+      handler, kLoopBackAddressV4.str(), kEphemeralPort);
+  auto client = server.newClient<apache::thrift::Client<TBgpService>>();
+
+  const auto database =
+      folly::coro::blockingWait(client->co_getFibNexthopDatabase());
+
+  EXPECT_FALSE(*database.enabled());
+  EXPECT_TRUE(database.nexthop_sets()->empty());
 }
 
 TEST_F(BgpServiceBaseTestFixture, GetDeduplicatorStatsReturnsTypedSnapshot) {

@@ -112,7 +112,10 @@
   FRIEND_TEST(RibFixture, RibVersionDistinctPerPrefixInWithdrawal);            \
   FRIEND_TEST(                                                                 \
       RibFixture, RibVersionAddPathWithdrawalsSpanningChunksBumpAcrossChunks); \
-  FRIEND_TEST(RibFixture, CreateTRibEntryBestGroupReflectsBestPathPresence);
+  FRIEND_TEST(RibFixture, CreateTRibEntryBestGroupReflectsBestPathPresence);   \
+  FRIEND_TEST(RibFibNexthopDatabaseFixture, KeepsCompleteNexthopSetsDistinct); \
+  FRIEND_TEST(RibFibNexthopDatabaseFixture, PropagatesConversionFailure);      \
+  FRIEND_TEST(RibFibNexthopDatabaseFixture, TracksEmptySubmittedNexthopSet);
 
 #define RibEntry_TEST_FRIENDS
 
@@ -252,6 +255,247 @@ TEST_F(RibFixture, GetRibSummarySourceBreakdown) {
   auto v4Summary = rib_->getRibSummary(TBgpAfi::AFI_IPV4);
   EXPECT_EQ(0, v4Summary.total_prefixes().value());
   EXPECT_EQ(0, v4Summary.total_paths().value());
+}
+
+class RibFibNexthopDatabaseFixture : public RibFixture {
+ public:
+  /** Start a RIB with FIB-out tracking enabled. */
+  void SetUp() override {
+    ribFixtureDefaultSetup(
+        ComputeUcmpFromLbwComm{true},
+        CountConfedsInAsPathLen{false},
+        EnableNexthopTracking{false},
+        nullptr,
+        true /* enableFibOutTracking */);
+  }
+};
+
+/** Build one expected normalized nexthop for FIB-out database assertions. */
+TFibOutNextHop makeExpectedFibNexthop(
+    const folly::IPAddress& address,
+    uint32_t weight = 0,
+    TFibOutNextHopRole role = TFibOutNextHopRole::PRIMARY,
+    std::optional<std::string> interfaceName = std::nullopt) {
+  TFibOutNextHop nexthop;
+  nexthop.next_hop() = createTIpPrefix(address);
+  nexthop.weight() = weight;
+  nexthop.role() = role;
+  if (interfaceName) {
+    nexthop.interface_name() = std::move(*interfaceName);
+  }
+  return nexthop;
+}
+
+/** Build one expected canonical set and its live route reference count. */
+TFibNexthopSet makeExpectedFibNexthopSet(
+    std::vector<TFibOutNextHop> nexthops,
+    int64_t routeRefCount) {
+  TFibNexthopSet set;
+  set.next_hops() = std::move(nexthops);
+  set.ref_count() = routeRefCount;
+  return set;
+}
+
+TEST_F(RibFixture, FibNexthopDatabaseDisabledByDefault) {
+  const auto database = rib_->getFibNexthopDatabase();
+  EXPECT_FALSE(*database.enabled());
+  EXPECT_TRUE(database.nexthop_sets()->empty());
+}
+
+TEST_F(RibFibNexthopDatabaseFixture, TracksSubmittedNexthopSets) {
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendAnnouncement(
+      PrefixPathIds{{kV4Prefix1, kDefaultPathID}, {kV4Prefix2, kDefaultPathID}},
+      eBgpPeer1_,
+      attr_);
+  sendInitialPathComputation();
+  fibFuture.wait();
+
+  const std::vector<TFibNexthopSet> expectedTwoPrefixes{
+      makeExpectedFibNexthopSet({makeExpectedFibNexthop(kV4Nexthop1)}, 2)};
+  auto database = rib_->getFibNexthopDatabase();
+  ASSERT_TRUE(*database.enabled());
+  EXPECT_EQ(*database.nexthop_sets(), expectedTwoPrefixes);
+  const auto firstPrefix =
+      rib_->getFibOutPrefix(folly::IPAddress::networkToString(kV4Prefix1));
+  ASSERT_EQ(firstPrefix.entries()->size(), 1);
+  ASSERT_TRUE(firstPrefix.entries()->front().fib_out().has_value());
+  EXPECT_EQ(
+      *firstPrefix.entries()->front().fib_out()->nexthop_set_ref_count(), 2);
+
+  auto updatedAttrs = attr_->clone();
+  updatedAttrs->setNexthop(kV4Nexthop2);
+  updatedAttrs->publish();
+  fibFuture = fib_->getFibProgramFuture();
+  sendAnnouncement(
+      PrefixPathIds{{kV4Prefix1, kDefaultPathID}}, eBgpPeer1_, updatedAttrs);
+  fibFuture.wait();
+  const std::vector<TFibNexthopSet> expectedUpdated{
+      makeExpectedFibNexthopSet({makeExpectedFibNexthop(kV4Nexthop1)}, 1),
+      makeExpectedFibNexthopSet({makeExpectedFibNexthop(kV4Nexthop2)}, 1),
+  };
+  EXPECT_THAT(
+      *rib_->getFibNexthopDatabase().nexthop_sets(),
+      UnorderedElementsAreArray(expectedUpdated));
+  const auto updatedPrefix =
+      rib_->getFibOutPrefix(folly::IPAddress::networkToString(kV4Prefix1));
+  ASSERT_EQ(updatedPrefix.entries()->size(), 1);
+  ASSERT_TRUE(updatedPrefix.entries()->front().fib_out().has_value());
+  EXPECT_EQ(
+      *updatedPrefix.entries()->front().fib_out()->nexthop_set_ref_count(), 1);
+
+  fibFuture = fib_->getFibProgramFuture();
+  sendWithdrawal(PrefixPathIds{{kV4Prefix1, kDefaultPathID}}, eBgpPeer1_);
+  fibFuture.wait();
+  const std::vector<TFibNexthopSet> expectedOnePrefix{
+      makeExpectedFibNexthopSet({makeExpectedFibNexthop(kV4Nexthop1)}, 1)};
+  database = rib_->getFibNexthopDatabase();
+  EXPECT_EQ(*database.nexthop_sets(), expectedOnePrefix);
+
+  fibFuture = fib_->getFibProgramFuture();
+  sendWithdrawal(PrefixPathIds{{kV4Prefix2, kDefaultPathID}}, eBgpPeer1_);
+  fibFuture.wait();
+  WITH_RETRIES_N_TIMED(200, milliseconds(5), {
+    EXPECT_EVENTUALLY_TRUE(
+        rib_->getFibNexthopDatabase().nexthop_sets()->empty());
+  });
+}
+
+TEST_F(RibFibNexthopDatabaseFixture, KeepsCompleteNexthopSetsDistinct) {
+  const auto sharedAddress = folly::IPAddress("192.0.2.1");
+  const auto firstOnlyAddress = folly::IPAddress("192.0.2.2");
+  const auto secondOnlyAddress = folly::IPAddress("192.0.2.3");
+  rib_->evb_.runInEventBaseThreadAndWait([&]() {
+    auto firstNexthops = rib_->fibNexthopSets_.getOrCreate({
+        FibOutNexthop{
+            .address = sharedAddress,
+            .weight = 1,
+            .role = FibOutNexthopRole::PRIMARY,
+        },
+        FibOutNexthop{
+            .address = firstOnlyAddress,
+            .weight = 2,
+            .role = FibOutNexthopRole::BACKUP,
+        },
+    });
+    auto secondNexthops = rib_->fibNexthopSets_.getOrCreate({
+        FibOutNexthop{
+            .address = sharedAddress,
+            .weight = 1,
+            .role = FibOutNexthopRole::PRIMARY,
+        },
+        FibOutNexthop{
+            .address = secondOnlyAddress,
+            .weight = 3,
+            .role = FibOutNexthopRole::BACKUP,
+        },
+    });
+    auto& firstEntry =
+        rib_->ribEntries_
+            .emplace(std::make_pair(kV4Prefix1, RibEntry(kV4Prefix1)))
+            .first->second;
+    auto& secondEntry =
+        rib_->ribEntries_
+            .emplace(std::make_pair(kV4Prefix2, RibEntry(kV4Prefix2)))
+            .first->second;
+    rib_->replaceFibOut(
+        firstEntry,
+        FibOutState{
+            .nexthops = std::move(firstNexthops),
+            .metadata = FibOutRouteMetadata::program(),
+        });
+    rib_->replaceFibOut(
+        secondEntry,
+        FibOutState{
+            .nexthops = std::move(secondNexthops),
+            .metadata = FibOutRouteMetadata::program(),
+        });
+  });
+
+  const std::vector<TFibNexthopSet> expected{
+      makeExpectedFibNexthopSet(
+          {makeExpectedFibNexthop(sharedAddress, 1),
+           makeExpectedFibNexthop(
+               firstOnlyAddress, 2, TFibOutNextHopRole::BACKUP)},
+          1),
+      makeExpectedFibNexthopSet(
+          {makeExpectedFibNexthop(sharedAddress, 1),
+           makeExpectedFibNexthop(
+               secondOnlyAddress, 3, TFibOutNextHopRole::BACKUP)},
+          1),
+  };
+  EXPECT_THAT(
+      *rib_->getFibNexthopDatabase().nexthop_sets(),
+      UnorderedElementsAreArray(expected));
+
+  const auto prefixFibOut =
+      rib_->getFibOutPrefix(folly::IPAddress::networkToString(kV4Prefix1));
+  ASSERT_EQ(prefixFibOut.entries()->size(), 1);
+  ASSERT_TRUE(prefixFibOut.entries()->front().fib_out().has_value());
+  EXPECT_EQ(
+      *prefixFibOut.entries()->front().fib_out()->nexthop_set_ref_count(), 1);
+
+  rib_->evb_.runInEventBaseThreadAndWait(
+      [&]() { rib_->eraseFibOut(rib_->ribEntries_.at(kV4Prefix1)); });
+  const std::vector<TFibNexthopSet> expectedSecondOnly{expected.back()};
+  EXPECT_EQ(*rib_->getFibNexthopDatabase().nexthop_sets(), expectedSecondOnly);
+
+  rib_->evb_.runInEventBaseThreadAndWait(
+      [&]() { rib_->eraseFibOut(rib_->ribEntries_.at(kV4Prefix2)); });
+  EXPECT_TRUE(rib_->getFibNexthopDatabase().nexthop_sets()->empty());
+}
+
+TEST_F(RibFibNexthopDatabaseFixture, TracksEmptySubmittedNexthopSet) {
+  rib_->evb_.runInEventBaseThreadAndWait([&]() {
+    auto emptyNexthops = rib_->fibNexthopSets_.getOrCreate({});
+    auto& entry = rib_->ribEntries_
+                      .emplace(std::make_pair(kV4Prefix1, RibEntry(kV4Prefix1)))
+                      .first->second;
+    rib_->replaceFibOut(
+        entry,
+        FibOutState{
+            .nexthops = std::move(emptyNexthops),
+            .metadata = FibOutRouteMetadata{},
+        });
+  });
+
+  TFibNexthopSet expectedSet;
+  expectedSet.ref_count() = 1;
+  const auto database = rib_->getFibNexthopDatabase();
+  EXPECT_EQ(*database.nexthop_sets(), std::vector<TFibNexthopSet>{expectedSet});
+  const auto prefixFibOut =
+      rib_->getFibOutPrefix(folly::IPAddress::networkToString(kV4Prefix1));
+  ASSERT_EQ(prefixFibOut.entries()->size(), 1);
+  ASSERT_TRUE(prefixFibOut.entries()->front().fib_out().has_value());
+  EXPECT_EQ(
+      *prefixFibOut.entries()->front().fib_out()->nexthop_set_ref_count(), 1);
+  EXPECT_EQ(
+      *prefixFibOut.entries()->front().fib_out()->operation(),
+      TFibOutOperation::NONE);
+  EXPECT_TRUE(prefixFibOut.entries()->front().fib_out()->next_hops()->empty());
+}
+
+TEST_F(RibFibNexthopDatabaseFixture, PropagatesConversionFailure) {
+  rib_->evb_.runInEventBaseThreadAndWait([&]() {
+    auto invalidNexthops = rib_->fibNexthopSets_.getOrCreate({
+        FibOutNexthop{
+            .address = kV4Nexthop1,
+            .weight = 1,
+            .role = static_cast<FibOutNexthopRole>(-1),
+        },
+    });
+    auto& entry = rib_->ribEntries_
+                      .emplace(std::make_pair(kV4Prefix1, RibEntry(kV4Prefix1)))
+                      .first->second;
+    rib_->replaceFibOut(
+        entry,
+        FibOutState{
+            .nexthops = std::move(invalidNexthops),
+            .metadata = FibOutRouteMetadata::program(),
+        });
+  });
+
+  EXPECT_THROW(rib_->getFibNexthopDatabase(), std::logic_error);
 }
 
 /*

@@ -15,8 +15,12 @@
  */
 
 #include <boost/filesystem.hpp>
+#include <cmath>
+#include <exception>
+
 #include <folly/CppAttributes.h>
 #include <folly/FileUtil.h>
+#include <folly/container/F14Set.h>
 #include <folly/coro/BlockingWait.h>
 #include <folly/coro/CurrentExecutor.h>
 #include <folly/coro/Sleep.h>
@@ -730,6 +734,7 @@ void RibBase::maybeFlushNexthopSubscriptions() noexcept {
 
 void RibBase::replaceFibOut(RibEntry& entry, FibOutState state) {
   DCHECK(globalConfig_.enableFibOutTracking);
+  CHECK(state.nexthops);
   entry.fibOutState_ = std::make_shared<const FibOutState>(std::move(state));
 }
 
@@ -2448,6 +2453,32 @@ void RibBase::handleFibProgrammedMessage(
   }
 }
 
+TFibNexthopDatabase RibBase::getFibNexthopDatabase() {
+  TFibNexthopDatabase database;
+  database.enabled() = globalConfig_.enableFibOutTracking;
+  if (!globalConfig_.enableFibOutTracking) {
+    return database;
+  }
+
+  std::exception_ptr traversalException;
+  evb_.runImmediatelyOrRunInEventBaseThreadAndWait([&]() noexcept {
+    try {
+      database.nexthop_sets()->reserve(fibNexthopSets_.size());
+      fibNexthopSets_.forEach(
+          [&](const FibNexthopSet& nexthops, size_t routeRefCount) {
+            database.nexthop_sets()->push_back(toThriftFibNexthopSet(
+                nexthops, static_cast<int64_t>(routeRefCount)));
+          });
+    } catch (...) {
+      traversalException = std::current_exception();
+    }
+  });
+  if (traversalException) {
+    std::rethrow_exception(traversalException);
+  }
+  return database;
+}
+
 void RibBase::handleFibSyncReq(const Fib::FibSyncReq& /* unused */) noexcept {
   /*
    * skip processing full-sync request sending from FIB
@@ -2512,7 +2543,10 @@ TFibOutTable RibBase::getFibOutPrefix(const std::string& prefixString) {
     TFibOutEntry entry;
     entry.prefix() = buildTPrefix(ribEntry->first);
     if (const auto* fibOut = findFibOut(ribEntry->second)) {
-      entry.fib_out() = toThriftFibOutRoute(*fibOut);
+      auto thriftFibOut = toThriftFibOutRoute(*fibOut);
+      thriftFibOut.nexthop_set_ref_count() =
+          static_cast<int64_t>(fibOut->nexthops.use_count());
+      entry.fib_out() = std::move(thriftFibOut);
     }
     table.entries()->push_back(std::move(entry));
   });
