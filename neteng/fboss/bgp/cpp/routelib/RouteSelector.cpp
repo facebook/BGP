@@ -19,6 +19,7 @@
  */
 #include "neteng/fboss/bgp/cpp/routelib/RouteSelector.h"
 
+#include <folly/container/F14Set.h>
 #include <folly/logging/xlog.h>
 
 namespace facebook {
@@ -27,7 +28,6 @@ namespace edge {
 
 using std::pair;
 using std::shared_ptr;
-using std::unordered_set;
 using std::vector;
 
 vector<RouteFilterConfig> getRouteFilterConfigs(
@@ -173,28 +173,30 @@ AcceptedAndRejectedRoutes RouteSelector::applyFilters(
 
   // Initially, all routes are "accepted" and none are "rejected"
   AcceptedAndRejectedRoutes filteredRoutes{routes, {}};
-  unordered_set<shared_ptr<RouteBase>> allRejectedRoutes;
 
   for (const auto& filter : filters_) {
     if (routes.empty()) {
       break;
     }
 
-    /*
-     * We accumulate rejected routes from all rules,
-     * but permitted routes are "chain passed" through the rule set.
-     */
     filteredRoutes = filter->filter(filteredRoutes, filterMap);
-    std::copy(
-        filteredRoutes.second.begin(),
-        filteredRoutes.second.end(),
-        std::inserter(allRejectedRoutes, allRejectedRoutes.begin()));
   }
 
-  return {
-      filteredRoutes.first,
-      vector<shared_ptr<RouteBase>>(
-          allRejectedRoutes.begin(), allRejectedRoutes.end())};
+  /*
+   * A later filter can recover an earlier rejection. Derive final rejections
+   * from the selected set so every input route is accepted or rejected once,
+   * including routes rejected by nested tiebreakers.
+   */
+  const folly::F14FastSet<shared_ptr<RouteBase>> acceptedRoutes(
+      filteredRoutes.first.begin(), filteredRoutes.first.end());
+  vector<shared_ptr<RouteBase>> rejectedRoutes;
+  rejectedRoutes.reserve(routes.size());
+  for (const auto& route : routes) {
+    if (!acceptedRoutes.contains(route)) {
+      rejectedRoutes.push_back(route);
+    }
+  }
+  return {std::move(filteredRoutes.first), std::move(rejectedRoutes)};
 }
 } // namespace edge
 } // namespace nettools

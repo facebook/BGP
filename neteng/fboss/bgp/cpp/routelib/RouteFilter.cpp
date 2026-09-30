@@ -495,6 +495,7 @@ AcceptedAndRejectedRoutes RecoverEquivalentRouteFilter::filter(
     rejectedRoutes = remainingRejectedRoutes;
     remainingRejectedRoutes = std::vector<std::shared_ptr<RouteBase>>();
   }
+  filteredRoutes.second = std::move(rejectedRoutes);
   return filteredRoutes;
 }
 
