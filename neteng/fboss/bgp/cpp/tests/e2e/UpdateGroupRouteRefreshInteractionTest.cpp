@@ -36,12 +36,43 @@ using namespace facebook::nettools::bgplib;
 namespace facebook {
 namespace bgp {
 
+class UpdateGroupRouteRefreshTest : public UpdateGroupMultiPeerTest {
+ protected:
+  void waitForRibDumpScheduled(
+      const folly::IPAddress& peerAddr,
+      bool expected) {
+    WITH_RETRIES_N(60, {
+      EXPECT_EVENTUALLY_EQ(
+          folly::via(
+              &peerManager_->getEventBase(),
+              [this, peerAddr]() {
+                return getAdjRib(peerAddr)->isRibDumpScheduled();
+              })
+              .get(),
+          expected);
+    });
+  }
+
+  bool drainUntilState(
+      const folly::IPAddress& peerAddr,
+      const BgpPeerId& peerId,
+      PeerUpdateState expectedState) {
+    for (int i = 0; i < 20; ++i) {
+      drainPeerQueueCompletely(peerId, 1, 100);
+      if (getPeerState(peerAddr) == expectedState) {
+        break;
+      }
+    }
+    return waitForPeerState(peerAddr, expectedState);
+  }
+};
+
 /*
  * A real Route Refresh from a joined peer detaches only that requester, sends
  * the requested-AFI replay over its private lane, and rejoins it. The sibling
  * stays in sync and must not receive the replay.
  */
-TEST_P(UpdateGroupMultiPeerTest, JoinedRunning_RouteRefreshRequesterOnly) {
+TEST_P(UpdateGroupRouteRefreshTest, JoinedRunning_RouteRefreshRequesterOnly) {
   XLOGF(INFO, "=== TEST: JoinedRunning_RouteRefreshRequesterOnly ===");
 
   addPeer(kDefaultPeerSpec3);
@@ -109,7 +140,7 @@ TEST_P(UpdateGroupMultiPeerTest, JoinedRunning_RouteRefreshRequesterOnly) {
   XLOGF(INFO, "=== TEST PASSED: JoinedRunning_RouteRefreshRequesterOnly ===");
 }
 
-TEST_P(UpdateGroupMultiPeerTest, JoinedBlocked_RouteRefreshWaitsForUnblock) {
+TEST_P(UpdateGroupRouteRefreshTest, JoinedBlocked_RouteRefreshWaitsForUnblock) {
   XLOGF(INFO, "=== TEST: JoinedBlocked_RouteRefreshWaitsForUnblock ===");
 
   /*
@@ -181,23 +212,14 @@ TEST_P(UpdateGroupMultiPeerTest, JoinedBlocked_RouteRefreshWaitsForUnblock) {
 
   ASSERT_TRUE(waitForPeerState(kPeerAddr3, PeerUpdateState::DETACHED_BLOCKED));
   EXPECT_TRUE(isPeerDetached(kPeerAddr3));
-  WITH_RETRIES_N(60, {
-    EXPECT_EVENTUALLY_TRUE(folly::via(&peerManager_->getEventBase(), [this]() {
-                             return getAdjRib(kPeerAddr3)->isRibDumpScheduled();
-                           }).get());
-  });
+  waitForRibDumpScheduled(kPeerAddr3, true);
 
   /*
    * Let the replay materialize while peer3 is still blocked. It must remain on
    * peer3's private lane and produce no messages for peer4.
    */
   testOnlyDeferInitDump(kPeerAddr3, false);
-  WITH_RETRIES_N(60, {
-    EXPECT_EVENTUALLY_FALSE(
-        folly::via(&peerManager_->getEventBase(), [this]() {
-          return getAdjRib(kPeerAddr3)->isRibDumpScheduled();
-        }).get());
-  });
+  waitForRibDumpScheduled(kPeerAddr3, false);
   EXPECT_EQ(drainPeerQueueCompletely(peerId4, 3, 10), 0);
 
   /*
@@ -213,20 +235,17 @@ TEST_P(UpdateGroupMultiPeerTest, JoinedBlocked_RouteRefreshWaitsForUnblock) {
       /*maxMessages=*/100);
   EXPECT_EQ(replayCounts.announceCount, 1);
   EXPECT_EQ(replayCounts.withdrawCount, 0);
-  for (int i = 0; i < 20; ++i) {
-    drainPeerQueueCompletely(peerId3, 1, 100);
-    if (getPeerState(kPeerAddr3) == PeerUpdateState::JOINED_RUNNING) {
-      break;
-    }
-  }
-  ASSERT_TRUE(waitForPeerState(kPeerAddr3, PeerUpdateState::JOINED_RUNNING));
+  ASSERT_TRUE(
+      drainUntilState(kPeerAddr3, peerId3, PeerUpdateState::JOINED_RUNNING));
   EXPECT_TRUE(isPeerInSync(kPeerAddr3));
   EXPECT_TRUE(isPeerInSync(kPeerAddr4));
 
   XLOGF(INFO, "=== TEST PASSED: JoinedBlocked_RouteRefreshWaitsForUnblock ===");
 }
 
-TEST_P(UpdateGroupMultiPeerTest, DetachedBlocked_RouteRefreshUsesPrivateLane) {
+TEST_P(
+    UpdateGroupRouteRefreshTest,
+    DetachedBlocked_RouteRefreshUsesPrivateLane) {
   XLOGF(INFO, "=== TEST: DetachedBlocked_RouteRefreshUsesPrivateLane ===");
 
   /*
@@ -296,23 +315,14 @@ TEST_P(UpdateGroupMultiPeerTest, DetachedBlocked_RouteRefreshUsesPrivateLane) {
       peerId3, BgpUpdateAfi::AFI_IPv4, BgpUpdateSafi::SAFI_UNICAST);
 
   ASSERT_TRUE(waitForPeerState(kPeerAddr3, PeerUpdateState::DETACHED_BLOCKED));
-  WITH_RETRIES_N(60, {
-    EXPECT_EVENTUALLY_TRUE(folly::via(&peerManager_->getEventBase(), [this]() {
-                             return getAdjRib(kPeerAddr3)->isRibDumpScheduled();
-                           }).get());
-  });
+  waitForRibDumpScheduled(kPeerAddr3, true);
 
   /*
    * Complete the dump while peer3 remains blocked; the replay is materialized
    * on its private packing list but cannot be transmitted yet.
    */
   testOnlyDeferInitDump(kPeerAddr3, false);
-  WITH_RETRIES_N(60, {
-    EXPECT_EVENTUALLY_FALSE(
-        folly::via(&peerManager_->getEventBase(), [this]() {
-          return getAdjRib(kPeerAddr3)->isRibDumpScheduled();
-        }).get());
-  });
+  waitForRibDumpScheduled(kPeerAddr3, false);
   EXPECT_EQ(drainPeerQueueCompletely(peerId4, 3, 10), 0);
 
   /*
@@ -328,13 +338,8 @@ TEST_P(UpdateGroupMultiPeerTest, DetachedBlocked_RouteRefreshUsesPrivateLane) {
       /*maxMessages=*/100);
   EXPECT_EQ(replayCounts.announceCount, 1);
   EXPECT_EQ(replayCounts.withdrawCount, 0);
-  for (int i = 0; i < 20; ++i) {
-    drainPeerQueueCompletely(peerId3, 1, 100);
-    if (getPeerState(kPeerAddr3) == PeerUpdateState::JOINED_RUNNING) {
-      break;
-    }
-  }
-  ASSERT_TRUE(waitForPeerState(kPeerAddr3, PeerUpdateState::JOINED_RUNNING));
+  ASSERT_TRUE(
+      drainUntilState(kPeerAddr3, peerId3, PeerUpdateState::JOINED_RUNNING));
   EXPECT_TRUE(isPeerInSync(kPeerAddr3));
   EXPECT_TRUE(isPeerInSync(kPeerAddr4));
 
@@ -343,12 +348,11 @@ TEST_P(UpdateGroupMultiPeerTest, DetachedBlocked_RouteRefreshUsesPrivateLane) {
 }
 
 /*
- * Route refresh for DETACHED_INIT_DUMP peer
- * Peer3 is in DETACHED_INIT_DUMP (reconnected after detachment). Simulating
- * route refresh via route burst while init dump is in progress. Routes go
- * to CL for peer3, peer4 receives normally. No crash.
+ * A real Route Refresh received during a reconnecting peer's private initial
+ * dump is retained behind that dump. The route is therefore announced once by
+ * initial synchronization and once by the requested replay.
  */
-TEST_P(UpdateGroupMultiPeerTest, DetachedInitDump_RouteRefreshDefer) {
+TEST_P(UpdateGroupRouteRefreshTest, DetachedInitDump_RouteRefreshDefer) {
   XLOG(INFO, "=== TEST: DetachedInitDump_RouteRefreshDefer ===");
 
   addPeer(kDefaultPeerSpec3);
@@ -416,48 +420,49 @@ TEST_P(UpdateGroupMultiPeerTest, DetachedInitDump_RouteRefreshDefer) {
   bringDownPeer(kPeerAddr3);
   ASSERT_TRUE(waitForPeerState(kPeerAddr3, PeerUpdateState::DOWN));
   unblockPeer(kPeerAddr3);
+  /*
+   * Restore a roomy queue after the small queue forced detachment, so the
+   * reconnect initial dump and deferred replay can drain without re-blocking.
+   */
+  setDefaultQueueSizes(20, 18, 2);
   testOnlyDeferInitDump(kPeerAddr3, true);
   bringUpPeer(kPeerAddr3);
   sendEoRToPeer(peerId3);
   /* Peer3 re-entering existing group -> DETACHED_INIT_DUMP */
   ASSERT_TRUE(
       waitForPeerState(kPeerAddr3, PeerUpdateState::DETACHED_INIT_DUMP));
+  drainPeerQueueCompletely(peerId4);
+
+  sendRouteRefreshToPeer(
+      peerId3, BgpUpdateAfi::AFI_IPv4, BgpUpdateSafi::SAFI_UNICAST);
+  waitForRibDumpScheduled(kPeerAddr3, true);
   testOnlyDeferInitDump(kPeerAddr3, false);
+  const auto replayCounts = countPrefixOccurrencesAndDrain(
+      peerId3,
+      folly::IPAddress::createNetwork("30.20.0.0/16"),
+      /*isV4=*/true,
+      /*maxRetries=*/20,
+      /*maxMessages=*/100);
+  EXPECT_EQ(replayCounts.announceCount, 2)
+      << "initial dump and deferred Route Refresh must each announce the route";
+  EXPECT_EQ(replayCounts.withdrawCount, 0);
+  ASSERT_TRUE(
+      drainUntilState(kPeerAddr3, peerId3, PeerUpdateState::JOINED_RUNNING));
 
-  /* Simulate route refresh burst while peer3 is in DID */
-  for (int i = 22; i <= 24; ++i) {
-    auto prefix = fmt::format("30.{}.0.0/16", i);
-    auto community = fmt::format("30{:02d}:1", i);
-    injectLocalRoutesAtRuntime({prefix}, {community}, 150);
-    ASSERT_TRUE(
-        waitForRouteInShadowRib(folly::IPAddress::createNetwork(prefix)));
-    /* Only peer4 receives; peer3 in DID, routes go to CL */
-    EXPECT_TRUE(verifyRouteAdd(
-        "v4",
-        fmt::format("30.{}.0.0", i),
-        16,
-        kPeerAddr4,
-        getExpectedNexthop(kPeerAddr4),
-        "4200000001",
-        community));
-  }
-
-  /* Peer4 still running, peer3 still in DID */
+  EXPECT_EQ(drainPeerQueueCompletely(peerId4, 3, 10), 0);
   ASSERT_TRUE(waitForPeerState(kPeerAddr4, PeerUpdateState::JOINED_RUNNING));
+  EXPECT_TRUE(isPeerInSync(kPeerAddr3));
   EXPECT_TRUE(isPeerInSync(kPeerAddr4));
-  verifySlowPeerInvariants(kPeerAddr4);
 
-  XLOG(INFO, "=== TEST PASSED: DetachedInitDump_RouteRefreshDefer ===");
+  XLOGF(INFO, "=== TEST PASSED: DetachedInitDump_RouteRefreshDefer ===");
 }
 
 /*
- * Route refresh during acceptance procedure (DRJ)
- * Peer3 is in DETACHED_READY_TO_JOIN (detached then unblocked, starting
- * recovery). Simulate route refresh burst during this recovery phase.
- * Routes should be delivered to peer4 normally. Peer3 recovery continues.
+ * A real Route Refresh interrupts ready-to-join acceptance, returns the peer to
+ * detached processing, and permits rejoin only after the replay drains.
  */
-TEST_P(UpdateGroupMultiPeerTest, DuringAcceptance_RouteRefreshBurst) {
-  XLOG(INFO, "=== TEST: DuringAcceptance_RouteRefreshBurst ===");
+TEST_P(UpdateGroupRouteRefreshTest, ReadyToJoin_RouteRefreshDefersAcceptance) {
+  XLOGF(INFO, "=== TEST: ReadyToJoin_RouteRefreshDefersAcceptance ===");
 
   addPeer(kDefaultPeerSpec3);
   addPeer(kDefaultPeerSpec4);
@@ -520,32 +525,41 @@ TEST_P(UpdateGroupMultiPeerTest, DuringAcceptance_RouteRefreshBurst) {
       "3035:1"));
   ASSERT_TRUE(waitForPeerState(kPeerAddr3, PeerUpdateState::DETACHED_BLOCKED));
 
-  /* Unblock peer3 to start recovery toward DRJ */
-  waitForDrjWithDrain(kPeerAddr3, peerId3);
+  testOnlyDeferDrjAcceptance(kPeerAddr3, true);
+  unblockPeer(kPeerAddr3, /*maxRetries=*/0);
+  ASSERT_TRUE(drainUntilState(
+      kPeerAddr3, peerId3, PeerUpdateState::DETACHED_READY_TO_JOIN));
+  drainPeerQueueCompletely(peerId3);
+  drainPeerQueueCompletely(peerId4);
 
-  /* Simulate route refresh burst during recovery */
-  for (int i = 32; i <= 34; ++i) {
-    auto prefix = fmt::format("30.{}.0.0/16", i);
-    auto community = fmt::format("30{:02d}:1", i);
-    injectLocalRoutesAtRuntime({prefix}, {community}, 150);
-    ASSERT_TRUE(
-        waitForRouteInShadowRib(folly::IPAddress::createNetwork(prefix)));
-    EXPECT_TRUE(verifyRouteAdd(
-        "v4",
-        fmt::format("30.{}.0.0", i),
-        16,
-        kPeerAddr4,
-        getExpectedNexthop(kPeerAddr4),
-        "4200000001",
-        community));
-  }
+  testOnlyDeferInitDump(kPeerAddr3, true);
+  sendRouteRefreshToPeer(
+      peerId3, BgpUpdateAfi::AFI_IPv4, BgpUpdateSafi::SAFI_UNICAST);
+  ASSERT_TRUE(waitForPeerState(kPeerAddr3, PeerUpdateState::DETACHED_RUNNING));
+  waitForRibDumpScheduled(kPeerAddr3, true);
+  testOnlyDeferInitDump(kPeerAddr3, false);
+  waitForRibDumpScheduled(kPeerAddr3, false);
 
-  /* Peer4 still running */
+  const auto replayCounts = countPrefixOccurrencesAndDrain(
+      peerId3,
+      folly::IPAddress::createNetwork("30.30.0.0/16"),
+      /*isV4=*/true,
+      /*maxRetries=*/10,
+      /*maxMessages=*/100);
+  EXPECT_EQ(replayCounts.announceCount, 1);
+  EXPECT_EQ(replayCounts.withdrawCount, 0);
+  EXPECT_EQ(drainPeerQueueCompletely(peerId4, 3, 10), 0);
+  ASSERT_TRUE(
+      waitForPeerState(kPeerAddr3, PeerUpdateState::DETACHED_READY_TO_JOIN));
+
+  testOnlyDeferDrjAcceptance(kPeerAddr3, false);
+  ASSERT_TRUE(
+      drainUntilState(kPeerAddr3, peerId3, PeerUpdateState::JOINED_RUNNING));
+  EXPECT_TRUE(isPeerInSync(kPeerAddr3));
   ASSERT_TRUE(waitForPeerState(kPeerAddr4, PeerUpdateState::JOINED_RUNNING));
   EXPECT_TRUE(isPeerInSync(kPeerAddr4));
-  verifySlowPeerInvariants(kPeerAddr4);
 
-  XLOG(INFO, "=== TEST PASSED: DuringAcceptance_RouteRefreshBurst ===");
+  XLOGF(INFO, "=== TEST PASSED: ReadyToJoin_RouteRefreshDefersAcceptance ===");
 }
 
 /*
@@ -554,7 +568,7 @@ TEST_P(UpdateGroupMultiPeerTest, DuringAcceptance_RouteRefreshBurst) {
  * receive routes and remain JOINED_RUNNING. No accidental blocking with
  * larger queue (8,6,2).
  */
-TEST_P(UpdateGroupMultiPeerTest, AllPeers_RouteRefreshBurst) {
+TEST_P(UpdateGroupRouteRefreshTest, AllPeers_RouteRefreshBurst) {
   XLOG(INFO, "=== TEST: AllPeers_RouteRefreshBurst ===");
 
   addPeer(kDefaultPeerSpec3);
@@ -631,7 +645,7 @@ TEST_P(UpdateGroupMultiPeerTest, AllPeers_RouteRefreshBurst) {
 
 INSTANTIATE_TEST_SUITE_P(
     SerializationModes,
-    UpdateGroupMultiPeerTest,
+    UpdateGroupRouteRefreshTest,
     ::testing::Values(kNoSerialization, kWithSerialization),
     [](const ::testing::TestParamInfo<SerializationParams>& info) {
       return info.param.name;

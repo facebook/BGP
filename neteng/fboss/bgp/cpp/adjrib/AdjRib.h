@@ -2311,6 +2311,8 @@ class AdjRib : boost::noncopyable,
    */
   void processRibOutAnnouncement(
       const RibOutAnnouncement& announcement) noexcept;
+  void markEgressEoRsPendingFor(
+      const RibOutAnnouncement& announcement) noexcept;
 
   /*
    * Route Refresh re-dump state transitions. Called from

@@ -141,9 +141,10 @@ class SendBgpMessagesFixture : public AdjRibOutboundFixture {
       const bool eorPending,
       const bool eorSent,
       const bool enableIPv4 = true,
-      const bool enableIPv6 = false) {
+      const bool enableIPv6 = false,
+      const bool enableEgressQueueBackpressure = true) {
     setupAdjRibForOutUnitTest();
-    adjRib_->enableEgressQueueBackpressure_ = true;
+    adjRib_->enableEgressQueueBackpressure_ = enableEgressQueueBackpressure;
 
     // Set up EoR sent adjRib state.
     adjRib_->egressEoRsSent_ = eorSent;
@@ -482,6 +483,68 @@ CO_TEST_F(SendBgpMessagesFixtureWithBackpressure, SendPendingEoRsTest) {
     }
   }
   EXPECT_FALSE(adjRib_->egressEoRsPending());
+}
+
+TEST_F(
+    SendBgpMessagesFixtureWithBackpressure,
+    RouteRefreshOnlyMarksRequestedAfiEoRPending) {
+  SetUpAdjRibStateForUnit(
+      false /* eorPending */,
+      false /* eorSent */,
+      true /* v4Afi */,
+      true /* v6Afi */);
+
+  RibOutAnnouncement announcement;
+  announcement.initialDump = true;
+  announcement.routeRefreshAfi = BgpUpdateAfi::AFI_IPv4;
+  announcement.sendWithEoR = true;
+  adjRib_->processRibMessage(announcement);
+
+  EXPECT_TRUE(adjRib_->egressEoRPendingV4());
+  EXPECT_FALSE(adjRib_->egressEoRPendingV6());
+}
+
+TEST_F(
+    SendBgpMessagesFixture,
+    RouteRefreshOnlyQueuesRequestedAfiEoRWithoutBackpressure) {
+  SetUpAdjRibStateForUnit(
+      false /* eorPending */,
+      false /* eorSent */,
+      true /* v4Afi */,
+      true /* v6Afi */,
+      false /* enableEgressQueueBackpressure */);
+
+  RibOutAnnouncement announcement;
+  announcement.initialDump = true;
+  announcement.routeRefreshAfi = BgpUpdateAfi::AFI_IPv4;
+  announcement.sendWithEoR = true;
+  adjRib_->processRibMessage(announcement);
+
+  ASSERT_EQ(adjRibOutQ_->size(), 1);
+  const auto message =
+      facebook::bgp::test::boundedBlockingPop(*adjRibOutQ_, "adjRibOutQ_");
+  ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*message));
+  EXPECT_EQ(BgpUpdateAfi::AFI_IPv4, std::get<BgpEndOfRib>(*message).afi());
+  EXPECT_FALSE(adjRib_->egressEoRsPending());
+}
+
+TEST_F(
+    SendBgpMessagesFixtureWithBackpressure,
+    RouteRefreshDoesNotMarkUnnegotiatedAfiEoRPending) {
+  SetUpAdjRibStateForUnit(
+      false /* eorPending */,
+      false /* eorSent */,
+      false /* v4Afi */,
+      true /* v6Afi */);
+
+  RibOutAnnouncement announcement;
+  announcement.initialDump = true;
+  announcement.routeRefreshAfi = BgpUpdateAfi::AFI_IPv4;
+  announcement.sendWithEoR = true;
+  adjRib_->processRibMessage(announcement);
+
+  EXPECT_FALSE(adjRib_->egressEoRPendingV4());
+  EXPECT_FALSE(adjRib_->egressEoRPendingV6());
 }
 
 CO_TEST_F(

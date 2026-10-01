@@ -698,7 +698,7 @@ void AdjRib::buildAndSendBgpMessages(bool sendWithEoR) noexcept {
   XLOGF(
       INFO,
       "Sending accumulated changes to {}."
-      "({} withdraws, {} announcements, EoR {}) - {} BGP message(s).",
+      "({} withdraws, {} announcements, EoR requested {}) - {} BGP message(s).",
       getPeerName(),
       withdrawPrefixCnt,
       announcePrefixCnt,
@@ -840,6 +840,12 @@ uint32_t AdjRib::buildAndQueueWithdrawals(uint64_t& bgpMessageCnt) noexcept {
 }
 
 void AdjRib::buildAndQueueEoRs(uint64_t& bgpMessageCnt) noexcept {
+  const auto sendV4EoR = egressEoRPendingV4();
+  const auto sendV6EoR = egressEoRPendingV6();
+  if (!sendV4EoR && !sendV6EoR) {
+    return;
+  }
+
   XLOGF(INFO, "Sending EoR to peer {}", getPeerName());
 
   // mark egressEoR being sent as a one-time flag for initialization
@@ -853,14 +859,39 @@ void AdjRib::buildAndQueueEoRs(uint64_t& bgpMessageCnt) noexcept {
   fromAdjRibQ_.push({*remotePeerId_, EgressEoR{}});
 
   // send out to FiberBgpPeerManager to send via socket
-  if (isAfiIpv4Negotiated_) {
+  if (sendV4EoR) {
     bgpMessageCnt++;
     adjRibOutQueue_->push(buildEndOfRib(BgpUpdateAfi::AFI_IPv4));
   }
-  if (isAfiIpv6Negotiated_) {
+  if (sendV6EoR) {
     bgpMessageCnt++;
     adjRibOutQueue_->push(buildEndOfRib(BgpUpdateAfi::AFI_IPv6));
   }
+}
+
+void AdjRib::markEgressEoRsPendingFor(
+    const RibOutAnnouncement& announcement) noexcept {
+  if (!announcement.sendWithEoR) {
+    return;
+  }
+
+  if (announcement.routeRefreshAfi) {
+    if (*announcement.routeRefreshAfi == BgpUpdateAfi::AFI_IPv4) {
+      setEgressEoRsPending(isAfiIpv4Negotiated_, egressEoRPendingV6());
+      return;
+    }
+    if (*announcement.routeRefreshAfi == BgpUpdateAfi::AFI_IPv6) {
+      setEgressEoRsPending(egressEoRPendingV4(), isAfiIpv6Negotiated_);
+      return;
+    }
+    XLOGF(
+        ERR,
+        "Peer {}: unexpected Route Refresh AFI {}, sending all negotiated EoRs",
+        getPeerName(),
+        static_cast<int>(*announcement.routeRefreshAfi));
+  }
+
+  setEgressEoRsPending(isAfiIpv4Negotiated_, isAfiIpv6Negotiated_);
 }
 
 void AdjRib::processRibOutAnnouncement(
@@ -888,9 +919,7 @@ void AdjRib::processRibOutAnnouncement(
     handleRibAnnouncedEntry(entry, announcement.initialDump);
   }
   scheduleOutDelayTimer();
-  if (announcement.sendWithEoR) {
-    setEgressEoRsPending(isAfiIpv4Negotiated_, isAfiIpv6Negotiated_);
-  }
+  markEgressEoRsPendingFor(announcement);
   if (!enableEgressQueueBackpressure_) {
     buildAndSendBgpMessages(announcement.sendWithEoR);
   }

@@ -3767,7 +3767,7 @@ TEST_F(AdjRibOutboundFixture, ProcessRibMessageTest) {
 /*
  * Unit test the function buildAndSendBgpMessages
  * 1. nothing to send: just return
- * 2. send EoR: build and send EoR
+ * 2. request EoR with no AFI pending: do not report or send EoR
  * 3. test announce prefix: after announcement,
  *    attrToPrefixMap is cleared
  * 4. test withdraw prefix: after withdrawal,
@@ -3796,7 +3796,7 @@ TEST_F(AdjRibOutboundFixture, BuildAndSendBgpMessagesTest) {
   // attach out queue
   adjRib_->adjRibOutQueue_ = adjRibOutQ_;
 
-  // send EoR
+  // Request EoR with no AFI pending.
   {
     messages.clear();
 
@@ -3807,13 +3807,15 @@ TEST_F(AdjRibOutboundFixture, BuildAndSendBgpMessagesTest) {
     EXPECT_EQ(0, adjRib_->getStats().getSentAnnouncementsIpv6());
     EXPECT_EQ(0, adjRib_->getStats().getSentWithdrawals());
     EXPECT_EQ(0, adjRib_->getStats().getTotalAttributeUpdates());
-    EXPECT_LT(1, messages.size());
-    EXPECT_TRUE(
-        messages.front().first.getMessage().starts_with("Sending EoR to peer"));
+    EXPECT_FALSE(adjRib_->egressEoRsSent_);
+    EXPECT_TRUE(observerQ_.empty());
+    EXPECT_TRUE(adjRibOutQ_->empty());
+    ASSERT_EQ(1, messages.size());
     EXPECT_TRUE(messages.back().first.getMessage().starts_with(
         "Sending accumulated changes"));
     EXPECT_TRUE(messages.back().first.getMessage().ends_with(
-        "(0 withdraws, 0 announcements, EoR true) - 0 BGP message(s)."));
+        "(0 withdraws, 0 announcements, EoR requested true) - 0 BGP "
+        "message(s)."));
   }
 
   // build some dummy entry for test
@@ -3847,7 +3849,8 @@ TEST_F(AdjRibOutboundFixture, BuildAndSendBgpMessagesTest) {
     EXPECT_TRUE(messages.back().first.getMessage().starts_with(
         "Sending accumulated changes"));
     EXPECT_TRUE(messages.back().first.getMessage().ends_with(
-        "(0 withdraws, 1 announcements, EoR false) - 1 BGP message(s)."));
+        "(0 withdraws, 1 announcements, EoR requested false) - 1 BGP "
+        "message(s)."));
   }
 
   /*
@@ -3876,7 +3879,8 @@ TEST_F(AdjRibOutboundFixture, BuildAndSendBgpMessagesTest) {
     EXPECT_TRUE(messages.back().first.getMessage().starts_with(
         "Sending accumulated changes"));
     EXPECT_TRUE(messages.back().first.getMessage().ends_with(
-        "(1 withdraws, 0 announcements, EoR false) - 1 BGP message(s)."));
+        "(1 withdraws, 0 announcements, EoR requested false) - 1 BGP "
+        "message(s)."));
   }
 }
 

@@ -605,15 +605,9 @@ TEST_F(E2ERouteRefreshTest, RouteRefreshHonorsRequestedAfi) {
   EXPECT_TRUE(verifyRouteAdd(
       "v4", "10.0.0.0", 8, kPeerAddr5, "127.5.0.4", "", "", 0, 50));
 
-  /* Only the 2 EoR markers should remain, one per negotiated AFI; >= 3 means
-   * the v6 prefix leaked through the filter.
-   *
-   * TODO: scope the EoR to the requested AFI, making this 1. The dump honors
-   * filterAfi but setEgressEoRsPending() keys off the negotiated families, so
-   * a single-AFI RR still emits both. Own diff: it changes the wire and that
-   * setter is shared with the GR and update-group paths. */
+  /* Only the requested IPv4 EoR should remain. */
   auto drained = drainPeerQueueCompletely(peerId5, 3, 10);
-  EXPECT_EQ(drained, 2);
+  EXPECT_EQ(drained, 1);
 
   /* peer4 did not request RR; its queue must remain empty. Anything here
    * means peer5's RR re-dump leaked to peer4. */
@@ -663,13 +657,9 @@ TEST_F(E2ERouteRefreshTest, RouteRefreshHonorsRequestedAfiV6) {
       0,
       50));
 
-  /* Just the 2 EoR markers, no v4 update; > 2 means v4 leaked through.
-   *
-   * TODO: see RouteRefreshHonorsRequestedAfi. This direction matters most --
-   * the spurious marker is the classical v4 EoR, a bare empty UPDATE a peer
-   * cannot distinguish from genuine IPv4 initial convergence (RFC 4724 §2). */
+  /* Only the requested IPv6 EoR should remain. */
   auto drained = drainPeerQueueCompletely(peerId5, 3, 10);
-  EXPECT_EQ(drained, 2);
+  EXPECT_EQ(drained, 1);
 
   /* peer4 did not request RR; its queue must remain empty. Anything here
    * means peer5's RR re-dump leaked to peer4. */
