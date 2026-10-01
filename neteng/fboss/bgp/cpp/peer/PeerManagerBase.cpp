@@ -1895,9 +1895,18 @@ void PeerManagerBase::cancelRibDumpForAdjRib(
     BgpStats::decrPendingRibDumpReqsCount(1);
   }
   if (auto pendingIt = pendingRouteRefreshPeers_.find(adjRib);
-      pendingIt != pendingRouteRefreshPeers_.end() &&
-      (discardRouteRefreshRequests || pendingIt->second.empty())) {
-    pendingRouteRefreshPeers_.erase(pendingIt);
+      pendingIt != pendingRouteRefreshPeers_.end()) {
+    if (discardRouteRefreshRequests) {
+      XLOGF(
+          DBG1,
+          "Peer {}: discarding update-group Route Refresh work on teardown "
+          "(pending={})",
+          adjRib->getPeerName(),
+          pendingIt->second.size());
+      pendingRouteRefreshPeers_.erase(pendingIt);
+    } else if (pendingIt->second.empty()) {
+      pendingRouteRefreshPeers_.erase(pendingIt);
+    }
   }
   adjRib->cancelRibDump();
 }
@@ -1932,6 +1941,11 @@ void PeerManagerBase::scheduleRouteRefreshForUpdateGroupPeer(
     BgpUpdateAfi requestedAfi) {
   auto& pendingAfis = pendingRouteRefreshPeers_[adjRib];
   if (!pendingAfis.insert(requestedAfi).second) {
+    XLOGF(
+        DBG1,
+        "Peer {}: coalescing update-group Route Refresh AFI={}",
+        adjRib->getPeerName(),
+        static_cast<int>(requestedAfi));
     return;
   }
   maybeSchedulePendingRouteRefresh(adjRib);
@@ -1952,10 +1966,22 @@ void PeerManagerBase::maybeSchedulePendingRouteRefresh(
     return;
   }
   if (isRibDumpScheduledForAdjRib(adjRib)) {
+    XLOGF(
+        DBG1,
+        "Peer {}: retaining {} update-group Route Refresh AFI(s) behind "
+        "active dump",
+        adjRib->getPeerName(),
+        pendingIt->second.size());
     return;
   }
   if (peerState == PeerUpdateState::INIT ||
       peerState == PeerUpdateState::DETACHED_INIT_DUMP) {
+    XLOGF(
+        DBG1,
+        "Peer {}: retaining {} update-group Route Refresh AFI(s) in state {}",
+        adjRib->getPeerName(),
+        pendingIt->second.size(),
+        peerState);
     return;
   }
 
@@ -1993,11 +2019,12 @@ void PeerManagerBase::maybeSchedulePendingRouteRefresh(
   /* AFI replay order is intentionally unspecified. */
   const auto requestedAfi = *pendingIt->second.begin();
   XLOGF(
-      INFO,
-      "Peer {}: scheduling pending Route Refresh for AFI={} in state {}",
+      DBG1,
+      "Peer {}: scheduling private update-group Route Refresh AFI={} from "
+      "state {}",
       adjRib->getPeerName(),
       static_cast<int>(requestedAfi),
-      adjRib->getPeerState());
+      peerState);
   scheduleRibDumpForAdjRib(
       adjRib,
       RibDumpReq(
@@ -2011,8 +2038,15 @@ void PeerManagerBase::onRibDumpCompleted(
   if (pendingIt == pendingRouteRefreshPeers_.end()) {
     return;
   }
-  if (ribDumpReq.filterAfi) {
-    pendingIt->second.erase(*ribDumpReq.filterAfi);
+  if (ribDumpReq.filterAfi &&
+      pendingIt->second.erase(*ribDumpReq.filterAfi) > 0) {
+    XLOGF(
+        DBG1,
+        "Peer {}: completed private update-group Route Refresh AFI={} "
+        "(pending={})",
+        adjRib->getPeerName(),
+        static_cast<int>(*ribDumpReq.filterAfi),
+        pendingIt->second.size());
   }
   if (pendingIt->second.empty()) {
     pendingRouteRefreshPeers_.erase(pendingIt);

@@ -22,11 +22,9 @@
  * Route refresh for DETACHED_BLOCKED peer — already in detached mode
  * Route refresh for DETACHED_INIT_DUMP peer — defer until init complete
  * Route refresh during acceptance procedure — peer in DRJ
- * Route refresh for all peers simultaneously — burst to all
- *
- * The running and blocked cases use real BGP Route Refresh messages. The
- * remaining state cases are migrated to real requests in the state-completion
- * diffs.
+ * Concurrent Route Refresh for all peers
+ * Duplicate same-AFI Route Refresh coalescing
+ * Session teardown while Route Refresh is deferred
  */
 
 #include "neteng/fboss/bgp/cpp/tests/e2e/UpdateGroupSlowPeerTestCommon.h"
@@ -38,6 +36,26 @@ namespace bgp {
 
 class UpdateGroupRouteRefreshTest : public UpdateGroupMultiPeerTest {
  protected:
+  void establishAndDrainTwoPeerBaselineRoute(
+      const folly::CIDRNetwork& prefix,
+      const std::string& community,
+      const PeerIds& peerIds) {
+    injectLocalRoutesAtRuntime(
+        {folly::IPAddress::networkToString(prefix)}, {community}, 150);
+    ASSERT_TRUE(waitForRouteInShadowRib(prefix));
+    for (const auto& peerId : {peerIds.peerId3, peerIds.peerId4}) {
+      EXPECT_TRUE(verifyRouteAdd(
+          "v4",
+          prefix.first.str(),
+          prefix.second,
+          peerId.peerAddr,
+          getExpectedNexthop(peerId.peerAddr),
+          "4200000001",
+          community));
+      drainPeerQueueCompletely(peerId);
+    }
+  }
+
   void waitForRibDumpScheduled(
       const folly::IPAddress& peerAddr,
       bool expected) {
@@ -151,26 +169,7 @@ TEST_P(UpdateGroupRouteRefreshTest, JoinedBlocked_RouteRefreshWaitsForUnblock) {
   const auto& peerId3 = peerIds.peerId3;
   const auto& peerId4 = peerIds.peerId4;
   const auto replayPrefix = folly::IPAddress::createNetwork("30.10.0.0/16");
-  injectLocalRoutesAtRuntime({"30.10.0.0/16"}, {"3010:1"}, 150);
-  ASSERT_TRUE(waitForRouteInShadowRib(replayPrefix));
-  EXPECT_TRUE(verifyRouteAdd(
-      "v4",
-      "30.10.0.0",
-      16,
-      kPeerAddr3,
-      getExpectedNexthop(kPeerAddr3),
-      "4200000001",
-      "3010:1"));
-  EXPECT_TRUE(verifyRouteAdd(
-      "v4",
-      "30.10.0.0",
-      16,
-      kPeerAddr4,
-      getExpectedNexthop(kPeerAddr4),
-      "4200000001",
-      "3010:1"));
-  drainPeerQueueCompletely(peerId3);
-  drainPeerQueueCompletely(peerId4);
+  establishAndDrainTwoPeerBaselineRoute(replayPrefix, "3010:1", peerIds);
 
   /*
    * Keep peer3 joined despite blocking: the high thresholds prevent slow-peer
@@ -256,26 +255,7 @@ TEST_P(
   const auto& peerId3 = peerIds.peerId3;
   const auto& peerId4 = peerIds.peerId4;
   const auto replayPrefix = folly::IPAddress::createNetwork("30.20.0.0/16");
-  injectLocalRoutesAtRuntime({"30.20.0.0/16"}, {"3020:1"}, 150);
-  ASSERT_TRUE(waitForRouteInShadowRib(replayPrefix));
-  EXPECT_TRUE(verifyRouteAdd(
-      "v4",
-      "30.20.0.0",
-      16,
-      kPeerAddr3,
-      getExpectedNexthop(kPeerAddr3),
-      "4200000001",
-      "3020:1"));
-  EXPECT_TRUE(verifyRouteAdd(
-      "v4",
-      "30.20.0.0",
-      16,
-      kPeerAddr4,
-      getExpectedNexthop(kPeerAddr4),
-      "4200000001",
-      "3020:1"));
-  drainPeerQueueCompletely(peerId3);
-  drainPeerQueueCompletely(peerId4);
+  establishAndDrainTwoPeerBaselineRoute(replayPrefix, "3020:1", peerIds);
 
   /*
    * Force peer3 onto the detached blocked lane before Route Refresh. A block
@@ -353,7 +333,7 @@ TEST_P(
  * initial synchronization and once by the requested replay.
  */
 TEST_P(UpdateGroupRouteRefreshTest, DetachedInitDump_RouteRefreshDefer) {
-  XLOG(INFO, "=== TEST: DetachedInitDump_RouteRefreshDefer ===");
+  XLOGF(INFO, "=== TEST: DetachedInitDump_RouteRefreshDefer ===");
 
   addPeer(kDefaultPeerSpec3);
   addPeer(kDefaultPeerSpec4);
@@ -562,77 +542,71 @@ TEST_P(UpdateGroupRouteRefreshTest, ReadyToJoin_RouteRefreshDefersAcceptance) {
   XLOGF(INFO, "=== TEST PASSED: ReadyToJoin_RouteRefreshDefersAcceptance ===");
 }
 
-/*
- * Route refresh for all peers simultaneously
- * 3-peer setup. Simulate route refresh burst to all peers. Verify all 3
- * receive routes and remain JOINED_RUNNING. No accidental blocking with
- * larger queue (8,6,2).
- */
-TEST_P(UpdateGroupRouteRefreshTest, AllPeers_RouteRefreshBurst) {
-  XLOG(INFO, "=== TEST: AllPeers_RouteRefreshBurst ===");
+/* Each joined requester gets an independent private replay and rejoins. */
+TEST_P(UpdateGroupRouteRefreshTest, AllPeers_ConcurrentRouteRefresh) {
+  XLOGF(INFO, "=== TEST: AllPeers_ConcurrentRouteRefresh ===");
 
-  addPeer(kDefaultPeerSpec3);
-  addPeer(kDefaultPeerSpec4);
-  addPeer(kDefaultPeerSpec5);
-  setupSlowPeerComponents(8, 6, 2);
+  const auto peerIds = setupThreePeersJoined(8, 6, 2);
+  const auto& peerId3 = peerIds.peerId3;
+  const auto& peerId4 = peerIds.peerId4;
+  const auto& peerId5 = peerIds.peerId5;
 
-  BgpPeerId peerId3{kPeerAddr3, kPeerAddr3.asV4().toLongHBO()};
-  BgpPeerId peerId4{kPeerAddr4, kPeerAddr4.asV4().toLongHBO()};
-  BgpPeerId peerId5{kPeerAddr5, kPeerAddr5.asV4().toLongHBO()};
-
-  bringUpPeer(kPeerAddr3);
-  bringUpPeer(kPeerAddr4);
-  bringUpPeer(kPeerAddr5);
-  sendEoRToPeer(peerId3);
-  sendEoRToPeer(peerId4);
-  sendEoRToPeer(peerId5);
-  EXPECT_TRUE(waitForEoR(peerId3));
-  EXPECT_TRUE(waitForEoR(peerId3));
-  EXPECT_TRUE(waitForEoR(peerId4));
-  EXPECT_TRUE(waitForEoR(peerId4));
-  EXPECT_TRUE(waitForEoR(peerId5));
-  EXPECT_TRUE(waitForEoR(peerId5));
-  ASSERT_TRUE(waitForPeerState(kPeerAddr3, PeerUpdateState::JOINED_RUNNING));
-  ASSERT_TRUE(waitForPeerState(kPeerAddr4, PeerUpdateState::JOINED_RUNNING));
-  ASSERT_TRUE(waitForPeerState(kPeerAddr5, PeerUpdateState::JOINED_RUNNING));
-
-  /* Simulate route refresh burst: 3 routes, inject-drain one at a time */
-  for (int i = 40; i <= 42; ++i) {
-    auto prefix = fmt::format("30.{}.0.0/16", i);
-    auto community = fmt::format("30{:02d}:1", i);
-    injectLocalRoutesAtRuntime({prefix}, {community}, 150);
-    ASSERT_TRUE(
-        waitForRouteInShadowRib(folly::IPAddress::createNetwork(prefix)));
+  const auto replayPrefix = folly::IPAddress::createNetwork("30.40.0.0/16");
+  injectLocalRoutesAtRuntime({"30.40.0.0/16"}, {"3040:1"}, 150);
+  ASSERT_TRUE(waitForRouteInShadowRib(replayPrefix));
+  for (const auto& peerAddr : {kPeerAddr3, kPeerAddr4, kPeerAddr5}) {
     EXPECT_TRUE(verifyRouteAdd(
         "v4",
-        fmt::format("30.{}.0.0", i),
+        "30.40.0.0",
         16,
-        kPeerAddr3,
-        getExpectedNexthop(kPeerAddr3),
+        peerAddr,
+        getExpectedNexthop(peerAddr),
         "4200000001",
-        community));
-    EXPECT_TRUE(verifyRouteAdd(
-        "v4",
-        fmt::format("30.{}.0.0", i),
-        16,
-        kPeerAddr4,
-        getExpectedNexthop(kPeerAddr4),
-        "4200000001",
-        community));
-    EXPECT_TRUE(verifyRouteAdd(
-        "v4",
-        fmt::format("30.{}.0.0", i),
-        16,
-        kPeerAddr5,
-        getExpectedNexthop(kPeerAddr5),
-        "4200000001",
-        community));
+        "3040:1"));
+  }
+  drainPeerQueueCompletely(peerId3);
+  drainPeerQueueCompletely(peerId4);
+  drainPeerQueueCompletely(peerId5);
+
+  for (const auto& peerAddr : {kPeerAddr3, kPeerAddr4, kPeerAddr5}) {
+    testOnlyDeferInitDump(peerAddr, true);
+  }
+  sendRouteRefreshToPeer(
+      peerId3, BgpUpdateAfi::AFI_IPv4, BgpUpdateSafi::SAFI_UNICAST);
+  sendRouteRefreshToPeer(
+      peerId4, BgpUpdateAfi::AFI_IPv4, BgpUpdateSafi::SAFI_UNICAST);
+  sendRouteRefreshToPeer(
+      peerId5, BgpUpdateAfi::AFI_IPv4, BgpUpdateSafi::SAFI_UNICAST);
+
+  for (const auto& peerAddr : {kPeerAddr3, kPeerAddr4, kPeerAddr5}) {
+    ASSERT_TRUE(waitForPeerState(peerAddr, PeerUpdateState::DETACHED_RUNNING));
+    waitForRibDumpScheduled(peerAddr, true);
+  }
+  for (const auto& peerAddr : {kPeerAddr3, kPeerAddr4, kPeerAddr5}) {
+    testOnlyDeferInitDump(peerAddr, false);
+  }
+  for (const auto& peerAddr : {kPeerAddr3, kPeerAddr4, kPeerAddr5}) {
+    waitForRibDumpScheduled(peerAddr, false);
+  }
+  for (const auto& peerId : {peerId3, peerId4, peerId5}) {
+    const auto replayCounts = countPrefixOccurrencesAndDrain(
+        peerId,
+        replayPrefix,
+        /*isV4=*/true,
+        /*maxRetries=*/20,
+        /*maxMessages=*/100);
+    EXPECT_EQ(replayCounts.announceCount, 1);
+    EXPECT_EQ(replayCounts.withdrawCount, 0);
+    EXPECT_EQ(replayCounts.totalMessages, 2)
+        << "expected one UPDATE and one IPv4 EoR";
   }
 
-  /* All 3 peers still JOINED_RUNNING */
-  ASSERT_TRUE(waitForPeerState(kPeerAddr3, PeerUpdateState::JOINED_RUNNING));
-  ASSERT_TRUE(waitForPeerState(kPeerAddr4, PeerUpdateState::JOINED_RUNNING));
-  ASSERT_TRUE(waitForPeerState(kPeerAddr5, PeerUpdateState::JOINED_RUNNING));
+  ASSERT_TRUE(
+      drainUntilState(kPeerAddr3, peerId3, PeerUpdateState::JOINED_RUNNING));
+  ASSERT_TRUE(
+      drainUntilState(kPeerAddr4, peerId4, PeerUpdateState::JOINED_RUNNING));
+  ASSERT_TRUE(
+      drainUntilState(kPeerAddr5, peerId5, PeerUpdateState::JOINED_RUNNING));
   EXPECT_TRUE(isPeerInSync(kPeerAddr3));
   EXPECT_TRUE(isPeerInSync(kPeerAddr4));
   EXPECT_TRUE(isPeerInSync(kPeerAddr5));
@@ -640,7 +614,93 @@ TEST_P(UpdateGroupRouteRefreshTest, AllPeers_RouteRefreshBurst) {
   verifySlowPeerInvariants(kPeerAddr4);
   verifySlowPeerInvariants(kPeerAddr5);
 
-  XLOG(INFO, "=== TEST PASSED: AllPeers_RouteRefreshBurst ===");
+  XLOGF(INFO, "=== TEST PASSED: AllPeers_ConcurrentRouteRefresh ===");
+}
+
+/* A same-AFI request received during an active replay is coalesced. */
+TEST_P(UpdateGroupRouteRefreshTest, DuplicateRouteRefreshCoalescesActiveAfi) {
+  XLOGF(INFO, "=== TEST: DuplicateRouteRefreshCoalescesActiveAfi ===");
+
+  const auto peerIds = setupTwoPeersJoined(8, 6, 2);
+  const auto& peerId3 = peerIds.peerId3;
+  const auto& peerId4 = peerIds.peerId4;
+  const auto replayPrefix = folly::IPAddress::createNetwork("30.41.0.0/16");
+  establishAndDrainTwoPeerBaselineRoute(replayPrefix, "3041:1", peerIds);
+
+  testOnlyDeferInitDump(kPeerAddr3, true);
+  sendRouteRefreshToPeer(
+      peerId3, BgpUpdateAfi::AFI_IPv4, BgpUpdateSafi::SAFI_UNICAST);
+  ASSERT_TRUE(waitForPeerState(kPeerAddr3, PeerUpdateState::DETACHED_RUNNING));
+  waitForRibDumpScheduled(kPeerAddr3, true);
+
+  processRouteRefreshEventForTesting(peerId3, BgpUpdateAfi::AFI_IPv4);
+  testOnlyDeferInitDump(kPeerAddr3, false);
+  waitForRibDumpScheduled(kPeerAddr3, false);
+
+  const auto replayCounts = countPrefixOccurrencesAndDrain(
+      peerId3,
+      replayPrefix,
+      /*isV4=*/true,
+      /*maxRetries=*/20,
+      /*maxMessages=*/100);
+  EXPECT_EQ(replayCounts.announceCount, 1);
+  EXPECT_EQ(replayCounts.withdrawCount, 0);
+  EXPECT_EQ(replayCounts.totalMessages, 2)
+      << "duplicate replay would add another UPDATE and EoR";
+  EXPECT_EQ(drainPeerQueueCompletely(peerId4, 3, 10), 0);
+  ASSERT_TRUE(
+      drainUntilState(kPeerAddr3, peerId3, PeerUpdateState::JOINED_RUNNING));
+  EXPECT_TRUE(isPeerInSync(kPeerAddr3));
+  EXPECT_TRUE(isPeerInSync(kPeerAddr4));
+
+  XLOGF(INFO, "=== TEST PASSED: DuplicateRouteRefreshCoalescesActiveAfi ===");
+}
+
+/*
+ * Session teardown cancels an active private replay and discards its pending
+ * work. Reconnecting the peer must produce only the new session's initial dump.
+ */
+TEST_P(UpdateGroupRouteRefreshTest, PeerDownDiscardsDeferredRouteRefresh) {
+  XLOGF(INFO, "=== TEST: PeerDownDiscardsDeferredRouteRefresh ===");
+
+  const auto peerIds = setupTwoPeersJoined();
+  const auto& peerId3 = peerIds.peerId3;
+  const auto& peerId4 = peerIds.peerId4;
+  const auto replayPrefix = folly::IPAddress::createNetwork("30.50.0.0/16");
+  establishAndDrainTwoPeerBaselineRoute(replayPrefix, "3050:1", peerIds);
+
+  testOnlyDeferInitDump(kPeerAddr3, true);
+  sendRouteRefreshToPeer(
+      peerId3, BgpUpdateAfi::AFI_IPv4, BgpUpdateSafi::SAFI_UNICAST);
+  waitForRibDumpScheduled(kPeerAddr3, true);
+  bringDownPeer(kPeerAddr3);
+  ASSERT_TRUE(waitForPeerState(kPeerAddr3, PeerUpdateState::DOWN));
+  EXPECT_EQ(drainPeerQueueCompletely(peerId4, 3, 10), 0);
+
+  bringUpPeer(kPeerAddr3);
+  sendEoRToPeer(peerId3);
+  ASSERT_TRUE(
+      waitForPeerState(kPeerAddr3, PeerUpdateState::DETACHED_INIT_DUMP));
+  waitForRibDumpScheduled(kPeerAddr3, true);
+  testOnlyDeferInitDump(kPeerAddr3, false);
+  waitForRibDumpScheduled(kPeerAddr3, false);
+  const auto reconnectCounts = countPrefixOccurrencesAndDrain(
+      peerId3,
+      replayPrefix,
+      /*isV4=*/true,
+      /*maxRetries=*/20,
+      /*maxMessages=*/100);
+  EXPECT_EQ(reconnectCounts.announceCount, 1)
+      << "a stale Route Refresh replay survived session teardown";
+  EXPECT_EQ(reconnectCounts.withdrawCount, 0);
+  EXPECT_EQ(reconnectCounts.totalMessages, 3)
+      << "expected one initial-dump UPDATE and two negotiated-AFI EoRs";
+  ASSERT_TRUE(
+      drainUntilState(kPeerAddr3, peerId3, PeerUpdateState::JOINED_RUNNING));
+  EXPECT_TRUE(isPeerInSync(kPeerAddr3));
+  EXPECT_TRUE(isPeerInSync(kPeerAddr4));
+
+  XLOGF(INFO, "=== TEST PASSED: PeerDownDiscardsDeferredRouteRefresh ===");
 }
 
 INSTANTIATE_TEST_SUITE_P(

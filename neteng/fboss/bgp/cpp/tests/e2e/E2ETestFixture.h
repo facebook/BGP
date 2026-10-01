@@ -650,6 +650,10 @@ class E2ETestFixture : public ::testing::Test {
       nettools::bgplib::BgpUpdateAfi afi,
       nettools::bgplib::BgpUpdateSafi safi);
 
+  void processRouteRefreshEventForTesting(
+      const BgpPeerId& peerId,
+      nettools::bgplib::BgpUpdateAfi afi);
+
   // Read outbound UPDATE from peer's queue
   std::optional<std::shared_ptr<const BgpUpdate2>> readOutboundUpdateToPeer(
       const BgpPeerId& peerId);

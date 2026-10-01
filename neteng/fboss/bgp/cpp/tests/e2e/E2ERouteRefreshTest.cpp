@@ -605,7 +605,7 @@ TEST_F(E2ERouteRefreshTest, RouteRefreshHonorsRequestedAfi) {
   EXPECT_TRUE(verifyRouteAdd(
       "v4", "10.0.0.0", 8, kPeerAddr5, "127.5.0.4", "", "", 0, 50));
 
-  /* Only the requested IPv4 EoR should remain. */
+  /* Only the requested v4 AFI's EoR should remain. */
   auto drained = drainPeerQueueCompletely(peerId5, 3, 10);
   EXPECT_EQ(drained, 1);
 
@@ -657,7 +657,7 @@ TEST_F(E2ERouteRefreshTest, RouteRefreshHonorsRequestedAfiV6) {
       0,
       50));
 
-  /* Only the requested IPv6 EoR should remain. */
+  /* Only the requested v6 AFI's EoR should remain. */
   auto drained = drainPeerQueueCompletely(peerId5, 3, 10);
   EXPECT_EQ(drained, 1);
 

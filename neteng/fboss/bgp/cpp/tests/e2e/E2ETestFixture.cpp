@@ -1564,6 +1564,16 @@ void E2ETestFixture::sendRouteRefreshToPeer(
   it->second.adjRibInQ->fiberPush(std::move(rr));
 }
 
+void E2ETestFixture::processRouteRefreshEventForTesting(
+    const BgpPeerId& peerId,
+    nettools::bgplib::BgpUpdateAfi afi) {
+  AdjRib::ObservableMessageT event{peerId, AdjRib::RouteRefreshReceived{afi}};
+  folly::coro::blockingWait(
+      folly::coro::co_withExecutor(
+          &peerManager_->getEventBase(),
+          peerManager_->processAdjRibEvent(std::move(event))));
+}
+
 /*
  * ==================== HELPER FUNCTIONS FOR QUEUE/MESSAGE HANDLING
  * ====================
