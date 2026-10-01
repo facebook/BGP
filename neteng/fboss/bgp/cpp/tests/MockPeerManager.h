@@ -98,8 +98,8 @@ class MockPeerManager : public PeerManagerDC {
 
   /*
    * Capture every processRibDumpReqCoro invocation so unit tests can assert
-   * what the dispatcher in processAdjRibEvent forwarded (peer, routeRefresh
-   * flag, filterAfi, etc.). Forwards to the base implementation so behavior is
+   * what the dispatcher in processAdjRibEvent forwarded (peer, filterAfi,
+   * etc.). Forwards to the base implementation so behavior is
    * unchanged for tests that exercise the real dump path.
    */
   std::vector<RibDumpReq> capturedRibDumpReqs;

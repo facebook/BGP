@@ -224,6 +224,7 @@ class AdjRib : boost::noncopyable,
   struct Shutdown {};
   struct EoR {};
   struct EgressEoR {};
+  struct DetachedInitDumpCompleted {};
   /*
    * Used to notify PeerManagerBase to trigger safe mode, See
    * http://fburl.com/bgp_safe_mode for more details
@@ -240,19 +241,23 @@ class AdjRib : boost::noncopyable,
     nettools::bgplib::BgpUpdateAfi requestedAfi;
   };
   /*
-   * Message to PeerManagerBase
-   * 1. can be EoR : indicate peer EoR receipt for all negotiated
-   * address families
-   * 2. can be Shutdown : notify PeerManagerBase to shut this peer down
-   * 3. can be EgressEoR : indicate egress EoR sent to peers after
-   * initialization
-   * 4. can be TriggerSafeMode : indicates that the condition for entering safe
-   * mode is met(either total path scale or unique prefix limit is reached)
-   * 5. can be RouteRefreshReceived : indicates a Route Refresh request was
-   * received from this peer (RFC 2918)
+   * Message to PeerManagerBase:
+   * 1. EoR indicates peer EoR receipt for all negotiated address families.
+   * 2. Shutdown requests peer shutdown.
+   * 3. EgressEoR indicates that an egress EoR was sent.
+   * 4. DetachedInitDumpCompleted retries work deferred behind a detached
+   *    initial dump after its private sender drains.
+   * 5. TriggerSafeMode indicates that a path-scale or prefix-limit threshold
+   *    was reached.
+   * 6. RouteRefreshReceived carries an RFC 2918 request from the peer.
    */
-  using MessageToPeerManager = std::
-      variant<Shutdown, EoR, EgressEoR, TriggerSafeMode, RouteRefreshReceived>;
+  using MessageToPeerManager = std::variant<
+      Shutdown,
+      EoR,
+      EgressEoR,
+      DetachedInitDumpCompleted,
+      TriggerSafeMode,
+      RouteRefreshReceived>;
   // Used to pass message from adjRib to PeerManagerBase
   struct ObservableMessageT {
     nettools::bgplib::BgpPeerId peerId;
@@ -2311,10 +2316,10 @@ class AdjRib : boost::noncopyable,
    * Route Refresh re-dump state transitions. Called from
    * processRibOutAnnouncement at the natural emission boundaries:
    *   maybeBeginRrDump -> Idle to InProgress on the first announcement of a
-   *     re-dump (announcement.routeRefresh && state == Idle). Phase 2 ERR
+   *     re-dump (announcement.routeRefreshAfi && state == Idle). Phase 2 ERR
    *     hook: emit BoRR here when isEnhancedRouteRefreshNegotiated_.
    *   maybeEndRrDump -> InProgress to Idle when the re-dump's terminal
-   *     announcement fires (announcement.routeRefresh &&
+   *     announcement fires (announcement.routeRefreshAfi &&
    *     announcement.sendWithEoR && state == InProgress). Phase 2 ERR hook:
    *     emit EoRR here when
    * isEnhancedRouteRefreshNegotiated_. Both are no-ops outside their guard
@@ -2544,8 +2549,8 @@ class AdjRib : boost::noncopyable,
    * Idle           : no re-dump in progress; per-entry dedup active.
    * InProgress     : re-dump active; per-entry dedup bypassed so byte-identical
    *                  attrs still reach the wire. Set on the first announcement
-   *                  with `routeRefresh=true`; cleared when an announcement
-   *                  with `routeRefresh=true` and `sendWithEoR=true` completes,
+   *                  with `routeRefreshAfi`; cleared when an announcement with
+   *                  `routeRefreshAfi` and `sendWithEoR=true` completes,
    *                  or defensively on session teardown if a re-dump aborts
    *                  mid-flight.
    *

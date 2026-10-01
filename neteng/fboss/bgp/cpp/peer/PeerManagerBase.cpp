@@ -876,6 +876,16 @@ folly::coro::Task<void> PeerManagerBase::processAdjRibEvent(
             facebook::fboss::BGPAlert().str(),
             peerId.str());
         processEgressEoR(peerId);
+        if (auto adjRib = findAdjRib(peerId)) {
+          maybeSchedulePendingRouteRefresh(adjRib);
+        }
+        co_return;
+      },
+      [this,
+       peerId](AdjRib::DetachedInitDumpCompleted) -> folly::coro::Task<void> {
+        if (auto adjRib = findAdjRib(peerId)) {
+          maybeSchedulePendingRouteRefresh(adjRib);
+        }
         co_return;
       },
       [this, peerId](AdjRib::Shutdown /*shutdown*/) -> folly::coro::Task<void> {
@@ -912,17 +922,15 @@ folly::coro::Task<void> PeerManagerBase::processAdjRibEvent(
             static_cast<int>(routeRefreshMsg.requestedAfi));
         auto peerIdAdjRib = adjRibs_.find(peerId);
         if (peerIdAdjRib != adjRibs_.cend() && peerIdAdjRib->second) {
-          auto ribDumpReq = RibDumpReq(
-              peerId,
-              peerIdAdjRib->second->sendAddPath(),
-              true /* routeRefresh */,
-              routeRefreshMsg.requestedAfi /* filterAfi */);
           if (enableUpdateGroup_ &&
               peerIdAdjRib->second->isUpdateGroupEnabled()) {
             scheduleRouteRefreshForUpdateGroupPeer(
-                peerIdAdjRib->second, std::move(ribDumpReq));
+                peerIdAdjRib->second, routeRefreshMsg.requestedAfi);
           } else {
-            co_await processRibDumpReqCoro(std::move(ribDumpReq));
+            co_await processRibDumpReqCoro(RibDumpReq(
+                peerId,
+                peerIdAdjRib->second->sendAddPath(),
+                routeRefreshMsg.requestedAfi /* filterAfi */));
           }
         }
         co_return;
@@ -1659,6 +1667,7 @@ folly::coro::Task<void> PeerManagerBase::processRibDumpReqWithCancellationCoro(
     if (!cancelToken.isCancellationRequested()) {
       adjRib->resetRibDumpCancellationSource();
       adjRib->clearPendingEgressPolicyUpdate();
+      onRibDumpCompleted(adjRib, ribDumpReq);
     }
   };
 
@@ -1711,7 +1720,7 @@ void PeerManagerBase::processRibDumpReq(
 
   RibOutAnnouncement announcement;
   announcement.initialDump = true;
-  announcement.routeRefresh = ribDumpReq.routeRefresh;
+  announcement.routeRefreshAfi = ribDumpReq.filterAfi;
 
   /*
    * Anything skipped below means the peer was not shown the whole table, so
@@ -1744,7 +1753,7 @@ void PeerManagerBase::processRibDumpReq(
      * receives them from there and advances its version. Route Refresh
      * (RFC 2918) bypasses the skip: the peer explicitly asked for every route.
      */
-    if (!ribDumpReq.routeRefresh &&
+    if (!ribDumpReq.filterAfi &&
         changeListTracker_->isConsumerSetOnTrackableObject(
             trackedShadowRibEntry.get(), adjRib->getChangeListConsumer())) {
       skippedEntry = true;
@@ -1870,6 +1879,12 @@ bool PeerManagerBase::isRibDumpScheduledForAdjRib(
 
 void PeerManagerBase::cancelRibDumpForAdjRib(
     const std::shared_ptr<AdjRib>& adjRib) {
+  cancelRibDumpForAdjRib(adjRib, false /* discardRouteRefreshRequests */);
+}
+
+void PeerManagerBase::cancelRibDumpForAdjRib(
+    const std::shared_ptr<AdjRib>& adjRib,
+    bool discardRouteRefreshRequests) {
   /*
    * Cancel a detached peer's pending rib dump. Invokes the cancellation from
    * AdjRib, but should also unconditionally remove a buffered request so that
@@ -1878,6 +1893,11 @@ void PeerManagerBase::cancelRibDumpForAdjRib(
    */
   if (pendingRibDumpAdjRibs_.erase(adjRib) > 0) {
     BgpStats::decrPendingRibDumpReqsCount(1);
+  }
+  if (auto pendingIt = pendingRouteRefreshPeers_.find(adjRib);
+      pendingIt != pendingRouteRefreshPeers_.end() &&
+      (discardRouteRefreshRequests || pendingIt->second.empty())) {
+    pendingRouteRefreshPeers_.erase(pendingIt);
   }
   adjRib->cancelRibDump();
 }
@@ -1909,26 +1929,47 @@ void PeerManagerBase::scheduleRibDumpForAdjRib(
 
 void PeerManagerBase::scheduleRouteRefreshForUpdateGroupPeer(
     const std::shared_ptr<AdjRib>& adjRib,
-    RibDumpReq ribDumpReq) {
-  auto updateGroup = adjRib->getUpdateGroup();
-  if (!updateGroup) {
-    XLOGF(
-        ERR,
-        "Peer {}: cannot process update-group Route Refresh without a group",
-        adjRib->getPeerName());
+    BgpUpdateAfi requestedAfi) {
+  auto& pendingAfis = pendingRouteRefreshPeers_[adjRib];
+  if (!pendingAfis.insert(requestedAfi).second) {
+    return;
+  }
+  maybeSchedulePendingRouteRefresh(adjRib);
+}
+
+void PeerManagerBase::maybeSchedulePendingRouteRefresh(
+    const std::shared_ptr<AdjRib>& adjRib) {
+  auto pendingIt = pendingRouteRefreshPeers_.find(adjRib);
+  if (pendingIt == pendingRouteRefreshPeers_.end() ||
+      pendingIt->second.empty()) {
     return;
   }
 
   const auto peerState = adjRib->getPeerState();
-  if (isRibDumpScheduledForAdjRib(adjRib)) {
-    XLOGF(
-        WARN,
-        "Peer {}: rejecting update-group Route Refresh in state {} because "
-        "another RIB dump is already pending or in flight",
-        adjRib->getPeerName(),
-        peerState);
+  // Drop a Route Refresh event queued before teardown but delivered afterward.
+  if (peerState == PeerUpdateState::DOWN) {
+    pendingRouteRefreshPeers_.erase(pendingIt);
     return;
   }
+  if (isRibDumpScheduledForAdjRib(adjRib)) {
+    return;
+  }
+  if (peerState == PeerUpdateState::INIT ||
+      peerState == PeerUpdateState::DETACHED_INIT_DUMP) {
+    return;
+  }
+
+  auto updateGroup = adjRib->getUpdateGroup();
+  if (!updateGroup) {
+    XLOGF(
+        WARN,
+        "Peer {}: retaining pending update-group Route Refresh work until "
+        "the peer has a group",
+        adjRib->getPeerName());
+    return;
+  }
+
+  /* Keep exhaustive so new peer states require explicit handling. */
   switch (peerState) {
     case PeerUpdateState::JOINED_RUNNING:
     case PeerUpdateState::JOINED_BLOCKED:
@@ -1939,19 +1980,45 @@ void PeerManagerBase::scheduleRouteRefreshForUpdateGroupPeer(
     case PeerUpdateState::DETACHED_RUNNING:
     case PeerUpdateState::DETACHED_BLOCKED:
       break;
-    case PeerUpdateState::DOWN:
+    case PeerUpdateState::DETACHED_READY_TO_JOIN:
+      adjRib->clearAdjRibFlag(AdjRib::IS_DETACHED_FAST_PEER);
+      adjRib->setPeerState(PeerUpdateState::DETACHED_RUNNING);
+      break;
     case PeerUpdateState::INIT:
     case PeerUpdateState::DETACHED_INIT_DUMP:
-    case PeerUpdateState::DETACHED_READY_TO_JOIN:
-      XLOGF(
-          WARN,
-          "Peer {}: Route Refresh is not yet supported for update-group state {}",
-          adjRib->getPeerName(),
-          peerState);
+    case PeerUpdateState::DOWN:
       return;
   }
 
-  scheduleRibDumpForAdjRib(adjRib, std::move(ribDumpReq));
+  /* AFI replay order is intentionally unspecified. */
+  const auto requestedAfi = *pendingIt->second.begin();
+  XLOGF(
+      INFO,
+      "Peer {}: scheduling pending Route Refresh for AFI={} in state {}",
+      adjRib->getPeerName(),
+      static_cast<int>(requestedAfi),
+      adjRib->getPeerState());
+  scheduleRibDumpForAdjRib(
+      adjRib,
+      RibDumpReq(
+          adjRib->getRemotePeerId(), adjRib->sendAddPath(), requestedAfi));
+}
+
+void PeerManagerBase::onRibDumpCompleted(
+    const std::shared_ptr<AdjRib>& adjRib,
+    const RibDumpReq& ribDumpReq) {
+  auto pendingIt = pendingRouteRefreshPeers_.find(adjRib);
+  if (pendingIt == pendingRouteRefreshPeers_.end()) {
+    return;
+  }
+  if (ribDumpReq.filterAfi) {
+    pendingIt->second.erase(*ribDumpReq.filterAfi);
+  }
+  if (pendingIt->second.empty()) {
+    pendingRouteRefreshPeers_.erase(pendingIt);
+    return;
+  }
+  maybeSchedulePendingRouteRefresh(adjRib);
 }
 
 void PeerManagerBase::maybeBufferRibDumpReq(
@@ -2772,10 +2839,9 @@ folly::coro::Task<void> PeerManagerBase::cleanupPeerState(
     if (establishedGrPeers_.erase(peerId) > 0) {
       BgpStats::decrEstablishedGrPeersCount();
     }
-    const bool removedPendingRibDump = enableUpdateGroup_
-        ? pendingRibDumpAdjRibs_.erase(adjRib) > 0
-        : pendingRibDumpReqs_.erase(peerId) > 0;
-    if (removedPendingRibDump) {
+    if (enableUpdateGroup_) {
+      cancelRibDumpForAdjRib(adjRib, true /* discardRouteRefreshRequests */);
+    } else if (pendingRibDumpReqs_.erase(peerId) > 0) {
       BgpStats::decrPendingRibDumpReqsCount(1);
     }
   }
@@ -3176,7 +3242,7 @@ folly::coro::Task<void> PeerManagerBase::sessionTerminated(
      * pull this terminating peer off pendingRibDumpAdjRibs_ and service a
      * torn-down peer.
      */
-    cancelRibDumpForAdjRib(adjRib);
+    cancelRibDumpForAdjRib(adjRib, true /* discardRouteRefreshRequests */);
 
     auto updateGroup = adjRib->getUpdateGroup();
     if (updateGroup) {
@@ -5676,6 +5742,7 @@ void PeerManagerBase::processDetachedPeerEgressPolicyReEvaluation(
       adjRib,
       RibDumpReq(adjRib->getRemotePeerId(), adjRib->sendAddPath()),
       !adjRib->egressEoRsSent() /* sendWithEoR */);
+  maybeSchedulePendingRouteRefresh(adjRib);
 
   if (!adjRib->getChangeListConsumer()) {
     adjRib->registerDetachedConsumer(

@@ -976,7 +976,7 @@ TEST_F(
   ASSERT_FALSE(consumer->isReady());
 
   RibOutAnnouncement announcement;
-  announcement.routeRefresh = true;
+  announcement.routeRefreshAfi = nettools::bgplib::BgpUpdateAfi::AFI_IPv4;
   announcement.sendWithEoR = true;
   adjRib->maybeBeginRrDump(announcement);
   adjRib->maybeEndRrDump(announcement);

@@ -54,7 +54,22 @@
       ScheduleRibDumpForDetachedBlocked_RegistersMissingConsumer);              \
   FRIEND_TEST(                                                                  \
       RibInitialAnnouncementTestFixture,                                        \
-      UpdateGroupRouteRefreshWarnsWhenDumpAlreadyScheduled);                    \
+      UpdateGroupRouteRefreshCoalescesSameAfiAndRetainsCrossAfi);               \
+  FRIEND_TEST(                                                                  \
+      RibInitialAnnouncementTestFixture,                                        \
+      UpdateGroupRouteRefreshResumesFromReadyToJoin);                           \
+  FRIEND_TEST(                                                                  \
+      RibInitialAnnouncementTestFixture,                                        \
+      QueuedRouteRefreshPreservesReadyToJoinState);                             \
+  FRIEND_TEST(                                                                  \
+      RibInitialAnnouncementTestFixture,                                        \
+      DetachedInitDumpCompletionRetriesPendingRouteRefreshWithoutEoR);          \
+  FRIEND_TEST(                                                                  \
+      RibInitialAnnouncementTestFixture,                                        \
+      PendingRouteRefreshRetainedWithoutUpdateGroup);                           \
+  FRIEND_TEST(                                                                  \
+      RibInitialAnnouncementTestFixture,                                        \
+      CancelRibDumpForAdjRib_DiscardsDeferredRouteRefresh);                     \
   FRIEND_TEST(                                                                  \
       RibInitialAnnouncementTestFixture,                                        \
       ScheduleRibDumpForAdjRib_RescheduleAfterCancelDumpsOnce);                 \
@@ -126,7 +141,10 @@
       MaybeBufferRibDumpForDetachedPeerTest_SessionUpAfterRibAnnouncementDone); \
   FRIEND_TEST(                                                                  \
       RibInitialAnnouncementTestFixture,                                        \
-      MaybeBufferRibDumpForDetachedPeerTest_SessionUpDuringRibAnnouncement);
+      MaybeBufferRibDumpForDetachedPeerTest_SessionUpDuringRibAnnouncement);    \
+  FRIEND_TEST(                                                                  \
+      RibInitialAnnouncementTestFixture,                                        \
+      DetachedInitDumpCompletionRetriesPendingRouteRefreshWithoutEoR);
 
 #include <folly/CancellationToken.h>
 #include <folly/coro/BlockingWait.h>
@@ -146,6 +164,20 @@ using ::testing::_;
 using namespace facebook::nettools::bgplib;
 
 namespace facebook::bgp {
+
+namespace {
+void establishSessionForRibDump(const std::shared_ptr<AdjRib>& adjRib) {
+  adjRib->sessionEstablished(
+      std::nullopt,
+      std::make_shared<AdjRib::AdjRibInQueueT>(),
+      std::make_shared<AdjRib::AdjRibOutQueueT>(),
+      std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+          kMaxEgressQueueSize,
+          kEgressQueueHighWatermark,
+          kEgressQueueLowWatermark));
+  adjRib->markStateEstablished();
+}
+} // namespace
 
 class RibInitialAnnouncementTestFixture : public PeerManagerTestFixture {
  public:
@@ -220,6 +252,18 @@ class RibInitialAnnouncementTestFixture : public PeerManagerTestFixture {
     } while (msg.has_value() && !std::holds_alternative<BgpEndOfRib>(*msg));
 
     EXPECT_EQ(2, numAnnouncements);
+  }
+
+  std::shared_ptr<MockAdjRib> setupUpdateGroupPeer(
+      const BgpPeerId& peerId,
+      const std::shared_ptr<AdjRibOutGroup>& group) {
+    auto adjRib = setupMockAdjRib(
+        peerMgr_->getEventBase(), peerId, AsNum(kAsn1), sessionTerminateBaton_);
+    establishSessionForRibDump(adjRib);
+    adjRib->setUpdateGroup(group);
+    adjRib->setEnableUpdateGroup(true);
+    group->registerPeer(adjRib);
+    return adjRib;
   }
 
   std::shared_ptr<PeerManagerBase> peerMgr_;
@@ -1486,24 +1530,6 @@ TEST_F(
 }
 
 /*
- * Establishes a session on the AdjRib so a rib dump reaches processRibMessage
- * instead of bailing out on a missing bounded out queue.
- */
-namespace {
-void establishSessionForRibDump(const std::shared_ptr<AdjRib>& adjRib) {
-  adjRib->sessionEstablished(
-      std::nullopt,
-      std::make_shared<AdjRib::AdjRibInQueueT>(),
-      std::make_shared<AdjRib::AdjRibOutQueueT>(),
-      std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
-          kMaxEgressQueueSize,
-          kEgressQueueHighWatermark,
-          kEgressQueueLowWatermark));
-  adjRib->markStateEstablished();
-}
-} // namespace
-
-/*
  * scheduleRibDumpForAdjRib coalesces concurrent requests: scheduling a dump for
  * a peer that already has one scheduled (its cancellation source exists and is
  * not cancelled) is a no-op. Two back-to-back schedules create exactly one dump
@@ -1571,18 +1597,15 @@ TEST_F(
       .WillOnce([](const RibOutMessage& message) {
         ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(message));
         const auto& announcement = std::get<RibOutAnnouncement>(message);
-        EXPECT_TRUE(announcement.routeRefresh);
+        EXPECT_TRUE(announcement.routeRefreshAfi.has_value());
+        EXPECT_EQ(announcement.routeRefreshAfi, BgpUpdateAfi::AFI_IPv4);
         ASSERT_EQ(announcement.entries.size(), 1);
         EXPECT_EQ(announcement.entries.front().prefix, kV4Prefix1);
       });
 
   peerMgr_->scheduleRibDumpForAdjRib(
       mockAdjRib,
-      RibDumpReq(
-          kPeerId1,
-          false /* sendAddPath */,
-          true /* routeRefresh */,
-          BgpUpdateAfi::AFI_IPv4));
+      RibDumpReq(kPeerId1, false /* sendAddPath */, BgpUpdateAfi::AFI_IPv4));
 
   evb.loop();
   folly::coro::blockingWait(peerMgr_->asyncScope_.joinAsync());
@@ -1617,7 +1640,8 @@ TEST_F(
         delivered = true;
         ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(message));
         const auto& announcement = std::get<RibOutAnnouncement>(message);
-        EXPECT_TRUE(announcement.routeRefresh);
+        EXPECT_TRUE(announcement.routeRefreshAfi.has_value());
+        EXPECT_EQ(announcement.routeRefreshAfi, BgpUpdateAfi::AFI_IPv6);
         ASSERT_EQ(announcement.entries.size(), 1);
         EXPECT_EQ(announcement.entries.front().prefix, kV6Prefix1);
       });
@@ -1625,11 +1649,7 @@ TEST_F(
   mockAdjRib->testOnlyDeferInitDump = true;
   peerMgr_->scheduleRibDumpForAdjRib(
       mockAdjRib,
-      RibDumpReq(
-          kPeerId1,
-          false /* sendAddPath */,
-          true /* routeRefresh */,
-          BgpUpdateAfi::AFI_IPv6));
+      RibDumpReq(kPeerId1, false /* sendAddPath */, BgpUpdateAfi::AFI_IPv6));
 
   evb.loopOnce();
   EXPECT_FALSE(delivered);
@@ -1668,7 +1688,7 @@ TEST_F(
       .WillOnce([](const RibOutMessage& message) {
         ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(message));
         const auto& announcement = std::get<RibOutAnnouncement>(message);
-        EXPECT_FALSE(announcement.routeRefresh);
+        EXPECT_FALSE(announcement.routeRefreshAfi.has_value());
         ASSERT_EQ(announcement.entries.size(), 2);
         bool sawV4 = false;
         bool sawV6 = false;
@@ -1723,40 +1743,261 @@ TEST_F(
 
 TEST_F(
     RibInitialAnnouncementTestFixture,
-    UpdateGroupRouteRefreshWarnsWhenDumpAlreadyScheduled) {
+    UpdateGroupRouteRefreshCoalescesSameAfiAndRetainsCrossAfi) {
+  auto& evb = peerMgr_->getEventBase();
+  auto group = std::make_shared<AdjRibOutGroup>(
+      evb, "route-refresh-test", 1, true, UpdateGroupKey{});
+  auto mockAdjRib = setupUpdateGroupPeer(kPeerId1, group);
+  peerMgr_->adjRibs_[kPeerId1] = mockAdjRib;
+  mockAdjRib->setPeerState(PeerUpdateState::INIT);
+
+  auto v4Announcement = createRibSingleAnnounce(
+      kV4Prefix1, kV4Nexthop1, kLocalRouteAs, false, false);
+  auto v6Announcement = createRibSingleAnnounce(
+      kV6Prefix1, kV6Nexthop1, kLocalRouteAs, false, false);
+  peerMgr_->handleShadowRibEntryAnnouncement(
+      std::get<RibOutAnnouncement>(v4Announcement));
+  peerMgr_->handleShadowRibEntryAnnouncement(
+      std::get<RibOutAnnouncement>(v6Announcement));
+
+  std::vector<folly::CIDRNetwork> replayedPrefixes;
+  EXPECT_CALL(*mockAdjRib, processRibMessage(testing::_))
+      .Times(2)
+      .WillRepeatedly([&](const RibOutMessage& message) {
+        ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(message));
+        const auto& announcement = std::get<RibOutAnnouncement>(message);
+        EXPECT_TRUE(announcement.routeRefreshAfi.has_value());
+        ASSERT_EQ(announcement.entries.size(), 1);
+        replayedPrefixes.push_back(announcement.entries.front().prefix);
+      });
+
+  const auto v4Afi = BgpUpdateAfi::AFI_IPv4;
+  peerMgr_->scheduleRouteRefreshForUpdateGroupPeer(mockAdjRib, v4Afi);
+  peerMgr_->scheduleRouteRefreshForUpdateGroupPeer(mockAdjRib, v4Afi);
+  peerMgr_->scheduleRouteRefreshForUpdateGroupPeer(
+      mockAdjRib, BgpUpdateAfi::AFI_IPv6);
+
+  ASSERT_EQ(peerMgr_->pendingRouteRefreshPeers_.size(), 1);
+  EXPECT_EQ(peerMgr_->pendingRouteRefreshPeers_.at(mockAdjRib).size(), 2);
+  EXPECT_FALSE(mockAdjRib->isRibDumpScheduled());
+
+  mockAdjRib->setPeerState(PeerUpdateState::JOINED_RUNNING);
+  group->markPeerInSync(mockAdjRib);
+  /* This in-sync peer transitions from JOINED_RUNNING to JOINED_BLOCKED. */
+  group->markPeerBlocked(mockAdjRib);
+  EXPECT_EQ(mockAdjRib->getPeerState(), PeerUpdateState::JOINED_BLOCKED);
+  peerMgr_->scheduleRouteRefreshForUpdateGroupPeer(mockAdjRib, v4Afi);
+  EXPECT_FALSE(mockAdjRib->isRibDumpScheduled());
+  peerMgr_->maybeSchedulePendingRouteRefresh(mockAdjRib);
+  ASSERT_EQ(mockAdjRib->getPeerState(), PeerUpdateState::DETACHED_BLOCKED);
+  ASSERT_TRUE(mockAdjRib->isRibDumpScheduled());
+
+  evb.loop();
+  folly::coro::blockingWait(peerMgr_->asyncScope_.joinAsync());
+
+  EXPECT_THAT(
+      replayedPrefixes, testing::UnorderedElementsAre(kV4Prefix1, kV6Prefix1));
+  EXPECT_FALSE(mockAdjRib->isRibDumpScheduled());
+  EXPECT_FALSE(peerMgr_->pendingRouteRefreshPeers_.contains(mockAdjRib));
+
+  mockAdjRib->resetChangeListConsumer();
+  group->unregisterPeer(mockAdjRib);
+  evb.loop();
+  testing::Mock::VerifyAndClearExpectations(mockAdjRib.get());
+}
+
+TEST_F(
+    RibInitialAnnouncementTestFixture,
+    UpdateGroupRouteRefreshResumesFromReadyToJoin) {
+  auto& evb = peerMgr_->getEventBase();
+  auto group = std::make_shared<AdjRibOutGroup>(
+      evb, "route-refresh-test", 1, true, UpdateGroupKey{});
+  auto mockAdjRib = setupUpdateGroupPeer(kPeerId1, group);
+  peerMgr_->adjRibs_[kPeerId1] = mockAdjRib;
+  group->markPeerDetached(mockAdjRib);
+
+  const auto v4Afi = BgpUpdateAfi::AFI_IPv4;
+
+  /* The peer is still in INIT, so queue the refresh for later. */
+  peerMgr_->scheduleRouteRefreshForUpdateGroupPeer(mockAdjRib, v4Afi);
+
+  mockAdjRib->setPeerState(PeerUpdateState::DETACHED_READY_TO_JOIN);
+  mockAdjRib->setAdjRibFlag(AdjRib::IS_DETACHED_FAST_PEER);
+
+  /* A duplicate must not disturb the ready-to-join recovery state. */
+  peerMgr_->scheduleRouteRefreshForUpdateGroupPeer(mockAdjRib, v4Afi);
+
+  EXPECT_EQ(
+      mockAdjRib->getPeerState(), PeerUpdateState::DETACHED_READY_TO_JOIN);
+  EXPECT_TRUE(mockAdjRib->isAdjRibFlagSet(AdjRib::IS_DETACHED_FAST_PEER));
+  EXPECT_FALSE(mockAdjRib->isRibDumpScheduled());
+
+  /* Resume the pending refresh as a detached private replay. */
+  peerMgr_->maybeSchedulePendingRouteRefresh(mockAdjRib);
+
+  EXPECT_EQ(mockAdjRib->getPeerState(), PeerUpdateState::DETACHED_RUNNING);
+  EXPECT_FALSE(mockAdjRib->isAdjRibFlagSet(AdjRib::IS_DETACHED_FAST_PEER));
+  EXPECT_TRUE(mockAdjRib->isRibDumpScheduled());
+
+  peerMgr_->cancelRibDumpForAdjRib(
+      mockAdjRib, true /* discardRouteRefreshRequests */);
+  group->unregisterPeer(mockAdjRib);
+  evb.loop();
+  folly::coro::blockingWait(peerMgr_->asyncScope_.joinAsync());
+}
+
+TEST_F(
+    RibInitialAnnouncementTestFixture,
+    QueuedRouteRefreshPreservesReadyToJoinState) {
+  auto& evb = peerMgr_->getEventBase();
+  auto group = std::make_shared<AdjRibOutGroup>(
+      evb, "route-refresh-test", 1, true, UpdateGroupKey{});
+  auto mockAdjRib = setupUpdateGroupPeer(kPeerId1, group);
+  peerMgr_->adjRibs_[kPeerId1] = mockAdjRib;
+  group->markPeerDetached(mockAdjRib);
+  mockAdjRib->setPeerState(PeerUpdateState::DETACHED_RUNNING);
+
+  peerMgr_->scheduleRouteRefreshForUpdateGroupPeer(
+      mockAdjRib, BgpUpdateAfi::AFI_IPv4);
+  ASSERT_TRUE(mockAdjRib->isRibDumpScheduled());
+
+  mockAdjRib->setPeerState(PeerUpdateState::DETACHED_READY_TO_JOIN);
+  mockAdjRib->setAdjRibFlag(AdjRib::IS_DETACHED_FAST_PEER);
+  peerMgr_->scheduleRouteRefreshForUpdateGroupPeer(
+      mockAdjRib, BgpUpdateAfi::AFI_IPv6);
+
+  EXPECT_EQ(
+      mockAdjRib->getPeerState(), PeerUpdateState::DETACHED_READY_TO_JOIN);
+  EXPECT_TRUE(mockAdjRib->isAdjRibFlagSet(AdjRib::IS_DETACHED_FAST_PEER));
+  EXPECT_THAT(
+      peerMgr_->pendingRouteRefreshPeers_.at(mockAdjRib),
+      testing::UnorderedElementsAre(
+          BgpUpdateAfi::AFI_IPv4, BgpUpdateAfi::AFI_IPv6));
+
+  peerMgr_->cancelRibDumpForAdjRib(
+      mockAdjRib, true /* discardRouteRefreshRequests */);
+  group->unregisterPeer(mockAdjRib);
+  evb.loop();
+  folly::coro::blockingWait(peerMgr_->asyncScope_.joinAsync());
+}
+
+TEST_F(
+    RibInitialAnnouncementTestFixture,
+    DetachedInitDumpCompletionRetriesPendingRouteRefreshWithoutEoR) {
+  auto& evb = peerMgr_->getEventBase();
+  auto group = std::make_shared<AdjRibOutGroup>(
+      evb, "route-refresh-test", 2, true, UpdateGroupKey{});
+  auto mockAdjRib = setupUpdateGroupPeer(kPeerId1, group);
+  auto sibling = setupUpdateGroupPeer(kPeerId2, group);
+  peerMgr_->adjRibs_[kPeerId1] = mockAdjRib;
+  group->markPeerDetached(mockAdjRib);
+  mockAdjRib->setPeerState(PeerUpdateState::DETACHED_INIT_DUMP);
+
+  /* A refresh received during the detached initial dump stays pending. */
+  peerMgr_->scheduleRouteRefreshForUpdateGroupPeer(
+      mockAdjRib, BgpUpdateAfi::AFI_IPv4);
+  ASSERT_TRUE(peerMgr_->pendingRouteRefreshPeers_.contains(mockAdjRib));
+  EXPECT_FALSE(mockAdjRib->isRibDumpScheduled());
+
+  /*
+   * Draining the detached initial dump emits DetachedInitDumpCompleted after
+   * leaving DETACHED_INIT_DUMP; this path does not emit another EoR.
+   */
+  mockAdjRib->setLastSeenRibVersion(1);
+  ASSERT_TRUE(group->hasEntrySharingPeers());
+  ASSERT_FALSE(mockAdjRib->isRibDumpScheduled());
+  mockAdjRib->transitionPeerUpdateState();
+  ASSERT_EQ(
+      mockAdjRib->getPeerState(), PeerUpdateState::DETACHED_READY_TO_JOIN);
+  ASSERT_EQ(observerQ_.size(), 1);
+  auto completion = folly::coro::blockingWait(observerQ_.pop());
+  ASSERT_TRUE(
+      std::holds_alternative<AdjRib::DetachedInitDumpCompleted>(
+          completion.message));
+
+  /* PeerManager uses the completion event to retry the pending refresh. */
+  folly::coro::blockingWait(
+      peerMgr_->processAdjRibEvent(std::move(completion)));
+
+  ASSERT_TRUE(mockAdjRib->isRibDumpScheduled());
+  EXPECT_EQ(mockAdjRib->getPeerState(), PeerUpdateState::DETACHED_RUNNING);
+  EXPECT_FALSE(mockAdjRib->isAdjRibFlagSet(AdjRib::IS_DETACHED_FAST_PEER));
+  EXPECT_THAT(
+      peerMgr_->pendingRouteRefreshPeers_.at(mockAdjRib),
+      testing::ElementsAre(BgpUpdateAfi::AFI_IPv4));
+
+  peerMgr_->cancelRibDumpForAdjRib(
+      mockAdjRib, true /* discardRouteRefreshRequests */);
+  group->unregisterPeer(mockAdjRib);
+  group->unregisterPeer(sibling);
+  evb.loop();
+  folly::coro::blockingWait(peerMgr_->asyncScope_.joinAsync());
+}
+
+TEST_F(
+    RibInitialAnnouncementTestFixture,
+    PendingRouteRefreshRetainedWithoutUpdateGroup) {
   auto& evb = peerMgr_->getEventBase();
   auto mockAdjRib =
       setupMockAdjRib(evb, kPeerId1, AsNum(kAsn1), sessionTerminateBaton_);
   establishSessionForRibDump(mockAdjRib);
+
+  mockAdjRib->setEnableUpdateGroup(true);
+  mockAdjRib->setPeerState(PeerUpdateState::INIT);
+  mockAdjRib->setUpdateGroup(
+      std::make_shared<AdjRibOutGroup>(
+          evb, "route-refresh-test", 1, true, UpdateGroupKey{}));
+  peerMgr_->scheduleRouteRefreshForUpdateGroupPeer(
+      mockAdjRib, BgpUpdateAfi::AFI_IPv4);
+
+  mockAdjRib->setPeerState(PeerUpdateState::DETACHED_RUNNING);
+  mockAdjRib->setUpdateGroup(nullptr);
+  peerMgr_->maybeSchedulePendingRouteRefresh(mockAdjRib);
+
+  ASSERT_TRUE(peerMgr_->pendingRouteRefreshPeers_.contains(mockAdjRib));
+  EXPECT_THAT(
+      peerMgr_->pendingRouteRefreshPeers_.at(mockAdjRib),
+      testing::ElementsAre(BgpUpdateAfi::AFI_IPv4));
+  EXPECT_FALSE(mockAdjRib->isRibDumpScheduled());
+
+  peerMgr_->cancelRibDumpForAdjRib(
+      mockAdjRib, true /* discardRouteRefreshRequests */);
+}
+
+TEST_F(
+    RibInitialAnnouncementTestFixture,
+    CancelRibDumpForAdjRib_DiscardsDeferredRouteRefresh) {
+  auto& evb = peerMgr_->getEventBase();
   auto group = std::make_shared<AdjRibOutGroup>(
       evb, "route-refresh-test", 1, true, UpdateGroupKey{});
-  mockAdjRib->setUpdateGroup(group);
-  mockAdjRib->setEnableUpdateGroup(true);
-  mockAdjRib->setPeerState(PeerUpdateState::DETACHED_RUNNING);
-  auto pendingDumpToken = mockAdjRib->getCancellationTokenForNewRibDump();
-  ASSERT_TRUE(mockAdjRib->isRibDumpScheduled());
-  ASSERT_FALSE(pendingDumpToken.isCancellationRequested());
+  auto mockAdjRib = setupUpdateGroupPeer(kPeerId1, group);
+  peerMgr_->adjRibs_[kPeerId1] = mockAdjRib;
+  group->markPeerDetached(mockAdjRib);
+  mockAdjRib->setPeerState(PeerUpdateState::DETACHED_BLOCKED);
+  EXPECT_CALL(*mockAdjRib, processRibMessage(testing::_)).Times(0);
 
-  auto& messages = subscribeToLogMessages("", folly::LogLevel::WARN);
-  messages.clear();
   peerMgr_->scheduleRouteRefreshForUpdateGroupPeer(
-      mockAdjRib,
-      RibDumpReq(
-          kPeerId1,
-          false /* sendAddPath */,
-          true /* routeRefresh */,
-          BgpUpdateAfi::AFI_IPv4));
+      mockAdjRib, BgpUpdateAfi::AFI_IPv4);
+  peerMgr_->scheduleRouteRefreshForUpdateGroupPeer(
+      mockAdjRib, BgpUpdateAfi::AFI_IPv6);
+  ASSERT_TRUE(peerMgr_->pendingRouteRefreshPeers_.contains(mockAdjRib));
+  EXPECT_TRUE(mockAdjRib->isRibDumpScheduled());
+  EXPECT_EQ(peerMgr_->pendingRouteRefreshPeers_.at(mockAdjRib).size(), 2);
 
-  ASSERT_EQ(messages.size(), 1);
-  EXPECT_THAT(
-      messages.front().first.getMessage(),
-      testing::HasSubstr(
-          "rejecting update-group Route Refresh in state DETACHED_RUNNING"));
-  EXPECT_EQ(peerMgr_->asyncScope_.remaining(), 0);
+  peerMgr_->cancelRibDumpForAdjRib(
+      mockAdjRib, true /* discardRouteRefreshRequests */);
 
-  mockAdjRib->cancelRibDump();
-  mockAdjRib->resetChangeListConsumer();
+  EXPECT_FALSE(peerMgr_->pendingRouteRefreshPeers_.contains(mockAdjRib));
+  EXPECT_FALSE(mockAdjRib->isRibDumpScheduled());
+
+  peerMgr_->pendingRouteRefreshPeers_[mockAdjRib];
+  peerMgr_->cancelRibDumpForAdjRib(mockAdjRib);
+  EXPECT_FALSE(peerMgr_->pendingRouteRefreshPeers_.contains(mockAdjRib));
+
+  group->unregisterPeer(mockAdjRib);
   evb.loop();
+  folly::coro::blockingWait(peerMgr_->asyncScope_.joinAsync());
+  testing::Mock::VerifyAndClearExpectations(mockAdjRib.get());
 }
 
 /*
@@ -1783,17 +2024,14 @@ TEST_F(
       .Times(1)
       .WillOnce([](const RibOutMessage& message) {
         ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(message));
-        EXPECT_FALSE(std::get<RibOutAnnouncement>(message).routeRefresh);
+        EXPECT_FALSE(
+            std::get<RibOutAnnouncement>(message).routeRefreshAfi.has_value());
       });
 
   // Schedule an RR dump -> one coroutine.
   peerMgr_->scheduleRibDumpForAdjRib(
       mockAdjRib,
-      RibDumpReq(
-          kPeerId1,
-          false /* sendAddPath */,
-          true /* routeRefresh */,
-          BgpUpdateAfi::AFI_IPv4));
+      RibDumpReq(kPeerId1, false /* sendAddPath */, BgpUpdateAfi::AFI_IPv4));
   EXPECT_TRUE(mockAdjRib->isRibDumpScheduled());
   EXPECT_EQ(1, peerMgr_->asyncScope_.remaining());
 

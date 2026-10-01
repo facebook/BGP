@@ -776,7 +776,7 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
   /*
    * Coroutine to handle RibDumpReq. Pass-by-value is deliberate, to prevent a
    * use-after-free. protected + virtual so MockPeerManager can capture
-   * invocations; see RouteRefreshReceived_TriggersRibDumpWithFlag.
+   * invocations; see RouteRefreshReceived_TriggersAfiFilteredRibDump.
    */
   virtual folly::coro::Task<void> processRibDumpReqCoro(RibDumpReq ribDumpReq);
 
@@ -910,6 +910,9 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
    * AdjRib's cancellation source. Counterpart to scheduleRibDumpForAdjRib.
    */
   void cancelRibDumpForAdjRib(const std::shared_ptr<AdjRib>& adjRib);
+  void cancelRibDumpForAdjRib(
+      const std::shared_ptr<AdjRib>& adjRib,
+      bool discardRouteRefreshRequests);
 
   /*
    * Schedule a rib dump for a peer on asyncScope_, but only if one is not
@@ -924,7 +927,11 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
 
   void scheduleRouteRefreshForUpdateGroupPeer(
       const std::shared_ptr<AdjRib>& adjRib,
-      RibDumpReq ribDumpReq);
+      nettools::bgplib::BgpUpdateAfi requestedAfi);
+  void maybeSchedulePendingRouteRefresh(const std::shared_ptr<AdjRib>& adjRib);
+  void onRibDumpCompleted(
+      const std::shared_ptr<AdjRib>& adjRib,
+      const RibDumpReq& ribDumpReq);
 
   /**
    * When sessionEstablished is called, the peer should eventually
@@ -1572,6 +1579,11 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
    * pending RibDumpReq per peer.
    */
   folly::F14FastSet<std::shared_ptr<AdjRib>> pendingRibDumpAdjRibs_;
+
+  using PendingRouteRefreshAfis =
+      folly::F14FastSet<nettools::bgplib::BgpUpdateAfi>;
+  folly::F14FastMap<std::shared_ptr<AdjRib>, PendingRouteRefreshAfis>
+      pendingRouteRefreshPeers_;
 
   /*
    * Stats

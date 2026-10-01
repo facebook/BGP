@@ -73,23 +73,14 @@ struct RibInInitialPathComputation {
 struct RibDumpReq {
   const nettools::bgplib::BgpPeerId peerId;
   const bool sendAddPath;
-  /* When true, bypass the changeListTracker check so all routes are
-   * re-announced even if the consumer already has them. Used for
-   * Route Refresh (RFC 2918) where the peer explicitly requests
-   * re-announcement of all routes. */
-  const bool routeRefresh;
-  /* Restrict the dump to this AFI (Route Refresh, RFC 2918 §3). nullopt
-   * dumps every prefix: initial dump, policy re-evaluation, GR re-init. */
+  /* A value identifies a Route Refresh and restricts the dump to that AFI
+   * (RFC 2918 §3). nullopt retains ordinary all-AFI dump behavior. */
   const std::optional<nettools::bgplib::BgpUpdateAfi> filterAfi;
   explicit RibDumpReq(
       const nettools::bgplib::BgpPeerId& peerId,
       bool sendAddPath = false,
-      bool routeRefresh = false,
       std::optional<nettools::bgplib::BgpUpdateAfi> filterAfi = std::nullopt)
-      : peerId(peerId),
-        sendAddPath(sendAddPath),
-        routeRefresh(routeRefresh),
-        filterAfi(filterAfi) {}
+      : peerId(peerId), sendAddPath(sendAddPath), filterAfi(filterAfi) {}
 };
 
 /**
@@ -309,11 +300,9 @@ struct RibOutAnnouncement {
   std::vector<RibOutAnnouncementEntry> entries;
   bool sendWithEoR{false};
   bool initialDump{false}; // Indicates initial dump request's response
-  /* When true, bypass AdjRibOut dedup checks so routes are re-announced even
-   * if the peer already has them with identical attributes. Used for Route
-   * Refresh (RFC 2918) where the peer explicitly requests full re-announcement.
-   */
-  bool routeRefresh{false};
+  /* A value identifies a Route Refresh response and its requested AFI;
+   * nullopt retains ordinary all-AFI dump behavior. */
+  std::optional<nettools::bgplib::BgpUpdateAfi> routeRefreshAfi;
   std::vector<RibOutAnnouncementEntry> addPathEntries;
 };
 

@@ -897,15 +897,15 @@ void AdjRib::processRibOutAnnouncement(
 
   /*
    * InProgress -> Idle once the terminal Route Refresh announcement
-   * (routeRefresh=true, sendWithEoR=true) completes. Per-entry dedup decisions
-   * for this dump are already final; async wire emission needs no further
-   * state check.
+   * (routeRefreshAfi has a value and sendWithEoR=true) completes. Per-entry
+   * dedup decisions for this dump are already final; async wire emission needs
+   * no further state check.
    */
   maybeEndRrDump(announcement);
 }
 
 void AdjRib::maybeBeginRrDump(const RibOutAnnouncement& announcement) noexcept {
-  if (announcement.routeRefresh && rrDumpState_ == RrDumpState::Idle) {
+  if (announcement.routeRefreshAfi && rrDumpState_ == RrDumpState::Idle) {
     rrDumpState_ = RrDumpState::InProgress;
     /*
      * Phase 2 (RFC 7313 ERR) hook: emit BoRR here when
@@ -915,7 +915,7 @@ void AdjRib::maybeBeginRrDump(const RibOutAnnouncement& announcement) noexcept {
 }
 
 void AdjRib::maybeEndRrDump(const RibOutAnnouncement& announcement) noexcept {
-  if (announcement.routeRefresh && announcement.sendWithEoR &&
+  if (announcement.routeRefreshAfi && announcement.sendWithEoR &&
       rrDumpState_ == RrDumpState::InProgress) {
     /*
      * Phase 2 (RFC 7313 ERR) hook: emit EoRR here when
@@ -2023,6 +2023,8 @@ void AdjRib::transitionPeerUpdateState() noexcept {
         getPeerName());
     return;
   }
+  const bool completedDetachedInitDump =
+      peerState_ == PeerUpdateState::DETACHED_INIT_DUMP;
   /*
    * DETACHED_ON_REGISTRATION peers were never in sync with the group, so they
    * can never be DFP — they must always go through the DSP rejoin path
@@ -2099,6 +2101,11 @@ void AdjRib::transitionPeerUpdateState() noexcept {
      * continue consuming behind and up to the group.
      */
     reschedulePackingTimers();
+  }
+  if (completedDetachedInitDump &&
+      peerState_ != PeerUpdateState::DETACHED_INIT_DUMP) {
+    /* remotePeerId_ is installed by the constructor and is never reset. */
+    fromAdjRibQ_.push({getRemotePeerId(), DetachedInitDumpCompleted{}});
   }
 }
 

@@ -80,7 +80,8 @@
   FRIEND_TEST(PeerManagerTestFixture, TriggerRouteRefreshRequestTest);         \
   FRIEND_TEST(PeerManagerTestFixture, TriggerRouteRefreshRequestRrOnlyTest);   \
   FRIEND_TEST(                                                                 \
-      PeerManagerTestFixture, RouteRefreshReceived_TriggersRibDumpWithFlag);   \
+      PeerManagerTestFixture,                                                  \
+      RouteRefreshReceived_TriggersAfiFilteredRibDump);                        \
   FRIEND_TEST(                                                                 \
       PeerManagerDynamicPolicyEvaluationFixture,                               \
       UpdateIngressEgressPolicyNamesForIPAddressTest);                         \
@@ -202,7 +203,8 @@
   FRIEND_TEST(PeerManagerTestFixture, TriggerRouteRefreshRequestTest);         \
   FRIEND_TEST(PeerManagerTestFixture, TriggerRouteRefreshRequestRrOnlyTest);   \
   FRIEND_TEST(                                                                 \
-      PeerManagerTestFixture, RouteRefreshReceived_TriggersRibDumpWithFlag);   \
+      PeerManagerTestFixture,                                                  \
+      RouteRefreshReceived_TriggersAfiFilteredRibDump);                        \
   FRIEND_TEST(PeerManagerTestFixture, SessionFlapRaceConditionTest);           \
   FRIEND_TEST(                                                                 \
       PeerManagerTestFixture, MarkDaemonShutdownClearsAdjRibTreesTest);        \
@@ -7562,14 +7564,16 @@ TEST_F(PeerManagerTestFixture, GetEffectivePostOutPrefixCountTest) {
 
 /**
  * Verify the AdjRib::RouteRefreshReceived dispatcher in processAdjRibEvent
- * forwards the message to processRibDumpReq with routeRefresh=true and
- * filterAfi propagated from the requested AFI (RFC 2918 §3 dispatch contract).
+ * forwards the message to processRibDumpReq with filterAfi populated from the
+ * requested AFI (RFC 2918 §3 dispatch contract).
  *
  * Full re-dump semantics are exercised end-to-end by E2ERouteRefreshTest;
  * this is a unit-level regression guard for the dispatcher lambda in
  * PeerManager::processAdjRibEvent.
  */
-TEST_F(PeerManagerTestFixture, RouteRefreshReceived_TriggersRibDumpWithFlag) {
+TEST_F(
+    PeerManagerTestFixture,
+    RouteRefreshReceived_TriggersAfiFilteredRibDump) {
   auto mockPeerMgr = setupMockPeerManager(
       true /* includeStaticPeer */,
       true /* includeDynamicShivPeer */,
@@ -7625,7 +7629,6 @@ TEST_F(PeerManagerTestFixture, RouteRefreshReceived_TriggersRibDumpWithFlag) {
   ASSERT_EQ(mockPeerMgr->capturedRibDumpReqs.size(), 1u);
   const auto& req = mockPeerMgr->capturedRibDumpReqs.front();
   EXPECT_EQ(req.peerId, kPeerId3);
-  EXPECT_TRUE(req.routeRefresh);
   ASSERT_TRUE(req.filterAfi.has_value());
   EXPECT_EQ(*req.filterAfi, nettools::bgplib::BgpUpdateAfi::AFI_IPv4);
 }
