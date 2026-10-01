@@ -823,7 +823,8 @@ inline facebook::bgp::RibOutMessage createRibSingleAnnounce(
         std::vector<facebook::nettools::bgplib::BgpAttrAsPathSegmentC>>&
         aspaths = std::nullopt,
     const std::optional<uint32_t> locPref = std::nullopt,
-    const std::shared_ptr<facebook::bgp::BgpPathFields>& attrFields = nullptr,
+    const std::shared_ptr<facebook::bgp::BgpPathFields>& /* attrFields */ =
+        nullptr,
     const bool addPath = false,
     const uint32_t pathIdToSend = kPlaceholderPathID) {
   facebook::bgp::RibOutAnnouncement ribMsg;

@@ -176,7 +176,7 @@ TPathSelector createTPathSlectorWithOneMatcher(
 TBgpCommunityMatch createTBgpCommunityMatch(
     const int32_t& asn,
     const int32_t& value,
-    const routing_policy::MatchValueLogicOperator& matchType) {
+    const routing_policy::MatchValueLogicOperator& /* matchType */) {
   TBgpCommunity tCommunity;
   tCommunity.asn() = asn;
   tCommunity.value() = value;
