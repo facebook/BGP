@@ -268,6 +268,7 @@ target_link_libraries(bgp_bin
   bgp_stats_dc
   build_info
   "$<LINK_GROUP:RESCAN,${BGP_DC_LINK_GROUP_LIBS_CSV}>"
+  fb303::fb303
   ${BGP_BASE_LIBS}
   FBThrift::thriftcpp2
   ${FOLLY_EXCEPTION_TRACER}

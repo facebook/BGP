@@ -18,7 +18,9 @@
 #include <folly/Singleton.h>
 #include <folly/init/Init.h>
 #include <folly/system/ThreadName.h>
+#include <thrift/lib/cpp2/async/MultiplexAsyncProcessor.h>
 
+#include <fb303/BaseService.h>
 #include <fb303/ThreadCachedServiceData.h>
 
 #include <fboss/lib/AlertLogger.h>
@@ -99,6 +101,12 @@ DEFINE_string(policy, "", "File name of initial bgp policy configuration");
 
 namespace {
 using BgpSignalHandler = facebook::bgp::BgpSignalHandler;
+
+// fb303::BaseService has a protected constructor.
+class BgpFb303Handler : public facebook::fb303::BaseService {
+ public:
+  BgpFb303Handler() : BaseService("bgpd") {}
+};
 } // namespace
 
 int main(int argc, char** argv) {
@@ -347,7 +355,19 @@ int main(int argc, char** argv) {
       std::move(processorEventHandler));
   auto bgpHandler = std::make_shared<BgpServiceDC>(
       peerMgr, configManager, rib, neighborWatcher, watchdog, false);
-  bgpServer->setInterface(std::move(bgpHandler));
+  /*
+   * Internally ServiceFramework serves fb303 for bgpd; this bare server has
+   * none, so getCounters/getRegexCounters would land on the FacebookService
+   * stubs TBgpService inherits and fail as unimplemented. The multiplex routes
+   * each method to the first processor that declares it, so the fb303 handler
+   * must come before bgpHandler, which declares those methods but implements
+   * none of them.
+   */
+  std::vector<std::shared_ptr<apache::thrift::AsyncProcessorFactory>>
+      bgpHandlers{std::make_shared<BgpFb303Handler>(), std::move(bgpHandler)};
+  bgpServer->setInterface(
+      std::make_shared<apache::thrift::MultiplexAsyncProcessorFactory>(
+          std::move(bgpHandlers)));
   bgpServer->setPort(FLAGS_thrift_port);
   bgpServer->setMaxRequests(FLAGS_max_thrift_requests);
   bgpServer->setListenBacklog(FLAGS_max_thrift_listen_backlog);
