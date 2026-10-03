@@ -82,11 +82,13 @@ bgp_find_openr_library(OPENR_PLATFORM_THRIFT_LIBRARY platform_cpp2)
 bgp_find_openr_library(OPENR_KV_STORE_THRIFT_LIBRARY kv_store_cpp2)
 bgp_find_openr_library(OPENR_TYPES_THRIFT_LIBRARY types_cpp2)
 bgp_find_openr_library(OPENR_CTRL_THRIFT_LIBRARY openr_ctrl_cpp2)
+bgp_find_openr_library(OPENR_MESSAGING_STATS_LIBRARY openr_messaging_stats)
 
 set(OPENR_LIBS
   ${OPENR_FBNL_LIBRARY}
   ${OPENR_NETWORK_UTIL_LIBRARY}
   ${OPENR_SYSTEM_METRICS_LIBRARY}
+  ${OPENR_MESSAGING_STATS_LIBRARY}
   ${OPENR_CONSTANTS_LIBRARY}
   ${OPENR_PLATFORM_THRIFT_LIBRARY}
   ${OPENR_CTRL_THRIFT_LIBRARY}
