@@ -273,6 +273,17 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
       uint32_t pathId,
       uint64_t detachedRibVersion = 0) noexcept;
 
+  /*
+   * Return the peer-owned entry when present. If the peer is still sharing the
+   * group entry, clone it into the already-located radix node and return the
+   * clone so the caller can mutate it.
+   */
+  AdjRibEntry* FOLLY_NULLABLE getWritableRibEntryForPeer(
+      const folly::CIDRNetwork& prefix,
+      const AdjRibOutOwnerKey& peerOwnerKey,
+      uint32_t pathId,
+      uint64_t detachedRibVersion) noexcept;
+
   std::pair<AdjRibEntry * FOLLY_NULLABLE, bool> getRibPathEntrySharedOrPeer(
       const folly::CIDRNetwork& prefix,
       const AdjRibOutOwnerKey& peerOwnerKey,
@@ -1219,18 +1230,26 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
    */
   void decrementPeersDetachedAfterJoin() noexcept;
 
+ private:
+  PathOwnerMap& getOrCreatePathOwnerMap(
+      const folly::CIDRNetwork& prefix) noexcept;
+  LiteOwnerMap& getOrCreateLiteOwnerMap(
+      const folly::CIDRNetwork& prefix) noexcept;
+
   /*
    * Clone a RIB-OUT entry for a specific peer.
    * Creates an entry keyed by effectiveOwnerKey, shallow copying all
    * relevant fields from the source entry.
    */
   AdjRibEntry* copyEntryForOwner(
-      const folly::CIDRNetwork& prefix,
-      uint32_t pathId,
+      PathOwnerMap& ownerMap,
+      const AdjRibOutOwnerKey& effectiveOwnerKey,
+      const AdjRibEntry* entryToCopy) noexcept;
+  AdjRibEntry* copyEntryForOwner(
+      LiteOwnerMap& ownerMap,
       const AdjRibOutOwnerKey& effectiveOwnerKey,
       const AdjRibEntry* entryToCopy) noexcept;
 
- private:
   /*
    * Create a fresh cancellation source for a newly scheduled group dump and
    * return its token to merge into asyncScope_ when adding the walk.
@@ -1333,13 +1352,12 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
   void lazyClonePathForDetachedPeers(
       const folly::CIDRNetwork& prefix,
       uint32_t pathId,
-      const AdjRibPathTree::Iterator& radixNodeItr,
+      AdjRibPathTree::Iterator& radixNodeItr,
       const AdjRibEntry* groupEntry) noexcept;
 
   void lazyCloneLiteForDetachedPeers(
       const folly::CIDRNetwork& prefix,
-      uint32_t pathId,
-      const AdjRibLiteTree::Iterator& radixNodeItr,
+      AdjRibLiteTree::Iterator& radixNodeItr,
       const AdjRibEntry* groupEntry) noexcept;
 
   /*

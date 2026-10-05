@@ -466,13 +466,8 @@ AdjRibEntry* FOLLY_NULLABLE AdjRib::getRibEntry(
 AdjRibEntry* FOLLY_NULLABLE AdjRib::getRibEntryWithUpdateGroup(
     const CIDRNetwork& prefix,
     uint32_t pathId) noexcept {
-  auto [entry, isPerPeerEntry] = adjRibOutGroup_->getRibEntrySharedOrPeer(
+  return adjRibOutGroup_->getWritableRibEntryForPeer(
       prefix, getPeerOwnerKey(), pathId, detachedRibVersion_);
-  if (entry && !isPerPeerEntry) {
-    return adjRibOutGroup_->copyEntryForOwner(
-        prefix, pathId, getPeerOwnerKey(), entry);
-  }
-  return entry;
 }
 
 std::vector<CIDRNetwork> AdjRib::getAllPrefixes() noexcept {

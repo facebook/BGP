@@ -159,6 +159,8 @@
       UpdateGroupDetachedPeerTest,                                             \
       ShouldClonePathTrueWhenPeerWasSharingEntry);                             \
   FRIEND_TEST(UpdateGroupDetachedPeerTest, CopyEntryForPeerCopiesAllFields);   \
+  FRIEND_TEST(                                                                 \
+      UpdateGroupDetachedPeerTest, CopyEntryForPeerUsesGroupKeyWhenOnlyPeer);  \
   FRIEND_TEST(UpdateGroupDetachedPeerTest, LazyCloneNoDetachedPeersNoClone);   \
   FRIEND_TEST(UpdateGroupDetachedPeerTest, LazyCloneClonesForSharingPeerOnly); \
   FRIEND_TEST(UpdateGroupDetachedPeerTest, WithdrawClonesEntryToDetachedPeer); \
@@ -1936,7 +1938,7 @@ TEST_F(UpdateGroupDetachedPeerTest, CopyEntryForPeerCopiesAllFields) {
 
   // Clone the entry to the peer
   group_->copyEntryForOwner(
-      kV4Prefix1, kPlaceholderPathID, peerOwnerKey, groupEntry);
+      group_->getOrCreateLiteOwnerMap(kV4Prefix1), peerOwnerKey, groupEntry);
 
   // Verify peer entry was created with all fields copied
   auto peerEntry =
@@ -1961,7 +1963,7 @@ TEST_F(UpdateGroupDetachedPeerTest, CopyEntryForPeerUsesGroupKeyWhenOnlyPeer) {
 
   // Caller passes the group owner key when the peer is the only member.
   group_->copyEntryForOwner(
-      kV4Prefix1, kPlaceholderPathID, groupOwnerKey, &srcEntry);
+      group_->getOrCreateLiteOwnerMap(kV4Prefix1), groupOwnerKey, &srcEntry);
 
   auto entry =
       group_->getFromLiteTree(group_->LiteTree_, kV4Prefix1, groupOwnerKey);
@@ -2518,8 +2520,7 @@ TEST_F(UpdateGroupDetachedPeerTest, LazyCloneNoDetachedPeersNoClone) {
   // Call lazyCloneLiteForDetachedPeers — should be a no-op
   auto radixNodeItr =
       group_->getRadixNodeItrFromLiteTree(group_->LiteTree_, kV4Prefix1);
-  group_->lazyCloneLiteForDetachedPeers(
-      kV4Prefix1, kPlaceholderPathID, radixNodeItr, groupEntry);
+  group_->lazyCloneLiteForDetachedPeers(kV4Prefix1, radixNodeItr, groupEntry);
 
   // No peer entry should have been created
   EXPECT_EQ(
@@ -2555,8 +2556,7 @@ TEST_F(UpdateGroupDetachedPeerTest, LazyCloneClonesForSharingPeerOnly) {
   // Call lazyCloneLiteForDetachedPeers
   auto radixNodeItr =
       group_->getRadixNodeItrFromLiteTree(group_->LiteTree_, kV4Prefix1);
-  group_->lazyCloneLiteForDetachedPeers(
-      kV4Prefix1, kPlaceholderPathID, radixNodeItr, groupEntry);
+  group_->lazyCloneLiteForDetachedPeers(kV4Prefix1, radixNodeItr, groupEntry);
 
   // Peer 0 was sharing the entry → should get a clone
   auto peerEntry0 =

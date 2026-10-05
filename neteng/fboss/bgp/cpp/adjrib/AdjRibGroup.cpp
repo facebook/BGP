@@ -365,6 +365,48 @@ AdjRibOutGroup::getRibEntrySharedOrPeer(
   return {entry, false /* isPerPeerEntry */};
 }
 
+AdjRibEntry* FOLLY_NULLABLE AdjRibOutGroup::getWritableRibEntryForPeer(
+    const folly::CIDRNetwork& prefix,
+    const AdjRibOutOwnerKey& peerOwnerKey,
+    uint32_t pathId,
+    uint64_t detachedRibVersion) noexcept {
+  /* addPath */
+  if (groupKey_.sendAddPath) {
+    auto radixNodeItr = getRadixNodeItrFromPathTree(PathTree_, prefix);
+    auto* entry =
+        getAdjRibEntryFromPathNodeItr(radixNodeItr, peerOwnerKey, pathId);
+    if (entry) {
+      return entry;
+    }
+    entry =
+        getAdjRibEntryFromPathNodeItr(radixNodeItr, getGroupOwnerKey(), pathId);
+    if (!entry ||
+        !isEntryShared(
+            /*peerHasOwnEntry=*/false,
+            detachedRibVersion,
+            entry->getRibVersion())) {
+      return nullptr;
+    }
+    return copyEntryForOwner(radixNodeItr.value(), peerOwnerKey, entry);
+  }
+
+  /* non addPath */
+  auto radixNodeItr = getRadixNodeItrFromLiteTree(LiteTree_, prefix);
+  auto* entry = getAdjRibEntryFromLiteNodeItr(radixNodeItr, peerOwnerKey);
+  if (entry) {
+    return entry;
+  }
+  entry = getAdjRibEntryFromLiteNodeItr(radixNodeItr, getGroupOwnerKey());
+  if (!entry ||
+      !isEntryShared(
+          /*peerHasOwnEntry=*/false,
+          detachedRibVersion,
+          entry->getRibVersion())) {
+    return nullptr;
+  }
+  return copyEntryForOwner(radixNodeItr.value(), peerOwnerKey, entry);
+}
+
 uint32_t AdjRibOutGroup::getPeerEntriesCountFromPathTree(
     AdjRibPathTree& pathTree,
     const AdjRibOutOwnerKey& ownerKey) noexcept {
@@ -1183,8 +1225,7 @@ void AdjRibOutGroup::processGroupRibWithdraw(
       lazyClonePathForDetachedPeers(
           prefix, pathId, radixPathNodeItr, adjRibEntry);
     } else {
-      lazyCloneLiteForDetachedPeers(
-          prefix, pathId, radixLiteNodeItr, adjRibEntry);
+      lazyCloneLiteForDetachedPeers(prefix, radixLiteNodeItr, adjRibEntry);
     }
   }
 
@@ -1610,8 +1651,7 @@ AdjRibEntry* FOLLY_NULLABLE AdjRibOutGroup::tryInsertRibOutEntry(
     }
     // Lazy clone before the caller mutates this existing entry
     if (!detachedPeers_.empty()) {
-      lazyCloneLiteForDetachedPeers(
-          prefix, pathId, radixLiteNodeItr, adjRibEntry);
+      lazyCloneLiteForDetachedPeers(prefix, radixLiteNodeItr, adjRibEntry);
     }
   }
 
@@ -3078,6 +3118,14 @@ void AdjRibOutGroup::movePeerMaterializedRibOutPathEntries(
   for (auto itr = PathTree_.begin(); itr != PathTree_.end(); ++itr) {
     auto& ownerMap = itr->value();
     auto prefix = folly::CIDRNetwork{itr.ipAddress(), itr.masklen()};
+    PathOwnerMap* newOwnerMapForPrefix = nullptr;
+    auto copyToNewGroup = [&](const AdjRibOutOwnerKey& ownerKey,
+                              const AdjRibEntry* entry) {
+      if (!newOwnerMapForPrefix) {
+        newOwnerMapForPrefix = &newGroup->getOrCreatePathOwnerMap(prefix);
+      }
+      newGroup->copyEntryForOwner(*newOwnerMapForPrefix, ownerKey, entry);
+    };
 
     for (const auto& adjRib : peersToMove) {
       auto peerOwnerKey = adjRib->getPeerOwnerKey();
@@ -3087,9 +3135,8 @@ void AdjRibOutGroup::movePeerMaterializedRibOutPathEntries(
       auto peerEntryItr = ownerMap.find(peerOwnerKey);
       bool peerOwnsEntry = peerEntryItr != ownerMap.end();
       if (peerOwnsEntry) {
-        for (auto& [pathId, entry] : peerEntryItr->second) {
-          newGroup->copyEntryForOwner(
-              prefix, pathId, peerOwnerKey, entry.get());
+        for (auto& [_, entry] : peerEntryItr->second) {
+          copyToNewGroup(peerOwnerKey, entry.get());
           movedCount++;
         }
       }
@@ -3114,8 +3161,7 @@ void AdjRibOutGroup::movePeerMaterializedRibOutPathEntries(
                   peerHasOwnEntry,
                   detachedRibVersion,
                   entry->getRibVersion())) {
-            newGroup->copyEntryForOwner(
-                prefix, pathId, peerOwnerKey, entry.get());
+            copyToNewGroup(peerOwnerKey, entry.get());
             copiedCount++;
           }
         }
@@ -3162,6 +3208,14 @@ void AdjRibOutGroup::movePeerMaterializedRibOutLiteEntries(
   for (auto itr = LiteTree_.begin(); itr != LiteTree_.end(); ++itr) {
     auto& ownerMap = itr->value();
     auto prefix = folly::CIDRNetwork{itr.ipAddress(), itr.masklen()};
+    LiteOwnerMap* newOwnerMapForPrefix = nullptr;
+    auto copyToNewGroup = [&](const AdjRibOutOwnerKey& ownerKey,
+                              const AdjRibEntry* entry) {
+      if (!newOwnerMapForPrefix) {
+        newOwnerMapForPrefix = &newGroup->getOrCreateLiteOwnerMap(prefix);
+      }
+      newGroup->copyEntryForOwner(*newOwnerMapForPrefix, ownerKey, entry);
+    };
 
     for (const auto& adjRib : peersToMove) {
       auto peerOwnerKey = adjRib->getPeerOwnerKey();
@@ -3170,8 +3224,7 @@ void AdjRibOutGroup::movePeerMaterializedRibOutLiteEntries(
       // Move the peer's own entry to the new group, then delete from old.
       auto entryItr = ownerMap.find(peerOwnerKey);
       if (entryItr != ownerMap.end()) {
-        newGroup->copyEntryForOwner(
-            prefix, kDefaultPathID, peerOwnerKey, entryItr->second.get());
+        copyToNewGroup(peerOwnerKey, entryItr->second.get());
         ownerMap.erase(entryItr);
         movedCount++;
         continue;
@@ -3185,8 +3238,7 @@ void AdjRibOutGroup::movePeerMaterializedRibOutLiteEntries(
                 /*peerHasOwnEntry=*/false,
                 detachedRibVersion,
                 groupEntry->getRibVersion())) {
-          newGroup->copyEntryForOwner(
-              prefix, kDefaultPathID, peerOwnerKey, groupEntry);
+          copyToNewGroup(peerOwnerKey, groupEntry);
           copiedCount++;
         }
       }
@@ -3298,13 +3350,20 @@ void AdjRibOutGroup::movePeersSharedRibOutPathEntries(
   for (auto itr = PathTree_.begin(); itr != PathTree_.end(); ++itr) {
     auto& ownerMap = itr->value();
     auto prefix = folly::CIDRNetwork{itr.ipAddress(), itr.masklen()};
+    PathOwnerMap* newOwnerMapForPrefix = nullptr;
+    auto copyToNewGroup = [&](const AdjRibOutOwnerKey& ownerKey,
+                              const AdjRibEntry* entry) {
+      if (!newOwnerMapForPrefix) {
+        newOwnerMapForPrefix = &newGroup->getOrCreatePathOwnerMap(prefix);
+      }
+      newGroup->copyEntryForOwner(*newOwnerMapForPrefix, ownerKey, entry);
+    };
 
     // Copy this group's group-owned entries to the new group (kept here).
     auto groupItr = ownerMap.find(groupOwnerKey);
     if (groupItr != ownerMap.end()) {
-      for (auto& [pathId, entry] : groupItr->second) {
-        newGroup->copyEntryForOwner(
-            prefix, pathId, newGroupOwnerKey, entry.get());
+      for (auto& [_, entry] : groupItr->second) {
+        copyToNewGroup(newGroupOwnerKey, entry.get());
         copiedCount++;
       }
     }
@@ -3314,9 +3373,8 @@ void AdjRibOutGroup::movePeersSharedRibOutPathEntries(
       auto peerOwnerKey = peer->getPeerOwnerKey();
       auto peerItr = ownerMap.find(peerOwnerKey);
       if (peerItr != ownerMap.end()) {
-        for (auto& [pathId, entry] : peerItr->second) {
-          newGroup->copyEntryForOwner(
-              prefix, pathId, peerOwnerKey, entry.get());
+        for (auto& [_, entry] : peerItr->second) {
+          copyToNewGroup(peerOwnerKey, entry.get());
           movedCount++;
         }
         ownerMap.erase(peerItr);
@@ -3355,12 +3413,19 @@ void AdjRibOutGroup::movePeersSharedRibOutLiteEntries(
   for (auto itr = LiteTree_.begin(); itr != LiteTree_.end(); ++itr) {
     auto& ownerMap = itr->value();
     auto prefix = folly::CIDRNetwork{itr.ipAddress(), itr.masklen()};
+    LiteOwnerMap* newOwnerMapForPrefix = nullptr;
+    auto copyToNewGroup = [&](const AdjRibOutOwnerKey& ownerKey,
+                              const AdjRibEntry* entry) {
+      if (!newOwnerMapForPrefix) {
+        newOwnerMapForPrefix = &newGroup->getOrCreateLiteOwnerMap(prefix);
+      }
+      newGroup->copyEntryForOwner(*newOwnerMapForPrefix, ownerKey, entry);
+    };
 
     // Copy this group's group-owned entry to the new group (kept here).
     auto groupItr = ownerMap.find(groupOwnerKey);
     if (groupItr != ownerMap.end()) {
-      newGroup->copyEntryForOwner(
-          prefix, kDefaultPathID, newGroupOwnerKey, groupItr->second.get());
+      copyToNewGroup(newGroupOwnerKey, groupItr->second.get());
       copiedCount++;
     }
 
@@ -3369,8 +3434,7 @@ void AdjRibOutGroup::movePeersSharedRibOutLiteEntries(
       auto peerOwnerKey = peer->getPeerOwnerKey();
       auto peerItr = ownerMap.find(peerOwnerKey);
       if (peerItr != ownerMap.end()) {
-        newGroup->copyEntryForOwner(
-            prefix, kDefaultPathID, peerOwnerKey, peerItr->second.get());
+        copyToNewGroup(peerOwnerKey, peerItr->second.get());
         ownerMap.erase(peerItr);
         movedCount++;
       }
@@ -4260,12 +4324,33 @@ bool AdjRibOutGroup::shouldCloneLiteForPeer(
       peerHasOwnEntry, peer->getDetachedRibVersion(), groupEntryRibVersion);
 }
 
+AdjRibOutGroup::PathOwnerMap& AdjRibOutGroup::getOrCreatePathOwnerMap(
+    const folly::CIDRNetwork& prefix) noexcept {
+  auto radixNodeItr = getRadixNodeItrFromPathTree(PathTree_, prefix);
+  if (radixNodeItr.atEnd()) {
+    radixNodeItr =
+        PathTree_.insert(prefix.first, prefix.second, PathOwnerMap{}).first;
+  }
+  return radixNodeItr.value();
+}
+
+AdjRibOutGroup::LiteOwnerMap& AdjRibOutGroup::getOrCreateLiteOwnerMap(
+    const folly::CIDRNetwork& prefix) noexcept {
+  auto radixNodeItr = getRadixNodeItrFromLiteTree(LiteTree_, prefix);
+  if (radixNodeItr.atEnd()) {
+    radixNodeItr =
+        LiteTree_.insert(prefix.first, prefix.second, LiteOwnerMap{}).first;
+  }
+  return radixNodeItr.value();
+}
+
 AdjRibEntry* AdjRibOutGroup::copyEntryForOwner(
-    const folly::CIDRNetwork& prefix,
-    uint32_t pathId,
+    PathOwnerMap& ownerMap,
     const AdjRibOutOwnerKey& effectiveOwnerKey,
     const AdjRibEntry* entryToCopy) noexcept {
-  auto newEntry = addRibEntry(prefix, effectiveOwnerKey, pathId);
+  const auto pathId = entryToCopy->getPathId();
+  auto newEntry = std::make_unique<AdjRibEntry>(pathId);
+  auto* result = newEntry.get();
 
   /*
    * Strip RIB-IN-only add-path GR marker bits: a RIB-OUT clone must never
@@ -4279,7 +4364,30 @@ AdjRibEntry* AdjRibOutGroup::copyEntryForOwner(
   }
   newEntry->setRibVersion(entryToCopy->getRibVersion());
 
-  return newEntry;
+  ownerMap[effectiveOwnerKey][pathId] = std::move(newEntry);
+  return result;
+}
+
+AdjRibEntry* AdjRibOutGroup::copyEntryForOwner(
+    LiteOwnerMap& ownerMap,
+    const AdjRibOutOwnerKey& effectiveOwnerKey,
+    const AdjRibEntry* entryToCopy) noexcept {
+  const auto pathId = entryToCopy->getPathId();
+  auto newEntry = std::make_unique<AdjRibEntry>(pathId);
+  auto* result = newEntry.get();
+
+  // Strip RIB-IN-only add-path GR marker bits: a RIB-OUT clone must never
+  // inherit old-path-id ownership or a pending op from the source entry.
+  newEntry->flags_ = entryToCopy->flags_ & ~AdjRibEntry::kRibInOnlyFlagsMask;
+  newEntry->setPreOut(entryToCopy->getPreOut());
+  newEntry->setPostAttr(entryToCopy->getPostAttr());
+  if (entryToCopy->getPostOutPolicy()) {
+    newEntry->setPostOutPolicy(*entryToCopy->getPostOutPolicy());
+  }
+  newEntry->setRibVersion(entryToCopy->getRibVersion());
+
+  ownerMap[effectiveOwnerKey] = std::move(newEntry);
+  return result;
 }
 
 void AdjRibOutGroup::handleNoSyncPeers() noexcept {
@@ -4537,12 +4645,13 @@ void AdjRibOutGroup::promoteDetachedPeerLiteEntries(
 void AdjRibOutGroup::lazyClonePathForDetachedPeers(
     const folly::CIDRNetwork& prefix,
     uint32_t pathId,
-    const AdjRibPathTree::Iterator& radixNodeItr,
+    AdjRibPathTree::Iterator& radixNodeItr,
     const AdjRibEntry* groupEntry) noexcept {
   for (const auto& adjRib : detachedPeers_) {
     if (shouldClonePathForPeer(
             radixNodeItr, pathId, adjRib, groupEntry->getRibVersion())) {
-      copyEntryForOwner(prefix, pathId, adjRib->getPeerOwnerKey(), groupEntry);
+      copyEntryForOwner(
+          radixNodeItr.value(), adjRib->getPeerOwnerKey(), groupEntry);
       XLOGF(
           DBG3,
           "Group {}: Cloned path entry for {} to peer {} at bit {}",
@@ -4556,13 +4665,13 @@ void AdjRibOutGroup::lazyClonePathForDetachedPeers(
 
 void AdjRibOutGroup::lazyCloneLiteForDetachedPeers(
     const folly::CIDRNetwork& prefix,
-    uint32_t pathId,
-    const AdjRibLiteTree::Iterator& radixNodeItr,
+    AdjRibLiteTree::Iterator& radixNodeItr,
     const AdjRibEntry* groupEntry) noexcept {
   for (const auto& adjRib : detachedPeers_) {
     if (shouldCloneLiteForPeer(
             radixNodeItr, adjRib, groupEntry->getRibVersion())) {
-      copyEntryForOwner(prefix, pathId, adjRib->getPeerOwnerKey(), groupEntry);
+      copyEntryForOwner(
+          radixNodeItr.value(), adjRib->getPeerOwnerKey(), groupEntry);
       XLOGF(
           DBG3,
           "Group {}: Cloned lite entry for {} to peer {} at bit {}",

@@ -208,7 +208,7 @@ struct AdjRibEntry {
     return prePolicyAttrs_;
   }
 
-  uint32_t getPathId() {
+  uint32_t getPathId() const {
     return pathId_;
   }
 
