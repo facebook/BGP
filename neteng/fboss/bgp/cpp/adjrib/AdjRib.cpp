@@ -771,6 +771,14 @@ bool AdjRib::hasPeerEgressPolicyOverride() const noexcept {
   return peerConfig && peerConfig->hasEgressPolicyOverride;
 }
 
+void AdjRib::setPeerState(PeerUpdateState state) {
+  if (peerState_ == state) {
+    return;
+  }
+  peerState_ = state;
+  lastModifiedPeerUpdateStateTimeMs_ = getCurrentTimeMs();
+}
+
 /*
  * Called when session established with a peer (in PeerManagerBase)
  * to start processing peer messages

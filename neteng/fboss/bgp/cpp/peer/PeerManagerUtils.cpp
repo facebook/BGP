@@ -305,6 +305,11 @@ std::vector<TUpdateGroupInfo> PeerManagerBase::getUpdateGroupInfo(
           peerInfo.eor_sent_time_ms() = eorTime;
         }
 
+        auto peerStateTime = adjRib->getLastModifiedPeerUpdateStateTimeMs();
+        if (peerStateTime > 0) {
+          peerInfo.last_modified_peer_update_state_time_ms() = peerStateTime;
+        }
+
         peers.emplace_back(std::move(peerInfo));
       }
 

@@ -1298,17 +1298,24 @@ class AdjRib : boost::noncopyable,
   }
 
   /*
-   * Set the peer's state in update group state machine
+   * Set the peer's state in update group state machine. Stamps
+   * lastModifiedPeerUpdateStateTimeMs_ when the state actually changes.
    */
-  void setPeerState(PeerUpdateState state) {
-    peerState_ = state;
-  }
+  void setPeerState(PeerUpdateState state);
 
   /*
    * Get the peer's current state in update group
    */
   PeerUpdateState getPeerState() const {
     return peerState_;
+  }
+
+  /*
+   * Epoch time (ms) of the peer's last update group state transition; 0 if the
+   * peer has never left its initial state.
+   */
+  int64_t getLastModifiedPeerUpdateStateTimeMs() const {
+    return lastModifiedPeerUpdateStateTimeMs_;
   }
 
   /*
@@ -2854,6 +2861,11 @@ class AdjRib : boost::noncopyable,
    * Current state of this peer in update group state machine
    */
   PeerUpdateState peerState_{PeerUpdateState::DOWN};
+
+  /*
+   * Epoch time (ms) when peerState_ last changed; 0 until the first transition.
+   */
+  int64_t lastModifiedPeerUpdateStateTimeMs_{0};
 
   PeerBlockInfo peerBlockInfo_;
 
