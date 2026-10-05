@@ -85,6 +85,28 @@ using namespace facebook::neteng::fboss::bgp::thrift;
 namespace facebook {
 namespace bgp {
 
+class RibFibOutPresenceTest : public RibFixture,
+                              public testing::WithParamInterface<bool> {
+ public:
+  void SetUp() override {
+    ribFixtureDefaultSetup(
+        ComputeUcmpFromLbwComm{true},
+        CountConfedsInAsPathLen{false},
+        EnableNexthopTracking{false},
+        nullptr,
+        GetParam());
+  }
+
+  void installStrictCpsPolicy(const folly::CIDRNetwork& prefix) {
+    TPathSelector pathSelector;
+    pathSelector.bgp_native_path_selection_min_nexthop() = 2;
+    pathSelector.drain_on_min_nexthop_violation() = false;
+    sendPathSelectionPolicySet(
+        createTPathSelectionPolicyWithPathSelector({prefix}, pathSelector));
+    rib_->waitForPathSelectionPolicyUpdate();
+  }
+};
+
 INSTANTIATE_TEST_SUITE_P(
     RibFixture,
     RibFixtureAddPathTestSuite,
@@ -94,6 +116,14 @@ INSTANTIATE_TEST_SUITE_P(
     RibFixture,
     RibFsdbAddPathTestSuite,
     testing::Values(true /* addPath */));
+
+INSTANTIATE_TEST_SUITE_P(
+    FibOutTracking,
+    RibFibOutPresenceTest,
+    testing::Values(false, true),
+    [](const testing::TestParamInfo<bool>& info) {
+      return info.param ? "Enabled" : "Disabled";
+    });
 
 /*
  * Test rib policy: set path selection before rib turns from read_only to write
@@ -1003,6 +1033,144 @@ TEST_P(RibFixtureAddPathTestSuite, PathSelectionMinAggLbwbpsRelaxTest) {
     auto msg = folly::coro::blockingWait(ribOutQ_.pop());
     ASSERT_TRUE(std::holds_alternative<RibOutAnnouncement>(msg));
   }
+}
+
+TEST_P(RibFibOutPresenceTest, RelaxedLbwFinalWithdrawalProgramsFibDelete) {
+  rib_->setFibBatchTime(std::chrono::milliseconds(2));
+
+  const auto matcher = createCommunityMatch(200, 666, bgp_policy::Origin::EGP);
+  const auto pathSelector = createTPathSlectorWithOneMatcher(
+      matcher,
+      std::nullopt,
+      std::nullopt,
+      static_cast<int64_t>(30 * BpsPerGBps),
+      true);
+
+  auto ribFuture = rib_->getRibPrepareFibProgrammingFuture();
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendInitialPathComputation();
+  ribFuture.wait();
+  fibFuture.wait();
+
+  ribFuture = rib_->getRibPrepareFibProgrammingFuture();
+  sendPathSelectionPolicySet(
+      createTPathSelectionPolicyWithPathSelector({kV6Prefix1}, pathSelector));
+  rib_->waitForPathSelectionPolicyUpdate();
+  ribFuture.wait();
+
+  auto path =
+      std::make_shared<facebook::bgp::BgpPath>(*buildBgpPathFields(2, 1, 0, 2));
+  path->setNexthop(kV4Nexthop1);
+  path->setNonTransitiveLbwExtCommunity(kLocalAs1, kLbw10G);
+  path->publish();
+  const auto prefixBatch = PrefixPathIds{{kV6Prefix1, kDefaultPathID}};
+
+  ribFuture = rib_->getRibPrepareFibProgrammingFuture();
+  fibFuture = fib_->getFibProgramFuture();
+  sendAnnouncement(prefixBatch, eBgpPeer1_, path);
+  sendAnnouncement(prefixBatch, eBgpPeer2_, path);
+  ribFuture.wait();
+  fibFuture.wait();
+
+  EXPECT_EQ(nullptr, rib_->getBestPath(kV6Prefix1));
+  EXPECT_EQ(2, rib_->getMultipath(kV6Prefix1).size());
+  ASSERT_EQ(1, rib_->fibItems.size());
+  ASSERT_TRUE(rib_->fibItems.contains(kV6Prefix1));
+  ASSERT_NE(
+      nullptr, rib_->fibItems.at(kV6Prefix1).getMultipathWeightedNexthops());
+
+  ribFuture = rib_->getRibPrepareFibProgrammingFuture();
+  fibFuture = fib_->getFibProgramFuture();
+  sendWithdrawal(prefixBatch, eBgpPeer1_);
+  sendWithdrawal(prefixBatch, eBgpPeer2_);
+  ribFuture.wait();
+
+  ASSERT_EQ(1, rib_->fibItems.size());
+  ASSERT_TRUE(rib_->fibItems.contains(kV6Prefix1));
+  EXPECT_EQ(
+      nullptr, rib_->fibItems.at(kV6Prefix1).getMultipathWeightedNexthops());
+
+  fibFuture.wait();
+  WITH_RETRIES({
+    EXPECT_EVENTUALLY_TRUE(
+        rib_->getRibEntryForPrefix(
+                std::make_unique<std::string>(
+                    folly::IPAddress::networkToString(kV6Prefix1)))
+            .empty());
+  });
+}
+
+TEST_P(
+    RibFibOutPresenceTest,
+    FinalWithdrawalWithoutPriorFibOutErasesImmediately) {
+  rib_->setFibBatchTime(std::chrono::milliseconds(2));
+
+  auto ribFuture = rib_->getRibPrepareFibProgrammingFuture();
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendInitialPathComputation();
+  ribFuture.wait();
+  fibFuture.wait();
+
+  ribFuture = rib_->getRibPrepareFibProgrammingFuture();
+  installStrictCpsPolicy(kV6Prefix1);
+  ribFuture.wait();
+
+  const auto prefixBatch = PrefixPathIds{{kV6Prefix1, kDefaultPathID}};
+  ribFuture = rib_->getRibPrepareFibProgrammingFuture();
+  sendAnnouncement(prefixBatch, eBgpPeer1_, attr_);
+  ribFuture.wait();
+
+  EXPECT_EQ(nullptr, rib_->getBestPath(kV6Prefix1));
+  EXPECT_TRUE(rib_->getMultipath(kV6Prefix1).empty());
+  EXPECT_TRUE(rib_->fibItems.empty());
+
+  sendWithdrawal(prefixBatch, eBgpPeer1_);
+  WITH_RETRIES({
+    EXPECT_EVENTUALLY_TRUE(
+        rib_->getRibEntryForPrefix(
+                std::make_unique<std::string>(
+                    folly::IPAddress::networkToString(kV6Prefix1)))
+            .empty());
+  });
+  EXPECT_TRUE(rib_->fibItems.empty());
+}
+
+TEST_P(RibFibOutPresenceTest, EmptyFibOutFinalWithdrawalUsesFibCleanup) {
+  rib_->setFibBatchTime(std::chrono::milliseconds(2));
+  installStrictCpsPolicy(kV6Prefix1);
+
+  const auto prefixBatch = PrefixPathIds{{kV6Prefix1, kDefaultPathID}};
+  sendAnnouncement(prefixBatch, eBgpPeer1_, attr_);
+
+  auto fibFuture = fib_->getFibProgramFuture();
+  sendInitialPathComputation();
+  fibFuture.wait();
+
+  EXPECT_EQ(nullptr, rib_->getBestPath(kV6Prefix1));
+  EXPECT_TRUE(rib_->getMultipath(kV6Prefix1).empty());
+  ASSERT_EQ(1, rib_->fibItems.size());
+  ASSERT_TRUE(rib_->fibItems.contains(kV6Prefix1));
+  EXPECT_EQ(
+      nullptr, rib_->fibItems.at(kV6Prefix1).getMultipathWeightedNexthops());
+
+  auto ribFuture = rib_->getRibPrepareFibProgrammingFuture();
+  fibFuture = fib_->getFibProgramFuture();
+  sendWithdrawal(prefixBatch, eBgpPeer1_);
+  ribFuture.wait();
+
+  ASSERT_EQ(1, rib_->fibItems.size());
+  ASSERT_TRUE(rib_->fibItems.contains(kV6Prefix1));
+  EXPECT_EQ(
+      nullptr, rib_->fibItems.at(kV6Prefix1).getMultipathWeightedNexthops());
+
+  fibFuture.wait();
+  WITH_RETRIES({
+    EXPECT_EVENTUALLY_TRUE(
+        rib_->getRibEntryForPrefix(
+                std::make_unique<std::string>(
+                    folly::IPAddress::networkToString(kV6Prefix1)))
+            .empty());
+  });
 }
 
 /*

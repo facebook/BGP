@@ -289,10 +289,7 @@ TEST_F(CanonicalRibFsdbFixture, ReconnectPublishesFreshCanonicalSnapshot) {
   });
 }
 
-// TODO: Re-enable after the stale-FIB bug reproduced by D120004127 is fixed.
-TEST_F(
-    CanonicalRibFsdbFixture,
-    DISABLED_WithdrawsPublishedEntryWithoutBestPath) {
+TEST_F(CanonicalRibFsdbFixture, WithdrawsPublishedEntryWithoutBestPath) {
   auto subscribedRib = fsdbSubscriber_->subscribe(
       fsdbSubscriber_->getRootStatePath().bgp().canonicalRib());
   rib_->setFibBatchTime(milliseconds(2));
@@ -324,6 +321,11 @@ TEST_F(
     const auto rib = subscribedRib.rlock();
     ASSERT_EVENTUALLY_TRUE(rib->has_value());
     EXPECT_EVENTUALLY_FALSE((*rib)->rib_entries()->contains(prefix));
+  });
+  WITH_RETRIES({
+    EXPECT_EVENTUALLY_TRUE(
+        rib_->getRibEntryForPrefix(std::make_unique<std::string>(prefix))
+            .empty());
   });
 }
 

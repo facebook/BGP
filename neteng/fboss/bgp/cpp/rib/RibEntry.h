@@ -302,6 +302,21 @@ class RibEntry {
     return needPathSelection_;
   }
 
+  /** Returns whether this entry currently has FibOut state. */
+  inline bool hasFibOutState() const {
+    return hasFibOutState_;
+  }
+
+  /** Marks FibOut state as present for this entry. */
+  inline void markFibOutStatePresent() {
+    hasFibOutState_ = true;
+  }
+
+  /** Marks FibOut state as absent for this entry. */
+  inline void markFibOutStateAbsent() {
+    hasFibOutState_ = false;
+  }
+
   /**
    * Get the RIB version stamped on this entry at its last queue emission.
    */
@@ -390,11 +405,17 @@ class RibEntry {
   bool needPathSelection_{true};
 
   /*
+   * True while this live entry has FibOut state, including NONE. Kept
+   * independently of fibOutState_ until FIB-out tracking is fully enabled.
+   */
+  bool hasFibOutState_{false};
+
+  /*
    * Paths excluded from best-path selection by prePathSelectionFiltering,
    * rewritten on every pass. Cached per prefix so the RIB-wide aggregate in
    * RibCounters can be maintained by delta rather than by walking the RIB.
    *
-   * Memory: occupies the alignment hole between needPathSelection_ and the
+   * Memory: occupies the alignment hole between hasFibOutState_ and the
    * shared_ptr below, so sizeof(RibEntry) is unchanged (0 bytes per entry vs.
    * 8 if placed elsewhere) -- same rationale as the partial-drain fields below.
    */

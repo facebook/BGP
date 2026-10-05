@@ -489,6 +489,13 @@ folly::coro::Task<void> RibBase::processFibProgrammingMsgLoop() noexcept {
                   .topologyInfo = std::move(fibOutRoute->topologyInfo),
               });
         }
+        /*
+         * When enableFibOutTracking is false, the FIB update is still added to
+         * the programming batch, but no retained payload is returned. Record
+         * FibOut presence independently; explicit NONE/removal updates also
+         * count.
+         */
+        entry.markFibOutStatePresent();
         toFibTotal++;
 
         // log per prefix
@@ -740,6 +747,7 @@ void RibBase::replaceFibOut(RibEntry& entry, FibOutState state) {
 
 void RibBase::eraseFibOut(RibEntry& entry) {
   entry.fibOutState_.reset();
+  entry.markFibOutStateAbsent();
 }
 
 const FibOutState* RibBase::findFibOut(const RibEntry& entry) {
@@ -749,12 +757,12 @@ const FibOutState* RibBase::findFibOut(const RibEntry& entry) {
 void RibBase::checkWithdrawalBeforeRouteProgrammed(
     folly::CIDRNetwork& prefix,
     RibEntry& entry) noexcept {
-  /**
-   * If prefix has null best-path pointer that means no best-path
-   * calculation has been run for this prefix yet, and we already got
-   * withdrawal (the empty size of routeInfos_ suggests this is withdrawal)
+  /*
+   * Skip the normal selection/FIB cycle only when the entry has no FibOut
+   * state. A null best path does not prove that FIB has no state for the
+   * prefix.
    */
-  if (!entry.getBestPath() && (entry.routeInfos_.empty())) {
+  if (!entry.hasFibOutState() && entry.routeInfos_.empty()) {
     XLOGF(
         DBG1,
         "The case of new prefix {} announcement followed by withdrawal during Fib-programming timer.",
@@ -1998,6 +2006,19 @@ void RibBase::prepareFibProgramming(bool fullSync) noexcept {
       if (!ribEntry.isOnFibBatchList()) {
         fibBatchList_.push_back(ribEntry);
       }
+    }
+
+    /*
+     * Path-selection policy or nexthop filtering can leave candidates in a
+     * RibEntry while selecting neither a best path nor FIB nexthops. When the
+     * final candidate is withdrawn, those selected outputs remain empty, so
+     * bestpathChanged/nexthopChanged does not enqueue the now-pathless entry.
+     * If it has prior FibOut state (including explicit NONE/removal), enqueue
+     * an idempotent removal so FIB-ack processing can erase it.
+     */
+    if (ribEntry.getAllPathsCnt() == 0 && ribEntry.hasFibOutState() &&
+        !ribEntry.isOnFibBatchList()) {
+      fibBatchList_.push_back(ribEntry);
     }
   }
   if (prefixesToOverwriteRouteAttributes.size() == ribEntries_.size()) {
