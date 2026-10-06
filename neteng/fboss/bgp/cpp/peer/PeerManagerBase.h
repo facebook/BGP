@@ -640,10 +640,43 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
    * @brief Triggers a route refresh request for multiple peers and returns a
    * list of failed peer IDs.
    * @param peerIds: list of peerIds to trigger route refresh request for
+   * @param afi: optional AFI filter (nullopt = all negotiated AFIs)
    * @return list of peerIds that route refresh request failed to be sent to
    */
   std::vector<nettools::bgplib::BgpPeerId> triggerRouteRefreshRequestsForPeers(
-      std::vector<nettools::bgplib::BgpPeerId> peerIds);
+      std::vector<nettools::bgplib::BgpPeerId> peerIds,
+      std::optional<nettools::bgplib::BgpUpdateAfi> afi = std::nullopt);
+
+  /**
+   * Enqueue Route Refresh requests for selected negotiated AFIs. Returns false
+   * unless the peer is established, RR or ERR is negotiated, and every
+   * selected request is queued.
+   */
+  bool triggerRouteRefreshRequestForPeer(
+      const nettools::bgplib::BgpPeerId& peerId,
+      std::optional<nettools::bgplib::BgpUpdateAfi> afi =
+          std::nullopt) noexcept;
+
+  /**
+   * Returns peerIds for the given address whose AdjRib is in established
+   * state. A single IP can map to multiple peerIds (different router IDs)
+   * during transient state due to session flap with router ID change, or due
+   * to VIP multi-session — the established filter normally yields one entry,
+   * and callers should treat > 1 as an error.
+   */
+  std::vector<nettools::bgplib::BgpPeerId> getEstablishedPeerIdsForAddr(
+      const folly::IPAddress& peerAddr);
+
+  /**
+   * Queue an AFI-scoped local RIB redump for an established peer. This local
+   * operation does not require the peer to advertise Route Refresh support.
+   * Returns false if BGP is uninitialized, the peer is unavailable, or no
+   * requested AFI was negotiated.
+   */
+  bool processRouteRefreshForPeer(
+      const nettools::bgplib::BgpPeerId& peerId,
+      std::optional<nettools::bgplib::BgpUpdateAfi> afi =
+          std::nullopt) noexcept;
 
   // Test-only: pause routing-policy processing at coroutine entry.
   void testOnlyDeferPolicyUpdateProcessing(
@@ -1314,15 +1347,6 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
    * CancellableAsyncScope.
    */
   folly::coro::Task<void> periodicEvictFromDeduplicatorLoop() noexcept;
-
-  /**
-   * Trigger route refresh request for a peer under the following conditions:
-   * 1. Peer is in established state.
-   * 2. Enhanced route refresh is negotiated with the peer.
-   * 3. Enhanced route refresh is not already in progress.
-   */
-  bool triggerRouteRefreshRequestForPeer(
-      const nettools::bgplib::BgpPeerId& peerId) noexcept;
 
   void processChangeItemCompleteCallback(
       TrackableObject<ShadowRibEntry>* trackedObject);

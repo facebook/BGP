@@ -791,17 +791,26 @@ uint32_t AdjRib::buildAndQueueAnnouncements(uint64_t& bgpMessageCnt) noexcept {
   return prefixesAnnounced;
 }
 
-void AdjRib::buildAndSendRouteRefresh(
-    const nettools::bgplib::BgpRouteRefreshMessageSubtype& subtype) noexcept {
-  // Get the negotiated AFI and SAFI
-  if (isAfiIpv4Negotiated_) {
-    adjRibOutQueue_->push(buildRouteRefresh(
-        BgpUpdateAfi::AFI_IPv4, subtype, BgpUpdateSafi::SAFI_UNICAST));
+bool AdjRib::buildAndSendRouteRefresh(
+    const nettools::bgplib::BgpRouteRefreshMessageSubtype& subtype,
+    BgpUpdateAfi afi) noexcept {
+  if (!isAfiNegotiated(afi)) {
+    return false;
   }
-  if (isAfiIpv6Negotiated_) {
-    adjRibOutQueue_->push(buildRouteRefresh(
-        BgpUpdateAfi::AFI_IPv6, subtype, BgpUpdateSafi::SAFI_UNICAST));
+
+  auto routeRefresh =
+      buildRouteRefresh(afi, subtype, BgpUpdateSafi::SAFI_UNICAST);
+  if (!enableEgressQueueBackpressure_) {
+    if (!adjRibOutQueue_) {
+      return false;
+    }
+    adjRibOutQueue_->push(std::move(routeRefresh));
+    return true;
   }
+  if (!boundedAdjRibOutQueue_ || boundedAdjRibOutQueue_->isBlocked()) {
+    return false;
+  }
+  return boundedAdjRibOutQueue_->push(std::move(routeRefresh));
 }
 
 uint32_t AdjRib::buildAndQueueWithdrawals(uint64_t& bgpMessageCnt) noexcept {

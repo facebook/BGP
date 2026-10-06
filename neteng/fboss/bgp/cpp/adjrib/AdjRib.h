@@ -687,9 +687,20 @@ class AdjRib : boost::noncopyable,
    */
   folly::coro::Task<void> processAdjRibReEvaluation(RibPauseResumeCause cause);
 
-  // build and send route refresh messages
-  void buildAndSendRouteRefresh(
-      const nettools::bgplib::BgpRouteRefreshMessageSubtype& subtype) noexcept;
+  /*
+   * Build and enqueue a Route Refresh message for an explicit AFI. Returns
+   * false if the AFI is not negotiated or the egress queue rejects it.
+   */
+  bool buildAndSendRouteRefresh(
+      const nettools::bgplib::BgpRouteRefreshMessageSubtype& subtype,
+      nettools::bgplib::BgpUpdateAfi afi) noexcept;
+
+  bool isAfiNegotiated(nettools::bgplib::BgpUpdateAfi afi) const noexcept {
+    return (afi == nettools::bgplib::BgpUpdateAfi::AFI_IPv4 &&
+            isAfiIpv4Negotiated_) ||
+        (afi == nettools::bgplib::BgpUpdateAfi::AFI_IPv6 &&
+         isAfiIpv6Negotiated_);
+  }
 
   // Get AdjRibStats for this peer
   const AdjRibStats& getStats() const {
@@ -1606,6 +1617,12 @@ class AdjRib : boost::noncopyable,
    */
   bool testOnlyDeferDrjAcceptance{false};
 
+  /*
+   * Queue an AFI-scoped local RIB redump without applying peer capability
+   * gates. Returns false if the AFI was not negotiated.
+   */
+  bool triggerOutboundRedump(nettools::bgplib::BgpUpdateAfi afi) noexcept;
+
  private:
   static constexpr uint64_t kInvalidGroupBitPosition =
       std::numeric_limits<uint64_t>::max();
@@ -1789,7 +1806,7 @@ class AdjRib : boost::noncopyable,
   folly::coro::Task<void> processPeerEoR(
       const nettools::bgplib::BgpEndOfRib& eor) noexcept;
 
-  // process BgpRouteRefresh
+  // Process BgpRouteRefresh received from the peer.
   void processPeerRouteRefresh(
       const nettools::bgplib::BgpRouteRefresh& rr) noexcept;
 

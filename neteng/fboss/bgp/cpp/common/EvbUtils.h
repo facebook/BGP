@@ -28,6 +28,7 @@ namespace facebook::bgp {
 
 static constexpr std::chrono::seconds kRibThriftHandlerTimeout{30};
 static constexpr std::chrono::seconds kPeerMgrThriftHandlerTimeout{30};
+inline constexpr std::chrono::seconds kSessionMgrThriftHandlerTimeout{30};
 
 /**
  * Run a callable on a target EventBase with a timeout.

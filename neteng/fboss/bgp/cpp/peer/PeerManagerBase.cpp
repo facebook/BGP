@@ -5909,8 +5909,8 @@ PeerManagerBase::processIngressAndEgressRouteFilterUpdate(
 
 std::vector<nettools::bgplib::BgpPeerId>
 PeerManagerBase::triggerRouteRefreshRequestsForPeers(
-    std::vector<nettools::bgplib::BgpPeerId> peerIds) {
-  // Check if BGP is initialized
+    std::vector<nettools::bgplib::BgpPeerId> peerIds,
+    std::optional<nettools::bgplib::BgpUpdateAfi> afi) {
   if (!initialized_) {
     XLOG(ERR, "Refresh request can not be initiated. BGP is not initialized");
     return peerIds;
@@ -5920,20 +5920,24 @@ PeerManagerBase::triggerRouteRefreshRequestsForPeers(
    * failed peerIds
    */
   std::vector<nettools::bgplib::BgpPeerId> failedPeerIds;
-  for (const auto& peerId : peerIds) {
-    if (!triggerRouteRefreshRequestForPeer(peerId)) {
-      failedPeerIds.emplace_back(peerId);
+  evb_.runImmediatelyOrRunInEventBaseThreadAndWait([&]() {
+    for (const auto& peerId : peerIds) {
+      if (!triggerRouteRefreshRequestForPeer(peerId, afi)) {
+        failedPeerIds.emplace_back(peerId);
+      }
     }
-  }
+  });
   return failedPeerIds;
 }
 
 bool PeerManagerBase::triggerRouteRefreshRequestForPeer(
-    const BgpPeerId& peerId) noexcept {
+    const BgpPeerId& peerId,
+    std::optional<BgpUpdateAfi> afi) noexcept {
   auto peerIdAdjRib = adjRibs_.find(peerId);
   if (peerIdAdjRib == adjRibs_.cend()) {
-    XLOGF(
+    XLOGF_EVERY_MS(
         ERR,
+        1000,
         "Error sending route refresh request to {}. AdjRib does not exist",
         peerId.str());
     return false;
@@ -5942,8 +5946,9 @@ bool PeerManagerBase::triggerRouteRefreshRequestForPeer(
   if ((!adjRib) || (!adjRib->isStateEstablished()) ||
       (!adjRib->isEnhancedRouteRefreshNegotiated() &&
        !adjRib->isRouteRefreshNegotiated())) {
-    XLOGF(
+    XLOGF_EVERY_MS(
         ERR,
+        1000,
         "Error sending route refresh request to {}. "
         "Session is not established or neither Route Refresh nor "
         "Enhanced Route Refresh is negotiated",
@@ -5954,9 +5959,100 @@ bool PeerManagerBase::triggerRouteRefreshRequestForPeer(
    * TODO: Handle GR case and check if ERR is not already in progress. If
    * so, return false.
    */
-  adjRib->buildAndSendRouteRefresh(
-      BgpRouteRefreshMessageSubtype::ROUTE_REFRESH_REQUEST);
-  return true;
+  const auto triggerForAfi = [&](BgpUpdateAfi requestedAfi) {
+    return adjRib->buildAndSendRouteRefresh(
+        BgpRouteRefreshMessageSubtype::ROUTE_REFRESH_REQUEST, requestedAfi);
+  };
+  if (afi.has_value()) {
+    return triggerForAfi(*afi);
+  }
+
+  bool matchedAfi = false;
+  bool allQueued = true;
+  for (const auto requestedAfi :
+       {BgpUpdateAfi::AFI_IPv4, BgpUpdateAfi::AFI_IPv6}) {
+    if (adjRib->isAfiNegotiated(requestedAfi)) {
+      matchedAfi = true;
+      allQueued = triggerForAfi(requestedAfi) && allQueued;
+    }
+  }
+  return matchedAfi && allQueued;
+}
+
+std::vector<BgpPeerId> PeerManagerBase::getEstablishedPeerIdsForAddr(
+    const folly::IPAddress& peerAddr) {
+  std::vector<BgpPeerId> result;
+  evb_.runImmediatelyOrRunInEventBaseThreadAndWait([&]() {
+    auto it = peerAddrToIds_.find(peerAddr);
+    if (it != peerAddrToIds_.end()) {
+      for (const auto& peerId : it->second) {
+        auto ribIt = adjRibs_.find(peerId);
+        if (ribIt != adjRibs_.end() && ribIt->second &&
+            ribIt->second->isStateEstablished()) {
+          result.push_back(peerId);
+        }
+      }
+    }
+  });
+  return result;
+}
+
+bool PeerManagerBase::processRouteRefreshForPeer(
+    const BgpPeerId& peerId,
+    std::optional<nettools::bgplib::BgpUpdateAfi> afi) noexcept {
+  if (!initialized_) {
+    XLOGF_EVERY_MS(
+        ERR,
+        1000,
+        "Error processing route refresh for {}. BGP is not initialized",
+        peerId.str());
+    return false;
+  }
+  bool success = true;
+  evb_.runImmediatelyOrRunInEventBaseThreadAndWait([&]() {
+    auto ribIt = adjRibs_.find(peerId);
+    if (ribIt == adjRibs_.end() || !ribIt->second) {
+      XLOGF_EVERY_MS(
+          ERR,
+          1000,
+          "Error processing route refresh for {}. AdjRib does not exist",
+          peerId.str());
+      success = false;
+      return;
+    }
+    /*
+     * Defense-in-depth: caller is expected to pre-filter via
+     * getEstablishedPeerIdsForAddr(), but the session can transition out of
+     * ESTABLISHED between that lookup and this call (separate evb_ runs).
+     */
+    if (!ribIt->second->isStateEstablished()) {
+      XLOGF_EVERY_MS(
+          ERR,
+          1000,
+          "Error processing route refresh for {}. Session is not established",
+          peerId.str());
+      success = false;
+      return;
+    }
+    if (afi.has_value()) {
+      success = ribIt->second->triggerOutboundRedump(*afi);
+      return;
+    }
+
+    bool matchedAfi = false;
+    bool allTriggered = true;
+    for (const auto requestedAfi :
+         {nettools::bgplib::BgpUpdateAfi::AFI_IPv4,
+          nettools::bgplib::BgpUpdateAfi::AFI_IPv6}) {
+      if (ribIt->second->isAfiNegotiated(requestedAfi)) {
+        matchedAfi = true;
+        allTriggered =
+            ribIt->second->triggerOutboundRedump(requestedAfi) && allTriggered;
+      }
+    }
+    success = matchedAfi && allTriggered;
+  });
+  return success;
 }
 
 } // namespace bgp

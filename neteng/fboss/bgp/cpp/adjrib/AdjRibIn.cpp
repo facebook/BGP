@@ -881,7 +881,8 @@ void AdjRib::processPeerRouteRefresh(const BgpRouteRefresh& rr) noexcept {
   }
 
   /*
-   * RFC 2918 §3: <AFI, SAFI> must name a negotiated family. v1 is unicast only.
+   * RFC 2918 §3: v1 is unicast only. triggerOutboundRedump validates that the
+   * requested AFI was negotiated.
    */
   const auto afi = rr.afi().value();
   const auto safi = rr.safi().value();
@@ -894,28 +895,31 @@ void AdjRib::processPeerRouteRefresh(const BgpRouteRefresh& rr) noexcept {
         static_cast<int>(safi));
     return;
   }
-  const bool afiNegotiated = (afi == nettools::bgplib::BgpUpdateAfi::AFI_IPv4 &&
-                              isAfiIpv4Negotiated_) ||
-      (afi == nettools::bgplib::BgpUpdateAfi::AFI_IPv6 && isAfiIpv6Negotiated_);
-  if (!afiNegotiated) {
+  if (rr.msgSubType().value() ==
+      BgpRouteRefreshMessageSubtype::ROUTE_REFRESH_REQUEST) {
+    triggerOutboundRedump(afi);
+  }
+}
+
+bool AdjRib::triggerOutboundRedump(BgpUpdateAfi afi) noexcept {
+  if (!isAfiNegotiated(afi)) {
     XLOGF_EVERY_MS(
         WARN,
         5000,
-        "Route Refresh from peer {} ignored: AFI={} not negotiated for this session",
+        "Outbound re-dump for peer {} skipped: AFI={} not negotiated for this session",
         remotePeerId_->str(),
         static_cast<int>(afi));
-    return;
+    return false;
   }
 
-  if (rr.msgSubType().value() ==
-      BgpRouteRefreshMessageSubtype::ROUTE_REFRESH_REQUEST) {
-    XLOGF_EVERY_MS(
-        INFO,
-        5000,
-        "Triggering route re-announcement for peer {}",
-        remotePeerId_->str());
-    fromAdjRibQ_.push({*remotePeerId_, RouteRefreshReceived{afi}});
-  }
+  XLOGF_EVERY_MS(
+      INFO,
+      5000,
+      "Triggering route re-announcement for peer {} AFI={}",
+      remotePeerId_->str(),
+      static_cast<int>(afi));
+  fromAdjRibQ_.push({*remotePeerId_, RouteRefreshReceived{afi}});
+  return true;
 }
 
 /*

@@ -35,4 +35,8 @@ void SessionManager::stop() noexcept {
   evb_.terminateLoopSoon();
 }
 
+void SessionManager::restartSession(const folly::IPAddress& peerAddr) noexcept {
+  FiberBgpPeerManager::restartSession(peerAddr);
+}
+
 } // namespace facebook::bgp

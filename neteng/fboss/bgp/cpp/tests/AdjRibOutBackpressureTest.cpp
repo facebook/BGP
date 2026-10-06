@@ -42,6 +42,7 @@
   FRIEND_TEST(SendBgpMessagesFixture, ScheduleSendBgpMessagesTest);            \
   FRIEND_TEST(SendBgpMessagesFixture, WaitForQueueSpaceTest);                  \
   FRIEND_TEST(SendBgpMessagesFixture, SendPendingEoRsTest);                    \
+  FRIEND_TEST(SendBgpMessagesFixture, RouteRefreshUsesUnboundedEgressQueue);   \
   FRIEND_TEST(SendBgpMessagesFixture, SimpleSendBgpUpdateMessagesTest);        \
   FRIEND_TEST(SendBgpMessagesFixture, BulkSendBgpUpdateMessagesTest);          \
   FRIEND_TEST(SendBgpMessagesFixture, SendBgpUpdateMessagesTest_AfterEoR);     \
@@ -57,6 +58,15 @@
   friend class SendBgpMessagesFixtureWithBackpressure;                         \
   FRIEND_TEST(SendBgpMessagesFixtureWithBackpressure, WaitForQueueSpaceTest);  \
   FRIEND_TEST(SendBgpMessagesFixtureWithBackpressure, SendPendingEoRsTest);    \
+  FRIEND_TEST(                                                                 \
+      SendBgpMessagesFixtureWithBackpressure,                                  \
+      RouteRefreshUsesBoundedEgressQueue);                                     \
+  FRIEND_TEST(                                                                 \
+      SendBgpMessagesFixtureWithBackpressure,                                  \
+      RouteRefreshFailsWhenBoundedEgressQueueIsBlocked);                       \
+  FRIEND_TEST(                                                                 \
+      SendBgpMessagesFixtureWithBackpressure,                                  \
+      RouteRefreshFailsForUnnegotiatedAfi);                                    \
   FRIEND_TEST(                                                                 \
       SendBgpMessagesFixtureWithBackpressure,                                  \
       CommittedUpdateCountDoesNotCrossClear);                                  \
@@ -483,6 +493,88 @@ CO_TEST_F(SendBgpMessagesFixtureWithBackpressure, SendPendingEoRsTest) {
     }
   }
   EXPECT_FALSE(adjRib_->egressEoRsPending());
+}
+
+TEST_F(SendBgpMessagesFixture, RouteRefreshUsesUnboundedEgressQueue) {
+  SetUpAdjRibStateForUnit(
+      false /* eorPending */,
+      false /* eorSent */,
+      true /* v4Afi */,
+      true /* v6Afi */,
+      false /* enableEgressQueueBackpressure */);
+
+  EXPECT_TRUE(adjRib_->buildAndSendRouteRefresh(
+      BgpRouteRefreshMessageSubtype::ROUTE_REFRESH_REQUEST,
+      BgpUpdateAfi::AFI_IPv4));
+
+  EXPECT_TRUE(adjRib_->boundedAdjRibOutQueue_->empty());
+  ASSERT_EQ(adjRibOutQ_->size(), 1);
+  const auto message =
+      facebook::bgp::test::boundedBlockingPop(*adjRibOutQ_, "adjRibOutQ_");
+  ASSERT_TRUE(std::holds_alternative<BgpRouteRefresh>(*message));
+  EXPECT_EQ(
+      BgpUpdateAfi::AFI_IPv4,
+      std::get<BgpRouteRefresh>(*message).afi().value());
+}
+
+TEST_F(
+    SendBgpMessagesFixtureWithBackpressure,
+    RouteRefreshUsesBoundedEgressQueue) {
+  SetUpAdjRibStateForUnit(
+      false /* eorPending */,
+      false /* eorSent */,
+      true /* v4Afi */,
+      true /* v6Afi */);
+
+  for (const auto afi : {BgpUpdateAfi::AFI_IPv4, BgpUpdateAfi::AFI_IPv6}) {
+    EXPECT_TRUE(adjRib_->buildAndSendRouteRefresh(
+        BgpRouteRefreshMessageSubtype::ROUTE_REFRESH_REQUEST, afi));
+  }
+
+  EXPECT_TRUE(adjRibOutQ_->empty());
+  ASSERT_EQ(adjRib_->boundedAdjRibOutQueue_->size(), 2);
+  for (const auto expectedAfi :
+       {BgpUpdateAfi::AFI_IPv4, BgpUpdateAfi::AFI_IPv6}) {
+    const auto message = facebook::bgp::test::boundedBlockingPop(
+        *adjRib_->boundedAdjRibOutQueue_, "boundedAdjRibOutQueue_");
+    ASSERT_TRUE(std::holds_alternative<BgpRouteRefresh>(*message));
+    EXPECT_EQ(expectedAfi, std::get<BgpRouteRefresh>(*message).afi().value());
+  }
+}
+
+TEST_F(
+    SendBgpMessagesFixtureWithBackpressure,
+    RouteRefreshFailsWhenBoundedEgressQueueIsBlocked) {
+  SetUpAdjRibStateForUnit(
+      false /* eorPending */,
+      false /* eorSent */,
+      true /* v4Afi */,
+      true /* v6Afi */);
+  FillQueueToSize(highWm_);
+
+  EXPECT_FALSE(adjRib_->buildAndSendRouteRefresh(
+      BgpRouteRefreshMessageSubtype::ROUTE_REFRESH_REQUEST,
+      BgpUpdateAfi::AFI_IPv4));
+
+  EXPECT_EQ(adjRib_->boundedAdjRibOutQueue_->size(), highWm_);
+  EXPECT_TRUE(adjRibOutQ_->empty());
+}
+
+TEST_F(
+    SendBgpMessagesFixtureWithBackpressure,
+    RouteRefreshFailsForUnnegotiatedAfi) {
+  SetUpAdjRibStateForUnit(
+      false /* eorPending */,
+      false /* eorSent */,
+      false /* v4Afi */,
+      true /* v6Afi */);
+
+  EXPECT_FALSE(adjRib_->buildAndSendRouteRefresh(
+      BgpRouteRefreshMessageSubtype::ROUTE_REFRESH_REQUEST,
+      BgpUpdateAfi::AFI_IPv4));
+
+  EXPECT_TRUE(adjRib_->boundedAdjRibOutQueue_->empty());
+  EXPECT_TRUE(adjRibOutQ_->empty());
 }
 
 TEST_F(

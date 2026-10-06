@@ -39,6 +39,14 @@ class SessionManager : public nettools::bgplib::FiberBgpPeerManager {
   // The public stop interface called in Main.cpp
   void stop() noexcept override;
 
+  using FiberBgpPeerManager::restartSession;
+  /*
+   * Virtual passthrough so tests can mock HARD_RESET behavior without
+   * constructing a full FiberBgpPeerManager. The using-declaration above
+   * keeps the base-class overload set visible to non-mocking callers.
+   */
+  virtual void restartSession(const folly::IPAddress& peerAddr) noexcept;
+
  private:
   friend class PeerManagerBase;
 

@@ -5518,81 +5518,9 @@ TEST_F(PeerManagerTestFixture, TriggerRouteRefreshRequestTest) {
   auto& fm =
       folly::fibers::getFiberManager(mockPeerMgr->getEventBase(), options_);
 
-  mockInfo1_.negotiatedCapabilities.enhancedRouteRefresh() = true;
-
-  fm.addTask([&] {
-    auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
-        mockInfo1_,
-        sessionMgr->iQueue_,
-        sessionMgr->boundedIqueue_,
-        sessionMgr->oQueue_,
-        versionNumber);
-
-    FiberBgpPeer::ObservableStateT stateEvent{
-        .peerId = kPeerId3,
-        .versionNumber = version,
-        .remoteAs = mockInfo1_.peeringParams.remoteAs,
-        .sessionInfo = sessionInfo};
-
-    folly::coro::blockingWait(mockPeerMgr->sessionEstablished(stateEvent));
-    auto adjRib3 = mockPeerMgr->findAdjRib(kPeerId3);
-    EXPECT_TRUE(adjRib3->isStateEstablished());
-
-    mockPeerMgr->ribInitPathComputationNotified_ = true;
-    mockPeerMgr->eorTimerExpired_ = false;
-    mockPeerMgr->initialized_ = true;
-    mockPeerMgr->ribInitialAnnouncementStarted_ = true;
-    mockPeerMgr->ribInitialAnnouncementDone_ = true;
-
-    /*
-     * No sleep needed: every gate input is set synchronously on this fiber,
-     * and triggerRouteRefreshRequestsForPeers runs synchronously on the same
-     * fiber. Per general_rules.md: "MUST never use sleep-based
-     * synchronization."
-     */
-    auto failedPeers =
-        mockPeerMgr->triggerRouteRefreshRequestsForPeers({kPeerId3});
-
-    EXPECT_TRUE(failedPeers.empty());
-
-    sessionMgr->oQueue_->fiberPush(
-        FiberBgpPeer::BgpSessionStop{GracefulRestartFlag{false}});
-    stateEvent.versionNumber = ++version;
-    folly::coro::blockingWait(mockPeerMgr->sessionTerminated(stateEvent));
-
-    // Explicitly stop the peer manager to cancel all coro tasks
-    mockPeerMgr->stop();
-    sessionMgr->stop();
-  });
-
-  evb.loop();
-  sessionMgrThread.join();
-  SUCCEED();
-}
-
-/**
- * Verify that triggerRouteRefreshRequestsForPeers() succeeds when only basic
- * Route Refresh (RFC 2918, cap 2) is negotiated and ERR (cap 70) is not.
- * This exercises the relaxed gate in triggerRouteRefreshRequestForPeer().
- */
-TEST_F(PeerManagerTestFixture, TriggerRouteRefreshRequestRrOnlyTest) {
-  auto mockPeerMgr = setupMockPeerManager(
-      true /* includeStaticPeer */,
-      true /* includeDynamicShivPeer */,
-      false /* includeDynamicMonitorPeer */);
-  auto sessionMgr = setupMockSessionManager(mockPeerMgr);
-  uint64_t version = 0x100;
-  auto versionNumber = std::make_shared<VersionNumber>(version);
-
-  auto sessionMgrThread = sessionMgr->runInThread();
-
-  auto& evb = mockPeerMgr->getEventBase();
-  auto& fm =
-      folly::fibers::getFiberManager(mockPeerMgr->getEventBase(), options_);
-
-  // Negotiate only RR (cap 2), not ERR (cap 70)
   mockInfo1_.negotiatedCapabilities.routeRefresh() = true;
   mockInfo1_.negotiatedCapabilities.enhancedRouteRefresh() = false;
+  mockInfo1_.negotiatedCapabilities.mpExtV4Unicast() = true;
 
   fm.addTask([&] {
     auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
@@ -5614,27 +5542,50 @@ TEST_F(PeerManagerTestFixture, TriggerRouteRefreshRequestRrOnlyTest) {
     EXPECT_TRUE(adjRib3->isRouteRefreshNegotiated());
     EXPECT_FALSE(adjRib3->isEnhancedRouteRefreshNegotiated());
 
+    mockPeerMgr->ribInitPathComputationNotified_ = true;
+    mockPeerMgr->eorTimerExpired_ = false;
     mockPeerMgr->initialized_ = true;
+    mockPeerMgr->ribInitialAnnouncementStarted_ = true;
+    mockPeerMgr->ribInitialAnnouncementDone_ = true;
 
     /*
-     * No sleep needed: every gate triggerRouteRefreshRequestForPeer checks
-     * (initialized_, AdjRib presence + isStateEstablished +
-     * isRouteRefresh*Negotiated) is satisfied synchronously on this fiber,
-     * and triggerRouteRefreshRequestsForPeers runs synchronously on the
-     * same fiber. Per general_rules.md: "MUST never use sleep-based
+     * No sleep needed: every gate input is set synchronously on this fiber,
+     * and triggerRouteRefreshRequestsForPeers runs synchronously on the same
+     * fiber. Per general_rules.md: "MUST never use sleep-based
      * synchronization."
      */
     auto failedPeers =
         mockPeerMgr->triggerRouteRefreshRequestsForPeers({kPeerId3});
 
-    // Gate should accept RR-only peers, so no failures.
     EXPECT_TRUE(failedPeers.empty());
+    EXPECT_TRUE(sessionMgr->iQueue_->empty());
+    EXPECT_EQ(sessionMgr->boundedIqueue_->size(), 1);
+    if (!sessionMgr->boundedIqueue_->empty()) {
+      const auto routeRefresh = facebook::bgp::test::boundedBlockingPop(
+          *sessionMgr->boundedIqueue_, "boundedIqueue_");
+      EXPECT_TRUE(std::holds_alternative<BgpRouteRefresh>(*routeRefresh));
+      if (std::holds_alternative<BgpRouteRefresh>(*routeRefresh)) {
+        EXPECT_EQ(
+            BgpUpdateAfi::AFI_IPv4,
+            std::get<BgpRouteRefresh>(*routeRefresh).afi().value());
+      }
+    }
+
+    while (!sessionMgr->boundedIqueue_->isBlocked()) {
+      if (!sessionMgr->boundedIqueue_->push(nullptr)) {
+        ADD_FAILURE() << "boundedIqueue_ became full before it was blocked";
+        break;
+      }
+    }
+    failedPeers = mockPeerMgr->triggerRouteRefreshRequestsForPeers({kPeerId3});
+    EXPECT_EQ(failedPeers, std::vector<BgpPeerId>{kPeerId3});
 
     sessionMgr->oQueue_->fiberPush(
         FiberBgpPeer::BgpSessionStop{GracefulRestartFlag{false}});
     stateEvent.versionNumber = ++version;
     folly::coro::blockingWait(mockPeerMgr->sessionTerminated(stateEvent));
 
+    // Explicitly stop the peer manager to cancel all coro tasks
     mockPeerMgr->stop();
     sessionMgr->stop();
   });
