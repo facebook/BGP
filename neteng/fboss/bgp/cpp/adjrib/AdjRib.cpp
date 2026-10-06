@@ -771,7 +771,12 @@ void AdjRib::setPeerState(PeerUpdateState state) {
     return;
   }
   peerState_ = state;
-  lastModifiedPeerUpdateStateTimeMs_ = getCurrentTimeMs();
+  peerUpdateStateInfo_.lastModifiedTimeMs = getCurrentTimeMs();
+}
+
+void AdjRib::setDetachReason(AdjRibOutGroup::DetachReason reason) {
+  peerUpdateStateInfo_.lastDetachReason = reason;
+  peerUpdateStateInfo_.lastDetachTimeMs = getCurrentTimeMs();
 }
 
 /*

@@ -989,25 +989,25 @@ TEST_F(AdjRibGroupTest, PeerUpdateStateTransitionIsTimestamped) {
   auto adjRib = createMinimalAdjRib();
 
   ASSERT_EQ(adjRib->getPeerState(), PeerUpdateState::DOWN);
-  EXPECT_EQ(adjRib->getLastModifiedPeerUpdateStateTimeMs(), 0);
+  EXPECT_EQ(adjRib->getPeerUpdateStateInfo().lastModifiedTimeMs, 0);
 
   const auto beforeFirst =
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::system_clock::now().time_since_epoch())
           .count();
   adjRib->setPeerState(PeerUpdateState::INIT);
-  const auto firstStamp = adjRib->getLastModifiedPeerUpdateStateTimeMs();
+  const auto firstStamp = adjRib->getPeerUpdateStateInfo().lastModifiedTimeMs;
 
   EXPECT_EQ(adjRib->getPeerState(), PeerUpdateState::INIT);
   EXPECT_GE(firstStamp, beforeFirst);
 
   // Re-setting the state the peer is already in is not a transition.
   adjRib->setPeerState(PeerUpdateState::INIT);
-  EXPECT_EQ(adjRib->getLastModifiedPeerUpdateStateTimeMs(), firstStamp);
+  EXPECT_EQ(adjRib->getPeerUpdateStateInfo().lastModifiedTimeMs, firstStamp);
 
   adjRib->setPeerState(PeerUpdateState::JOINED_RUNNING);
   EXPECT_EQ(adjRib->getPeerState(), PeerUpdateState::JOINED_RUNNING);
-  EXPECT_GE(adjRib->getLastModifiedPeerUpdateStateTimeMs(), firstStamp);
+  EXPECT_GE(adjRib->getPeerUpdateStateInfo().lastModifiedTimeMs, firstStamp);
 }
 
 /*

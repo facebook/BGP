@@ -3329,6 +3329,7 @@ void AdjRibOutGroup::movePeers(
         : PeerUpdateState::DETACHED_INIT_DUMP;
     adjRib->setPeerState(targetState);
     adjRib->setAdjRibFlag(AdjRib::DETACHED_ON_REGISTRATION);
+    adjRib->setDetachReason(DetachReason::Policy);
 
     newGroup->detachedPeers_.insert(adjRib);
 
@@ -3786,6 +3787,9 @@ void AdjRibOutGroup::detachPeer(
       adjRib->incrementTimesDetachedByRouteRefresh();
       break;
   }
+
+  // Persist the reason and time so they can be reported after the peer rejoins
+  adjRib->setDetachReason(reason);
 
   /*
    * 10. Transition the peer to a detached state. A blocked peer

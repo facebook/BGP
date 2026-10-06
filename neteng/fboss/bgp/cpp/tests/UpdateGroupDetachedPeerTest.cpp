@@ -928,6 +928,57 @@ TEST_F(UpdateGroupDetachedPeerTest, DetachPeerPolicyIncrementsPolicyCount) {
   EXPECT_EQ(adjRib0->getStats().getNumTimesDetachedByBlocking(), 0);
 }
 
+/*
+ * The persisted last detach reason/time are stamped on detach, kept across
+ * detached sub-state changes and rejoin, and overwritten with Policy when the
+ * peer is moved to another group.
+ */
+TEST_F(UpdateGroupDetachedPeerTest, LastDetachReasonPersistsAcrossRejoin) {
+  auto adjRib0 = createAndRegisterPeer(0);
+  auto adjRib1 = createAndRegisterPeer(1);
+  // Two in-sync members so detachSlowPeer does not skip (last-synced guard).
+  group_->markPeerInSync(adjRib0);
+  group_->markPeerInSync(adjRib1);
+  group_->setLastSeenRibVersion(42);
+  EXPECT_FALSE(adjRib0->getPeerUpdateStateInfo().lastDetachReason.has_value());
+  EXPECT_EQ(adjRib0->getPeerUpdateStateInfo().lastDetachTimeMs, 0);
+
+  group_->detachSlowPeer(adjRib0);
+  EXPECT_EQ(
+      adjRib0->getPeerUpdateStateInfo().lastDetachReason,
+      AdjRibOutGroup::DetachReason::Blocking);
+  const auto firstDetachTimeMs =
+      adjRib0->getPeerUpdateStateInfo().lastDetachTimeMs;
+  EXPECT_GT(firstDetachTimeMs, 0);
+
+  adjRib0->setPeerState(PeerUpdateState::DETACHED_READY_TO_JOIN);
+  EXPECT_EQ(
+      adjRib0->getPeerUpdateStateInfo().lastDetachReason,
+      AdjRibOutGroup::DetachReason::Blocking);
+
+  ASSERT_EQ(group_->tryAcceptPeersToGroup({adjRib0}).size(), 1);
+  ASSERT_EQ(adjRib0->getPeerState(), PeerUpdateState::JOINED_RUNNING);
+  EXPECT_EQ(
+      adjRib0->getPeerUpdateStateInfo().lastDetachReason,
+      AdjRibOutGroup::DetachReason::Blocking);
+  EXPECT_EQ(
+      adjRib0->getPeerUpdateStateInfo().lastDetachTimeMs, firstDetachTimeMs);
+
+  group_->detachSlowPeer(adjRib0);
+  auto targetGroup = std::make_shared<AdjRibOutGroup>(*evb_, "target_group");
+  group_->movePeers({adjRib0}, targetGroup);
+  EXPECT_EQ(
+      adjRib0->getPeerUpdateStateInfo().lastDetachReason,
+      AdjRibOutGroup::DetachReason::Policy);
+  EXPECT_GE(
+      adjRib0->getPeerUpdateStateInfo().lastDetachTimeMs, firstDetachTimeMs);
+
+  // Cleanup: see MovePeerDecrementsDetachedAfterJoin.
+  targetGroup->unregisterPeer(adjRib0);
+  adjRib0->setUpdateGroup(nullptr);
+  peers_.erase(peers_.begin());
+}
+
 TEST_F(
     UpdateGroupDetachedPeerTest,
     DetachPeerRouteRefreshMovesOnlyRequesterToPrivateLane) {

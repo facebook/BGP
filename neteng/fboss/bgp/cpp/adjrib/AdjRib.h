@@ -1298,8 +1298,21 @@ class AdjRib : boost::noncopyable,
   }
 
   /*
+   * Bookkeeping about the peer's update group state transitions, kept
+   * alongside (not inside) peerState_.
+   */
+  struct PeerUpdateStateInfo {
+    // Epoch time (ms) when peerState_ last changed; 0 until the first one.
+    int64_t lastModifiedTimeMs{0};
+    // Reason for the most recent detachment; retained after the peer rejoins.
+    std::optional<AdjRibOutGroup::DetachReason> lastDetachReason;
+    // Epoch time (ms) of the most recent detachment; 0 if never detached.
+    int64_t lastDetachTimeMs{0};
+  };
+
+  /*
    * Set the peer's state in update group state machine. Stamps
-   * lastModifiedPeerUpdateStateTimeMs_ when the state actually changes.
+   * peerUpdateStateInfo_.lastModifiedTimeMs when the state actually changes.
    */
   void setPeerState(PeerUpdateState state);
 
@@ -1310,13 +1323,15 @@ class AdjRib : boost::noncopyable,
     return peerState_;
   }
 
-  /*
-   * Epoch time (ms) of the peer's last update group state transition; 0 if the
-   * peer has never left its initial state.
-   */
-  int64_t getLastModifiedPeerUpdateStateTimeMs() const {
-    return lastModifiedPeerUpdateStateTimeMs_;
+  const PeerUpdateStateInfo& getPeerUpdateStateInfo() const {
+    return peerUpdateStateInfo_;
   }
+
+  /*
+   * Persist the reason for a detachment from the update group and stamp the
+   * detach time.
+   */
+  void setDetachReason(AdjRibOutGroup::DetachReason reason);
 
   /*
    * Per-peer blocking metadata for frequency-based slow peer detection.
@@ -2862,10 +2877,7 @@ class AdjRib : boost::noncopyable,
    */
   PeerUpdateState peerState_{PeerUpdateState::DOWN};
 
-  /*
-   * Epoch time (ms) when peerState_ last changed; 0 until the first transition.
-   */
-  int64_t lastModifiedPeerUpdateStateTimeMs_{0};
+  PeerUpdateStateInfo peerUpdateStateInfo_;
 
   PeerBlockInfo peerBlockInfo_;
 
