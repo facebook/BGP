@@ -29,6 +29,8 @@
 #include <folly/ScopeGuard.h>
 #include <folly/logging/xlog.h>
 
+#include <thrift/lib/cpp/TApplicationException.h>
+
 #include "common/network/AddressUtil.h"
 #include "fboss/lib/LogThriftCall.h"
 #include "magic_enum/magic_enum.hpp"
@@ -1340,6 +1342,186 @@ folly::coro::Task<void> BgpServiceBase::co_startSession(
       XLOGF(ERR, "startSession failed: {}", result.exception().what());
     }
   }
+}
+
+folly::coro::Task<void> BgpServiceBase::co_clearBgpNeighbor(
+    std::unique_ptr<string> peer,
+    ClearBgpNeighborDirection direction,
+    TBgpAfi afi) {
+  // @lint-ignore NULLSAFECLANG nullable-argument LogThriftCall handles null.
+  auto log = LOG_THRIFT_CALL(INFO);
+  co_await co_clearBgpNeighborImpl(std::move(peer), direction, afi);
+}
+
+folly::coro::Task<void> BgpServiceBase::co_clearBgpNeighborImpl(
+    std::unique_ptr<string> peer,
+    ClearBgpNeighborDirection direction,
+    TBgpAfi afi) {
+  if (exitInitiated_ || peer == nullptr || peer->empty()) {
+    const auto errStr = exitInitiated_ ? "Service is exiting" : "Empty peer";
+    throw apache::thrift::TApplicationException(
+        apache::thrift::TApplicationException::INTERNAL_ERROR,
+        fmt::format("Failed to clear bgp neighbor: {}", errStr));
+  }
+
+  if (direction == ClearBgpNeighborDirection::HARD_RESET &&
+      afi != TBgpAfi::AFI_ALL) {
+    throw apache::thrift::TApplicationException(
+        apache::thrift::TApplicationException::UNKNOWN,
+        "AFI filter is not supported for hard reset");
+  }
+
+  std::optional<nettools::bgplib::BgpUpdateAfi> bgpAfi = std::nullopt;
+  switch (afi) {
+    case TBgpAfi::AFI_ALL:
+      bgpAfi = std::nullopt;
+      break;
+    case TBgpAfi::AFI_IPV4:
+      bgpAfi = nettools::bgplib::BgpUpdateAfi::AFI_IPv4;
+      break;
+    case TBgpAfi::AFI_IPV6:
+      bgpAfi = nettools::bgplib::BgpUpdateAfi::AFI_IPv6;
+      break;
+    default:
+      /*
+       * Reject any wire value (including UNKNOWN or an int from a
+       * newer/older thrift schema) that doesn't map to a defined AFI.
+       * Falling through to nullopt would silently widen the operation to
+       * AFI_ALL, which the caller didn't ask for.
+       */
+      throw apache::thrift::TApplicationException(
+          apache::thrift::TApplicationException::INVALID_PROTOCOL,
+          fmt::format(
+              "Unrecognized AFI value {} for clear bgp neighbor on peer {}",
+              static_cast<int>(afi),
+              *peer));
+  }
+
+  if (!continueExecution(true)) {
+    throw apache::thrift::TApplicationException(
+        apache::thrift::TApplicationException::INTERNAL_ERROR,
+        "clearBgpNeighbor: request rejected by thrift request dampening");
+  }
+  SCOPE_EXIT {
+    decrRequestsInExecution();
+  };
+
+  if (!folly::IPAddress::validate(*peer)) {
+    throw apache::thrift::TApplicationException(
+        apache::thrift::TApplicationException::UNKNOWN,
+        fmt::format(
+            "Peer {} is not a valid IP address. "
+            "CIDR prefix is not supported for clear bgp neighbor",
+            *peer));
+  }
+  const auto peerAddr = folly::IPAddress(*peer);
+
+  switch (direction) {
+    case ClearBgpNeighborDirection::HARD_RESET: {
+      /*
+       * Resolve on the PeerManager EVB before dispatching to the SessionManager
+       * EVB. restartSession tolerates a peer disappearing between the two.
+       */
+      auto resolveResult = co_await co_runOnEvbWithTimeout(
+          peerMgr_.getEventBase(),
+          [this, peerAddr]() { resolveSingleEstablishedPeerId(peerAddr); },
+          kPeerMgrThriftHandlerTimeout);
+      if (resolveResult.hasException()) {
+        co_yield folly::coro::co_error(std::move(resolveResult).exception());
+      }
+
+      auto result = co_await co_runOnEvbWithTimeout(
+          sessionMgr_->getEventBase(),
+          [this, peerAddr]() { sessionMgr_->restartSession(peerAddr); },
+          kSessionMgrThriftHandlerTimeout);
+      if (result.hasException()) {
+        co_yield folly::coro::co_error(std::move(result).exception());
+      }
+      break;
+    }
+    case ClearBgpNeighborDirection::ROUTE_REFRESH_IN: {
+      auto result = co_await co_runOnEvbWithTimeout(
+          peerMgr_.getEventBase(),
+          [this, peerAddr, bgpAfi]() {
+            const auto peerId = resolveSingleEstablishedPeerId(peerAddr);
+            if (!peerMgr_.triggerRouteRefreshRequestForPeer(peerId, bgpAfi)) {
+              throw apache::thrift::TApplicationException(
+                  apache::thrift::TApplicationException::INTERNAL_ERROR,
+                  fmt::format(
+                      "Failed to queue all requested Route Refresh messages "
+                      "for peer {}; any messages already queued may still be "
+                      "sent",
+                      peerAddr.str()));
+            }
+          },
+          kPeerMgrThriftHandlerTimeout);
+      if (result.hasException()) {
+        co_yield folly::coro::co_error(std::move(result).exception());
+      }
+      break;
+    }
+    case ClearBgpNeighborDirection::ROUTE_REFRESH_OUT: {
+      auto result = co_await co_runOnEvbWithTimeout(
+          peerMgr_.getEventBase(),
+          [this, peerAddr, bgpAfi]() {
+            const auto peerId = resolveSingleEstablishedPeerId(peerAddr);
+            if (!peerMgr_.processRouteRefreshForPeer(peerId, bgpAfi)) {
+              throw apache::thrift::TApplicationException(
+                  apache::thrift::TApplicationException::INTERNAL_ERROR,
+                  fmt::format(
+                      "Process route refresh failed for peer {}",
+                      peerAddr.str()));
+            }
+          },
+          kPeerMgrThriftHandlerTimeout);
+      if (result.hasException()) {
+        co_yield folly::coro::co_error(std::move(result).exception());
+      }
+      break;
+    }
+    case ClearBgpNeighborDirection::UNKNOWN:
+      throw apache::thrift::TApplicationException(
+          apache::thrift::TApplicationException::UNKNOWN,
+          fmt::format(
+              "Unknown clear bgp neighbor direction for peer {}", *peer));
+    default:
+      /*
+       * Defensive: thrift wire can deliver an enum int that doesn't match
+       * any defined value (e.g., older client compiled against newer
+       * schema). Reject explicitly so the caller doesn't see a silent
+       * success.
+       */
+      throw apache::thrift::TApplicationException(
+          apache::thrift::TApplicationException::INVALID_PROTOCOL,
+          fmt::format(
+              "Unrecognized clear bgp neighbor direction value {} for peer {}",
+              static_cast<int>(direction),
+              *peer));
+  }
+}
+
+nettools::bgplib::BgpPeerId BgpServiceBase::resolveSingleEstablishedPeerId(
+    const folly::IPAddress& peerAddr) {
+  const auto peerIds = peerMgr_.getEstablishedPeerIdsForAddr(peerAddr);
+  if (peerIds.empty()) {
+    throw apache::thrift::TApplicationException(
+        apache::thrift::TApplicationException::UNKNOWN,
+        fmt::format(
+            "No established peer found for address {}", peerAddr.str()));
+  }
+  if (peerIds.size() > 1) {
+    /*
+     * Multiple peerIds for one IP usually mean a session-flap-with-router-ID-
+     * change or VIP multi-session is in progress. Refuse to act ambiguously.
+     */
+    throw apache::thrift::TApplicationException(
+        apache::thrift::TApplicationException::INTERNAL_ERROR,
+        fmt::format(
+            "Multiple ({}) established peers found for address {} — ambiguous, refusing",
+            peerIds.size(),
+            peerAddr.str()));
+  }
+  return peerIds[0];
 }
 
 // used by fbossdeploy

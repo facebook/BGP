@@ -466,6 +466,30 @@ class BgpServiceBase
   folly::coro::Task<void> co_startSession(
       std::unique_ptr<std::string> peer) override;
 
+  folly::coro::Task<void> co_clearBgpNeighbor(
+      std::unique_ptr<std::string> peer,
+      facebook::neteng::fboss::bgp::thrift::ClearBgpNeighborDirection direction,
+      facebook::neteng::fboss::bgp_attr::TBgpAfi afi) override;
+
+  /*
+   * Non-handler entry point with the actual clearBgpNeighbor logic. Tests
+   * must call this instead of co_clearBgpNeighbor (CLANGTIDY rule
+   * facebook-thrift-handler-direct-call forbids direct invocation of
+   * generated handler methods).
+   */
+  folly::coro::Task<void> co_clearBgpNeighborImpl(
+      std::unique_ptr<std::string> peer,
+      facebook::neteng::fboss::bgp::thrift::ClearBgpNeighborDirection direction,
+      facebook::neteng::fboss::bgp_attr::TBgpAfi afi);
+
+  /*
+   * Resolve exactly one established peerId for the given address. Throws
+   * TApplicationException if there are zero or multiple matches. Must be
+   * called on the PeerManager EventBase thread.
+   */
+  nettools::bgplib::BgpPeerId resolveSingleEstablishedPeerId(
+      const folly::IPAddress& peerAddr);
+
   void changeSessionStateHelper(
       const std::string& peer,
       std::function<void(folly::CIDRNetwork)> fnNetwork,
