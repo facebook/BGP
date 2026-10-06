@@ -360,7 +360,9 @@ bool E2ESessionTestFixture::waitForSessionTerminated(
   evb.runInEventBaseThreadAndWait([&]() {});
   std::this_thread::yield();
   evb.runInEventBaseThreadAndWait([&]() {});
-  waitForSessionTerminationBaton(peerAddr);
+  if (!waitForSessionTerminationBaton(peerAddr)) {
+    return false;
+  }
   XLOGF(INFO, "Session terminated for peer: {}", peerAddr.str());
   return true;
 }

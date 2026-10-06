@@ -36,6 +36,10 @@ namespace bgp {
 
 class UpdateGroupRouteRefreshTest : public UpdateGroupMultiPeerTest {
  protected:
+  void SetUp() override {
+    enableRouteRefreshForAllPeers();
+  }
+
   void establishAndDrainTwoPeerBaselineRoute(
       const folly::CIDRNetwork& prefix,
       const std::string& community,

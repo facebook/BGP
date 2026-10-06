@@ -43,12 +43,19 @@ namespace facebook::bgp {
 class E2ERouteRefreshTest : public E2ETestFixture {
  protected:
   void SetUp() override {
-    addPeer(kDefaultPeerSpec3);
-    addPeer(kDefaultPeerSpec4);
-    addPeer(kDefaultPeerSpec5);
+    auto spec3 = kDefaultPeerSpec3;
+    spec3.enableRouteRefresh = true;
+    auto spec4 = kDefaultPeerSpec4;
+    spec4.enableRouteRefresh = true;
+    auto spec5 = kDefaultPeerSpec5;
+    spec5.enableRouteRefresh = true;
+    addPeer(spec3);
+    addPeer(spec4);
+    addPeer(spec5);
     createRib();
-    createPeerManager(/*enableUpdateGroup=*/false,
-                      /*enableEgressBackpressure=*/true);
+    createPeerManager(
+        /*enableUpdateGroup=*/false,
+        /*enableEgressBackpressure=*/true);
   }
 
   void bringUpAllPeersWithEor() {

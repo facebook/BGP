@@ -9112,6 +9112,71 @@ TEST_F(
   evb_.loop();
 }
 
+// RFC 2918 requires receivers to ignore the reserved octet.
+TEST_F(
+    AdjRibInboundFixture,
+    ProcessPeerRouteRefresh_NonzeroReservedOctet_PushesToQueue) {
+  setupAdjRib(kLongGrRestartTime, kLongGrRestartTime, false);
+  establishSession(
+      std::nullopt,
+      AfiIpv4Negotiated(true),
+      AfiIpv6Negotiated(true),
+      /*remoteAs=*/std::nullopt,
+      EnhancedRouteRefreshNegotiated(false),
+      RouteRefreshNegotiated(true));
+
+  auto routeRefresh = makeRouteRefresh();
+  routeRefresh.msgSubType() = static_cast<BgpRouteRefreshMessageSubtype>(0xff);
+  fm_->addTask([&] { adjRibInQ_->fiberPush(std::move(routeRefresh)); });
+
+  fm_->addTask([&] {
+    auto msg = folly::coro::blockingWait(fromAdjRibQ_.pop());
+    EXPECT_TRUE(
+        std::holds_alternative<AdjRib::RouteRefreshReceived>(msg.message));
+    terminateAdjRib();
+  });
+
+  evb_.loop();
+}
+
+TEST_F(AdjRibInboundFixture, ProcessPeerRouteRefresh_EnhancedMarkers_Ignored) {
+  setupAdjRib(kLongGrRestartTime, kLongGrRestartTime, false);
+  establishSession(
+      std::nullopt,
+      AfiIpv4Negotiated(true),
+      AfiIpv6Negotiated(true),
+      /*remoteAs=*/std::nullopt,
+      EnhancedRouteRefreshNegotiated(true),
+      RouteRefreshNegotiated(true));
+
+  auto beginningOfRefresh = makeRouteRefresh();
+  beginningOfRefresh.msgSubType() =
+      BgpRouteRefreshMessageSubtype::BEGINNING_OF_ROUTE_REFRESH;
+  auto endOfRefresh = makeRouteRefresh();
+  endOfRefresh.msgSubType() =
+      BgpRouteRefreshMessageSubtype::END_OF_ROUTE_REFRESH;
+  fm_->addTask([&] {
+    adjRibInQ_->fiberPush(std::move(beginningOfRefresh));
+    adjRibInQ_->fiberPush(std::move(endOfRefresh));
+    /*
+     * The two per-AFI EoRs produce one aggregate AdjRib::EoR. Seeing it as
+     * the first output proves neither preceding marker triggered a re-dump.
+     */
+    adjRibInQ_->fiberPush(buildEndOfRib(BgpUpdateAfi::AFI_IPv4));
+    adjRibInQ_->fiberPush(buildEndOfRib(BgpUpdateAfi::AFI_IPv6));
+  });
+
+  fm_->addTask([&] {
+    auto msg = folly::coro::blockingWait(fromAdjRibQ_.pop());
+    EXPECT_FALSE(
+        std::holds_alternative<AdjRib::RouteRefreshReceived>(msg.message));
+    EXPECT_TRUE(std::holds_alternative<AdjRib::EoR>(msg.message));
+    terminateAdjRib();
+  });
+
+  evb_.loop();
+}
+
 /*
  * ERR (cap 70) alone is NOT sufficient: we do not implement RFC 7313, so an
  * ERR-only peer would expect a BoRR/EoRR-delimited re-dump and get a bare

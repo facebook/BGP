@@ -126,10 +126,9 @@ uint64_t E2ETestSessionManager::simulateSessionEstablished(
 
   auto& state = peerStates_[peerId];
   if (!state.versionNumber) {
-    state.versionNumber = std::make_shared<VersionNumber>(1);
-  } else {
-    state.versionNumber->bumpUp();
+    state.versionNumber = std::make_shared<VersionNumber>();
   }
+  const auto version = state.versionNumber->bumpUp();
   state.adjRibInQ = adjRibInQ;
   state.adjRibOutQ = adjRibOutQ;
   state.boundedAdjRibOutQ = boundedAdjRibOutQ;
@@ -137,8 +136,10 @@ uint64_t E2ETestSessionManager::simulateSessionEstablished(
   state.displayInfo.state = BgpSessionState::ESTABLISHED;
   state.displayInfo.remoteAs = remoteAs;
   state.established = true;
-
-  uint64_t version = state.versionNumber->getWithoutLock();
+  state.remoteAs = remoteAs;
+  state.queueCapacity = queueCapacity;
+  state.queueHighWm = queueHighWm;
+  state.queueLowWm = queueLowWm;
 
   auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
       state.displayInfo,
@@ -214,6 +215,35 @@ std::shared_ptr<VersionNumber> E2ETestSessionManager::getPeerVersionNumber(
     return it->second.versionNumber;
   }
   return nullptr;
+}
+
+void E2ETestSessionManager::restartSession(
+    const folly::IPAddress& peerAddr) noexcept {
+  const BgpPeerId peerId{peerAddr, peerAddr.asV4().toLongHBO()};
+
+  const auto it = peerStates_.find(peerId);
+  if (it == peerStates_.end()) {
+    XLOGF(
+        WARN,
+        "[E2ETestSessionManager] restartSession: peer not found: {}",
+        peerAddr.str());
+    return;
+  }
+
+  XLOGF(
+      INFO,
+      "[E2ETestSessionManager] restartSession for peer: {}",
+      peerAddr.str());
+
+  const auto displayInfo = it->second.displayInfo;
+  const auto remoteAs = it->second.remoteAs;
+  const auto queueCapacity = it->second.queueCapacity;
+  const auto queueHighWm = it->second.queueHighWm;
+  const auto queueLowWm = it->second.queueLowWm;
+
+  simulateSessionTerminated(peerId);
+  simulateSessionEstablished(
+      peerId, displayInfo, remoteAs, queueCapacity, queueHighWm, queueLowWm);
 }
 
 } // namespace facebook::bgp

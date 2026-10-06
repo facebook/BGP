@@ -2800,7 +2800,7 @@ class AdjRib : boost::noncopyable,
    * re-establish within this period. This time-out is declared by peer during
    * session establishement using GR-capability attr.
    */
-  std::chrono::seconds remoteGrRestartTime_;
+  std::chrono::seconds remoteGrRestartTime_{};
   std::unique_ptr<folly::AsyncTimeout> remoteGrRestartTimer_;
 
   /*

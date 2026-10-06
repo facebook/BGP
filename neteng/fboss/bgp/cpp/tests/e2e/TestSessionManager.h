@@ -46,6 +46,8 @@ class E2ETestSessionManager : public SessionManager {
   void run() noexcept override;
   void stop() noexcept override;
 
+  void restartSession(const folly::IPAddress& peerAddr) noexcept override;
+
   bool isPeerVersionValid(
       const nettools::bgplib::BgpPeerId& peerId,
       const uint64_t versionNumber) const noexcept override;
@@ -96,6 +98,10 @@ class E2ETestSessionManager : public SessionManager {
     std::shared_ptr<nettools::bgplib::VersionNumber> versionNumber;
     nettools::bgplib::BgpPeerDisplayInfo displayInfo;
     bool established{false};
+    uint32_t remoteAs{0};
+    int queueCapacity{8};
+    int queueHighWm{6};
+    int queueLowWm{2};
   };
 
   const folly::F14NodeMap<nettools::bgplib::BgpPeerId, PeerSessionState>&

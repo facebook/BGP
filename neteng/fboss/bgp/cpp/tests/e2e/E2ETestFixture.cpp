@@ -20,6 +20,7 @@
 #include <folly/container/small_vector.h>
 #include <folly/coro/Baton.h>
 #include <folly/coro/BlockingWait.h>
+#include <folly/coro/TimedWait.h>
 
 #include "neteng/fboss/bgp/cpp/changeTracker/ChangeItem.h"
 #include "neteng/fboss/bgp/cpp/common/FeatureFlags.h"
@@ -223,6 +224,10 @@ void E2ETestFixture::addPeer(const BgpPeerSpec& spec) {
    * bit at session establishment; false = capability-less peer). */
   peerMpExtCapable_[spec.peerAddr] = spec.mpExtCapable;
 
+  if (spec.enableRouteRefresh || enableRouteRefreshForAllPeers_) {
+    peerRouteRefreshEnabled_.insert(spec.peerAddr);
+  }
+
   peers_.push_back(std::move(peer));
 }
 
@@ -355,8 +360,9 @@ void E2ETestFixture::bringDownPeer(
   XLOGF(INFO, "Session termination complete for peer: {}", peerAddr.str());
 }
 
-void E2ETestFixture::waitForSessionTerminationBaton(
-    const folly::IPAddress& peerAddr) {
+bool E2ETestFixture::waitForSessionTerminationBaton(
+    const folly::IPAddress& peerAddr,
+    std::chrono::milliseconds timeout) {
   BgpPeerId peerId{peerAddr, peerAddr.asV4().toLongHBO()};
   std::shared_ptr<folly::coro::Baton> terminationBaton;
   peerManager_->getEventBase().runInEventBaseThreadAndWait([&]() {
@@ -366,17 +372,29 @@ void E2ETestFixture::waitForSessionTerminationBaton(
     }
   });
   if (!terminationBaton) {
-    return;
+    return true;
   }
 
   XLOGF(
       INFO,
       "Waiting for session termination baton for peer: {}",
       peerAddr.str());
-  folly::coro::blockingWait(
-      [&]() -> folly::coro::Task<void> { co_await *terminationBaton; }());
+  const auto waitResult = folly::coro::blockingWait(
+      folly::coro::timed_wait(
+          [&]() -> folly::coro::Task<void> { co_await *terminationBaton; }(),
+          timeout));
+  if (!waitResult.has_value()) {
+    XLOGF(
+        WARN,
+        "Timed out after {}ms waiting for session termination baton for "
+        "peer: {}",
+        timeout.count(),
+        peerAddr.str());
+    return false;
+  }
   XLOGF(
       INFO, "Session termination baton received for peer: {}", peerAddr.str());
+  return true;
 }
 
 void E2ETestFixture::beginPeerSessionTermination(
@@ -1236,7 +1254,8 @@ BgpPeerDisplayInfo createDisplayInfo(
     const std::optional<nettools::bgplib::BgpAddPathSendRec>& addPathCapa =
         std::nullopt,
     std::optional<uint16_t> grRestartTimeSeconds = std::nullopt,
-    bool mpExtCapable = true) {
+    bool mpExtCapable = true,
+    bool enableRouteRefresh = false) {
   BgpPeerDisplayInfo displayInfo;
   displayInfo.peeringParams.peerAddr = peerId.peerAddr;
   displayInfo.peeringParams.remoteAs = cfg.peerAsn;
@@ -1300,9 +1319,16 @@ BgpPeerDisplayInfo createDisplayInfo(
   /* Enable 4-byte ASN capability (most common at Meta, required for ASNs >
    * 65535) */
   displayInfo.negotiatedCapabilities.as4byte() = true;
-  /* Enable Route Refresh (RFC 2918) so processPeerRouteRefresh accepts
-   * Route Refresh messages sent via sendRouteRefreshToPeer in tests. */
-  displayInfo.negotiatedCapabilities.routeRefresh() = true;
+  /*
+   * Route Refresh capabilities are opt-in per peer via
+   * BgpPeerSpec::enableRouteRefresh. Tests that exercise inbound RR via
+   * sendRouteRefreshToPeer or outbound RR via co_clearBgpNeighbor must
+   * enable this on the relevant peer specs.
+   */
+  if (enableRouteRefresh) {
+    displayInfo.negotiatedCapabilities.routeRefresh() = true;
+    displayInfo.negotiatedCapabilities.enhancedRouteRefresh() = false;
+  }
 
   /*
    * Enable GR capability for tests that opt in via setPeerGrRestartTime().
@@ -1432,13 +1458,15 @@ void E2ETestFixture::establishSession(
     mpExtCapable = mpExtIt->second;
   }
 
+  const bool enableRR = peerRouteRefreshEnabled_.contains(peerId.peerAddr);
   auto displayInfo = createDisplayInfo(
       peerId,
       cfg,
       globalConfig,
       addPathCapa,
       peerGrRestartTimeSeconds_,
-      mpExtCapable);
+      mpExtCapable,
+      enableRR);
 
   auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
       displayInfo,
@@ -2104,6 +2132,26 @@ E2ETestFixture::readOutboundUpdateToPeer(const BgpPeerId& peerId) {
    * descriptive BoundedWaitTimeout instead of hanging until tpx kills it.
    */
   return tryReadUpdateFromQueue(*queues, useBoundedQueue);
+}
+
+std::optional<nettools::bgplib::BgpRouteRefresh>
+E2ETestFixture::readOutboundRouteRefreshFromPeer(const BgpPeerId& peerId) {
+  const auto it = peerQueues_.find(peerId);
+  if (it == peerQueues_.end()) {
+    return std::nullopt;
+  }
+
+  /* buildAndSendRouteRefresh writes to the unbounded adjRibOutQueue_ */
+  const auto msg = popFromQueue(it->second, /*useBoundedQueue=*/false);
+  if (!msg.has_value()) {
+    return std::nullopt;
+  }
+
+  if (const auto* rrPtr =
+          std::get_if<nettools::bgplib::BgpRouteRefresh>(&(*msg))) {
+    return *rrPtr;
+  }
+  return std::nullopt;
 }
 
 std::optional<std::shared_ptr<const BgpUpdate2>>

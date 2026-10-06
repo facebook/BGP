@@ -884,7 +884,6 @@ void AdjRib::processPeerRouteRefresh(const BgpRouteRefresh& rr) noexcept {
    * RFC 2918 §3: v1 is unicast only. triggerOutboundRedump validates that the
    * requested AFI was negotiated.
    */
-  const auto afi = rr.afi().value();
   const auto safi = rr.safi().value();
   if (safi != nettools::bgplib::BgpUpdateSafi::SAFI_UNICAST) {
     XLOGF_EVERY_MS(
@@ -895,10 +894,19 @@ void AdjRib::processPeerRouteRefresh(const BgpRouteRefresh& rr) noexcept {
         static_cast<int>(safi));
     return;
   }
-  if (rr.msgSubType().value() ==
-      BgpRouteRefreshMessageSubtype::ROUTE_REFRESH_REQUEST) {
-    triggerOutboundRedump(afi);
+
+  /*
+   * RFC 2918 defines this octet as reserved and requires receivers to ignore
+   * it. Interpret it as a subtype only when RFC 7313 was negotiated. We do not
+   * yet implement BoRR/EoRR processing, so those messages are ignored.
+   */
+  if (isEnhancedRouteRefreshNegotiated_ &&
+      rr.msgSubType().value() !=
+          BgpRouteRefreshMessageSubtype::ROUTE_REFRESH_REQUEST) {
+    return;
   }
+
+  triggerOutboundRedump(rr.afi().value());
 }
 
 bool AdjRib::triggerOutboundRedump(BgpUpdateAfi afi) noexcept {

@@ -32,6 +32,7 @@
 
 #include <set>
 
+#include <folly/container/F14Set.h>
 #include <folly/coro/BlockingWait.h>
 #include <folly/logging/xlog.h>
 #include <folly/testing/TestUtil.h>
@@ -47,6 +48,7 @@
 #include "neteng/fboss/bgp/cpp/tests/PolicyUtils.h"
 #include "neteng/fboss/bgp/cpp/tests/e2e/E2ETestUtils.h"
 #include "neteng/fboss/bgp/cpp/watchdog/MonitoredQueue.h"
+#include "neteng/fboss/bgp/cpp/watchdog/Watchdog.h"
 #include "neteng/fboss/bgp/if/gen-cpp2/BgpStructs_types.h"
 
 namespace facebook {
@@ -133,6 +135,7 @@ struct BgpPeerSpec {
 
   /* Enforce that received AS paths begin with the session's remote ASN. */
   std::optional<bool> enforceFirstAs = std::nullopt;
+  bool enableRouteRefresh = false;
 };
 
 /* Inline default peer specs for common test scenarios */
@@ -327,6 +330,10 @@ class E2ETestFixture : public ::testing::Test {
    */
   void addPeer(const BgpPeerSpec& spec);
 
+  void enableRouteRefreshForAllPeers() {
+    enableRouteRefreshForAllPeers_ = true;
+  }
+
   /*
    * Remove a peer from the configuration
    */
@@ -378,7 +385,9 @@ class E2ETestFixture : public ::testing::Test {
   void bringDownPeer(const folly::IPAddress& peerAddr, bool peerDelete = false);
 
   /* Wait for both AdjRib message loops to finish the production teardown. */
-  void waitForSessionTerminationBaton(const folly::IPAddress& peerAddr);
+  bool waitForSessionTerminationBaton(
+      const folly::IPAddress& peerAddr,
+      std::chrono::milliseconds timeout = std::chrono::seconds(30));
 
   /*
    * Deliver the AdjRib half of session termination and wait for it to finish,
@@ -657,6 +666,10 @@ class E2ETestFixture : public ::testing::Test {
   // Read outbound UPDATE from peer's queue
   std::optional<std::shared_ptr<const BgpUpdate2>> readOutboundUpdateToPeer(
       const BgpPeerId& peerId);
+
+  // Read outbound BgpRouteRefresh from peer's queue
+  std::optional<nettools::bgplib::BgpRouteRefresh>
+  readOutboundRouteRefreshFromPeer(const BgpPeerId& peerId);
 
   /*
    * Wait for an UPDATE to appear in peer's outbound queue, then read it.
@@ -1568,6 +1581,10 @@ class E2ETestFixture : public ::testing::Test {
    */
   std::unordered_map<folly::IPAddress, bool> peerMpExtCapable_;
 
+  /* Route Refresh capability per peer address, set via addPeer(). */
+  folly::F14FastSet<folly::IPAddress> peerRouteRefreshEnabled_;
+  bool enableRouteRefreshForAllPeers_{false};
+
   // Dynamically added local routes (via addLocalRoute)
   std::unordered_map<folly::CIDRNetwork, thrift::BgpNetwork> localRoutes_;
 
@@ -1584,6 +1601,19 @@ class E2ETestFixture : public ::testing::Test {
    */
   std::unique_ptr<RibBase> rib_;
   std::thread ribThread_;
+
+  /*
+   * Created on demand by getWatchdog(); only the tests that construct a
+   * BgpServiceBase need one, and it must outlive that service.
+   */
+  std::unique_ptr<Watchdog> watchdog_;
+
+  Watchdog& getWatchdog() {
+    if (!watchdog_) {
+      watchdog_ = std::make_unique<Watchdog>(config_);
+    }
+    return *watchdog_;
+  }
 
   std::unique_ptr<PeerManagerBase> peerManager_;
   std::thread peerMgrThread_;
