@@ -29,7 +29,13 @@
 
 #include "neteng/fboss/bgp/cpp/tests/e2e/UpdateGroupSlowPeerTestCommon.h"
 
+#include <folly/coro/BlockingWait.h>
+
+#include "neteng/fboss/bgp/cpp/BgpServiceBase.h"
+
 using namespace facebook::nettools::bgplib;
+using namespace facebook::neteng::fboss::bgp::thrift;
+using facebook::neteng::fboss::bgp_attr::TBgpAfi;
 
 namespace facebook {
 namespace bgp {
@@ -88,6 +94,46 @@ class UpdateGroupRouteRefreshTest : public UpdateGroupMultiPeerTest {
     return waitForPeerState(peerAddr, expectedState);
   }
 };
+
+/*
+ * An operator-triggered outbound refresh replays the requested AFI only to
+ * the selected peer, even when it shares an update group with another peer.
+ */
+TEST_P(UpdateGroupRouteRefreshTest, OperatorOutRefreshRequesterOnly) {
+  const auto peerIds = setupTwoPeersJoined(8, 6, 2);
+  const auto& peerId3 = peerIds.peerId3;
+  const auto& peerId4 = peerIds.peerId4;
+  const auto prefix = folly::IPAddress::createNetwork("30.0.0.0/16");
+  establishAndDrainTwoPeerBaselineRoute(prefix, "3000:1", peerIds);
+
+  BgpServiceBase bgpService(
+      *peerManager_,
+      configManager_,
+      *rib_,
+      getWatchdog(),
+      /*enable_thrift_protection=*/false);
+  folly::coro::blockingWait(bgpService.co_clearBgpNeighborImpl(
+      std::make_unique<std::string>(kPeerAddr3.str()),
+      ClearBgpNeighborDirection::ROUTE_REFRESH_OUT,
+      TBgpAfi::AFI_IPV4));
+
+  EXPECT_TRUE(verifyRouteAdd(
+      "v4",
+      "30.0.0.0",
+      16,
+      kPeerAddr3,
+      getExpectedNexthop(kPeerAddr3),
+      "4200000001",
+      "3000:1"));
+  EXPECT_TRUE(waitForEoR(peerId3));
+  EXPECT_EQ(drainPeerQueueCompletely(peerId4, 3, 10), 0);
+  ASSERT_TRUE(waitForPeerState(kPeerAddr3, PeerUpdateState::JOINED_RUNNING));
+  ASSERT_TRUE(waitForPeerState(kPeerAddr4, PeerUpdateState::JOINED_RUNNING));
+  EXPECT_TRUE(isPeerInSync(kPeerAddr3));
+  EXPECT_TRUE(isPeerInSync(kPeerAddr4));
+  verifySlowPeerInvariants(kPeerAddr3);
+  verifySlowPeerInvariants(kPeerAddr4);
+}
 
 /*
  * A real Route Refresh from a joined peer detaches only that requester, sends

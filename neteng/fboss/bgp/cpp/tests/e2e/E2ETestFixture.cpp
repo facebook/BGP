@@ -2141,8 +2141,8 @@ E2ETestFixture::readOutboundRouteRefreshFromPeer(const BgpPeerId& peerId) {
     return std::nullopt;
   }
 
-  /* buildAndSendRouteRefresh writes to the unbounded adjRibOutQueue_ */
-  const auto msg = popFromQueue(it->second, /*useBoundedQueue=*/false);
+  const auto msg = popFromQueue(
+      it->second, FLAGS_enable_egress_backpressure_in_peer_mgr_tests);
   if (!msg.has_value()) {
     return std::nullopt;
   }
