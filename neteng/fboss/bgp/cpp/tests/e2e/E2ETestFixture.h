@@ -1463,6 +1463,13 @@ class E2ETestFixture : public ::testing::Test {
   void enableLegacyV4NlriEncoding(bool enable);
 
   /*
+   * Set the thrift config enable_dynamic_policy_evaluation. Call before
+   * createRib(). When true, an ingress route filter or ingress policy change
+   * re-evaluates the routes already learned from affected peers.
+   */
+  void enableDynamicPolicyEvaluation(bool enable);
+
+  /*
    * Override the update group config used by createPeerManager().
    * Call before createPeerManager() to set slow peer thresholds, etc.
    */
@@ -1523,6 +1530,9 @@ class E2ETestFixture : public ::testing::Test {
 
   // Legacy v4 NLRI encoding for capability-less peers (thrift config gate)
   bool enableLegacyV4NlriEncoding_ = false;
+
+  // Dynamic policy evaluation (thrift config gate)
+  bool enableDynamicPolicyEvaluation_ = false;
 
   /*
    * Bounded, backpressured stream subscriber egress (thrift config gate).

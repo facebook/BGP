@@ -120,6 +120,9 @@ std::shared_ptr<Config> E2ETestFixture::getConfig(
   if (enableLegacyV4NlriEncoding_) {
     tBgpSettingConfig.enable_legacy_v4_nlri_encoding() = true;
   }
+  if (enableDynamicPolicyEvaluation_) {
+    tBgpSettingConfig.enable_dynamic_policy_evaluation() = true;
+  }
   if (enableStreamSubscriberBackpressure_.has_value()) {
     tBgpSettingConfig.enable_stream_subscriber_backpressure() =
         *enableStreamSubscriberBackpressure_;
@@ -3526,6 +3529,10 @@ void E2ETestFixture::enableEiBgpMultipath(bool enable) {
 
 void E2ETestFixture::enableLegacyV4NlriEncoding(bool enable) {
   enableLegacyV4NlriEncoding_ = enable;
+}
+
+void E2ETestFixture::enableDynamicPolicyEvaluation(bool enable) {
+  enableDynamicPolicyEvaluation_ = enable;
 }
 
 // ==================== NEXTHOP TRACKING IMPLEMENTATIONS ====================
