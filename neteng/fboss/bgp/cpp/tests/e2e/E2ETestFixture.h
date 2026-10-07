@@ -1503,6 +1503,10 @@ class E2ETestFixture : public ::testing::Test {
     peerGrRestartTimeSeconds_ = seconds;
   }
 
+  void setLocalClusterId(const folly::IPAddressV4& clusterId) {
+    localClusterIdOverride_ = clusterId;
+  }
+
   /* Helper to build config with peers from peers_ vector */
   std::shared_ptr<Config> getConfig(
       bool enableUpdateGroup = false,
@@ -1568,6 +1572,13 @@ class E2ETestFixture : public ::testing::Test {
 
   // Per-peer GR restart time advertised in negotiated capabilities
   std::optional<uint16_t> peerGrRestartTimeSeconds_;
+
+  /*
+   * Some tests need a cluster ID distinct from the router ID before the
+   * corresponding config schema is available. Normal fixture users retain
+   * the cluster ID parsed into BgpGlobalConfig.
+   */
+  std::optional<folly::IPAddressV4> localClusterIdOverride_;
 
   /*
    * Owns this fixture's RIB policy files, and removes them when the fixture

@@ -123,7 +123,7 @@ void AdjRibOutboundFixture::setupAdjRib(
           localAs,
           remoteAs,
           kLocalAddr1.asV4(), // localBgpId
-          kLocalAddr1.asV4(), // localClusterId
+          localClusterId_, // localClusterId
           std::chrono::seconds(facebook::bgp::kDefaultHoldTime),
           kShortGrRestartTime,
           facebook::nettools::bgplib::constants::kBgpPort,

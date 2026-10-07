@@ -237,6 +237,13 @@ class AdjRibOutboundFixture : public ::testing::Test {
   folly::EventBase evb_;
   std::shared_ptr<AdjRib> adjRib_;
 
+  /*
+   * Cluster ID passed to PeeringParams by setupAdjRib. Defaults to the BGP
+   * identifier because that is what Config derives today; set it before
+   * setupAdjRib to exercise reflection with the two configured independently.
+   */
+  folly::IPAddressV4 localClusterId_{kLocalAddr1.asV4()};
+
   // adjrib <-> FiberBgpPeer queue
   std::shared_ptr<AdjRib::AdjRibInQueueT> adjRibInQ_ =
       std::make_shared<AdjRib::AdjRibInQueueT>(

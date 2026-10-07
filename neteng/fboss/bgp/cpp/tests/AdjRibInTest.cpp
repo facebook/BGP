@@ -2335,6 +2335,131 @@ TEST_F(AdjRibInboundFixture, ClusterListFiltering) {
 }
 
 /*
+ * The four tests below pin hasRRLoop's two arms to the identifier each one is
+ * defined against, with the cluster ID configured away from the BGP
+ * identifier. While the two are equal every arm looks correct no matter which
+ * identifier it reads, so these are the only cases that can catch the two
+ * being transposed.
+ */
+
+// A route reflected through our own cluster is a loop and must be dropped
+TEST_F(AdjRibInboundFixture, ClusterListFilteringUsesConfiguredClusterId) {
+  localClusterId_ = kLocalClusterAddr1.asV4();
+  setupAdjRib();
+
+  fm_->addTask([&] {
+    auto update = createV4BgpUpdateSingleAnnounce(
+        kV4Prefix1, kV4Nexthop1, kMed, kPeerAddr3.asV4().toLongHBO());
+    // cluster list is in network byte order
+    update->attrs()->clusterList()->push_back(
+        kLocalClusterAddr1.asV4().toLong());
+    adjRibInQ_->fiberPush(std::move(update));
+  });
+
+  fm_->addTask([&] {
+    fiberSleepFor(50ms);
+    EXPECT_TRUE(ribInQ_.empty());
+
+    auto adjRibEntry = adjRib_->getRibEntry(/*ingress=*/true, kV4Prefix1);
+    EXPECT_EQ(nullptr, adjRibEntry);
+    EXPECT_EQ(0, adjRib_->getStats().getPreInPrefixCount());
+    EXPECT_EQ(0, adjRib_->getStats().getPostInPrefixCount());
+
+    terminateAdjRib();
+  });
+
+  evb_.loop();
+}
+
+// Our BGP identifier in a CLUSTER_LIST is some other cluster's ID, not a loop
+TEST_F(AdjRibInboundFixture, ClusterListFilteringIgnoresRouterId) {
+  localClusterId_ = kLocalClusterAddr1.asV4();
+  setupAdjRib();
+
+  fm_->addTask([&] {
+    auto update = createV4BgpUpdateSingleAnnounce(
+        kV4Prefix1, kV4Nexthop1, kMed, kPeerAddr3.asV4().toLongHBO());
+    update->attrs()->clusterList()->push_back(kLocalAddr1.asV4().toLong());
+    adjRibInQ_->fiberPush(std::move(update));
+  });
+
+  fm_->addTask([&] {
+    auto msg = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
+    ASSERT_TRUE(std::holds_alternative<RibInAnnouncement>(msg));
+    PrefixPathIds prefixSet{{kV4Prefix1, kDefaultPathID}};
+    EXPECT_EQ(prefixSet, std::get<RibInAnnouncement>(msg).pfxPathIds);
+
+    auto adjRibEntry = adjRib_->getRibEntry(/*ingress=*/true, kV4Prefix1);
+    ASSERT_NE(nullptr, adjRibEntry);
+    EXPECT_EQ(kV4Nexthop1, adjRibEntry->getPreIn()->getNexthop());
+    EXPECT_EQ(1, adjRib_->getStats().getPreInPrefixCount());
+
+    terminateAdjRib();
+  });
+
+  evb_.loop();
+}
+
+// ORIGINATOR_ID keeps keying off the BGP identifier, not the cluster ID
+TEST_F(AdjRibInboundFixture, OriginatorIdFilteringUsesRouterId) {
+  localClusterId_ = kLocalClusterAddr1.asV4();
+  setupAdjRib();
+
+  fm_->addTask([&] {
+    auto update = createV4BgpUpdateSingleAnnounce(
+        kV4Prefix1, kV4Nexthop1, kMed, kLocalAddr1.asV4().toLongHBO());
+    adjRibInQ_->fiberPush(std::move(update));
+  });
+
+  fm_->addTask([&] {
+    fiberSleepFor(50ms);
+    EXPECT_TRUE(ribInQ_.empty());
+
+    auto adjRibEntry = adjRib_->getRibEntry(/*ingress=*/true, kV4Prefix1);
+    EXPECT_EQ(nullptr, adjRibEntry);
+    EXPECT_EQ(0, adjRib_->getStats().getPreInPrefixCount());
+    EXPECT_EQ(0, adjRib_->getStats().getPostInPrefixCount());
+
+    terminateAdjRib();
+  });
+
+  evb_.loop();
+}
+
+// A route originated by our cluster ID was not originated by us
+TEST_F(AdjRibInboundFixture, OriginatorIdFilteringIgnoresClusterId) {
+  localClusterId_ = kLocalClusterAddr1.asV4();
+  setupAdjRib();
+
+  fm_->addTask([&] {
+    auto update = createV4BgpUpdateSingleAnnounce(
+        kV4Prefix1, kV4Nexthop1, kMed, kLocalClusterAddr1.asV4().toLongHBO());
+    /*
+     * The builder seeds CLUSTER_LIST from the originator id, which would trip
+     * the cluster-list arm and mask what this test is checking.
+     */
+    update->attrs()->clusterList()->clear();
+    adjRibInQ_->fiberPush(std::move(update));
+  });
+
+  fm_->addTask([&] {
+    auto msg = facebook::bgp::test::boundedBlockingPop(ribInQ_, "ribInQ_");
+    ASSERT_TRUE(std::holds_alternative<RibInAnnouncement>(msg));
+    PrefixPathIds prefixSet{{kV4Prefix1, kDefaultPathID}};
+    EXPECT_EQ(prefixSet, std::get<RibInAnnouncement>(msg).pfxPathIds);
+
+    auto adjRibEntry = adjRib_->getRibEntry(/*ingress=*/true, kV4Prefix1);
+    ASSERT_NE(nullptr, adjRibEntry);
+    EXPECT_EQ(kV4Nexthop1, adjRibEntry->getPreIn()->getNexthop());
+    EXPECT_EQ(1, adjRib_->getStats().getPreInPrefixCount());
+
+    terminateAdjRib();
+  });
+
+  evb_.loop();
+}
+
+/*
  * Verify we stop the following invalid behaviors
  * 1. receiving updates with confed fileds set from non members in EBGP
  */

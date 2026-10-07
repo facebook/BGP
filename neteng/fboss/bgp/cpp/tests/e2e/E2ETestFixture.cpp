@@ -1288,6 +1288,7 @@ BgpPeerDisplayInfo createDisplayInfo(
   displayInfo.peeringParams.isRrClient =
       RrClientConfigured{cfg.isRrClient.value_or(false)};
   displayInfo.peeringParams.localBgpId = globalConfig->routerId.asV4();
+  displayInfo.peeringParams.localClusterId = globalConfig->clusterId.asV4();
   displayInfo.peeringParams.holdTime =
       cfg.holdTime.value_or(std::chrono::seconds(90));
   displayInfo.peeringParams.description = cfg.description.value_or("");
@@ -1470,6 +1471,9 @@ void E2ETestFixture::establishSession(
       peerGrRestartTimeSeconds_,
       mpExtCapable,
       enableRR);
+  if (localClusterIdOverride_.has_value()) {
+    displayInfo.peeringParams.localClusterId = *localClusterIdOverride_;
+  }
 
   auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
       displayInfo,
@@ -1518,6 +1522,9 @@ void E2ETestFixture::dispatchStaleSessionEstablished(
   auto& cfg = peerConfig.value();
   auto globalConfig = config_->getBgpGlobalConfig();
   auto displayInfo = createDisplayInfo(peerId, cfg, globalConfig, std::nullopt);
+  if (localClusterIdOverride_.has_value()) {
+    displayInfo.peeringParams.localClusterId = *localClusterIdOverride_;
+  }
 
   auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
       displayInfo,

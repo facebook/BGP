@@ -246,6 +246,14 @@ class AdjRibInboundFixture : public ::testing::Test {
   std::shared_ptr<AdjRib> adjRib_;
   std::shared_ptr<const Config> config_{nullptr};
 
+  /*
+   * Cluster ID passed to PeeringParams by setupAdjRib. Defaults to the BGP
+   * identifier because that is what Config derives today; set it before
+   * setupAdjRib to exercise the loop check with the two configured
+   * independently.
+   */
+  folly::IPAddressV4 localClusterId_{kLocalAddr1.asV4()};
+
   std::shared_ptr<AdjRib::AdjRibInQueueT> adjRibInQ_ =
       std::make_shared<AdjRib::AdjRibInQueueT>(
           nettools::bgplib::kMaxIngressQueueSize);

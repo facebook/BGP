@@ -33,6 +33,11 @@
   FRIEND_TEST(AdjRibOutboundFixture, UpdateOriginAndClusterListRRClientTest); \
   FRIEND_TEST(                                                                \
       AdjRibOutboundFixture, UpdateOriginAndClusterListRRClientIBgpTest);     \
+  FRIEND_TEST(                                                                \
+      AdjRibOutboundFixture, UpdateClusterListUsesConfiguredClusterIdTest);   \
+  FRIEND_TEST(                                                                \
+      AdjRibOutboundFixture,                                                  \
+      UpdateClusterListPrependsConfiguredClusterIdTest);                      \
   FRIEND_TEST(AdjRibOutboundFixture, UpdateGroupKeyCreationTest);             \
   FRIEND_TEST(                                                                \
       AdjRibOutboundFixture,                                                  \
@@ -1833,6 +1838,76 @@ TEST_F(AdjRibOutboundFixture, UpdateOriginAndClusterListRRClientIBgpTest) {
   EXPECT_EQ(1, attrsToUpdate->getClusterList()->size());
   EXPECT_EQ(
       kLocalAddr1.asV4().toLongHBO(), attrsToUpdate->getClusterList()->at(0));
+}
+
+/*
+ * The two tests below reflect with the cluster ID configured away from the
+ * BGP identifier. ORIGINATOR_ID must carry the identifier and CLUSTER_LIST the
+ * cluster ID; while the two are equal the tests above hold either way.
+ */
+TEST_F(AdjRibOutboundFixture, UpdateClusterListUsesConfiguredClusterIdTest) {
+  localClusterId_ = kLocalClusterAddr1.asV4();
+  setupAdjRib(
+      kLocalAs1, /* globalAs */
+      kLocalAs1, /* localAs */
+      kRemoteAs1, /* remoteAs */
+      true, /* isRrClient */
+      false, /* isConfedPeer */
+      false, /* nexthopSelf */
+      kV4Nexthop1, /* v4Nexthop */
+      kV6Nexthop1, /* v6Nexthop */
+      false /* call sessionEstablished */);
+
+  BgpUpdate2 inputUpdate = buildBgpUpdateAttributes(kV4Nexthop2);
+  auto inputAttrs = std::make_shared<facebook::bgp::BgpPath>(
+      BgpPathFields(*BgpUpdate2toBgpPathC(inputUpdate)));
+  inputAttrs->setOriginatorId(0);
+  inputAttrs->setClusterList({});
+
+  auto attrsToUpdate = inputAttrs->clone();
+  RibOutAnnouncementEntry update(
+      kV4Prefix1, kDefaultPathID, eBgpPeer_, inputAttrs);
+  updateOriginAndClusterListCommon(
+      adjRib_->getPeeringParams(), BgpSessionType::IBGP, update, attrsToUpdate);
+
+  EXPECT_EQ(kLocalRouterId1, attrsToUpdate->getOriginatorId());
+  EXPECT_THAT(
+      attrsToUpdate->getClusterList().get(), ElementsAre(kLocalClusterId1));
+}
+
+TEST_F(
+    AdjRibOutboundFixture,
+    UpdateClusterListPrependsConfiguredClusterIdTest) {
+  localClusterId_ = kLocalClusterAddr1.asV4();
+  setupAdjRib(
+      kLocalAs1, /* globalAs */
+      kLocalAs1, /* localAs */
+      kRemoteAs1, /* remoteAs */
+      true, /* isRrClient */
+      false, /* isConfedPeer */
+      false, /* nexthopSelf */
+      kV4Nexthop1, /* v4Nexthop */
+      kV6Nexthop1, /* v6Nexthop */
+      false /* call sessionEstablished */);
+
+  BgpUpdate2 inputUpdate = buildBgpUpdateAttributes(kV4Nexthop2);
+  auto inputAttrs = std::make_shared<facebook::bgp::BgpPath>(
+      BgpPathFields(*BgpUpdate2toBgpPathC(inputUpdate)));
+  inputAttrs->setOriginatorId(kOriginatorId);
+  BgpAttrClusterListC clusterList{{kOriginatorId}};
+  inputAttrs->setClusterList(std::move(clusterList));
+
+  auto attrsToUpdate = inputAttrs->clone();
+  RibOutAnnouncementEntry update(
+      kV4Prefix1, kDefaultPathID, iBgpPeer_, inputAttrs);
+  updateOriginAndClusterListCommon(
+      adjRib_->getPeeringParams(), BgpSessionType::IBGP, update, attrsToUpdate);
+
+  // an ORIGINATOR_ID already on the path is preserved
+  EXPECT_EQ(kOriginatorId, attrsToUpdate->getOriginatorId());
+  const std::vector<uint32_t> expectedClusterList{
+      kLocalClusterId1, kOriginatorId};
+  EXPECT_EQ(expectedClusterList, attrsToUpdate->getClusterList().get());
 }
 
 TEST_F(AdjRibOutboundFixture, UpdateGroupKeyCreationTest) {

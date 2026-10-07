@@ -315,6 +315,15 @@ inline const std::chrono::seconds kShortGrRestartTime =
     std::chrono::seconds(0); // 0 sec
 inline const auto kLocalAddr1 = folly::IPAddress("127.1.0.1");
 inline const auto kLocalRouterId1 = kLocalAddr1.asV4().toLongHBO();
+/*
+ * Route-reflector cluster ID, deliberately unequal to kLocalAddr1 so that
+ * reflection tests cannot pass while the cluster ID and the BGP identifier
+ * are conflated. RFC 4456 requires the two to be settable independently, and
+ * a cluster ID need not be a routable address. Matches the constant the
+ * route-reflection tests use as their configured cluster ID.
+ */
+inline const auto kLocalClusterAddr1 = folly::IPAddress("1.0.0.20");
+inline const auto kLocalClusterId1 = kLocalClusterAddr1.asV4().toLongHBO();
 inline const auto kLocalPeerId1 =
     facebook::nettools::bgplib::BgpPeerId(kLocalAddr1, kLocalRouterId1);
 inline const auto kPeerPrefix1 =
