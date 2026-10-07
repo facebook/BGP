@@ -1038,10 +1038,41 @@ void Config::populateConfigDatabase(
     }
   }
 
+  /*
+   * RFC 4456 section 1.1 defaults the cluster ID to the BGP identifier. It is
+   * configured separately only when redundant reflectors serve one cluster,
+   * since they need distinct router ids and a shared cluster id. The wire
+   * format is four octets, so reject IPv6 during config loading rather than
+   * deferring the failure until peers narrow the value.
+   */
+  std::optional<IPAddress> configuredClusterId;
+  if (auto clusterIdStr = config_.cluster_id().as_const();
+      clusterIdStr.has_value()) {
+    /*
+     * A present-but-empty value is a generated config that rendered nothing,
+     * not an operator asking for a cluster ID. Fall back rather than failing
+     * the whole config load, but say so: silently reflecting under the router
+     * ID is the very thing this field exists to avoid.
+     */
+    if (clusterIdStr->empty()) {
+      XLOGF(WARN, "Empty cluster_id in config, falling back to router_id");
+    } else {
+      configuredClusterId = IPAddressV4(*clusterIdStr);
+    }
+  }
+  const auto clusterId =
+      configuredClusterId.value_or(IPAddress(*config_.router_id()));
+  XLOGF(
+      DBG1,
+      "BGP cluster ID {} ({})",
+      clusterId.str(),
+      configuredClusterId.has_value() ? "configured"
+                                      : "defaulted to router_id");
+
   globalConfig_ = std::make_shared<BgpGlobalConfig>(
       local_as, /* localAsn */
       IPAddress(*config_.router_id()), /* routerId */
-      IPAddress(*config_.router_id()), /* clusterId */
+      clusterId, /* clusterId */
       std::chrono::seconds(
           static_cast<uint16_t>(*config_.hold_time())), /* holdTime */
       SocketAddress(

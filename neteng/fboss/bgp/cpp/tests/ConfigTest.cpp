@@ -1000,6 +1000,51 @@ TEST_F(ConfigTestFixture, SwitchLimitConfigTest) {
   }
 }
 
+// An absent cluster_id keeps the RFC 4456 default of the BGP identifier
+TEST_F(ConfigTestFixture, clusterIdDefaultsToRouterIdTest) {
+  ASSERT_FALSE(defaultConfig_.cluster_id().has_value());
+
+  Config config(defaultConfig_);
+
+  auto globalConfig = config.getBgpGlobalConfig();
+  EXPECT_EQ(kLocalAddr1, globalConfig->routerId);
+  EXPECT_EQ(kLocalAddr1, globalConfig->clusterId);
+}
+
+// A configured cluster_id reaches clusterId without disturbing routerId
+TEST_F(ConfigTestFixture, clusterIdConfiguredIndependentlyTest) {
+  defaultConfig_.cluster_id() = kLocalClusterAddr1.str();
+
+  Config config(defaultConfig_);
+
+  auto globalConfig = config.getBgpGlobalConfig();
+  EXPECT_EQ(kLocalAddr1, globalConfig->routerId);
+  EXPECT_EQ(kLocalClusterAddr1, globalConfig->clusterId);
+  EXPECT_NE(globalConfig->routerId, globalConfig->clusterId);
+}
+
+TEST_F(ConfigTestFixture, clusterIdMalformedRejectedTest) {
+  defaultConfig_.cluster_id() = "not-an-address";
+
+  EXPECT_THROW(Config config(defaultConfig_), folly::IPAddressFormatException);
+}
+
+TEST_F(ConfigTestFixture, clusterIdIpv6RejectedTest) {
+  defaultConfig_.cluster_id() = "2001:db8::1";
+
+  EXPECT_THROW(Config config(defaultConfig_), folly::IPAddressFormatException);
+}
+
+// A generated config that rendered nothing must not fail the whole config load
+TEST_F(ConfigTestFixture, clusterIdEmptyFallsBackToRouterIdTest) {
+  defaultConfig_.cluster_id() = "";
+
+  Config config(defaultConfig_);
+
+  auto globalConfig = config.getBgpGlobalConfig();
+  EXPECT_EQ(kLocalAddr1, globalConfig->clusterId);
+}
+
 TEST_F(ConfigTestFixture, populateConfigDatabaseTest) {
   // set config and populate config database
   Config config(defaultConfig_);
