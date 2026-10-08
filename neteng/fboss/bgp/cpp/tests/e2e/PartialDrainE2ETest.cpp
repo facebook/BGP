@@ -122,7 +122,7 @@ class E2EPartialDrainTest : public E2ETestFixture {
     addPeer(peerSpec7_);
     createRib();
     createPeerManager(
-        /*enableUpdateGroup=*/false, /*enableEgressBackpressure=*/true);
+        /*enableUpdateGroup=*/false);
   }
 
   void bringUpAllPeersWithEor() {
@@ -763,7 +763,7 @@ class E2EPartialDrainAddPathTest : public E2EPartialDrainTest {
     addPeer(peerSpec7_);
     createRib();
     createPeerManager(
-        /*enableUpdateGroup=*/false, /*enableEgressBackpressure=*/true);
+        /*enableUpdateGroup=*/false);
   }
 };
 

@@ -139,9 +139,7 @@ class UpdateGroupTestBase
   void setupComponents() {
     createRib();
     createPeerManager(
-        true /* enableUpdateGroup */,
-        true /* enableEgressBackpressure */,
-        params().enableSerializeGroupPdu);
+        true /* enableUpdateGroup */, params().enableSerializeGroupPdu);
   }
 
   /* Access test parameters */

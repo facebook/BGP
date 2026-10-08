@@ -44,7 +44,7 @@ class E2EPeerMgrRibTest : public E2ETestFixture {
     addPeer(kDefaultPeerSpec5);
     createRib();
     createPeerManager(
-        /*enableUpdateGroup=*/false, /*enableEgressBackpressure=*/true);
+        /*enableUpdateGroup=*/false);
   }
 
   void bringUpAllPeersWithEor() {

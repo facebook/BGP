@@ -219,8 +219,7 @@ class ExtCommunitiesPropagationTest : public E2ETestFixture {
     addPeer(sourceSpec);
     addPeer(destSpec);
     createRib();
-    createPeerManager(/*enableUpdateGroup=*/false,
-                      /*enableEgressBackpressure=*/true);
+    createPeerManager(/*enableUpdateGroup=*/false);
     bringUpPeer(sourceSpec.peerAddr);
     bringUpPeer(destSpec.peerAddr);
 

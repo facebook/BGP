@@ -37,15 +37,13 @@ namespace bgp {
 
 class RibPeerManagerE2ETest : public E2ETestFixture {
  protected:
-  void setupComponents(
-      bool enableUpdateGroup = false,
-      bool enableEgressBackpressure = true) {
+  void setupComponents(bool enableUpdateGroup = false) {
     /* Add default peers to the configuration */
     addPeer(kDefaultPeerSpec3);
     addPeer(kDefaultPeerSpec4);
 
     createRib();
-    createPeerManager(enableUpdateGroup, enableEgressBackpressure);
+    createPeerManager(enableUpdateGroup);
   }
 
   void setupPeers(const std::vector<folly::IPAddress>& peers) {
@@ -70,8 +68,7 @@ TEST_F(RibPeerManagerE2ETest, SimpleBgpInitialDumpNoUpdateGroup) {
   addLocalRoute("10.0.0.0/8", {"100:1", "100:2"}, 100);
 
   /* Setup without update groups */
-  setupComponents(
-      false /* enableUpdateGroup */, true /* enableEgressBackpressure */);
+  setupComponents(false /* enableUpdateGroup */);
 
   /* Bring up both peers (both are configured in setupComponents) */
   setupPeers({kPeerAddr3, kPeerAddr4});

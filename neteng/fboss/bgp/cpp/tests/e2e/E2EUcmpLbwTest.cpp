@@ -47,8 +47,7 @@ class E2EUcmpLbwTest : public E2ETestFixture {
     /* Enable UCMP weight calculation from LBW extended community */
     enableComputeUcmpFromLbw(true);
     createRib();
-    createPeerManager(/*enableUpdateGroup=*/false,
-                      /*enableEgressBackpressure=*/true);
+    createPeerManager(/*enableUpdateGroup=*/false);
   }
 
   void bringUpAllPeersWithEor() {

@@ -43,8 +43,7 @@ class E2ENexthopFailureTest : public E2ETestFixture {
     addPeer(kDefaultPeerSpec4);
     addPeer(kDefaultPeerSpec5);
     createRib(true /* enableNexthopTracking */);
-    createPeerManager(/*enableUpdateGroup=*/false,
-                      /*enableEgressBackpressure=*/false);
+    createPeerManager(/*enableUpdateGroup=*/false);
   }
 
   void bringUpAllPeersWithEor() {

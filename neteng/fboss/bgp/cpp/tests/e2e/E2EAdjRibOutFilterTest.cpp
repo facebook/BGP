@@ -54,8 +54,7 @@ class E2EAdjRibOutFilterTest : public E2ETestFixture {
     addPeer(kDefaultPeerSpec4);
     addPeer(kDefaultPeerSpec5);
     createRib();
-    createPeerManager(/*enableUpdateGroup=*/false,
-                      /*enableEgressBackpressure=*/true);
+    createPeerManager(/*enableUpdateGroup=*/false);
   }
 
   void bringUpAllPeersWithEor() {
@@ -298,8 +297,7 @@ class E2EAdjRibOutFilterIbgpTest : public E2ETestFixture {
     addPeer(ibgpPeerSpec4); /* iBGP peer */
     addPeer(ibgpPeerSpec5); /* iBGP peer */
     createRib();
-    createPeerManager(/*enableUpdateGroup=*/false,
-                      /*enableEgressBackpressure=*/true);
+    createPeerManager(/*enableUpdateGroup=*/false);
   }
 
   void bringUpAllPeersWithEor() {

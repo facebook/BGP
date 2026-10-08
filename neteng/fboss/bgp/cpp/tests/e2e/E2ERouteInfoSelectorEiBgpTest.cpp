@@ -64,8 +64,7 @@ class E2ERouteInfoSelectorEiBgpTest : public E2ETestFixture {
     addPeer(kDefaultPeerSpec5); /* eBGP peer (route receiver) */
     enableEiBgpMultipath(true);
     createRib();
-    createPeerManager(/*enableUpdateGroup=*/false,
-                      /*enableEgressBackpressure=*/true);
+    createPeerManager(/*enableUpdateGroup=*/false);
   }
 
   void bringUpAllPeersWithEor() {
@@ -261,8 +260,7 @@ class E2ERouteInfoSelectorEiBgpDisabledTest : public E2ETestFixture {
     addPeer(kDefaultPeerSpec5); /* eBGP peer (route receiver) */
     /* eiBGP NOT enabled - default behavior */
     createRib();
-    createPeerManager(/*enableUpdateGroup=*/false,
-                      /*enableEgressBackpressure=*/true);
+    createPeerManager(/*enableUpdateGroup=*/false);
   }
 
   void bringUpAllPeersWithEor() {

@@ -60,8 +60,7 @@ class E2ERibLocalRouteTest : public E2ETestFixture {
     addPeer(kDefaultPeerSpec4);
     addPeer(kDefaultPeerSpec5);
     createRib();
-    createPeerManager(/*enableUpdateGroup=*/false,
-                      /*enableEgressBackpressure=*/true);
+    createPeerManager(/*enableUpdateGroup=*/false);
   }
 
   /*
@@ -90,8 +89,7 @@ TEST_F(E2ERibLocalRouteTest, LocalRouteAdvertisedToPeers) {
   addPeer(kDefaultPeerSpec4);
   addPeer(kDefaultPeerSpec5);
   createRib();
-  createPeerManager(/*enableUpdateGroup=*/false,
-                    /*enableEgressBackpressure=*/true);
+  createPeerManager(/*enableUpdateGroup=*/false);
 
   bringUpPeersForLocalRoutes();
 
@@ -111,8 +109,7 @@ TEST_F(E2ERibLocalRouteTest, MultipleLocalRoutes) {
   addPeer(kDefaultPeerSpec4);
   addPeer(kDefaultPeerSpec5);
   createRib();
-  createPeerManager(/*enableUpdateGroup=*/false,
-                    /*enableEgressBackpressure=*/true);
+  createPeerManager(/*enableUpdateGroup=*/false);
 
   bringUpPeersForLocalRoutes();
 
@@ -186,8 +183,7 @@ TEST_F(E2ERibLocalRouteTest, LocalRouteNotAnnouncedWithoutMinSupport) {
   addPeer(kDefaultPeerSpec4);
   addPeer(kDefaultPeerSpec5);
   createRib();
-  createPeerManager(/*enableUpdateGroup=*/false,
-                    /*enableEgressBackpressure=*/true);
+  createPeerManager(/*enableUpdateGroup=*/false);
 
   bringUpPeersForLocalRoutes();
 
@@ -216,8 +212,7 @@ TEST_F(E2ERibLocalRouteTest, LocalRouteAnnouncedWithMinSupport) {
   addPeer(kDefaultPeerSpec4);
   addPeer(kDefaultPeerSpec5);
   createRib();
-  createPeerManager(/*enableUpdateGroup=*/false,
-                    /*enableEgressBackpressure=*/true);
+  createPeerManager(/*enableUpdateGroup=*/false);
 
   bringUpPeersForLocalRoutes();
 
@@ -283,8 +278,7 @@ TEST_F(E2ERibLocalRouteTest, InvalidOriginRejected) {
 
   addPeer(kDefaultPeerSpec3);
   createRib();
-  createPeerManager(/*enableUpdateGroup=*/false,
-                    /*enableEgressBackpressure=*/true);
+  createPeerManager(/*enableUpdateGroup=*/false);
 
   bringUpPeer(kPeerAddr3);
   BgpPeerId peerId3{kPeerAddr3, kPeerAddr3.asV4().toLongHBO()};

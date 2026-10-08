@@ -74,7 +74,6 @@ class UpdateGroupDynamicMembershipEoRE2ETest : public E2ESessionTestFixture {
     createRib();
     createPeerManager(
         /*enableUpdateGroup=*/true,
-        /*enableEgressBackpressure=*/true,
         /*enableSerializeGroupPdu=*/true);
 
     watchdog_ = std::make_unique<Watchdog>(config_);

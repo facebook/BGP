@@ -192,7 +192,7 @@ class E2EMultiPeerFlapTest : public E2ETestFixture {
     addPeer(kFlapPeerSpec7);
     createRib();
     createPeerManager(
-        /*enableUpdateGroup=*/false, /*enableEgressBackpressure=*/true);
+        /*enableUpdateGroup=*/false);
   }
 };
 

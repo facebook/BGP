@@ -61,8 +61,7 @@ class E2EAdjRibOutDelayTest : public E2ETestFixture {
     addPeer(kDefaultPeerSpec4_outDelay0s);
     addPeer(kDefaultPeerSpec5_outDelay1s);
     createRib();
-    createPeerManager(/*enableUpdateGroup=*/false,
-                      /*enableEgressBackpressure=*/true);
+    createPeerManager(/*enableUpdateGroup=*/false);
   }
 
   void bringUpAllPeersWithEor() {

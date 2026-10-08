@@ -59,8 +59,7 @@ class E2EAdjRibInAddPathTest : public E2ETestFixture {
     /* Peer5: ADD-PATH enabled (receives multiple paths) */
     addPeer(kDefaultPeerSpec5_AddPath);
     createRib();
-    createPeerManager(/*enableUpdateGroup=*/false,
-                      /*enableEgressBackpressure=*/true);
+    createPeerManager(/*enableUpdateGroup=*/false);
   }
 
   void bringUpAllPeersWithEor() {
@@ -221,8 +220,7 @@ class E2EAdjRibInAddPathMixedTest : public E2ETestFixture {
     /* Peer5: Non-ADD-PATH */
     addPeer(kDefaultPeerSpec5);
     createRib();
-    createPeerManager(/*enableUpdateGroup=*/false,
-                      /*enableEgressBackpressure=*/true);
+    createPeerManager(/*enableUpdateGroup=*/false);
   }
 
   void bringUpAllPeersWithEor() {

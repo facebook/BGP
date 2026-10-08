@@ -72,8 +72,7 @@ class AdjRibCachedVersionE2ETest : public E2ETestFixture {
     setDefaultQueueSizes(2 /* capacity */, 1 /* highWm */, 0 /* lowWm */);
 
     createPeerManager(
-        false /* enableUpdateGroup - disabled per user request */,
-        true /* enableEgressBackpressure */);
+        false /* enableUpdateGroup - disabled per user request */);
   }
 
   /*
@@ -216,8 +215,7 @@ TEST_F(AdjRibCachedVersionE2ETest, BlockedPeerFallsBehind) {
 
   createRib();
 
-  createPeerManager(
-      false /* enableUpdateGroup */, true /* enableEgressBackpressure */);
+  createPeerManager(false /* enableUpdateGroup */);
 
   bringUpPeer(kPeerAddr4);
   bringUpPeer(kPeerAddr5);
@@ -319,8 +317,7 @@ TEST_F(AdjRibCachedVersionE2ETest, SlowPeerCatchesUpWhenUnblocked) {
 
   createRib();
 
-  createPeerManager(
-      false /* enableUpdateGroup */, true /* enableEgressBackpressure */);
+  createPeerManager(false /* enableUpdateGroup */);
 
   bringUpPeer(kPeerAddr4);
   bringUpPeer(kPeerAddr5);
@@ -481,8 +478,7 @@ TEST_F(AdjRibCachedVersionE2ETest, MultiplePeersAtDifferentVersions) {
 
   createRib();
 
-  createPeerManager(
-      false /* enableUpdateGroup */, true /* enableEgressBackpressure */);
+  createPeerManager(false /* enableUpdateGroup */);
 
   bringUpPeer(kPeerAddr4);
   bringUpPeer(kPeerAddr5);
@@ -570,8 +566,7 @@ TEST_F(AdjRibCachedVersionE2ETest, RibDumpSetsCorrectCachedVersion) {
 
   createRib(false /* enableNexthopTracking */);
   setDefaultQueueSizes(100 /* capacity */, 80 /* highWm */, 20 /* lowWm */);
-  createPeerManager(
-      false /* enableUpdateGroup */, true /* enableEgressBackpressure */);
+  createPeerManager(false /* enableUpdateGroup */);
 
   bringUpPeer(kPeerAddr3);
   bringUpPeer(kPeerAddr4);
@@ -626,8 +621,7 @@ TEST_F(AdjRibCachedVersionE2ETest, VersionClearedOnTerminateNoUpdateGroup) {
   addPeer(kDefaultPeerSpec4_v4only); /* Receiver */
 
   createRib();
-  createPeerManager(
-      false /* enableUpdateGroup */, true /* enableEgressBackpressure */);
+  createPeerManager(false /* enableUpdateGroup */);
 
   bringUpPeer(kPeerAddr3);
   bringUpPeer(kPeerAddr4);
@@ -679,8 +673,7 @@ TEST_F(AdjRibCachedVersionE2ETest, VersionClearedOnTerminateWithUpdateGroup) {
   addPeer(kDefaultPeerSpec5_v4only); /* Receiver 2 */
 
   createRib();
-  createPeerManager(
-      true /* enableUpdateGroup */, true /* enableEgressBackpressure */);
+  createPeerManager(true /* enableUpdateGroup */);
 
   bringUpPeer(kPeerAddr3);
   bringUpPeer(kPeerAddr4);
@@ -745,8 +738,7 @@ TEST_F(AdjRibCachedVersionE2ETest, GroupVersionClearedOnGroupDestroy) {
   addPeer(kDefaultPeerSpec5_v4only); /* Receiver 2 */
 
   createRib();
-  createPeerManager(
-      true /* enableUpdateGroup */, true /* enableEgressBackpressure */);
+  createPeerManager(true /* enableUpdateGroup */);
 
   bringUpPeer(kPeerAddr3);
   bringUpPeer(kPeerAddr4);
@@ -898,8 +890,7 @@ TEST_F(AdjRibCachedVersionE2ETest, MaxRibVersionSurvivesEmptyShadowRib) {
 
   createRib(false /* enableNexthopTracking */);
   setDefaultQueueSizes(100 /* capacity */, 80 /* highWm */, 20 /* lowWm */);
-  createPeerManager(
-      false /* enableUpdateGroup */, true /* enableEgressBackpressure */);
+  createPeerManager(false /* enableUpdateGroup */);
 
   bringUpPeer(kPeerAddr3);
   bringUpPeer(kPeerAddr4);
@@ -985,8 +976,7 @@ TEST_F(
   addLocalRoute("90.0.0.0/8", {"900:1"}, 100);
 
   createRib();
-  createPeerManager(
-      false /* enableUpdateGroup */, true /* enableEgressBackpressure */);
+  createPeerManager(false /* enableUpdateGroup */);
 
   bringUpPeer(kPeerAddr4);
   bringUpPeer(kPeerAddr5);

@@ -44,8 +44,7 @@ class E2EAdjRibInLoopTest : public E2ETestFixture {
     addPeer(kDefaultPeerSpec4);
     addPeer(kDefaultPeerSpec5);
     createRib();
-    createPeerManager(/*enableUpdateGroup=*/false,
-                      /*enableEgressBackpressure=*/true);
+    createPeerManager(/*enableUpdateGroup=*/false);
   }
 
   void bringUpAllPeersWithEor() {

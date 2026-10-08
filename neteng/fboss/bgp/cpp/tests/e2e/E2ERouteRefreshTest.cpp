@@ -53,9 +53,7 @@ class E2ERouteRefreshTest : public E2ETestFixture {
     addPeer(spec4);
     addPeer(spec5);
     createRib();
-    createPeerManager(
-        /*enableUpdateGroup=*/false,
-        /*enableEgressBackpressure=*/true);
+    createPeerManager(/*enableUpdateGroup=*/false);
   }
 
   void bringUpAllPeersWithEor() {

@@ -56,8 +56,7 @@ class E2ERibRouteTest : public E2ETestFixture {
     addPeer(ebgpPeer);
 
     createRib();
-    createPeerManager(
-        false /* enableUpdateGroup */, true /* enableEgressBackpressure */);
+    createPeerManager(false /* enableUpdateGroup */);
   }
 
   void bringUpPeerAndSendEoR() {

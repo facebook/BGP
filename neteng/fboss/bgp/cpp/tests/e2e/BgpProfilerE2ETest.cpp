@@ -60,14 +60,12 @@ class BgpProfilerE2ETest : public E2ETestFixture {
     BgpProfiler::getInstance()->clearStats();
   }
 
-  void setupComponents(
-      bool enableUpdateGroup = false,
-      bool enableEgressBackpressure = true) {
+  void setupComponents(bool enableUpdateGroup = false) {
     addPeer(kDefaultPeerSpec3);
     addPeer(kDefaultPeerSpec4);
 
     createRib();
-    createPeerManager(enableUpdateGroup, enableEgressBackpressure);
+    createPeerManager(enableUpdateGroup);
   }
 
   void bringUpAllPeersWithEor() {

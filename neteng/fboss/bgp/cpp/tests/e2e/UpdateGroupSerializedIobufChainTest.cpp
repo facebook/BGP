@@ -409,7 +409,6 @@ class UpdateGroupSerializedIobufChainTest : public E2ETestFixture {
     createRib();
     createPeerManager(
         /*enableUpdateGroup=*/true,
-        /*enableEgressBackpressure=*/true,
         /*enableSerializeGroupPdu=*/true);
   }
 

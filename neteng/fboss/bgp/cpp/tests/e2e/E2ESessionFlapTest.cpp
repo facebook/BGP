@@ -40,8 +40,7 @@ class E2ESessionFlapTest : public E2ESessionTestFixture {
     addPeer(kDefaultPeerSpec4);
     addPeer(kDefaultPeerSpec5);
     createRib();
-    createPeerManager(/*enableUpdateGroup=*/false,
-                      /*enableEgressBackpressure=*/false);
+    createPeerManager(/*enableUpdateGroup=*/false);
   }
 };
 

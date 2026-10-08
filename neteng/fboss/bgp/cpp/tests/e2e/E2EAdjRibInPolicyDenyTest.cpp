@@ -75,8 +75,7 @@ TEST_F(E2EAdjRibInPolicyDenyTest, DenyByPrefixNotPropagated) {
   addPeer(kDefaultPeerSpec4);
   addPeer(kDefaultPeerSpec5);
   createRib();
-  createPeerManager(/*enableUpdateGroup=*/false,
-                    /*enableEgressBackpressure=*/true);
+  createPeerManager(/*enableUpdateGroup=*/false);
 
   bringUpAllPeersWithEor();
 
@@ -106,8 +105,7 @@ TEST_F(E2EAdjRibInPolicyDenyTest, NonMatchingRouteIsPropagated) {
   addPeer(kDefaultPeerSpec4);
   addPeer(kDefaultPeerSpec5);
   createRib();
-  createPeerManager(/*enableUpdateGroup=*/false,
-                    /*enableEgressBackpressure=*/true);
+  createPeerManager(/*enableUpdateGroup=*/false);
 
   bringUpAllPeersWithEor();
 
@@ -139,8 +137,7 @@ TEST_F(E2EAdjRibInPolicyDenyTest, DenyByCommunityNotPropagated) {
   addPeer(kDefaultPeerSpec4);
   addPeer(kDefaultPeerSpec5);
   createRib();
-  createPeerManager(/*enableUpdateGroup=*/false,
-                    /*enableEgressBackpressure=*/true);
+  createPeerManager(/*enableUpdateGroup=*/false);
 
   bringUpAllPeersWithEor();
 
@@ -171,8 +168,7 @@ TEST_F(E2EAdjRibInPolicyDenyTest, NonMatchingCommunityIsPropagated) {
   addPeer(kDefaultPeerSpec4);
   addPeer(kDefaultPeerSpec5);
   createRib();
-  createPeerManager(/*enableUpdateGroup=*/false,
-                    /*enableEgressBackpressure=*/true);
+  createPeerManager(/*enableUpdateGroup=*/false);
 
   bringUpAllPeersWithEor();
 

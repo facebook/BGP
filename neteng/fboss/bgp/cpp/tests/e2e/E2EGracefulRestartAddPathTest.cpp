@@ -43,8 +43,7 @@ class E2EGracefulRestartAddPathTest : public E2ETestFixture {
     addPeer(kDefaultPeerSpec4);
     addPeer(kDefaultPeerSpec5_AddPath);
     createRib();
-    createPeerManager(/*enableUpdateGroup=*/false,
-                      /*enableEgressBackpressure=*/false);
+    createPeerManager(/*enableUpdateGroup=*/false);
   }
 
   void bringUpAllPeersWithEor() {

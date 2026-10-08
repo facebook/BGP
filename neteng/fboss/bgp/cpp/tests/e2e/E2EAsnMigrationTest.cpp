@@ -73,7 +73,7 @@ class E2EAsnMigrationTest : public E2ESessionTestFixture {
       addPeer(peer);
     }
     createRib();
-    createPeerManager(enableUpdateGroup, /*enableEgressBackpressure=*/false);
+    createPeerManager(enableUpdateGroup);
   }
 
   void establishV4Peer(const folly::IPAddress& peerAddr, uint32_t remoteAs) {
@@ -445,8 +445,7 @@ TEST_F(E2EAsnMigrationTest, EffectiveVipAsDrivesDynamicPeerCleanup) {
   peers_.push_back(std::move(peer));
   createRib();
   createPeerManager(
-      /*enableUpdateGroup=*/false,
-      /*enableEgressBackpressure=*/false);
+      /*enableUpdateGroup=*/false);
 
   bringUpPeerWithRemoteAs(kDynamicPeerAddr4, kVipAsn);
   ASSERT_TRUE(waitForSessionEstablished(kDynamicPeerAddr4));
@@ -477,8 +476,7 @@ TEST_F(E2EAsnMigrationTest, ShutdownWithEstablishedVipSessionCompletes) {
   peers_.push_back(std::move(peer));
   createRib();
   createPeerManager(
-      /*enableUpdateGroup=*/false,
-      /*enableEgressBackpressure=*/false);
+      /*enableUpdateGroup=*/false);
 
   bringUpPeerWithRemoteAs(kDynamicPeerAddr4, kVipAsn);
   ASSERT_TRUE(waitForSessionEstablished(kDynamicPeerAddr4));
@@ -510,8 +508,7 @@ TEST_F(
   peers_.push_back(std::move(peer));
   createRib();
   createPeerManager(
-      /*enableUpdateGroup=*/false,
-      /*enableEgressBackpressure=*/false);
+      /*enableUpdateGroup=*/false);
 
   bringUpPeerWithRemoteAs(kDynamicPeerAddr4, kPeerAsn3);
   ASSERT_TRUE(waitForSessionEstablished(kDynamicPeerAddr4));

@@ -104,7 +104,7 @@ class E2ENexthopSelfPolicyOverrideTest : public E2ETestFixture {
     addPeer(destSpec);
     createRib();
     createPeerManager(
-        /*enableUpdateGroup=*/false, /*enableEgressBackpressure=*/true);
+        /*enableUpdateGroup=*/false);
     bringUpPeer(sourceSpec.peerAddr);
     bringUpPeer(destSpec.peerAddr);
 

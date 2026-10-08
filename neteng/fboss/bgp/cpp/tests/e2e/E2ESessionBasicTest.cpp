@@ -38,8 +38,7 @@ class E2ESessionBasicTest : public E2ESessionTestFixture {
     addPeer(kDefaultPeerSpec3);
     addPeer(kDefaultPeerSpec4);
     createRib();
-    createPeerManager(/*enableUpdateGroup=*/false,
-                      /*enableEgressBackpressure=*/false);
+    createPeerManager(/*enableUpdateGroup=*/false);
   }
 };
 
@@ -52,8 +51,7 @@ class E2ESessionAdditionalRemoteAsTest : public E2ESessionTestFixture {
     addPeer(peerSpec);
     createRib();
     createPeerManager(
-        /*enableUpdateGroup=*/false,
-        /*enableEgressBackpressure=*/false);
+        /*enableUpdateGroup=*/false);
   }
 };
 

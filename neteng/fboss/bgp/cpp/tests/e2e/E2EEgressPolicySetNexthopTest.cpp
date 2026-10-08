@@ -139,7 +139,7 @@ TEST_F(
    * with the test reads. */
   setEorTimeSeconds(0);
   createPeerManager(
-      /*enableUpdateGroup=*/false, /*enableEgressBackpressure=*/true);
+      /*enableUpdateGroup=*/false);
 
   setDefaultQueueSizes(/*capacity=*/2, /*highWm=*/1, /*lowWm=*/0);
   bringUpPeer(kPeerAddr3);
@@ -257,7 +257,7 @@ TEST_F(
   createRib();
   setEorTimeSeconds(0);
   createPeerManager(
-      /*enableUpdateGroup=*/false, /*enableEgressBackpressure=*/true);
+      /*enableUpdateGroup=*/false);
 
   setDefaultQueueSizes(/*capacity=*/2, /*highWm=*/1, /*lowWm=*/0);
   bringUpPeer(kPeerAddr3);

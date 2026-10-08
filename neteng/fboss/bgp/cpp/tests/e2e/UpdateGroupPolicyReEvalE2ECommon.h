@@ -220,10 +220,7 @@ class UpdateGroupPolicyReEvalE2EBase : public SlowPeerTestBase {
       bool enableUpdateGroup = true) {
     setDefaultQueueSizes(queueCapacity, queueHighWm, queueLowWm);
     createRib();
-    createPeerManager(
-        enableUpdateGroup,
-        /*enableEgressBackpressure=*/true,
-        GetParam().enableSerializeGroupPdu);
+    createPeerManager(enableUpdateGroup, GetParam().enableSerializeGroupPdu);
 
     watchdog_ = std::make_unique<Watchdog>(config_);
     bgpService_ = std::make_unique<BgpServiceBB>(

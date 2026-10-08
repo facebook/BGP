@@ -1363,7 +1363,6 @@ BgpPeerDisplayInfo createDisplayInfo(
 
 void E2ETestFixture::createPeerManager(
     bool enableUpdateGroup,
-    bool /* enableEgressBackpressure */,
     bool enableSerializeGroupPdu) {
   XLOG(INFO, "=== Creating PeerManagerBase... ===");
 

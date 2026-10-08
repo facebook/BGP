@@ -119,7 +119,7 @@ class RibPathCountersE2ETest : public E2ETestFixture {
      */
     createRib(true /* enableNexthopTracking */);
     createPeerManager(
-        /*enableUpdateGroup=*/false, /*enableEgressBackpressure=*/false);
+        /*enableUpdateGroup=*/false);
   }
 
   /* peer5 advertises nothing; it exists purely to observe the RIB's output. */

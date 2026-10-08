@@ -1329,15 +1329,10 @@ TEST_F(SendBgpMessagesFixture, BuildUpdateWithSizeEstimationTest) {
 
 /**
  * This test verifies the kEgressTransientUpdatesSuppressed counter
- * is updated when transient route updates are suppressed with backpressure
- * feature enabled.
+ * is updated when transient route updates are suppressed.
  *
- * This is only possible because sendBgpMessages is invoked at a different
- * cadence from processRibMessage. In the case where backpressure is disabled,
- * there is no chance for transient route updates to be suppressed over
- * consecutive processRibMessage calls because buildAndSendBgpMessages
- * is called inline at the end of processRibMessage without interruption.
- * Hence this test only exists on the SendBgpMessagesFixture.
+ * This is possible because sendBgpMessages is invoked at a different
+ * cadence from processRibMessage.
  */
 TEST_F(SendBgpMessagesFixture, NumTransientUpdatesSuppressedStatsTest) {
   SetUpAdjRibStateForUnit(

@@ -37,7 +37,6 @@ class E2ESessionTestFixture : public E2ETestFixture {
 
   void createPeerManager(
       bool enableUpdateGroup = true,
-      bool enableEgressBackpressure = true,
       bool enableSerializeGroupPdu = false);
 
   /* Stop components in the same order as the bgpd main shutdown path. */

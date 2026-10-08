@@ -633,13 +633,11 @@ class E2ETestFixture : public ::testing::Test {
 
   /* Create and start PeerManagerBase with MockSessionManager
    * enableUpdateGroup: Enable update group optimization
-   * enableEgressBackpressure: Enable egress queue backpressure
    * enableSerializeGroupPdu: Enable group PDU serialization for zero-copy
    * NOTE: All features default to TRUE for comprehensive E2E testing
    */
   void createPeerManager(
       bool enableUpdateGroup = true,
-      bool enableEgressBackpressure = true,
       bool enableSerializeGroupPdu = false);
 
   // Establish a BGP session for a peer
@@ -1670,8 +1668,7 @@ class E2ERibTestFixture : public E2ETestFixture {
     addPeer(kDefaultPeerSpec4);
     addPeer(kDefaultPeerSpec5);
     createRib();
-    createPeerManager(/*enableUpdateGroup=*/false,
-                      /*enableEgressBackpressure=*/true);
+    createPeerManager(/*enableUpdateGroup=*/false);
   }
 
   /*

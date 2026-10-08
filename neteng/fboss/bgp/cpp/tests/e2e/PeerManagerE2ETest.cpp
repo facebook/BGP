@@ -37,14 +37,12 @@ namespace bgp {
 
 class PeerManagerE2ETest : public E2ETestFixture {
  protected:
-  void setupComponents(
-      bool enableUpdateGroup = true,
-      bool enableEgressBackpressure = true) {
+  void setupComponents(bool enableUpdateGroup = true) {
     /* Add default peers to the configuration */
     addPeer(kDefaultPeerSpec3);
     addPeer(kDefaultPeerSpec4);
 
-    createPeerManager(enableUpdateGroup, enableEgressBackpressure);
+    createPeerManager(enableUpdateGroup);
   }
 };
 

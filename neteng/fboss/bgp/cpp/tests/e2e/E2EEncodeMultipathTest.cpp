@@ -100,8 +100,7 @@ class E2EEncodeMultipathTest : public E2ETestFixture,
     addPeer(bestPathDestination);
     createRib();
     createPeerManager(
-        /*enableUpdateGroup=*/GetParam(),
-        /*enableEgressBackpressure=*/true);
+        /*enableUpdateGroup=*/GetParam());
   }
 
   void bringUpPeersWithEor() {

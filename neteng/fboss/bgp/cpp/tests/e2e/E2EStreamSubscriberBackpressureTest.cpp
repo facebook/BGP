@@ -297,8 +297,7 @@ class StreamSubscriberBackpressureTest : public E2ETestFixture {
     addPeer(kDefaultPeerSpec3);
     createRib();
     createPeerManager(
-        /*enableUpdateGroup=*/updateGroupEnabled(),
-        /*enableEgressBackpressure=*/true);
+        /*enableUpdateGroup=*/updateGroupEnabled());
     bringUpPeer(kPeerAddr3);
     peerId3_ = BgpPeerId{kPeerAddr3, kPeerAddr3.asV4().toLongHBO()};
     sendEoRToPeer(peerId3_);

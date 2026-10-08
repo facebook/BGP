@@ -51,8 +51,7 @@ class RibStatsE2ETest : public E2ETestFixture {
     addPeer(kDefaultPeerSpec5);
 
     createRib();
-    createPeerManager(
-        true /* enableUpdateGroup */, true /* enableEgressBackpressure */);
+    createPeerManager(true /* enableUpdateGroup */);
   }
 
   /*

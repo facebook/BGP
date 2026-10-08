@@ -120,9 +120,7 @@ class E2EDynamicPolicyEvaluationTest : public E2ETestFixture {
    * config version tracking is consistent across policy updates.
    */
   void createPeerManagerWithBgpService(bool enableUpdateGroup = false) {
-    createPeerManager(
-        enableUpdateGroup,
-        /*enableEgressBackpressure=*/true);
+    createPeerManager(enableUpdateGroup);
 
     watchdog_ = std::make_unique<Watchdog>(config_);
     bgpService_ = std::make_shared<BgpServiceBB>(
@@ -404,7 +402,7 @@ class E2EUpdateGroupEoRIterationTest : public E2ETestFixture {
      * blocks on backpressure. Other peers use default queue sizes. */
     setQueueSizeForPeer(kPeerAddr4, /*capacity=*/3, /*highWm=*/2, /*lowWm=*/0);
     createPeerManager(
-        /*enableUpdateGroup=*/true, /*enableEgressBackpressure=*/true);
+        /*enableUpdateGroup=*/true);
   }
 
   void setupPolicies() {

@@ -82,7 +82,6 @@ class UpdateGroupSplitDuringEoRWaitE2ETest : public E2ESessionTestFixture {
     createRib();
     createPeerManager(
         /*enableUpdateGroup=*/true,
-        /*enableEgressBackpressure=*/true,
         /*enableSerializeGroupPdu=*/true);
   }
 

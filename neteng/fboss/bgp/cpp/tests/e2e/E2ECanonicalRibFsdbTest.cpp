@@ -119,7 +119,7 @@ class E2ECanonicalRibFsdbTest : public E2ETestFixture {
         /*localRoutes=*/{},
         syncer_.get());
     createPeerManager(
-        /*enableUpdateGroup=*/false, /*enableEgressBackpressure=*/true);
+        /*enableUpdateGroup=*/false);
   }
 
   void bringUpPeers() {

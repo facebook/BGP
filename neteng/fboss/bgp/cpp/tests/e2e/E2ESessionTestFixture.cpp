@@ -114,7 +114,6 @@ void E2ESessionTestFixture::shutdownComponents() {
 
 void E2ESessionTestFixture::createPeerManager(
     bool enableUpdateGroup,
-    bool /* enableEgressBackpressure */,
     bool enableSerializeGroupPdu) {
   XLOG(INFO, "=== Creating PeerManagerBase with E2ETestSessionManager... ===");
 

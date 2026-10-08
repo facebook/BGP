@@ -192,9 +192,7 @@ class E2EWellKnownCommunitiesTest : public E2ETestFixture {
     addPeer(sourceSpec);
     addPeer(destSpec);
     createRib();
-    createPeerManager(
-        enableUpdateGroup,
-        /*enableEgressBackpressure=*/true);
+    createPeerManager(enableUpdateGroup);
     bringUpPeer(sourceSpec.peerAddr);
     bringUpPeer(destSpec.peerAddr);
 
@@ -551,8 +549,7 @@ class E2EWellKnownCommunitiesFlagOffTest : public E2ETestFixture {
             .v6Nexthop = kNextHopV6_5,
         });
     createRib();
-    createPeerManager(/*enableUpdateGroup=*/false,
-                      /*enableEgressBackpressure=*/true);
+    createPeerManager(/*enableUpdateGroup=*/false);
     bringUpPeer(kPeerAddr3);
     bringUpPeer(kPeerAddr5);
     BgpPeerId srcId{kPeerAddr3, kPeerAddr3.asV4().toLongHBO()};

@@ -77,8 +77,7 @@ class E2ELegacyV4NlriEncodingTest : public E2ESessionTestFixture {
     }
     createRib();
     createPeerManager(
-        /*enableUpdateGroup=*/false,
-        /*enableEgressBackpressure=*/false);
+        /*enableUpdateGroup=*/false);
   }
 
   void bringUpAllPeersWithEoR() {

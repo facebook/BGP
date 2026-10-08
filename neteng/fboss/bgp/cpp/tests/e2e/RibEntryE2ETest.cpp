@@ -83,8 +83,7 @@ class E2ERibEntryTest : public E2ETestFixture {
     addPeer(ibgpPeer);
 
     createRib();
-    createPeerManager(
-        false /* enableUpdateGroup */, true /* enableEgressBackpressure */);
+    createPeerManager(false /* enableUpdateGroup */);
   }
 
   void bringUpAllPeers() {
