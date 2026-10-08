@@ -2961,10 +2961,6 @@ folly::coro::Task<void> PeerManagerBase::sessionEstablished(
   auto& oqueue = sessionInfo->outputQueue;
   CHECK(oqueue != nullptr);
 
-  /* get bgp peer input queue, aka, adjRibOutQueue */
-  auto& iqueue = sessionInfo->inputQueue;
-  CHECK(iqueue != nullptr);
-
   /* Get bgp bounded peer input queue, aka, boundedAdjRibOutQueue. */
   auto& boundedIqueue = sessionInfo->boundedInputQueue;
   CHECK(boundedIqueue != nullptr);
@@ -3035,7 +3031,6 @@ folly::coro::Task<void> PeerManagerBase::sessionEstablished(
         evt.remoteAs,
         std::optional<uint16_t>(peerInfo->remoteGrRestartTime),
         oqueue, /* aka adjRibInQueue */
-        iqueue, /* aka adjRibOutQueue */
         boundedIqueue, /* aka, boundedAdjRibOutQueue */
         AfiIpv4Negotiated{*peerInfo->negotiatedCapabilities.mpExtV4Unicast()},
         AfiIpv6Negotiated{*peerInfo->negotiatedCapabilities.mpExtV6Unicast()},
@@ -3848,7 +3843,6 @@ void PeerManagerBase::setSubscriberAdjRib(
   adjRib->sessionEstablished(
       std::nullopt, /* GR disabled */
       subscriber.peerOutputQ, /* aka adjRibInQueue */
-      subscriber.peerInputQ, /* aka adjRibOutQueue */
       subscriber.boundedPeerInputQ, /* aka boundedAdjRibOutQueue */
       AfiIpv4Negotiated{true}, /* default argument */
       AfiIpv6Negotiated{true}, /* default argument */

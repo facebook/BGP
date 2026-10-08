@@ -129,10 +129,8 @@ class AdjRibOutboundFixture : public ::testing::Test {
      * Bounded — a never-arriving message fails the test with a clear
      * BoundedWaitTimeout instead of hanging.
      */
-    auto msg = FLAGS_enable_egress_backpressure_in_adjribout_tests
-        ? co_await facebook::bgp::test::boundedPop(
-              *boundedAdjRibOutQ_, "boundedAdjRibOutQ_")
-        : co_await facebook::bgp::test::boundedPop(*adjRibOutQ_, "adjRibOutQ_");
+    auto msg = co_await facebook::bgp::test::boundedPop(
+        *boundedAdjRibOutQ_, "boundedAdjRibOutQ_");
     co_return msg;
   }
 
@@ -237,8 +235,6 @@ class AdjRibOutboundFixture : public ::testing::Test {
   std::shared_ptr<AdjRib::AdjRibInQueueT> adjRibInQ_ =
       std::make_shared<AdjRib::AdjRibInQueueT>(
           nettools::bgplib::kMaxIngressQueueSize);
-  std::shared_ptr<AdjRib::AdjRibOutQueueT> adjRibOutQ_ =
-      std::make_shared<AdjRib::AdjRibOutQueueT>();
 
   std::shared_ptr<AdjRib::BoundedAdjRibOutQueueT> boundedAdjRibOutQ_ =
       std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(

@@ -557,7 +557,6 @@ void AdjRib::logPeerEvent(const std::string& phase, const std::string& src) {
 void AdjRib::sessionEstablished(
     const std::optional<uint16_t>& remoteGrRestartTime,
     std::shared_ptr<AdjRibInQueueT> adjRibInQueue,
-    std::shared_ptr<AdjRibOutQueueT> adjRibOutQueue,
     std::shared_ptr<BoundedAdjRibOutQueueT> boundedAdjRibOutQueue,
     const AfiIpv4Negotiated& isAfiIpv4Negotiated,
     const AfiIpv6Negotiated& isAfiIpv6Negotiated,
@@ -572,7 +571,6 @@ void AdjRib::sessionEstablished(
       peeringParams_.remoteAs,
       remoteGrRestartTime,
       std::move(adjRibInQueue),
-      std::move(adjRibOutQueue),
       std::move(boundedAdjRibOutQueue),
       isAfiIpv4Negotiated,
       isAfiIpv6Negotiated,
@@ -589,7 +587,6 @@ void AdjRib::sessionEstablished(
     uint32_t remoteAs,
     const std::optional<uint16_t>& remoteGrRestartTime,
     std::shared_ptr<AdjRibInQueueT> adjRibInQueue,
-    std::shared_ptr<AdjRibOutQueueT> adjRibOutQueue,
     std::shared_ptr<BoundedAdjRibOutQueueT> boundedAdjRibOutQueue,
     const AfiIpv4Negotiated& isAfiIpv4Negotiated,
     const AfiIpv6Negotiated& isAfiIpv6Negotiated,
@@ -632,10 +629,8 @@ void AdjRib::sessionEstablished(
       (remoteGrRestartTime ? std::chrono::seconds(*remoteGrRestartTime) : 0s);
 
   adjRibInQueue_ = std::move(adjRibInQueue);
-  adjRibOutQueue_ = std::move(adjRibOutQueue);
   boundedAdjRibOutQueue_ = std::move(boundedAdjRibOutQueue);
 
-  CHECK(adjRibOutQueue_ != nullptr);
   CHECK(boundedAdjRibOutQueue_ != nullptr);
   logPeerEvent("SESSION_QUEUES_INITIALIZED", BGP_LOG_SRC());
 

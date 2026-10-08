@@ -187,7 +187,6 @@ void AdjRibOutboundFixture::setupAdjRib(
       adjRib_->sessionEstablished(
           std::nullopt, // remoteGrRestartTime
           adjRibInQ_,
-          adjRibOutQ_,
           boundedAdjRibOutQ_,
           isAfiIpv4Negotiated,
           isAfiIpv6Negotiated,

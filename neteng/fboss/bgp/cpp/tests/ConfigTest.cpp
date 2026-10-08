@@ -3425,7 +3425,8 @@ TEST_F(ConfigTestFixture, BgpSettingConfigTest) {
     Config config(thriftConfig);
     auto globalConfig = config.getBgpGlobalConfig();
 
-    EXPECT_FALSE(globalConfig->enableEgressQueueBackpressure);
+    // Egress queue backpressure is always enabled in bgp++.
+    EXPECT_TRUE(globalConfig->enableEgressQueueBackpressure);
     EXPECT_FALSE(globalConfig->enableNextHopTracking);
     EXPECT_FALSE(globalConfig->enableUpdateGroup);
     EXPECT_FALSE(globalConfig->enableOptimizedGR);

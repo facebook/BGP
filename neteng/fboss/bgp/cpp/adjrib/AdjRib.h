@@ -384,7 +384,6 @@ class AdjRib : boost::noncopyable,
   void sessionEstablished(
       const std::optional<uint16_t>& remoteGrRestartTime,
       std::shared_ptr<AdjRibInQueueT> adjRibInQueue,
-      std::shared_ptr<AdjRibOutQueueT> adjRibOutQueue,
       std::shared_ptr<BoundedAdjRibOutQueueT> boundedAdjRibOutQueue,
       const AfiIpv4Negotiated& isAfiIpv4Negotiated = AfiIpv4Negotiated(true),
       const AfiIpv6Negotiated& isAfiIpv6Negotiated = AfiIpv6Negotiated(true),
@@ -405,7 +404,6 @@ class AdjRib : boost::noncopyable,
       uint32_t remoteAs,
       const std::optional<uint16_t>& remoteGrRestartTime,
       std::shared_ptr<AdjRibInQueueT> adjRibInQueue,
-      std::shared_ptr<AdjRibOutQueueT> adjRibOutQueue,
       std::shared_ptr<BoundedAdjRibOutQueueT> boundedAdjRibOutQueue,
       const AfiIpv4Negotiated& isAfiIpv4Negotiated = AfiIpv4Negotiated(true),
       const AfiIpv6Negotiated& isAfiIpv6Negotiated = AfiIpv6Negotiated(true),
@@ -2710,11 +2708,7 @@ class AdjRib : boost::noncopyable,
    *  - BgpUpdate2
    *  - BgpEndOfRib
    *  - BgpNotification
-   *
-   * Egress backpressure flag controls whether to use adjRibOutQueue_
-   * (unbounded) or boundedAdjRibOutQueue_ to communicate with FiberBgpPeer.
    */
-  std::shared_ptr<AdjRibOutQueueT> adjRibOutQueue_;
   std::shared_ptr<BoundedAdjRibOutQueueT> boundedAdjRibOutQueue_;
 
   /*

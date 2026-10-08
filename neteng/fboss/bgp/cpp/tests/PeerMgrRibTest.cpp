@@ -166,11 +166,14 @@ using namespace facebook::nettools::bgplib;
 namespace facebook::bgp {
 
 namespace {
+/*
+ * Establishes a session on the AdjRib so a rib dump reaches processRibMessage
+ * instead of bailing out on a missing bounded out queue.
+ */
 void establishSessionForRibDump(const std::shared_ptr<AdjRib>& adjRib) {
   adjRib->sessionEstablished(
       std::nullopt,
       std::make_shared<AdjRib::AdjRibInQueueT>(),
-      std::make_shared<AdjRib::AdjRibOutQueueT>(),
       std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
           kMaxEgressQueueSize,
           kEgressQueueHighWatermark,
@@ -756,7 +759,6 @@ CO_TEST_F(PeerManagerTestFixture, ShadowRibEntryMultiUpdateTest) {
 
   auto& evb = peerMgr->getEventBase();
   auto adjRibInQ1 = std::make_shared<AdjRib::AdjRibInQueueT>();
-  auto adjRibOutQ1 = std::make_shared<AdjRib::AdjRibOutQueueT>();
 
   auto boundedOutQ1 = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
@@ -780,8 +782,7 @@ CO_TEST_F(PeerManagerTestFixture, ShadowRibEntryMultiUpdateTest) {
   peerMgr->adjRibs_[kPeerId1] = adjRib1;
 
   // mark session in established state for queue validation
-  adjRib1->sessionEstablished(
-      std::nullopt, adjRibInQ1, adjRibOutQ1, boundedOutQ1);
+  adjRib1->sessionEstablished(std::nullopt, adjRibInQ1, boundedOutQ1);
   adjRib1->sendAddPath_ = false; /* add-path incapable peer */
   adjRib1->markStateEstablished();
 
@@ -876,8 +877,6 @@ CO_TEST_F(PeerManagerTestFixture, RibDumpReqPositiveTest) {
       std::numeric_limits<size_t>::max());
   auto adjRibInQ2 = std::make_shared<AdjRib::AdjRibInQueueT>(
       std::numeric_limits<size_t>::max());
-  auto adjRibOutQ1 = std::make_shared<AdjRib::AdjRibOutQueueT>();
-  auto adjRibOutQ2 = std::make_shared<AdjRib::AdjRibOutQueueT>();
   auto boundedOutQ1 = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
   auto boundedOutQ2 = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
@@ -915,13 +914,11 @@ CO_TEST_F(PeerManagerTestFixture, RibDumpReqPositiveTest) {
   peerMgr->adjRibs_[kPeerId2] = adjRib2;
 
   // mark session in established state for queue validation
-  adjRib1->sessionEstablished(
-      std::nullopt, adjRibInQ1, adjRibOutQ1, boundedOutQ1);
+  adjRib1->sessionEstablished(std::nullopt, adjRibInQ1, boundedOutQ1);
   adjRib1->sendAddPath_ = false; /* add-path incapable peer */
   adjRib1->markStateEstablished();
 
-  adjRib2->sessionEstablished(
-      std::nullopt, adjRibInQ2, adjRibOutQ2, boundedOutQ2);
+  adjRib2->sessionEstablished(std::nullopt, adjRibInQ2, boundedOutQ2);
   adjRib2->sendAddPath_ = true; /* add-path capable peer */
   adjRib2->markStateEstablished();
 
@@ -2777,8 +2774,6 @@ TEST_F(PeerManagerTestFixture, ReplicateRibMessageInitialadjRibsTest) {
 
   auto adjRibInQ1 = std::make_shared<AdjRib::AdjRibInQueueT>();
   auto adjRibInQ2 = std::make_shared<AdjRib::AdjRibInQueueT>();
-  auto adjRibOutQ1 = std::make_shared<AdjRib::AdjRibOutQueueT>();
-  auto adjRibOutQ2 = std::make_shared<AdjRib::AdjRibOutQueueT>();
   auto boundedOutQ1 = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
   auto boundedOutQ2 = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
@@ -2808,13 +2803,11 @@ TEST_F(PeerManagerTestFixture, ReplicateRibMessageInitialadjRibsTest) {
 
   // Start fiber tasks from both Rib and FiberBgpPeerManager
   fm.addTask([&] {
-    adjRib1->sessionEstablished(
-        std::nullopt, adjRibInQ1, adjRibOutQ1, boundedOutQ1);
+    adjRib1->sessionEstablished(std::nullopt, adjRibInQ1, boundedOutQ1);
     adjRib1->startMessageProcessingLoop();
   });
   fm.addTask([&] {
-    adjRib2->sessionEstablished(
-        std::nullopt, adjRibInQ2, adjRibOutQ2, boundedOutQ2);
+    adjRib2->sessionEstablished(std::nullopt, adjRibInQ2, boundedOutQ2);
     adjRib2->startMessageProcessingLoop();
   });
 
@@ -2892,8 +2885,6 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
   auto& evb = peerMgr->getEventBase();
   auto adjRibInQ1 = std::make_shared<AdjRib::AdjRibInQueueT>();
   auto adjRibInQ2 = std::make_shared<AdjRib::AdjRibInQueueT>();
-  auto adjRibOutQ1 = std::make_shared<AdjRib::AdjRibOutQueueT>();
-  auto adjRibOutQ2 = std::make_shared<AdjRib::AdjRibOutQueueT>();
   auto boundedOutQ1 = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
   auto boundedOutQ2 = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
@@ -2926,13 +2917,11 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
   peerMgr->adjRibs_[kPeerId2] = adjRib2;
 
   // Mark sessions in established state
-  adjRib1->sessionEstablished(
-      std::nullopt, adjRibInQ1, adjRibOutQ1, boundedOutQ1);
+  adjRib1->sessionEstablished(std::nullopt, adjRibInQ1, boundedOutQ1);
   adjRib1->sendAddPath_ = false; // non-add-path peer
   adjRib1->markStateEstablished();
 
-  adjRib2->sessionEstablished(
-      std::nullopt, adjRibInQ2, adjRibOutQ2, boundedOutQ2);
+  adjRib2->sessionEstablished(std::nullopt, adjRibInQ2, boundedOutQ2);
   adjRib2->sendAddPath_ = true; // add-path capable peer
   adjRib2->markStateEstablished();
 
@@ -3221,8 +3210,6 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationAddPathTest) {
   auto& evb = peerMgr->getEventBase();
   auto adjRibInQ1 = std::make_shared<AdjRib::AdjRibInQueueT>();
   auto adjRibInQ2 = std::make_shared<AdjRib::AdjRibInQueueT>();
-  auto adjRibOutQ1 = std::make_shared<AdjRib::AdjRibOutQueueT>();
-  auto adjRibOutQ2 = std::make_shared<AdjRib::AdjRibOutQueueT>();
   auto boundedOutQ1 = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
   auto boundedOutQ2 = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
@@ -3257,15 +3244,13 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationAddPathTest) {
   peerMgr->adjRibs_[kPeerId2] = adjRib2;
 
   // Mark sessions as established
-  adjRib1->sessionEstablished(
-      std::nullopt, adjRibInQ1, adjRibOutQ1, boundedOutQ1);
+  adjRib1->sessionEstablished(std::nullopt, adjRibInQ1, boundedOutQ1);
   adjRib1->sendAddPath_ = true; // add-path capable
   adjRib1->markStateEstablished();
   /* Do not skip non-initial announcement by marking egressEoRsSent as true. */
   adjRib1->egressEoRsSent_ = true;
 
-  adjRib2->sessionEstablished(
-      std::nullopt, adjRibInQ2, adjRibOutQ2, boundedOutQ2);
+  adjRib2->sessionEstablished(std::nullopt, adjRibInQ2, boundedOutQ2);
   adjRib2->sendAddPath_ = false; // non-add-path capable
   adjRib2->markStateEstablished();
   /* Do not skip non-initial announcement by marking egressEoRsSent as true. */
@@ -3318,8 +3303,6 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationMixTest) {
   auto& evb = peerMgr->getEventBase();
   auto adjRibInQ1 = std::make_shared<AdjRib::AdjRibInQueueT>();
   auto adjRibInQ2 = std::make_shared<AdjRib::AdjRibInQueueT>();
-  auto adjRibOutQ1 = std::make_shared<AdjRib::AdjRibOutQueueT>();
-  auto adjRibOutQ2 = std::make_shared<AdjRib::AdjRibOutQueueT>();
   auto boundedOutQ1 = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
   auto boundedOutQ2 = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
@@ -3354,15 +3337,13 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationMixTest) {
   peerMgr->adjRibs_[kPeerId2] = adjRib2;
 
   // Mark sessions as established
-  adjRib1->sessionEstablished(
-      std::nullopt, adjRibInQ1, adjRibOutQ1, boundedOutQ1);
+  adjRib1->sessionEstablished(std::nullopt, adjRibInQ1, boundedOutQ1);
   adjRib1->sendAddPath_ = true; // add-path capable
   adjRib1->markStateEstablished();
   /* Do not skip non-initial announcement by marking egressEoRsSent as true. */
   adjRib1->egressEoRsSent_ = true;
 
-  adjRib2->sessionEstablished(
-      std::nullopt, adjRibInQ2, adjRibOutQ2, boundedOutQ2);
+  adjRib2->sessionEstablished(std::nullopt, adjRibInQ2, boundedOutQ2);
   adjRib2->sendAddPath_ = false; // non-add-path capable
   adjRib2->markStateEstablished();
   /* Do not skip non-initial announcement by marking egressEoRsSent as true. */

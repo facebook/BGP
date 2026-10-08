@@ -937,7 +937,7 @@ TEST_F(AdjRibOutboundFixture, VerifyEgressFilteringFiber) {
      * to ensure processing is completed
      */
     fiberSleepFor(50ms);
-    EXPECT_TRUE(adjRibOutQ_->empty());
+    EXPECT_TRUE(boundedAdjRibOutQ_->empty());
     auto adjRibEntry = adjRib_->getRibEntry(/*ingress=*/false, kV4Prefix1);
     EXPECT_EQ(nullptr, adjRibEntry);
     EXPECT_EQ(0, adjRib_->getStats().getPostOutPrefixCount());
@@ -1491,7 +1491,7 @@ TEST_F(AdjRibOutboundFixture, VerifySendingEoRWithoutPrefixes) {
     ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*msg));
 
     fiberSleepFor(20ms);
-    EXPECT_TRUE(adjRibOutQ_->empty());
+    EXPECT_TRUE(boundedAdjRibOutQ_->empty());
 
     // Verify stats
     EXPECT_EQ(0, adjRib_->getStats().getPostOutPrefixCount());
@@ -2670,7 +2670,7 @@ TEST_F(AdjRibOutboundFixture, DeepComparePostOutAttributesBeforeNotifying) {
      * even though preOut updated (origin changed from EGP to IGP)
      */
     fiberSleepFor(40ms);
-    EXPECT_TRUE(adjRibOutQ_->empty());
+    EXPECT_TRUE(boundedAdjRibOutQ_->empty());
 
     EXPECT_EQ(
         BgpAttrOrigin::BGP_ORIGIN_IGP, adjRibEntry->getPreOut()->getOrigin());
@@ -2714,7 +2714,6 @@ TEST_F(AdjRibOutboundFixture, VerifyEgressEoRFlagsResetSessionEstablished) {
     adjRib_->sessionEstablished(
         std::nullopt /* remoteGrRestartTime */,
         adjRibInQ_,
-        adjRibOutQ_,
         boundedAdjRibOutQ_,
         true /* isAfiIpv4Negotiated */,
         true /* isAfiIpv6Negotiated */,
@@ -2798,7 +2797,7 @@ TEST_F(AdjRibOutboundFixture, VerifyEgressEoRsPendingSetDuringRibInitialDump) {
     EXPECT_EQ(BgpUpdateAfi::AFI_IPv6, std::get<BgpEndOfRib>(*msg3).afi());
 
     // no more msg in the queue
-    EXPECT_EQ(0, adjRibOutQ_->size());
+    EXPECT_EQ(0, boundedAdjRibOutQ_->size());
     EXPECT_FALSE(adjRib_->egressEoRsPending());
     EXPECT_TRUE(adjRib_->egressEoRsSent_);
 
@@ -2876,7 +2875,7 @@ TEST_F(AdjRibOutboundFixture, VerifyV4OverV6) {
       EXPECT_EQ(1, seenNexthops.size());
 
       // no more msg in the queue
-      EXPECT_EQ(0, adjRibOutQ_->size());
+      EXPECT_EQ(0, boundedAdjRibOutQ_->size());
 
       terminateAdjRib();
     });
@@ -2934,7 +2933,7 @@ TEST_F(AdjRibOutboundFixture, VerifyV4OverV6) {
       EXPECT_EQ(kV4Nexthop1.str(), *bgpUpdate->attrs()->nexthop());
 
       // no more msg in the queue
-      EXPECT_EQ(0, adjRibOutQ_->size());
+      EXPECT_EQ(0, boundedAdjRibOutQ_->size());
 
       terminateAdjRib();
     });
@@ -2985,7 +2984,7 @@ TEST_F(AdjRibOutboundFixture, VerifyV4OverV6) {
       EXPECT_EQ(kV6Nexthop1.str(), *bgpUpdate->attrs()->nexthop());
 
       // no more msg in the queue
-      EXPECT_EQ(0, adjRibOutQ_->size());
+      EXPECT_EQ(0, boundedAdjRibOutQ_->size());
 
       terminateAdjRib();
     });
@@ -3036,7 +3035,7 @@ TEST_F(AdjRibOutboundFixture, VerifyV4OverV6) {
       EXPECT_EQ(kV4Nexthop1.str(), *bgpUpdate->attrs()->nexthop());
 
       // no more msg in the queue
-      EXPECT_EQ(0, adjRibOutQ_->size());
+      EXPECT_EQ(0, boundedAdjRibOutQ_->size());
 
       terminateAdjRib();
     });
@@ -3078,7 +3077,7 @@ TEST_F(AdjRibOutboundFixture, VerifyAfiNegotiation) {
 
     fm_->addTask([&] {
       // nothing in the queue
-      EXPECT_EQ(0, adjRibOutQ_->size());
+      EXPECT_EQ(0, boundedAdjRibOutQ_->size());
       fiberSleepFor(50ms);
       terminateAdjRib();
     });
@@ -3133,7 +3132,7 @@ TEST_F(AdjRibOutboundFixture, VerifyAfiNegotiation) {
       EXPECT_EQ(kV6Nexthop1.str(), *bgpUpdate->attrs()->nexthop());
 
       // no more msg in the queue
-      EXPECT_EQ(0, adjRibOutQ_->size());
+      EXPECT_EQ(0, boundedAdjRibOutQ_->size());
 
       terminateAdjRib();
     });
@@ -3190,7 +3189,7 @@ TEST_F(AdjRibOutboundFixture, VerifyAfiNegotiation) {
        * v6 update didn't come through
        * no more msg in the queue
        */
-      EXPECT_EQ(0, adjRibOutQ_->size());
+      EXPECT_EQ(0, boundedAdjRibOutQ_->size());
       fiberSleepFor(50ms);
       terminateAdjRib();
     });
@@ -3256,7 +3255,7 @@ TEST_F(AdjRibOutboundFixture, VerifyAfiNegotiation) {
       EXPECT_EQ(kV6Nexthop1.str(), *bgpUpdate->attrs()->nexthop());
 
       // no more msg in the queue
-      EXPECT_EQ(0, adjRibOutQ_->size());
+      EXPECT_EQ(0, boundedAdjRibOutQ_->size());
 
       terminateAdjRib();
     });
@@ -3340,7 +3339,7 @@ TEST_F(AdjRibOutboundFixture, VerifyRouteFilterPolicyDeny) {
     ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*msg));
     msg = folly::coro::blockingWait(popFromEgressQueue());
     ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*msg));
-    EXPECT_TRUE(adjRibOutQ_->empty());
+    EXPECT_TRUE(boundedAdjRibOutQ_->empty());
     // Verify adjrib entry is proper
     auto adjRibEntry = adjRib_->getRibEntry(/*ingress=*/false, kV4Prefix1);
     EXPECT_NE(nullptr, adjRibEntry->getPreOut());

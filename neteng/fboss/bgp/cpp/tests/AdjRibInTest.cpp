@@ -2497,9 +2497,9 @@ TEST_F(AdjRibInboundFixture, RejectConfedAsPathFromNonConfedPeerWithEBGP) {
   fm_->addTask([&] {
     fiberSleepFor(50ms);
     // expect to see 2 notification
-    EXPECT_EQ(adjRibOutQ_->size(), 2);
-    auto result =
-        facebook::bgp::test::boundedBlockingPop(*adjRibOutQ_, "adjRibOutQ_");
+    EXPECT_EQ(boundedAdjRibOutQ_->size(), 2);
+    auto result = facebook::bgp::test::boundedBlockingPop(
+        *boundedAdjRibOutQ_, "boundedAdjRibOutQ_");
     auto ret = folly::variant_match(
         *result,
         [&](BgpNotification notification) {
@@ -2568,7 +2568,7 @@ TEST_F(AdjRibInboundFixture, CheckConfedAsPathFromConfedEbgpPeer) {
   fm_->addTask([&] {
     fiberSleepFor(50ms);
     // expect to see 2 notifications
-    EXPECT_EQ(adjRibOutQ_->size(), 2);
+    EXPECT_EQ(boundedAdjRibOutQ_->size(), 2);
     auto isUpdateErrNotification = folly::overload(
         [](const BgpNotification& notification) {
           EXPECT_EQ(
@@ -2585,13 +2585,13 @@ TEST_F(AdjRibInboundFixture, CheckConfedAsPathFromConfedEbgpPeer) {
         [](const BgpEndOfRib&) { return false; });
     // make sure both notifications are update error notification
     {
-      auto result =
-          facebook::bgp::test::boundedBlockingPop(*adjRibOutQ_, "adjRibOutQ_");
+      auto result = facebook::bgp::test::boundedBlockingPop(
+          *boundedAdjRibOutQ_, "boundedAdjRibOutQ_");
       EXPECT_TRUE(std::visit(isUpdateErrNotification, *result));
     }
     {
-      auto result =
-          facebook::bgp::test::boundedBlockingPop(*adjRibOutQ_, "adjRibOutQ_");
+      auto result = facebook::bgp::test::boundedBlockingPop(
+          *boundedAdjRibOutQ_, "boundedAdjRibOutQ_");
       EXPECT_TRUE(std::visit(isUpdateErrNotification, *result));
     }
     terminateAdjRib();
@@ -2644,7 +2644,7 @@ TEST_F(AdjRibInboundFixture, CheckConfedAsPathFromConfedPeerWithIBGP) {
   fm_->addTask([&] {
     fiberSleepFor(50ms);
     // expect not to see a notification
-    EXPECT_EQ(adjRibOutQ_->size(), 0);
+    EXPECT_EQ(boundedAdjRibOutQ_->size(), 0);
 
     terminateAdjRib();
   });
@@ -8734,7 +8734,6 @@ TEST_F(AdjRibInboundFixture, AdjRibInQueueConsumerScopeTest) {
     adjRib_->sessionEstablished(
         kLongGrRestartTime.count(),
         adjRibInQ_,
-        adjRibOutQ_,
         boundedAdjRibOutQ_,
         AfiIpv4Negotiated(true),
         AfiIpv6Negotiated(true));
@@ -8804,7 +8803,6 @@ TEST_F(AdjRibInboundFixture, AdjRibInQueueConsumerScopeExceptionPathTest) {
     adjRib_->sessionEstablished(
         kLongGrRestartTime.count(),
         adjRibInQ_,
-        adjRibOutQ_,
         boundedAdjRibOutQ_,
         AfiIpv4Negotiated(true),
         AfiIpv6Negotiated(true));

@@ -778,7 +778,7 @@ uint32_t AdjRib::buildAndQueueAnnouncements(uint64_t& bgpMessageCnt) noexcept {
 
     // Enqueue update
     bgpMessageCnt++;
-    adjRibOutQueue_->push(std::move(update));
+    boundedAdjRibOutQueue_->push(std::move(update));
 
     if (afi == BgpUpdateAfi::AFI_IPv4) {
       stats_.incrementSentAnnouncementsIpv4();
@@ -800,13 +800,6 @@ bool AdjRib::buildAndSendRouteRefresh(
 
   auto routeRefresh =
       buildRouteRefresh(afi, subtype, BgpUpdateSafi::SAFI_UNICAST);
-  if (!enableEgressQueueBackpressure_) {
-    if (!adjRibOutQueue_) {
-      return false;
-    }
-    adjRibOutQueue_->push(std::move(routeRefresh));
-    return true;
-  }
   if (!boundedAdjRibOutQueue_ || boundedAdjRibOutQueue_->isBlocked()) {
     return false;
   }
@@ -843,7 +836,7 @@ uint32_t AdjRib::buildAndQueueWithdrawals(uint64_t& bgpMessageCnt) noexcept {
   if (prefixesWithdrawn > 0) {
     stats_.incrementSentWithdrawals();
     bgpMessageCnt++;
-    adjRibOutQueue_->push(std::move(update));
+    boundedAdjRibOutQueue_->push(std::move(update));
   }
   return prefixesWithdrawn;
 }
@@ -870,11 +863,11 @@ void AdjRib::buildAndQueueEoRs(uint64_t& bgpMessageCnt) noexcept {
   // send out to FiberBgpPeerManager to send via socket
   if (sendV4EoR) {
     bgpMessageCnt++;
-    adjRibOutQueue_->push(buildEndOfRib(BgpUpdateAfi::AFI_IPv4));
+    boundedAdjRibOutQueue_->push(buildEndOfRib(BgpUpdateAfi::AFI_IPv4));
   }
   if (sendV6EoR) {
     bgpMessageCnt++;
-    adjRibOutQueue_->push(buildEndOfRib(BgpUpdateAfi::AFI_IPv6));
+    boundedAdjRibOutQueue_->push(buildEndOfRib(BgpUpdateAfi::AFI_IPv6));
   }
 }
 

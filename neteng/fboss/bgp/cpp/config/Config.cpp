@@ -967,7 +967,8 @@ void Config::populateConfigDatabase(
   bool enableDynamicPolicyEvaluation{false};
   bool enableUpdateGroup{false};
   UpdateGroupConfig updateGroupConfig;
-  bool enableEgressQueueBackpressure{false};
+  /* bgp++ always uses egress queue backpressure. */
+  const bool enableEgressQueueBackpressure{true};
   bool enableOptimizedGR{false};
   bool enableAddPathGrReconcile{false};
   bool enableLegacyV4NlriEncoding{false};
@@ -988,19 +989,8 @@ void Config::populateConfigDatabase(
             setting->enable_dynamic_policy_evaluation()) {
       enableDynamicPolicyEvaluation = *dynamicPolicyEvaluationFlag;
     }
-    if (auto egressBackPressureFlag =
-            setting->enable_egress_queue_backpressure()) {
-      enableEgressQueueBackpressure = *egressBackPressureFlag;
-    }
     if (auto updateGroupFlag = setting->enable_update_group()) {
       enableUpdateGroup = *updateGroupFlag;
-      if (enableUpdateGroup) {
-        /*
-         * Egress queue backpressure must be enabled if update group
-         * is enabled.
-         */
-        enableEgressQueueBackpressure = true;
-      }
     }
     if (auto regexes = setting->include_interface_regexes()) {
       includeInterfaceRegexes = *regexes;

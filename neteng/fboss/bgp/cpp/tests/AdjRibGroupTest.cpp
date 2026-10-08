@@ -2726,13 +2726,11 @@ TEST_F(AdjRibGroupPackingFixture, EorCountedSeparatelyFromUpdate) {
   auto adjRib = createMinimalAdjRib();
   auto adjRibInQ = std::make_shared<AdjRib::AdjRibInQueueT>(
       nettools::bgplib::kMaxIngressQueueSize);
-  auto adjRibOutQ = std::make_shared<AdjRib::AdjRibOutQueueT>();
   auto boundedAdjRibOutQ = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
       nettools::bgplib::kMaxEgressQueueSize,
       nettools::bgplib::kEgressQueueHighWatermark,
       nettools::bgplib::kEgressQueueLowWatermark);
-  adjRib->sessionEstablished(
-      std::nullopt, adjRibInQ, adjRibOutQ, boundedAdjRibOutQ);
+  adjRib->sessionEstablished(std::nullopt, adjRibInQ, boundedAdjRibOutQ);
   adjRib->setUpdateGroup(adjRibOutGroup_);
   adjRibOutGroup_->registerPeer(adjRib);
   adjRib->markStateEstablished();

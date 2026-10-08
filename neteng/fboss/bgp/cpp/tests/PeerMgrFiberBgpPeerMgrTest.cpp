@@ -957,7 +957,6 @@ CO_TEST_F(PeerManagerTestFixture, SessionTerminated_VipErasesDynamicEorState) {
       kVipAsn,
       std::nullopt,
       std::make_shared<AdjRib::AdjRibInQueueT>(),
-      std::make_shared<AdjRib::AdjRibOutQueueT>(),
       std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
           kMaxEgressQueueSize,
           kEgressQueueHighWatermark,
@@ -1019,7 +1018,6 @@ CO_TEST_F(PeerManagerTestFixture, SessionTerminated_ShutdownSkipsProcessing) {
       kVipAsn,
       std::nullopt,
       std::make_shared<AdjRib::AdjRibInQueueT>(),
-      std::make_shared<AdjRib::AdjRibOutQueueT>(),
       std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
           kMaxEgressQueueSize,
           kEgressQueueHighWatermark,

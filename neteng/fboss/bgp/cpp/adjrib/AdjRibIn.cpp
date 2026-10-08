@@ -1544,16 +1544,12 @@ bool AdjRib::validateAttributesIn(
         "Malformed AS_PATH update error Notification",
         "");
     // UPDATE Message Error Handling
-    if (enableEgressQueueBackpressure_) {
-      /*
-       * We guarantee space for notification messages because no other
-       * producers may write above the high watermark, so we directly
-       * write here.
-       */
-      boundedAdjRibOutQueue_->push(std::move(notification));
-    } else {
-      adjRibOutQueue_->push(std::move(notification));
-    }
+    /*
+     * We guarantee space for notification messages because no other
+     * producers may write above the high watermark, so we directly
+     * write here.
+     */
+    boundedAdjRibOutQueue_->push(std::move(notification));
     return false;
   }
 

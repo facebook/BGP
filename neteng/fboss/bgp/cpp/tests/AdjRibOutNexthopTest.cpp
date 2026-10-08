@@ -78,11 +78,10 @@ class AdjRibOutboundFixtureV4V6Nexthop
         false, // sessionEstablish
         AfiIpv4Negotiated(true));
     auto adjRib = adjRib_;
-    fm_->addTask([&, adjRib, adjRibInQ = adjRibInQ_, adjRibOutQ = adjRibOutQ_] {
+    fm_->addTask([&, adjRib, adjRibInQ = adjRibInQ_] {
       adjRib->sessionEstablished(
           std::nullopt, /* remoteGrRestartTime */
           adjRibInQ,
-          adjRibOutQ,
           boundedAdjRibOutQ_,
           true /* isAfiIpv4Negotiated */,
           true /* isAfiIpv6Negotiated */,
@@ -94,7 +93,6 @@ class AdjRibOutboundFixtureV4V6Nexthop
     });
     /* Restock the member queues on the test fixture for the next caller. */
     adjRibInQ_ = std::make_shared<AdjRib::AdjRibInQueueT>();
-    adjRibOutQ_ = std::make_shared<AdjRib::AdjRibOutQueueT>();
     return adjRib;
   }
 
@@ -311,7 +309,7 @@ TEST_P(AdjRibOutboundFixtureV4V6Nexthop, VerifyV4V6PrefixesNexthopsSet) {
     EXPECT_EQ(param.originalV6Nexthop, entryV6->getPostAttr()->getNexthop());
 
     // Verify no more messages in queue
-    EXPECT_EQ(0, adjRibOutQ_->size());
+    EXPECT_EQ(0, boundedAdjRibOutQ_->size());
 
     terminateAdjRib();
   });

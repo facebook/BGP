@@ -166,8 +166,6 @@ class SendBgpMessagesFixture : public AdjRibOutboundFixture {
         adjRib_->isAfiIpv4Negotiated_ && eorPending,
         adjRib_->isAfiIpv6Negotiated_ && eorPending);
 
-    // Attach out adjRibOutQueue_.
-    adjRib_->adjRibOutQueue_ = adjRibOutQ_;
     // Attach boundedAdjRibOutQueue_.
     adjRib_->boundedAdjRibOutQueue_ =
         std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
@@ -290,7 +288,6 @@ TEST_F(SendBgpMessagesFixture, SessionEstablishedCleanUp) {
   adjRib_->sessionEstablished(
       std::nullopt /* remoteGrRestartTime */,
       std::make_shared<AdjRib::AdjRibInQueueT>(),
-      std::make_shared<AdjRib::AdjRibOutQueueT>(),
       std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
           capacity_, highWm_, lowWm_));
 
@@ -495,28 +492,6 @@ CO_TEST_F(SendBgpMessagesFixtureWithBackpressure, SendPendingEoRsTest) {
   EXPECT_FALSE(adjRib_->egressEoRsPending());
 }
 
-TEST_F(SendBgpMessagesFixture, RouteRefreshUsesUnboundedEgressQueue) {
-  SetUpAdjRibStateForUnit(
-      false /* eorPending */,
-      false /* eorSent */,
-      true /* v4Afi */,
-      true /* v6Afi */,
-      false /* enableEgressQueueBackpressure */);
-
-  EXPECT_TRUE(adjRib_->buildAndSendRouteRefresh(
-      BgpRouteRefreshMessageSubtype::ROUTE_REFRESH_REQUEST,
-      BgpUpdateAfi::AFI_IPv4));
-
-  EXPECT_TRUE(adjRib_->boundedAdjRibOutQueue_->empty());
-  ASSERT_EQ(adjRibOutQ_->size(), 1);
-  const auto message =
-      facebook::bgp::test::boundedBlockingPop(*adjRibOutQ_, "adjRibOutQ_");
-  ASSERT_TRUE(std::holds_alternative<BgpRouteRefresh>(*message));
-  EXPECT_EQ(
-      BgpUpdateAfi::AFI_IPv4,
-      std::get<BgpRouteRefresh>(*message).afi().value());
-}
-
 TEST_F(
     SendBgpMessagesFixtureWithBackpressure,
     RouteRefreshUsesBoundedEgressQueue) {
@@ -531,7 +506,6 @@ TEST_F(
         BgpRouteRefreshMessageSubtype::ROUTE_REFRESH_REQUEST, afi));
   }
 
-  EXPECT_TRUE(adjRibOutQ_->empty());
   ASSERT_EQ(adjRib_->boundedAdjRibOutQueue_->size(), 2);
   for (const auto expectedAfi :
        {BgpUpdateAfi::AFI_IPv4, BgpUpdateAfi::AFI_IPv6}) {
@@ -557,7 +531,6 @@ TEST_F(
       BgpUpdateAfi::AFI_IPv4));
 
   EXPECT_EQ(adjRib_->boundedAdjRibOutQueue_->size(), highWm_);
-  EXPECT_TRUE(adjRibOutQ_->empty());
 }
 
 TEST_F(
@@ -574,7 +547,6 @@ TEST_F(
       BgpUpdateAfi::AFI_IPv4));
 
   EXPECT_TRUE(adjRib_->boundedAdjRibOutQueue_->empty());
-  EXPECT_TRUE(adjRibOutQ_->empty());
 }
 
 TEST_F(
@@ -594,30 +566,6 @@ TEST_F(
 
   EXPECT_TRUE(adjRib_->egressEoRPendingV4());
   EXPECT_FALSE(adjRib_->egressEoRPendingV6());
-}
-
-TEST_F(
-    SendBgpMessagesFixture,
-    RouteRefreshOnlyQueuesRequestedAfiEoRWithoutBackpressure) {
-  SetUpAdjRibStateForUnit(
-      false /* eorPending */,
-      false /* eorSent */,
-      true /* v4Afi */,
-      true /* v6Afi */,
-      false /* enableEgressQueueBackpressure */);
-
-  RibOutAnnouncement announcement;
-  announcement.initialDump = true;
-  announcement.routeRefreshAfi = BgpUpdateAfi::AFI_IPv4;
-  announcement.sendWithEoR = true;
-  adjRib_->processRibMessage(announcement);
-
-  ASSERT_EQ(adjRibOutQ_->size(), 1);
-  const auto message =
-      facebook::bgp::test::boundedBlockingPop(*adjRibOutQ_, "adjRibOutQ_");
-  ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*message));
-  EXPECT_EQ(BgpUpdateAfi::AFI_IPv4, std::get<BgpEndOfRib>(*message).afi());
-  EXPECT_FALSE(adjRib_->egressEoRsPending());
 }
 
 TEST_F(

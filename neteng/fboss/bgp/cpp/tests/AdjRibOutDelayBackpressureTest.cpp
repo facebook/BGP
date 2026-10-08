@@ -65,7 +65,6 @@ class AdjRibOutDelayFixture : public AdjRibOutboundFixture {
     adjRib_->pathIdGenerator_ = std::make_unique<PathIdGenerator>(false);
 
     /* Attach queues. */
-    adjRib_->adjRibOutQueue_ = std::make_shared<AdjRib::AdjRibOutQueueT>();
     adjRib_->boundedAdjRibOutQueue_ =
         std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
             5 /* capacity */, 3 /* highWm */, 0 /* lowWm */);

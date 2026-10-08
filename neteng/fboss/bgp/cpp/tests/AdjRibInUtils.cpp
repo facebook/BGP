@@ -764,7 +764,6 @@ void AdjRibInboundFixture::establishSession(
              ? std::optional<uint16_t>(remoteGrRestartTime->count())
              : std::nullopt),
         adjRibInQ_,
-        adjRibOutQ_,
         boundedAdjRibOutQ_,
         isAfiIpv4Negotiated,
         isAfiIpv6Negotiated,
@@ -798,7 +797,6 @@ void AdjRibInboundFixture::reEstablishSession(
            ? std::optional<uint16_t>(remoteGrRestartTime->count())
            : std::nullopt),
       adjRibInQ_,
-      adjRibOutQ_,
       boundedAdjRibOutQ_,
       isAfiIpv4Negotiated,
       isAfiIpv6Negotiated,

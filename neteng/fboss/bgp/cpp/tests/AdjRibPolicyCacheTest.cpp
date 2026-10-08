@@ -667,13 +667,14 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheLruEviction) {
      * Announcement 1 will not lead to any bgp update but
      * we should see v4 and v6 EoRs
      */
-    auto msg =
-        facebook::bgp::test::boundedBlockingPop(*adjRibOutQ_, "adjRibOutQ_");
+    auto msg = facebook::bgp::test::boundedBlockingPop(
+        *boundedAdjRibOutQ_, "boundedAdjRibOutQ_");
     ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*msg));
-    msg = facebook::bgp::test::boundedBlockingPop(*adjRibOutQ_, "adjRibOutQ_");
+    msg = facebook::bgp::test::boundedBlockingPop(
+        *boundedAdjRibOutQ_, "boundedAdjRibOutQ_");
     ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*msg));
 
-    EXPECT_TRUE(adjRibOutQ_->empty());
+    EXPECT_TRUE(boundedAdjRibOutQ_->empty());
     auto adjRibEntry = adjRib_->getRibEntry(/*ingress=*/false, kV4Prefix1);
     auto igpPreOut = adjRibEntry->getPreOut();
     ASSERT_NE(nullptr, igpPreOut);
@@ -700,7 +701,8 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheLruEviction) {
     pfx1EgpUpdateBaton.post();
     fiberSleepFor(10ms);
     // Verifying only after Announcement 2 is sent
-    msg = facebook::bgp::test::boundedBlockingPop(*adjRibOutQ_, "adjRibOutQ_");
+    msg = facebook::bgp::test::boundedBlockingPop(
+        *boundedAdjRibOutQ_, "boundedAdjRibOutQ_");
     ASSERT_TRUE(
         std::holds_alternative<std::shared_ptr<const BgpUpdate2>>(*msg));
     auto bgpUpdate = std::get<std::shared_ptr<const BgpUpdate2>>(*msg);
@@ -811,7 +813,8 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheLruEviction) {
      */
     pfx2EgpUpdateBaton.post();
     fiberSleepFor(10ms);
-    msg = facebook::bgp::test::boundedBlockingPop(*adjRibOutQ_, "adjRibOutQ_");
+    msg = facebook::bgp::test::boundedBlockingPop(
+        *boundedAdjRibOutQ_, "boundedAdjRibOutQ_");
     EXPECT_EQ(2, adjRib_->policyCache_->size());
     {
       adjRibEntry = adjRib_->getRibEntry(/*ingress=*/false, kV4Prefix1);
@@ -845,7 +848,8 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheLruEviction) {
      */
     pfx3IncompleteUpdateBaton.post();
     fiberSleepFor(10ms);
-    msg = facebook::bgp::test::boundedBlockingPop(*adjRibOutQ_, "adjRibOutQ_");
+    msg = facebook::bgp::test::boundedBlockingPop(
+        *boundedAdjRibOutQ_, "boundedAdjRibOutQ_");
     EXPECT_EQ(2, adjRib_->policyCache_->size());
     {
       adjRibEntry = adjRib_->getRibEntry(/*ingress=*/false, kV4Prefix3);
@@ -927,13 +931,14 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheStaleEviction) {
      * Announcement 1 will not lead to any bgp update but
      * we should see v4 and v6 EoRs
      */
-    auto msg =
-        facebook::bgp::test::boundedBlockingPop(*adjRibOutQ_, "adjRibOutQ_");
+    auto msg = facebook::bgp::test::boundedBlockingPop(
+        *boundedAdjRibOutQ_, "boundedAdjRibOutQ_");
     ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*msg));
-    msg = facebook::bgp::test::boundedBlockingPop(*adjRibOutQ_, "adjRibOutQ_");
+    msg = facebook::bgp::test::boundedBlockingPop(
+        *boundedAdjRibOutQ_, "boundedAdjRibOutQ_");
     ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*msg));
 
-    EXPECT_TRUE(adjRibOutQ_->empty());
+    EXPECT_TRUE(boundedAdjRibOutQ_->empty());
     auto adjRibEntry = adjRib_->getRibEntry(/*ingress=*/false, kV4Prefix1);
     auto igpPreOut = adjRibEntry->getPreOut();
     ASSERT_NE(nullptr, igpPreOut);
@@ -960,7 +965,8 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheStaleEviction) {
     baton.post();
     fiberSleepFor(10ms);
     // Verifying only after Announcement 2 is sent
-    msg = facebook::bgp::test::boundedBlockingPop(*adjRibOutQ_, "adjRibOutQ_");
+    msg = facebook::bgp::test::boundedBlockingPop(
+        *boundedAdjRibOutQ_, "boundedAdjRibOutQ_");
     ASSERT_TRUE(
         std::holds_alternative<std::shared_ptr<const BgpUpdate2>>(*msg));
     auto bgpUpdate = std::get<std::shared_ptr<const BgpUpdate2>>(*msg);
