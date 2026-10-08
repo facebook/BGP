@@ -309,8 +309,6 @@ class AdjRib : boost::noncopyable,
       }
       switchLimitConfig_ = config->getBgpSwitchLimitConfig();
       if (auto globalConfig = config->getBgpGlobalConfig()) {
-        enableEgressQueueBackpressure_ =
-            globalConfig->enableEgressQueueBackpressure;
         enableUpdateGroup_ = globalConfig->enableUpdateGroup;
         enableOptimizedGR_ = globalConfig->enableOptimizedGR;
         enableAddPathGrReconcile_ = globalConfig->enableAddPathGrReconcile;
@@ -1193,14 +1191,6 @@ class AdjRib : boost::noncopyable,
    * via MockAdjRib.
    */
   virtual void processRibMessage(const RibOutMessage& update) noexcept;
-
-  void enableEgressQueueBackpressure(bool enable) {
-    enableEgressQueueBackpressure_ = enable;
-  }
-
-  bool isEnableEgressQueueBackpressure() {
-    return enableEgressQueueBackpressure_;
-  }
 
   /*
    * This function enables or disables the update-group state machine for this
@@ -2877,14 +2867,6 @@ class AdjRib : boost::noncopyable,
    * pre-qualified scale without the risk of instability or memory exhaustion.
    */
   std::shared_ptr<thrift::BgpSwitchLimitConfig> switchLimitConfig_;
-
-  /**
-   * Feature flag to enable egress queue backpressure.
-   * When this flag is enabled, we use bounded egress queues to send
-   * messages to FiberBgpPeer, and can handle scenarios when the bounded
-   * queue blocks a producer from writing.
-   */
-  bool enableEgressQueueBackpressure_{false};
 
   /*
    * Feature flag to enable update group feature

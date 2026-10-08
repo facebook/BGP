@@ -22,11 +22,6 @@
 
 #include "neteng/fboss/bgp/cpp/lib/BgpStructs.h"
 
-DEFINE_bool(
-    enable_egress_backpressure_in_adjribin_tests,
-    false,
-    "Parameterize egress queue backpressure enabled/disabled in AdjRibIn tests.");
-
 namespace facebook::bgp {
 
 // BGP update with prefilled attributes and single v4 announced prefix
@@ -610,8 +605,6 @@ void AdjRibInboundFixture::setupAdjRib(
       std::nullopt, /* outDelay */
       config_ ? std::make_shared<ConfigManager>(config_) : nullptr);
   adjRib_->remoteAs_ = remoteAs.value_or(configuredRemoteAs);
-  adjRib_->enableEgressQueueBackpressure(
-      FLAGS_enable_egress_backpressure_in_adjribin_tests);
 
   if (callSessionEstablished) {
     establishSession(
@@ -640,8 +633,6 @@ std::shared_ptr<AdjRib> AdjRibInboundFixture::setupAdjRib(
       adjRibOutGroup,
       std::nullopt /* outDelay */,
       config_ ? std::make_shared<ConfigManager>(config_) : nullptr);
-  adjRib->enableEgressQueueBackpressure(
-      FLAGS_enable_egress_backpressure_in_adjribin_tests);
 
   return adjRib;
 }

@@ -154,7 +154,6 @@ class SendBgpMessagesFixture : public AdjRibOutboundFixture {
       const bool enableIPv6 = false,
       const bool enableEgressQueueBackpressure = true) {
     setupAdjRibForOutUnitTest();
-    adjRib_->enableEgressQueueBackpressure_ = enableEgressQueueBackpressure;
 
     // Set up EoR sent adjRib state.
     adjRib_->egressEoRsSent_ = eorSent;
@@ -1456,9 +1455,6 @@ CO_TEST_F(SendBgpMessagesFixtureWithBackpressure, QueueCloseTest) {
   // Run event loop to let the session establishment fiber task complete
   evb_.loopOnce();
 
-  // Enable egress backpressure for this test
-  adjRib_->enableEgressQueueBackpressure_ = true;
-
   // Set up EoR sent adjRib state
   adjRib_->setEgressEoRsPending(false, false);
   adjRib_->egressEoRsSent_ = true;
@@ -1533,9 +1529,6 @@ CO_TEST_F(
 
   // Run event loop to let the session establishment fiber task complete
   evb_.loopOnce();
-
-  // Enable egress backpressure for this test
-  adjRib_->enableEgressQueueBackpressure_ = true;
 
   // Set up EoR sent state (normal operating state)
   adjRib_->setEgressEoRsPending(false, false);

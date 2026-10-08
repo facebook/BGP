@@ -40,8 +40,6 @@ using facebook::network::toIPPrefix;
 using folly::fibers::EventBaseLoopController;
 using folly::fibers::FiberManager;
 
-DECLARE_bool(enable_egress_backpressure_in_adjribin_tests);
-
 namespace facebook::bgp {
 
 // BGP update with prefilled attributes and single v4 announced prefix

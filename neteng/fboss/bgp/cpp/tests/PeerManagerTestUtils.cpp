@@ -27,11 +27,6 @@
 #include "neteng/fboss/bgp/cpp/config/facebook/ConfigDC.h"
 #include "neteng/fboss/bgp/cpp/tests/BoundedWaitUtils.h"
 
-DEFINE_bool(
-    enable_egress_backpressure_in_peer_mgr_tests,
-    false,
-    "Parameterize egress backpressure enabled/disabled in PeerManagerBase tests.");
-
 /*
  * The fiber default is 16KB. We are increasing the default due to nested
  * recursion with large stack due to installed exception handlers.
@@ -478,8 +473,6 @@ std::shared_ptr<Config> PeerManagerTestFixture::getConfig(
   tBgpSettingConfig.features() = bgpFeatures;
   tBgpSettingConfig.enable_dynamic_policy_evaluation() =
       enableDynamicPolicyEvaluation;
-  tBgpSettingConfig.enable_egress_queue_backpressure() =
-      FLAGS_enable_egress_backpressure_in_peer_mgr_tests;
   tBgpSettingConfig.enable_update_group() = enableUpdateGroup;
 
   // Move the settings into the thrift config
@@ -915,12 +908,10 @@ PeerManagerTestFixture::getMockPeerInfo(
 folly::coro::Task<void> PeerManagerTestFixture::waitForAdjRibsToProcessUpdates(
     folly::EventBase& evb,
     std::vector<std::shared_ptr<AdjRib::BoundedAdjRibOutQueueT>> queues) {
-  if (FLAGS_enable_egress_backpressure_in_peer_mgr_tests) {
-    evb.loopOnce();
-    for (auto& q : queues) {
-      while (!q->empty()) {
-        co_await facebook::bgp::test::boundedPop(*q, "q");
-      }
+  evb.loopOnce();
+  for (auto& q : queues) {
+    while (!q->empty()) {
+      co_await facebook::bgp::test::boundedPop(*q, "q");
     }
   }
 }

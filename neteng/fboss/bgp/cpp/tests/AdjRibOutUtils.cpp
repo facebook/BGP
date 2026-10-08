@@ -20,11 +20,6 @@
 
 #include <folly/container/small_vector.h>
 
-DEFINE_bool(
-    enable_egress_backpressure_in_adjribout_tests,
-    false,
-    "Parameterize egress backpressure enabled/disabled in AdjRibOut tests.");
-
 namespace facebook::bgp {
 
 /**
@@ -161,9 +156,6 @@ void AdjRibOutboundFixture::setupAdjRib(
       std::nullopt /* outDelay */,
       config_ ? std::make_shared<ConfigManager>(config_) : nullptr);
   adjRib_->remoteAs_ = remoteAs;
-
-  adjRib_->enableEgressQueueBackpressure(
-      FLAGS_enable_egress_backpressure_in_adjribout_tests);
 
   if (sessionEstablish) {
     fm_->addTask([&,

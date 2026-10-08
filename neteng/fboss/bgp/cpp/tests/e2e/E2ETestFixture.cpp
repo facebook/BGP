@@ -99,8 +99,6 @@ std::shared_ptr<Config> E2ETestFixture::getConfig(
 
   /* Setup bgp_setting_config */
   thrift::BgpSettingConfig tBgpSettingConfig;
-  tBgpSettingConfig.enable_egress_queue_backpressure() =
-      FLAGS_enable_egress_backpressure_in_peer_mgr_tests;
   tBgpSettingConfig.enable_update_group() = enableUpdateGroup;
   tBgpSettingConfig.enable_next_hop_tracking() = enableNexthopTracking_;
   {
@@ -1368,9 +1366,6 @@ void E2ETestFixture::createPeerManager(
     bool /* enableEgressBackpressure */,
     bool enableSerializeGroupPdu) {
   XLOG(INFO, "=== Creating PeerManagerBase... ===");
-
-  /* bgp++ always runs with egress queue backpressure. */
-  FLAGS_enable_egress_backpressure_in_peer_mgr_tests = true;
 
   /* Get config with dynamic peers */
   config_ = getConfig(enableUpdateGroup, enableSerializeGroupPdu);

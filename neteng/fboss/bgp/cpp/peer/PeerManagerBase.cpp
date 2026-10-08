@@ -3703,7 +3703,6 @@ void PeerManagerBase::setSubscriberAdjRib(
    * timer starts again when the reader takes the queue below the low
    * watermark.
    */
-  adjRib->enableEgressQueueBackpressure(true);
   /*
    * The AdjRib of a subscriber is never registered with UpdateGroupManager.
    * It keeps the per-peer AdjRibOutGroup that createAdjRib() built with

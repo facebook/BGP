@@ -30,8 +30,6 @@
 #include "neteng/fboss/bgp/cpp/tests/PolicyUtils.h"
 #include "neteng/fboss/bgp/if/gen-cpp2/bgp_thrift_types.h"
 
-DECLARE_bool(enable_egress_backpressure_in_adjribout_tests);
-
 using facebook::bgp::bgp_policy::BgpPolicyActionType;
 using facebook::bgp::bgp_policy::BgpPolicyAtomicMatchType;
 using facebook::bgp::routing_policy::BooleanOperator;

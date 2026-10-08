@@ -590,12 +590,10 @@ TEST_F(NexthopSetByPolicyTest, iBgpPeer_NoNexthopSelf_NoFlag_KeepsOriginal) {
 TEST_F(
     AdjRibOutboundFixture,
     AnnounceThenImplicitWithdraw_PolicyNexthop_OrphansAnnounce) {
-  gflags::FlagSaver flags;
   /*
    * Backpressure ON: processRibMessage stages into attrToPrefixMap_ without
    * draining, so the announce is still pending when the withdraw arrives.
    */
-  FLAGS_enable_egress_backpressure_in_adjribout_tests = true;
 
   /*
    * IBGP peer with an EGRESS policy whose only action sets the nexthop, so

@@ -118,9 +118,6 @@ void E2ESessionTestFixture::createPeerManager(
     bool enableSerializeGroupPdu) {
   XLOG(INFO, "=== Creating PeerManagerBase with E2ETestSessionManager... ===");
 
-  /* bgp++ always runs with egress queue backpressure. */
-  FLAGS_enable_egress_backpressure_in_peer_mgr_tests = true;
-
   config_ = getConfig(enableUpdateGroup, enableSerializeGroupPdu);
   auto globalConfig = config_->getBgpGlobalConfig();
   ASSERT_NE(globalConfig, nullptr);

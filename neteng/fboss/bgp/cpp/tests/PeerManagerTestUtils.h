@@ -35,7 +35,6 @@
 #include "neteng/fboss/bgp/cpp/tests/Utils.h"
 
 DECLARE_int32(fiber_stack_size);
-DECLARE_bool(enable_egress_backpressure_in_peer_mgr_tests);
 
 namespace facebook {
 namespace bgp {
