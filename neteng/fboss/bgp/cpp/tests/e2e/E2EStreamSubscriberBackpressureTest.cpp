@@ -413,19 +413,6 @@ class StreamSubscriberBackpressureTest : public E2ETestFixture {
 };
 
 /*
- * The gflag is false and the config says nothing. The subscriber must use the
- * unbounded egress path. Its queue must never block, and the subscriber must
- * still receive every route.
- */
-class StreamSubscriberNoBackpressureTest
-    : public StreamSubscriberBackpressureTest {
- protected:
-  bool gflagBackpressure() const override {
-    return false;
-  }
-};
-
-/*
  * This is the main test. A receiver that stops to read must keep the queue
  * at its bound and must stop the change-list consumer. After the receiver
  * reads again, it must get every route.
@@ -727,46 +714,6 @@ TEST_F(
 }
 
 /*
- * The config disables the feature while the gflag enables it. This is the way
- * to disable the bounded path on a device with a config push. The config must
- * win, and the subscriber must use the unbounded path.
- */
-class StreamSubscriberConfigDisableTest
-    : public StreamSubscriberBackpressureTest {
- protected:
-  std::optional<bool> configBackpressure() const override {
-    return false;
-  }
-  bool gflagBackpressure() const override {
-    return true;
-  }
-};
-
-TEST_F(StreamSubscriberConfigDisableTest, ConfigFalseOverridesGflagTrue) {
-  auto& monitor = makeMonitor(kMonitorName);
-  monitor.start();
-  ASSERT_TRUE(waitForSubscriberEstablished(kMonitorName, /*established=*/true));
-
-  peerManager_->getEventBase().runInEventBaseThreadAndWait([&]() {
-    auto* subscriber = peerManager_->getStreamSubscriber(kMonitorName);
-    ASSERT_NE(subscriber, nullptr);
-    EXPECT_FALSE(subscriber->boundedEgress);
-    /* The unbounded path serves the stream through a publisher. */
-    EXPECT_NE(subscriber->publisher, nullptr);
-  });
-
-  const auto expected = injectDistinctRoutes(20, 22);
-
-  /* The bounded queue stays unused, so it cannot block. */
-  EXPECT_THAT(
-      isSubscriberQueueBlocked(kMonitorName), ::testing::Optional(false));
-
-  monitor.resume();
-  EXPECT_TRUE(monitor.waitForEoR());
-  EXPECT_TRUE(monitor.waitForAnnouncedPrefixes(expected));
-}
-
-/*
  * The config enables the feature while the gflag disables it. The config must
  * win, and the subscriber must use the bounded path.
  */
@@ -801,40 +748,6 @@ TEST_F(StreamSubscriberConfigEnableTest, ConfigTrueOverridesGflagFalse) {
 
   monitor.resume();
   EXPECT_TRUE(waitForSubscriberQueueUnblocked(kMonitorName));
-  EXPECT_TRUE(monitor.waitForAnnouncedPrefixes(expected));
-}
-
-/*
- * With the feature disabled the unbounded path must not change. bgpd must not
- * mark the subscriber as bounded, the bounded queue must stay unused and
- * unblocked, and every route must reach a monitor that gives no stream credit
- * until the end of the test.
- */
-TEST_F(StreamSubscriberNoBackpressureTest, LegacyUnboundedPathUnchanged) {
-  auto& monitor = makeMonitor(kMonitorName);
-  monitor.start();
-  ASSERT_TRUE(waitForSubscriberEstablished(kMonitorName, /*established=*/true));
-
-  peerManager_->getEventBase().runInEventBaseThreadAndWait([&]() {
-    auto* subscriber = peerManager_->getStreamSubscriber(kMonitorName);
-    ASSERT_NE(subscriber, nullptr);
-    EXPECT_FALSE(subscriber->boundedEgress);
-    /* The unbounded path serves the stream through a publisher. */
-    EXPECT_NE(subscriber->publisher, nullptr);
-  });
-
-  const auto expected = injectDistinctRoutes(20, 18);
-
-  /*
-   * The unbounded path does not use the bounded queue. Therefore that queue
-   * cannot block.
-   */
-  EXPECT_THAT(
-      isSubscriberQueueBlocked(kMonitorName), ::testing::Optional(false));
-  EXPECT_THAT(getSubscriberQueueSize(kMonitorName), ::testing::Optional(0u));
-
-  monitor.resume();
-  EXPECT_TRUE(monitor.waitForEoR());
   EXPECT_TRUE(monitor.waitForAnnouncedPrefixes(expected));
 }
 

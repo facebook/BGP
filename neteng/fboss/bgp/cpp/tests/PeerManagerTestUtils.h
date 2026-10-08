@@ -245,8 +245,6 @@ class PeerManagerTestFixture : public ::testing::Test {
   std::shared_ptr<MockSessionManager> setupMockSessionManager(
       std::shared_ptr<MockPeerManager>& mockPeerMgr);
 
-  void runEoRTest(bool isSess1Restarting, bool isSess2Restarting);
-
   // Helper function to create a mock peer info for a static peer
   std::shared_ptr<nettools::bgplib::BgpPeerDisplayInfo> getMockPeerInfo(
       const folly::IPAddress& peerAddr,

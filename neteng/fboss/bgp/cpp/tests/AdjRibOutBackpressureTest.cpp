@@ -1202,53 +1202,6 @@ TEST_F(SendBgpMessagesFixture, NotifyConsumeChangeListAfterEoR) {
   EXPECT_TRUE(adjRib_->changeListConsumeTimer_->isScheduled());
 }
 
-TEST_F(SendBgpMessagesFixture, PackPrefixesTest) {
-  SetUpAdjRibStateForUnit(true /* eorPending */, true /* eorSent */);
-  auto pfxPathId = std::make_pair(kV4Prefix1, kDefaultPathID);
-  PrefixSet pfxSet = {pfxPathId};
-  std::vector<RiggedIPPrefix> container;
-
-  {
-    auto& messages = subscribeToLogMessages("");
-    PrefixSet empty;
-    adjRib_->packPrefixes(empty, container);
-    EXPECT_EQ(1, messages.size());
-    EXPECT_THAT(
-        messages[0].first.getMessage(),
-        testing::HasSubstr("Unexpected empty prefix set in"));
-  }
-
-  {
-    adjRib_->sendAddPath_ = false;
-    EXPECT_EQ(1, adjRib_->packPrefixes(pfxSet, container));
-
-    EXPECT_TRUE(pfxSet.empty());
-    EXPECT_EQ(1, container.size());
-
-    EXPECT_EQ(network::toIPPrefix(kV4Prefix1), container[0].prefix());
-    EXPECT_FALSE(container.front().pathId().has_value());
-  }
-
-  pfxSet.emplace(kV4Prefix2, 2 /* pathId */);
-  pfxSet.emplace(kV4Prefix3, 2 /* pathId */);
-  pfxSet.emplace(kV4Prefix4, 2 /* pathId */);
-  container.clear();
-  {
-    adjRib_->sendAddPath_ = true;
-    EXPECT_EQ(3, adjRib_->packPrefixes(pfxSet, container));
-
-    EXPECT_TRUE(pfxSet.empty());
-    EXPECT_EQ(3, container.size());
-
-    EXPECT_EQ(network::toIPPrefix(kV4Prefix4), container[0].prefix());
-    EXPECT_EQ(network::toIPPrefix(kV4Prefix3), container[1].prefix());
-    EXPECT_EQ(network::toIPPrefix(kV4Prefix2), container[2].prefix());
-    EXPECT_EQ(2, container[0].pathId());
-    EXPECT_EQ(2, container[1].pathId());
-    EXPECT_EQ(2, container[2].pathId());
-  }
-}
-
 TEST_F(SendBgpMessagesFixture, PackPrefixesWithLimitTest) {
   SetUpAdjRibStateForUnit(true /* eorPending */, true /* eorSent */);
   PrefixSet pfxSetV4;
@@ -1351,55 +1304,6 @@ TEST_F(SendBgpMessagesFixture, PackPrefixesWithLimitTest) {
     EXPECT_EQ(network::toIPPrefix(kV6Prefix1), *container[1].prefix());
     EXPECT_EQ(network::toIPPrefix(kV6Prefix1), *container[2].prefix());
   }
-}
-
-TEST_F(SendBgpMessagesFixture, BuildAndQueueWithdrawalsTest) {
-  SetUpAdjRibStateForUnit(true /* eorPending */, true /* eorSent */);
-  UpdateAttrToPrefixMap(nullptr, {kV4Prefix1, kV6Prefix1});
-  EXPECT_EQ(2, adjRib_->attrToPrefixMap_.size());
-
-  uint64_t msgCnt = 0;
-  EXPECT_EQ(2, adjRib_->buildAndQueueWithdrawals(msgCnt));
-  EXPECT_EQ(1, msgCnt);
-
-  EXPECT_EQ(1, adjRib_->adjRibOutQueue_->size());
-
-  auto msg = facebook::bgp::test::boundedBlockingPop(
-      *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
-  auto withdrawal = std::get<std::shared_ptr<const BgpUpdate2>>(*msg);
-
-  EXPECT_EQ(
-      network::toIPPrefix(kV4Prefix1),
-      withdrawal->v4Withdrawn2()->front().prefix());
-
-  EXPECT_EQ(
-      network::toIPPrefix(kV6Prefix1),
-      withdrawal->mpWithdrawn()->prefixes()->front().prefix());
-}
-
-TEST_F(SendBgpMessagesFixture, BuildAndQueueAnnouncementsTest) {
-  SetUpAdjRibStateForUnit(true /* eorPending */, true /* eorSent */);
-  UpdateAttrToPrefixMap(GetBgpPath(kV4Nexthop1), {kV4Prefix1, kV6Prefix1});
-  EXPECT_EQ(2, adjRib_->attrToPrefixMap_.size());
-
-  uint64_t msgCnt = 0;
-  EXPECT_EQ(2, adjRib_->buildAndQueueAnnouncements(msgCnt));
-  EXPECT_EQ(2, msgCnt);
-  EXPECT_EQ(2, adjRib_->adjRibOutQueue_->size());
-
-  auto msg1 = facebook::bgp::test::boundedBlockingPop(
-      *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
-  auto msg2 = facebook::bgp::test::boundedBlockingPop(
-      *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
-  auto v6Update = std::get<std::shared_ptr<const BgpUpdate2>>(*msg1);
-  auto v4Update = std::get<std::shared_ptr<const BgpUpdate2>>(*msg2);
-
-  EXPECT_EQ(
-      network::toIPPrefix(kV4Prefix1),
-      v4Update->mpAnnounced()->prefixes()->front().prefix());
-  EXPECT_EQ(
-      network::toIPPrefix(kV6Prefix1),
-      v6Update->mpAnnounced()->prefixes()->front().prefix());
 }
 
 TEST_F(SendBgpMessagesFixture, BuildUpdateWithSizeEstimationTest) {

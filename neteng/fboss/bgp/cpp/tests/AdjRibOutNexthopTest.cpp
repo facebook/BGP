@@ -37,7 +37,6 @@
 #include <folly/logging/xlog.h>
 
 #include "neteng/fboss/bgp/cpp/tests/AdjRibOutUtils.h"
-#include "neteng/fboss/bgp/cpp/tests/BoundedWaitUtils.h"
 
 namespace facebook::bgp {
 using namespace facebook::nettools::bgplib;
@@ -137,69 +136,6 @@ class AdjRibOutboundFixtureV4V6Nexthop
         nettools::bgplib::FiberBgpPeer::BgpSessionStop{false});
   }
 };
-
-TEST_F(
-    AdjRibOutboundFixtureV4V6Nexthop,
-    VerifyNormalizedNexthop_BuildAndQueueAnnouncements) {
-  gflags::FlagSaver flags;
-  FLAGS_enable_egress_backpressure_in_adjribout_tests = false;
-  /*
-   * Make two AdjRibs with different configured nexthops.
-   * They will set the nexthop on egress attributes to self.
-   */
-  auto adjRib1 = setupEbgpAdjRib(kV4Nexthop1, kV6Nexthop1);
-  auto adjRib2 = setupEbgpAdjRib(kV4Nexthop2, kV6Nexthop2);
-
-  /*
-   * Create one shared attr from RIB and announce kV4Prefix1 to adjRib1
-   * and kV4Prefix2 to adjRib2. To verify the total deduplication at the
-   * end of the test, clone the attr for each AdjRib so their memory
-   * is even different.
-   */
-  BgpUpdate2 update = buildBgpUpdateAttributes(kV4Nexthop3);
-  auto attrs1 = std::make_shared<facebook::bgp::BgpPath>(
-      BgpPathFields(*BgpUpdate2toBgpPathC(update)));
-  auto attrs2 = attrs1->clone();
-  EXPECT_NE(attrs1, attrs2);
-
-  fm_->addTask([&] {
-    announceTo(adjRib1.get(), {{attrs1, {kV4Prefix1}}});
-    announceTo(adjRib2.get(), {{attrs2, {kV4Prefix2}}});
-  });
-  fm_->addTask([&] {
-    /* Each peer receives one update. */
-    auto msg1 = facebook::bgp::test::boundedBlockingPop(
-        *adjRib1->adjRibOutQueue_, "adjRib1->adjRibOutQueue_");
-    auto msg2 = facebook::bgp::test::boundedBlockingPop(
-        *adjRib2->adjRibOutQueue_, "adjRib2->adjRibOutQueue_");
-
-    verifyPrefixesAndNexthopInUpdate(msg1, {kV4Prefix1}, kV4Nexthop1);
-    verifyPrefixesAndNexthopInUpdate(msg2, {kV4Prefix2}, kV4Nexthop2);
-
-    /*
-     * Verify each AdjRib's entry has the normalized nexthop.
-     * Note that, in this scenario, this assumes that the policy
-     * does not modify the nexthop; so the normalized nexthop
-     * is the nexthop that was announced from RIB, which was
-     * kV4Nexthop3.
-     */
-    auto entry1 = adjRib1->getRibEntry(/*ingress=*/false, kV4Prefix1);
-    auto entry2 = adjRib2->getRibEntry(/*ingress=*/false, kV4Prefix2);
-
-    /* Let's verify that the post attrs are the same shared_ptr. */
-    EXPECT_EQ(entry1->getPostAttr(), entry2->getPostAttr());
-    EXPECT_EQ(kV4Nexthop3, entry1->getPostAttr()->getNexthop());
-
-    /* Verify no more messages in each queue */
-    EXPECT_EQ(0, adjRib1->adjRibOutQueue_->size());
-    EXPECT_EQ(0, adjRib2->adjRibOutQueue_->size());
-
-    terminateSharedAdjRib(adjRib1);
-    terminateSharedAdjRib(adjRib2);
-  });
-
-  evb_.loop();
-}
 
 TEST_F(
     AdjRibOutboundFixtureV4V6Nexthop,

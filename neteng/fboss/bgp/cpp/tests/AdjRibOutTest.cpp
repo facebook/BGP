@@ -1661,204 +1661,6 @@ TEST_F(AdjRibOutboundFixture, UpdatePolicyProcessingIBgpPeer) {
   evb_.loop();
 }
 
-/*
- * Verify that a prefix which is denied due to policy, later changes it's
- * attributes, and is permitted by policy due to attribute changes is
- * processed properly and notified to Rib Verify that EORs are sent even if
- * policy denies all prefixes.
- */
-TEST_F(AdjRibOutboundFixture, VerifyPermitAfterDeny) {
-  /*
-   * Create a policy with two terms
-   * Term1 match origin IGP and deny
-   * Term2 permit all
-   */
-  const std::string policyName = kEgressPolicyName;
-  auto policyManager = setupDenyIgpOriginAcceptAllPolicy(policyName);
-  // IBGP peer
-  setupAdjRib(policyManager, policyName);
-  /*
-   * This test is not compatible with egress backpressure because we do not
-   * pull any more changes until EoR is sent.
-   */
-  gflags::FlagSaver flags;
-  FLAGS_enable_egress_backpressure_in_adjribout_tests = false;
-  adjRib_->enableEgressQueueBackpressure(false);
-
-  fm_->addTask([&] {
-    {
-      // Announcement 1 which will be denied by policy
-      auto ribMsg = createRibSingleAnnounce(
-          kV4Prefix1,
-          kV4Nexthop1,
-          localPeerV4_,
-          true, // EOR is true.
-          BgpAttrOrigin::BGP_ORIGIN_IGP);
-      pushRibOutMsgToAdjRib(ribMsg);
-    }
-    {
-      /*
-       * Announcement 2 (modified origin) for same prefix will be accepted
-       * by policy
-       */
-      auto ribMsg = createRibSingleAnnounce(
-          kV4Prefix1,
-          kV4Nexthop1,
-          localPeerV4_,
-          false,
-          BgpAttrOrigin::BGP_ORIGIN_EGP);
-      pushRibOutMsgToAdjRib(ribMsg);
-    }
-  });
-
-  fm_->addTask([&] {
-    /* Let sendBgpUpdates coro run if scheduled. */
-    fiberSleepFor(10ms);
-    /*
-     * Announcement 1 will not lead to any bgp update but
-     * we should see v4 and v6 EoRs
-     */
-    auto msg = folly::coro::blockingWait(popFromEgressQueue());
-    ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*msg));
-    msg = folly::coro::blockingWait(popFromEgressQueue());
-    ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*msg));
-
-    // Verifying only after Announcement 2 is sent
-    msg = folly::coro::blockingWait(popFromEgressQueue());
-    ASSERT_TRUE(
-        std::holds_alternative<std::shared_ptr<const BgpUpdate2>>(*msg));
-    auto bgpUpdate = std::get<std::shared_ptr<const BgpUpdate2>>(*msg);
-    ASSERT_EQ(1, bgpUpdate->mpAnnounced()->prefixes()->size());
-    EXPECT_EQ(
-        toIPPrefix(kV4Prefix1),
-        *bgpUpdate->mpAnnounced()->prefixes()[0].prefix());
-    EXPECT_EQ(BgpAttrOrigin::BGP_ORIGIN_EGP, *bgpUpdate->attrs()->origin());
-
-    EXPECT_TRUE(adjRibOutQ_->empty());
-    // Verify adjrib entry is proper
-    auto adjRibEntry = adjRib_->getRibEntry(/*ingress=*/false, kV4Prefix1);
-    ASSERT_NE(nullptr, adjRibEntry->getPreOut());
-    ASSERT_NE(nullptr, adjRibEntry->getPostAttr());
-    EXPECT_EQ(adjRibEntry->getPreOut(), adjRibEntry->getPostAttr());
-    EXPECT_EQ(
-        BgpAttrOrigin::BGP_ORIGIN_EGP, adjRibEntry->getPreOut()->getOrigin());
-    // Verify stats
-    EXPECT_EQ(1, adjRib_->getStats().getPostOutPrefixCount());
-
-    terminateAdjRib();
-  });
-  evb_.loop();
-}
-
-/*
- *  1. Create egress policy
- *  2. Setup AdjRib with egress policy and add path enabled
- *  3. Send Rib announcement of a prefix that is denied by policy
- *  4. Verify adjrib entry and adjrib tree
- *  5. Re-send same prefix with different attributes that is now allowed by
- *     policy
- *  6. Verify again adjrib entry and adjrib tree
- */
-TEST_F(AdjRibOutboundFixture, VerifyPermitAfterDenyAddPath) {
-  /*
-   * Create a policy with two terms
-   * Term1 match origin IGP and deny
-   * Term2 permit all
-   */
-  const std::string policyName = kEgressPolicyName;
-  auto policyManager = setupDenyIgpOriginAcceptAllPolicy(policyName);
-  // IBGP peer
-  setupAdjRib(policyManager, policyName, true, true);
-  /*
-   * This test is not compatible with egress backpressure because we do not
-   * pull any more changes until EoR is sent.
-   */
-  gflags::FlagSaver flags;
-  FLAGS_enable_egress_backpressure_in_adjribout_tests = false;
-  adjRib_->enableEgressQueueBackpressure(false);
-
-  fm_->addTask([&] {
-    {
-      // Announcement 1 which will be denied by policy
-      auto ribMsg = createRibSingleAnnounce(
-          kV4Prefix1,
-          kV4Nexthop1,
-          localPeerV4_,
-          true, // EOR is true.
-          BgpAttrOrigin::BGP_ORIGIN_IGP,
-          {},
-          std::nullopt,
-          std::nullopt,
-          nullptr,
-          true,
-          kPlaceholderPathID);
-      pushRibOutMsgToAdjRib(ribMsg);
-    }
-    {
-      /*
-       * Announcement 2 (modified origin) for same prefix will be accepted
-       * by policy
-       */
-      auto ribMsg = createRibSingleAnnounce(
-          kV4Prefix1,
-          kV4Nexthop1,
-          localPeerV4_,
-          false,
-          BgpAttrOrigin::BGP_ORIGIN_EGP,
-          {},
-          std::nullopt,
-          std::nullopt,
-          nullptr,
-          true,
-          kPlaceholderPathID);
-      pushRibOutMsgToAdjRib(ribMsg);
-    }
-  });
-
-  fm_->addTask([&] {
-    /* Let sendBgpUpdates coro run if scheduled. */
-    fiberSleepFor(10ms);
-    /*
-     * Announcement 1 will not lead to any bgp update but
-     * we should see v4 and v6 EoRs
-     */
-    auto msg = folly::coro::blockingWait(popFromEgressQueue());
-    ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*msg));
-    msg = folly::coro::blockingWait(popFromEgressQueue());
-    ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*msg));
-
-    // Verifying only after Announcement 2 is sent
-    msg = folly::coro::blockingWait(popFromEgressQueue());
-    ASSERT_TRUE(
-        std::holds_alternative<std::shared_ptr<const BgpUpdate2>>(*msg));
-    auto bgpUpdate = std::get<std::shared_ptr<const BgpUpdate2>>(*msg);
-    ASSERT_EQ(1, bgpUpdate->mpAnnounced()->prefixes()->size());
-    EXPECT_EQ(
-        toIPPrefix(kV4Prefix1),
-        *bgpUpdate->mpAnnounced()->prefixes()[0].prefix());
-    EXPECT_EQ(BgpAttrOrigin::BGP_ORIGIN_EGP, *bgpUpdate->attrs()->origin());
-
-    EXPECT_TRUE(adjRibOutQ_->empty());
-    // Verify adjrib entry is proper
-    auto adjRibEntry = adjRib_->getRibEntry(/*ingress=*/false, kV4Prefix1);
-    ASSERT_NE(nullptr, adjRibEntry->getPreOut());
-    ASSERT_NE(nullptr, adjRibEntry->getPostAttr());
-    EXPECT_EQ(adjRibEntry->getPreOut(), adjRibEntry->getPostAttr());
-    EXPECT_EQ(
-        BgpAttrOrigin::BGP_ORIGIN_EGP, adjRibEntry->getPreOut()->getOrigin());
-
-    // Verify AdjRibTree size is non-zero
-    EXPECT_EQ(
-        1,
-        adjRib_->getRibTreeSize(/*ingress=*/false, /*isAddPathEnabled=*/true));
-    // Verify stats
-    EXPECT_EQ(1, adjRib_->getStats().getPostOutPrefixCount());
-
-    terminateAdjRib();
-  });
-  evb_.loop();
-}
-
 /**
  * Create four peers with different options for advertiseLinkBandwidth
  * config: DISABLE, BEST_PATH, SET_LINK_BPS, and AGGREGATE_RECEIVED. Create
@@ -2955,23 +2757,12 @@ TEST_F(AdjRibOutboundFixture, VerifyEgressEoRsPendingSetDuringRibInitialDump) {
         kV6Prefix2, kV6Nexthop2, eBgpPeer_, true /* sendWithEoR */);
     pushRibOutMsgToAdjRib(ribMsg1);
     pushRibOutMsgToAdjRib(ribMsg2);
-    if (FLAGS_enable_egress_backpressure_in_adjribout_tests) {
-      /*
-       * scheduled sendBgpUpdates is not called inline when backpressure
-       * is enabled , so we will see egressEoRsPending = true
-       * because EoR is not immediately sent.
-       */
-      EXPECT_TRUE(adjRib_->egressEoRsPending());
-    } else {
-      /* Let processRibOutMsgLoop run. */
-      fiberSleepFor(10ms);
-      /*
-       * buildSendBgpMessages is called inline when backpressure
-       * is disabled, so we will not see egressEoRsPending = true
-       * because EoR is immediately sent.
-       */
-      EXPECT_FALSE(adjRib_->egressEoRsPending());
-    }
+    /*
+     * scheduled sendBgpUpdates is not called inline when backpressure
+     * is enabled , so we will see egressEoRsPending = true
+     * because EoR is not immediately sent.
+     */
+    EXPECT_TRUE(adjRib_->egressEoRsPending());
   });
 
   fm_->addTask([&] {
@@ -3709,7 +3500,6 @@ TEST_F(AdjRibOutboundFixture, SetRouteFilterStatementTest) {
  * Unit test the function processRibMessage
  * 1. process RibOutAnnouncement
  * 2. process RibOutWithdrawal
- * also make sure that attrToPrefixMap_ is cleared after processRibMessage.
  */
 TEST_F(AdjRibOutboundFixture, ProcessRibMessageTest) {
   // Subscribe to the root
@@ -3744,14 +3534,6 @@ TEST_F(AdjRibOutboundFixture, ProcessRibMessageTest) {
             "Ignoring Rib announcement"));
   }
 
-  if (!FLAGS_enable_egress_backpressure_in_adjribout_tests) {
-    /*
-     * after processRibMessage, the
-     * attrToPrefixMap_ is cleared.
-     */
-    EXPECT_TRUE(adjRib_->attrToPrefixMap_.empty());
-  }
-
   // process RibOutWithdrawal
   {
     messages.clear();
@@ -3761,126 +3543,6 @@ TEST_F(AdjRibOutboundFixture, ProcessRibMessageTest) {
     EXPECT_EQ(1, messages.size());
     EXPECT_TRUE(
         messages[0].first.getMessage().starts_with("Ignoring Rib withdrawal"));
-  }
-}
-
-/*
- * Unit test the function buildAndSendBgpMessages
- * 1. nothing to send: just return
- * 2. request EoR with no AFI pending: do not report or send EoR
- * 3. test announce prefix: after announcement,
- *    attrToPrefixMap is cleared
- * 4. test withdraw prefix: after withdrawal,
- *    attrToPrefixMap is cleared
- */
-TEST_F(AdjRibOutboundFixture, BuildAndSendBgpMessagesTest) {
-  setupAdjRibForOutUnitTest();
-
-  auto& messages = subscribeToLogMessages("");
-
-  // nothing to send
-  {
-    messages.clear();
-
-    adjRib_->buildAndSendBgpMessages();
-
-    // no message generated
-    EXPECT_EQ(0, messages.size());
-    EXPECT_EQ(0, adjRib_->getStats().getSentUpdateMsgs());
-    EXPECT_EQ(0, adjRib_->getStats().getSentAnnouncementsIpv4());
-    EXPECT_EQ(0, adjRib_->getStats().getSentAnnouncementsIpv6());
-    EXPECT_EQ(0, adjRib_->getStats().getSentWithdrawals());
-    EXPECT_EQ(0, adjRib_->getStats().getTotalAttributeUpdates());
-  }
-
-  // attach out queue
-  adjRib_->adjRibOutQueue_ = adjRibOutQ_;
-
-  // Request EoR with no AFI pending.
-  {
-    messages.clear();
-
-    adjRib_->buildAndSendBgpMessages(true);
-    // more then 1 messages generated
-    EXPECT_EQ(0, adjRib_->getStats().getSentUpdateMsgs());
-    EXPECT_EQ(0, adjRib_->getStats().getSentAnnouncementsIpv4());
-    EXPECT_EQ(0, adjRib_->getStats().getSentAnnouncementsIpv6());
-    EXPECT_EQ(0, adjRib_->getStats().getSentWithdrawals());
-    EXPECT_EQ(0, adjRib_->getStats().getTotalAttributeUpdates());
-    EXPECT_FALSE(adjRib_->egressEoRsSent_);
-    EXPECT_TRUE(observerQ_.empty());
-    EXPECT_TRUE(adjRibOutQ_->empty());
-    ASSERT_EQ(1, messages.size());
-    EXPECT_TRUE(messages.back().first.getMessage().starts_with(
-        "Sending accumulated changes"));
-    EXPECT_TRUE(messages.back().first.getMessage().ends_with(
-        "(0 withdraws, 0 announcements, EoR requested true) - 0 BGP "
-        "message(s)."));
-  }
-
-  // build some dummy entry for test
-  auto ribMsg = std::get<RibOutAnnouncement>(
-      createRibSingleAnnounce(kV4Prefix1, kV4Nexthop1, localPeerV4_, true));
-  adjRib_->pathIdGenerator_ = std::make_unique<PathIdGenerator>(
-      false); // TODO: deprecate this once ADD-PATH changes are complete
-  EXPECT_FALSE(adjRib_->getRibEntry(false, kV4Prefix1, 0));
-  adjRib_->processRibAnnouncedEntry(ribMsg.entries[0]);
-
-  /*
-   * test announce prefix: after announcement,
-   * attrToPrefixMap_ is empty
-   */
-  {
-    EXPECT_EQ(1, adjRib_->attrToPrefixMap_.size());
-    // The key should be a positive advertisement, i.e. not nullptr.
-    EXPECT_TRUE(adjRib_->attrToPrefixMap_.begin()->first.attrs);
-    EXPECT_TRUE(adjRib_->attrToPrefixMap_.begin()->second.contains(
-        std::make_pair(kV4Prefix1, 0)));
-    messages.clear();
-
-    adjRib_->buildAndSendBgpMessages();
-
-    EXPECT_EQ(1, adjRib_->getStats().getSentUpdateMsgs());
-    EXPECT_EQ(1, adjRib_->getStats().getSentAnnouncementsIpv4());
-    EXPECT_EQ(0, adjRib_->getStats().getSentAnnouncementsIpv6());
-    EXPECT_EQ(0, adjRib_->getStats().getSentWithdrawals());
-    EXPECT_EQ(2, adjRib_->getStats().getTotalAttributeUpdates());
-    EXPECT_TRUE(adjRib_->attrToPrefixMap_.empty());
-    EXPECT_TRUE(messages.back().first.getMessage().starts_with(
-        "Sending accumulated changes"));
-    EXPECT_TRUE(messages.back().first.getMessage().ends_with(
-        "(0 withdraws, 1 announcements, EoR requested false) - 1 BGP "
-        "message(s)."));
-  }
-
-  /*
-   * test withdraw prefix: after withdrawal,
-   * attrToPrefixMap_ is empty
-   */
-  adjRib_->isAfiIpv4Negotiated_ = true;
-  adjRib_->isAfiIpv6Negotiated_ = true;
-  adjRib_->processRibWithdraw(kV4Prefix1, 0);
-  {
-    EXPECT_EQ(1, adjRib_->attrToPrefixMap_.size());
-    // The key should be withdrawal, i.e. nullptr.
-    EXPECT_FALSE(adjRib_->attrToPrefixMap_.begin()->first.attrs);
-    EXPECT_TRUE(adjRib_->attrToPrefixMap_.begin()->second.contains(
-        std::make_pair(kV4Prefix1, 0)));
-
-    messages.clear();
-    adjRib_->buildAndSendBgpMessages();
-
-    EXPECT_EQ(2, adjRib_->getStats().getSentUpdateMsgs());
-    EXPECT_EQ(1, adjRib_->getStats().getSentAnnouncementsIpv4());
-    EXPECT_EQ(0, adjRib_->getStats().getSentAnnouncementsIpv6());
-    EXPECT_EQ(1, adjRib_->getStats().getSentWithdrawals());
-    EXPECT_EQ(2, adjRib_->getStats().getTotalAttributeUpdates());
-    EXPECT_TRUE(adjRib_->attrToPrefixMap_.empty());
-    EXPECT_TRUE(messages.back().first.getMessage().starts_with(
-        "Sending accumulated changes"));
-    EXPECT_TRUE(messages.back().first.getMessage().ends_with(
-        "(1 withdraws, 0 announcements, EoR requested false) - 1 BGP "
-        "message(s)."));
   }
 }
 
