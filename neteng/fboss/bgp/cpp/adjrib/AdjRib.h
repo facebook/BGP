@@ -202,9 +202,7 @@ class AdjRib : boost::noncopyable,
                public std::enable_shared_from_this<AdjRib> {
  public:
   using AdjRibInQueueT = nettools::bgplib::FiberBgpPeer::OutputQueueT;
-  using AdjRibOutQueueT = nettools::bgplib::FiberBgpPeer::InputQueueT;
-  using BoundedAdjRibOutQueueT =
-      nettools::bgplib::FiberBgpPeer::BoundedInputQueueT;
+  using AdjRibOutQueueT = nettools::bgplib::FiberBgpPeer::BoundedInputQueueT;
 
   template <typename T>
   using AdjRibTreeIterator = network::RadixTreeIterator<
@@ -382,7 +380,7 @@ class AdjRib : boost::noncopyable,
   void sessionEstablished(
       const std::optional<uint16_t>& remoteGrRestartTime,
       std::shared_ptr<AdjRibInQueueT> adjRibInQueue,
-      std::shared_ptr<BoundedAdjRibOutQueueT> boundedAdjRibOutQueue,
+      std::shared_ptr<AdjRibOutQueueT> adjRibOutQueue,
       const AfiIpv4Negotiated& isAfiIpv4Negotiated = AfiIpv4Negotiated(true),
       const AfiIpv6Negotiated& isAfiIpv6Negotiated = AfiIpv6Negotiated(true),
       const V4OverV6Nexthop& isV4OverV6NexthopNegotiated =
@@ -402,7 +400,7 @@ class AdjRib : boost::noncopyable,
       uint32_t remoteAs,
       const std::optional<uint16_t>& remoteGrRestartTime,
       std::shared_ptr<AdjRibInQueueT> adjRibInQueue,
-      std::shared_ptr<BoundedAdjRibOutQueueT> boundedAdjRibOutQueue,
+      std::shared_ptr<AdjRibOutQueueT> adjRibOutQueue,
       const AfiIpv4Negotiated& isAfiIpv4Negotiated = AfiIpv4Negotiated(true),
       const AfiIpv6Negotiated& isAfiIpv6Negotiated = AfiIpv6Negotiated(true),
       const V4OverV6Nexthop& isV4OverV6NexthopNegotiated =
@@ -1292,8 +1290,8 @@ class AdjRib : boost::noncopyable,
   /*
    * Get the bounded output queue (for backpressure-aware distribution)
    */
-  std::shared_ptr<BoundedAdjRibOutQueueT> getBoundedAdjRibOutQueue() const {
-    return boundedAdjRibOutQueue_;
+  std::shared_ptr<AdjRibOutQueueT> getAdjRibOutQueue() const {
+    return adjRibOutQueue_;
   }
 
   /*
@@ -2224,8 +2222,8 @@ class AdjRib : boost::noncopyable,
    */
 
   /**
-   * @brief: Cancels all packing timers if boundedAdjRibOutQueue_
-   * is blocked. Waits for boundedAdjRibOutQueue_ to unblock before resuming.
+   * @brief: Cancels all packing timers if adjRibOutQueue_
+   * is blocked. Waits for adjRibOutQueue_ to unblock before resuming.
    *
    * @details: Returns true if the queue was blocked when we called this method.
    * Returns false if the queue was not blocked when we called this method.
@@ -2233,7 +2231,7 @@ class AdjRib : boost::noncopyable,
   folly::coro::Task<bool> waitForQueueSpace() noexcept;
 
   /**
-   * @brief: Write UPDATE and maybe EOR to boundedAdjRibOutQueue_ by draining
+   * @brief: Write UPDATE and maybe EOR to adjRibOutQueue_ by draining
    * AttrToPrefixMap.
    *
    * @details: This coro may return early if the AttrToPrefixMap is determined
@@ -2664,7 +2662,7 @@ class AdjRib : boost::noncopyable,
    *  - BgpEndOfRib
    *  - BgpNotification
    */
-  std::shared_ptr<BoundedAdjRibOutQueueT> boundedAdjRibOutQueue_;
+  std::shared_ptr<AdjRibOutQueueT> adjRibOutQueue_;
 
   /*
    * Ingress EoR

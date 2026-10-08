@@ -1549,7 +1549,7 @@ bool AdjRib::validateAttributesIn(
      * producers may write above the high watermark, so we directly
      * write here.
      */
-    boundedAdjRibOutQueue_->push(std::move(notification));
+    adjRibOutQueue_->push(std::move(notification));
     return false;
   }
 

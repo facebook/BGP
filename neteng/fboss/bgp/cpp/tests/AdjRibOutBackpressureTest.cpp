@@ -116,7 +116,7 @@ using namespace ::testing;
  * Test class for SendBgpMessages.
  *
  * This suite contains under non-backpressure scenarios to ensure that
- * packing is producing the correct messages to the boundedAdjRibOutQueue_
+ * packing is producing the correct messages to the adjRibOutQueue_
  * egress queue..
  */
 class SendBgpMessagesFixture : public AdjRibOutboundFixture {
@@ -165,10 +165,9 @@ class SendBgpMessagesFixture : public AdjRibOutboundFixture {
         adjRib_->isAfiIpv4Negotiated_ && eorPending,
         adjRib_->isAfiIpv6Negotiated_ && eorPending);
 
-    // Attach boundedAdjRibOutQueue_.
-    adjRib_->boundedAdjRibOutQueue_ =
-        std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
-            capacity_, highWm_, lowWm_);
+    // Attach adjRibOutQueue_.
+    adjRib_->adjRibOutQueue_ =
+        std::make_shared<AdjRib::AdjRibOutQueueT>(capacity_, highWm_, lowWm_);
     adjRib_->pathIdGenerator_ = std::make_unique<PathIdGenerator>(false);
 
     // Clear any pending state. Should be empty regardless, but just in case.
@@ -254,15 +253,15 @@ class SendBgpMessagesFixtureWithBackpressure : public SendBgpMessagesFixture {
   void FillQueueToSize(int sz) {
     for (int i = 0; i < sz; ++i) {
       /* Push empty values that aren't the termination signal. */
-      adjRib_->boundedAdjRibOutQueue_->push(nullptr /* empty BgpUpdate2 */);
+      adjRib_->adjRibOutQueue_->push(nullptr /* empty BgpUpdate2 */);
     }
   }
 
   /* Drain the queue to low watermark. */
   folly::coro::Task<bool> DrainQueueToLowWm() {
-    while (adjRib_->boundedAdjRibOutQueue_->isBlocked()) {
+    while (adjRib_->adjRibOutQueue_->isBlocked()) {
       co_await facebook::bgp::test::boundedPop(
-          *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
+          *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
     }
     co_return true;
   }
@@ -287,8 +286,7 @@ TEST_F(SendBgpMessagesFixture, SessionEstablishedCleanUp) {
   adjRib_->sessionEstablished(
       std::nullopt /* remoteGrRestartTime */,
       std::make_shared<AdjRib::AdjRibInQueueT>(),
-      std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
-          capacity_, highWm_, lowWm_));
+      std::make_shared<AdjRib::AdjRibOutQueueT>(capacity_, highWm_, lowWm_));
 
   EXPECT_FALSE(adjRib_->egressEoRsPending());
   EXPECT_FALSE(adjRib_->egressEoRsSent_);
@@ -440,7 +438,7 @@ CO_TEST_F(SendBgpMessagesFixture, SendPendingEoRsTest) {
   auto [backpressured, eorCnt] = co_await adjRib_->sendPendingEoRs();
   EXPECT_FALSE(backpressured);
   EXPECT_EQ(2, eorCnt);
-  EXPECT_EQ(eorCnt, adjRib_->boundedAdjRibOutQueue_->size());
+  EXPECT_EQ(eorCnt, adjRib_->adjRibOutQueue_->size());
   EXPECT_EQ(0, adjRib_->getStats().getSentUpdateMsgs());
   EXPECT_EQ(2, adjRib_->getStats().getSentEndOfRibMsgs());
 }
@@ -476,7 +474,7 @@ CO_TEST_F(SendBgpMessagesFixtureWithBackpressure, SendPendingEoRsTest) {
 
   while (v4Pending || v6Pending) {
     auto msg = co_await facebook::bgp::test::boundedPop(
-        *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
+        *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
 
     /* Expect to eventually see the EORs. */
     if (msg && std::holds_alternative<BgpEndOfRib>(*msg)) {
@@ -505,11 +503,11 @@ TEST_F(
         BgpRouteRefreshMessageSubtype::ROUTE_REFRESH_REQUEST, afi));
   }
 
-  ASSERT_EQ(adjRib_->boundedAdjRibOutQueue_->size(), 2);
+  ASSERT_EQ(adjRib_->adjRibOutQueue_->size(), 2);
   for (const auto expectedAfi :
        {BgpUpdateAfi::AFI_IPv4, BgpUpdateAfi::AFI_IPv6}) {
     const auto message = facebook::bgp::test::boundedBlockingPop(
-        *adjRib_->boundedAdjRibOutQueue_, "boundedAdjRibOutQueue_");
+        *adjRib_->adjRibOutQueue_, "adjRibOutQueue_");
     ASSERT_TRUE(std::holds_alternative<BgpRouteRefresh>(*message));
     EXPECT_EQ(expectedAfi, std::get<BgpRouteRefresh>(*message).afi().value());
   }
@@ -529,7 +527,7 @@ TEST_F(
       BgpRouteRefreshMessageSubtype::ROUTE_REFRESH_REQUEST,
       BgpUpdateAfi::AFI_IPv4));
 
-  EXPECT_EQ(adjRib_->boundedAdjRibOutQueue_->size(), highWm_);
+  EXPECT_EQ(adjRib_->adjRibOutQueue_->size(), highWm_);
 }
 
 TEST_F(
@@ -545,7 +543,7 @@ TEST_F(
       BgpRouteRefreshMessageSubtype::ROUTE_REFRESH_REQUEST,
       BgpUpdateAfi::AFI_IPv4));
 
-  EXPECT_TRUE(adjRib_->boundedAdjRibOutQueue_->empty());
+  EXPECT_TRUE(adjRib_->adjRibOutQueue_->empty());
 }
 
 TEST_F(
@@ -590,9 +588,8 @@ CO_TEST_F(
     SendBgpMessagesFixtureWithBackpressure,
     CommittedUpdateCountDoesNotCrossClear) {
   SetUpAdjRibStateForUnit(false /* eorPending */, false /* eorSent */);
-  adjRib_->boundedAdjRibOutQueue_ =
-      std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
-          3 /* capacity */, 1 /* highWm */, 0 /* lowWm */);
+  adjRib_->adjRibOutQueue_ = std::make_shared<AdjRib::AdjRibOutQueueT>(
+      3 /* capacity */, 1 /* highWm */, 0 /* lowWm */);
 
   UpdateAttrToPrefixMap(GetBgpPath(kV4Nexthop2), {kV4Prefix1});
   UpdateAttrToPrefixMap(GetBgpPath(kV4Nexthop3), {kV4Prefix2});
@@ -600,7 +597,7 @@ CO_TEST_F(
   std::thread evbThread([this]() { evb_.loopForever(); });
 
   auto clearAndUnblock = [&]() -> folly::coro::Task<void> {
-    while (!adjRib_->boundedAdjRibOutQueue_->isBlocked()) {
+    while (!adjRib_->adjRibOutQueue_->isBlocked()) {
       co_await folly::coro::co_reschedule_on_current_executor;
     }
 
@@ -613,7 +610,7 @@ CO_TEST_F(
     EXPECT_EQ(0, adjRib_->getStats().getSentUpdateMsgs());
 
     co_await facebook::bgp::test::boundedPop(
-        *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
+        *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
   };
 
   co_await folly::coro::collectAll(
@@ -626,7 +623,7 @@ CO_TEST_F(
 
   /* Only the UPDATE queued after clear belongs to the new counter epoch. */
   EXPECT_EQ(1, adjRib_->getStats().getSentUpdateMsgs());
-  EXPECT_EQ(1, adjRib_->boundedAdjRibOutQueue_->size());
+  EXPECT_EQ(1, adjRib_->adjRibOutQueue_->size());
 }
 
 CO_TEST_F(SendBgpMessagesFixture, SimpleSendBgpUpdateMessagesTest) {
@@ -640,14 +637,14 @@ CO_TEST_F(SendBgpMessagesFixture, SimpleSendBgpUpdateMessagesTest) {
 
   co_await adjRib_->sendBgpUpdates(false /* tryPullNewChangeItems */);
 
-  EXPECT_EQ(5, adjRib_->boundedAdjRibOutQueue_->size());
+  EXPECT_EQ(5, adjRib_->adjRibOutQueue_->size());
 
   /* Check to see all the expected nexthops and prefixes are there. */
   std::set<network::thrift::BinaryAddress> seenNexthops;
   std::set<network::thrift::IPPrefix> seenPrefixes;
-  while (adjRib_->boundedAdjRibOutQueue_->size() > 1) {
+  while (adjRib_->adjRibOutQueue_->size() > 1) {
     auto msg = co_await facebook::bgp::test::boundedPop(
-        *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
+        *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
     auto update =
         std::get<std::shared_ptr<const facebook::nettools::bgplib::BgpUpdate2>>(
             *msg);
@@ -656,7 +653,7 @@ CO_TEST_F(SendBgpMessagesFixture, SimpleSendBgpUpdateMessagesTest) {
     seenPrefixes.insert(*update->mpAnnounced()->prefixes()->front().prefix());
   }
   auto eor = co_await facebook::bgp::test::boundedPop(
-      *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
+      *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
   EXPECT_TRUE(std::holds_alternative<BgpEndOfRib>(*eor));
 
   EXPECT_EQ(1, seenNexthops.size());
@@ -681,8 +678,8 @@ CO_TEST_F(SendBgpMessagesFixture, BulkSendBgpUpdateMessagesTest) {
   /* attrToPrefixMap_ should make 4 announcements + 1 EoR. */
   SetUpAdjRibStateForUnit(true /* eorPending */, false /* eorSent */);
   adjRib_->sendAddPath_ = true;
-  adjRib_->boundedAdjRibOutQueue_ =
-      std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(20, 10, 2);
+  adjRib_->adjRibOutQueue_ =
+      std::make_shared<AdjRib::AdjRibOutQueueT>(20, 10, 2);
 
   int maxPathId = 600;
   UpdateAttrToPrefixMap(GetBgpPath(kV4Nexthop2), {kV4Prefix1}, maxPathId);
@@ -692,7 +689,7 @@ CO_TEST_F(SendBgpMessagesFixture, BulkSendBgpUpdateMessagesTest) {
 
   co_await adjRib_->sendBgpUpdates(false /* tryPullNewChangeItems */);
 
-  EXPECT_EQ(5, adjRib_->boundedAdjRibOutQueue_->size());
+  EXPECT_EQ(5, adjRib_->adjRibOutQueue_->size());
 
   /*
    * Each path should advertise prefix up to maxPathId times.
@@ -700,9 +697,9 @@ CO_TEST_F(SendBgpMessagesFixture, BulkSendBgpUpdateMessagesTest) {
    */
   std::set<network::thrift::BinaryAddress> seenNexthops;
   std::set<std::pair<network::thrift::IPPrefix, uint32_t>> seenPrefixes;
-  while (adjRib_->boundedAdjRibOutQueue_->size() > 1) {
+  while (adjRib_->adjRibOutQueue_->size() > 1) {
     auto msg = co_await facebook::bgp::test::boundedPop(
-        *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
+        *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
     auto update =
         std::get<std::shared_ptr<const facebook::nettools::bgplib::BgpUpdate2>>(
             *msg);
@@ -712,7 +709,7 @@ CO_TEST_F(SendBgpMessagesFixture, BulkSendBgpUpdateMessagesTest) {
     }
   }
   auto eor = co_await facebook::bgp::test::boundedPop(
-      *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
+      *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
   EXPECT_TRUE(std::holds_alternative<BgpEndOfRib>(*eor));
 
   EXPECT_EQ(1, seenNexthops.size());
@@ -743,7 +740,7 @@ CO_TEST_F(SendBgpMessagesFixture, SendBgpUpdateMessagesTest_AfterEoR) {
 
     co_await adjRib_->sendBgpUpdates(true /* tryPullNewChangeItems */);
 
-    EXPECT_TRUE(adjRib_->boundedAdjRibOutQueue_->empty());
+    EXPECT_TRUE(adjRib_->adjRibOutQueue_->empty());
 
     EXPECT_FALSE(adjRib_->egressEoRsPending());
     EXPECT_TRUE(adjRib_->egressEoRsSent_);
@@ -758,7 +755,7 @@ CO_TEST_F(SendBgpMessagesFixture, SendBgpUpdateMessagesTest_AfterEoR) {
 
     co_await adjRib_->sendBgpUpdates(true /* tryPullNewChangeItems */);
 
-    EXPECT_EQ(2, adjRib_->boundedAdjRibOutQueue_->size());
+    EXPECT_EQ(2, adjRib_->adjRibOutQueue_->size());
 
     EXPECT_FALSE(adjRib_->egressEoRsPending());
     EXPECT_TRUE(adjRib_->egressEoRsSent_);
@@ -795,15 +792,15 @@ CO_TEST_F(
    */
 
   /* Last message that made it into the queue should be announcement. */
-  while (adjRib_->boundedAdjRibOutQueue_->size() > 1) {
+  while (adjRib_->adjRibOutQueue_->size() > 1) {
     /* Everything else in the queue was nullptr padding. */
     auto msg = co_await facebook::bgp::test::boundedPop(
-        *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
+        *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
     EXPECT_EQ(nullptr, std::get<std::shared_ptr<const BgpUpdate2>>(*msg));
   }
-  EXPECT_EQ(1, adjRib_->boundedAdjRibOutQueue_->size());
+  EXPECT_EQ(1, adjRib_->adjRibOutQueue_->size());
   auto msg1 = co_await facebook::bgp::test::boundedPop(
-      *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
+      *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
 
   auto announcement = std::get<std::shared_ptr<const BgpUpdate2>>(*msg1);
   EXPECT_EQ(
@@ -818,7 +815,7 @@ CO_TEST_F(SendBgpMessagesFixture, SendBgpUpdateMessagesTest_BeforeEoR) {
 
     co_await adjRib_->sendBgpUpdates(false /* tryPullNewChangeItems */);
 
-    EXPECT_TRUE(adjRib_->boundedAdjRibOutQueue_->empty());
+    EXPECT_TRUE(adjRib_->adjRibOutQueue_->empty());
   }
 
   /* Case 2: attrToPrefixMap_ should make 1 withdrawal + 1 announcement. */
@@ -830,7 +827,7 @@ CO_TEST_F(SendBgpMessagesFixture, SendBgpUpdateMessagesTest_BeforeEoR) {
 
     co_await adjRib_->sendBgpUpdates(false /* tryPullNewChangeItems */);
 
-    EXPECT_EQ(2, adjRib_->boundedAdjRibOutQueue_->size());
+    EXPECT_EQ(2, adjRib_->adjRibOutQueue_->size());
 
     EXPECT_FALSE(adjRib_->egressEoRsPending());
     EXPECT_FALSE(adjRib_->egressEoRsSent_);
@@ -850,9 +847,9 @@ CO_TEST_F(
 
   auto DrainPadding = [&]() -> folly::coro::Task<bool> {
     bool allMessagesArePadding = true;
-    while (!adjRib_->boundedAdjRibOutQueue_->empty()) {
+    while (!adjRib_->adjRibOutQueue_->empty()) {
       auto msg = co_await facebook::bgp::test::boundedPop(
-          *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
+          *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
       auto update = std::get<std::shared_ptr<const BgpUpdate2>>(*msg);
       if (update) {
         allMessagesArePadding = false;
@@ -874,7 +871,7 @@ CO_TEST_F(
   EXPECT_TRUE(allMsgsNull);
   EXPECT_FALSE(adjRib_->egressEoRsSent_);
   EXPECT_TRUE(messages.empty());
-  EXPECT_TRUE(adjRib_->boundedAdjRibOutQueue_->empty());
+  EXPECT_TRUE(adjRib_->adjRibOutQueue_->empty());
   EXPECT_EQ(2, adjRib_->attrToPrefixMap_.size());
 }
 
@@ -890,13 +887,13 @@ CO_TEST_F(SendBgpMessagesFixture, SendBgpUpdateMessagesTest_PendingEoR) {
   EXPECT_TRUE(adjRib_->egressEoRsSent_);
 
   // Verify withdrawal, announcement, and EoR (in order).
-  EXPECT_EQ(3, adjRib_->boundedAdjRibOutQueue_->size());
+  EXPECT_EQ(3, adjRib_->adjRibOutQueue_->size());
   auto msg1 = co_await facebook::bgp::test::boundedPop(
-      *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
+      *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
   auto msg2 = co_await facebook::bgp::test::boundedPop(
-      *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
+      *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
   auto msg3 = co_await facebook::bgp::test::boundedPop(
-      *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
+      *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
 
   auto announcement = std::get<std::shared_ptr<const BgpUpdate2>>(*msg1);
   EXPECT_EQ(
@@ -946,17 +943,17 @@ CO_TEST_F(
   EXPECT_NE(bpIt, messages.end());
 
   /* Last three messages should be withdrawal, announcement, and EoR */
-  while (adjRib_->boundedAdjRibOutQueue_->size() > 3) {
+  while (adjRib_->adjRibOutQueue_->size() > 3) {
     co_await facebook::bgp::test::boundedPop(
-        *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
+        *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
   }
-  EXPECT_EQ(3, adjRib_->boundedAdjRibOutQueue_->size());
+  EXPECT_EQ(3, adjRib_->adjRibOutQueue_->size());
   auto msg1 = co_await facebook::bgp::test::boundedPop(
-      *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
+      *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
   auto msg2 = co_await facebook::bgp::test::boundedPop(
-      *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
+      *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
   auto msg3 = co_await facebook::bgp::test::boundedPop(
-      *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
+      *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
 
   auto announcement = std::get<std::shared_ptr<const BgpUpdate2>>(*msg1);
   EXPECT_EQ(
@@ -1455,14 +1452,14 @@ CO_TEST_F(SendBgpMessagesFixtureWithBackpressure, QueueCloseTest) {
   adjRib_->egressEoRsSent_ = true;
 
   // Save a copy of the queue pointer
-  auto queuePtr = adjRib_->boundedAdjRibOutQueue_;
+  auto queuePtr = adjRib_->adjRibOutQueue_;
 
   // Fill the queue to high watermark to force it into blocked state
   FillQueueToSize(highWm_);
 
   // Verify the queue is blocked
   EXPECT_TRUE(queuePtr->isBlocked());
-  EXPECT_TRUE(adjRib_->boundedAdjRibOutQueue_->isBlocked());
+  EXPECT_TRUE(adjRib_->adjRibOutQueue_->isBlocked());
 
   /*
    * Verify that we have exactly 1 task running on asyncScope:
@@ -1487,8 +1484,8 @@ CO_TEST_F(SendBgpMessagesFixtureWithBackpressure, QueueCloseTest) {
    * The queue is closed but not reset to nullptr (a new queue will be provided
    * when a new session is established)
    */
-  EXPECT_NE(nullptr, adjRib_->boundedAdjRibOutQueue_);
-  EXPECT_TRUE(adjRib_->boundedAdjRibOutQueue_->isClosed());
+  EXPECT_NE(nullptr, adjRib_->adjRibOutQueue_);
+  EXPECT_TRUE(adjRib_->adjRibOutQueue_->isClosed());
 
   // The saved queue pointer should still be valid (shared_ptr) and closed
   EXPECT_TRUE(queuePtr->isBlocked());
@@ -1505,7 +1502,7 @@ CO_TEST_F(SendBgpMessagesFixtureWithBackpressure, QueueCloseTest) {
  * 2. Sends one additional message to force it into waiting for queue space
  * 3. Releases all external references to the queue (fixture)
  * 4. Calls sessionTerminated() which closes the queue
- * 5. Verifies that the boundedAdjRibOutQueue_ on the AdjRib is closed
+ * 5. Verifies that the adjRibOutQueue_ on the AdjRib is closed
  */
 CO_TEST_F(
     SendBgpMessagesFixtureWithBackpressure,
@@ -1530,13 +1527,13 @@ CO_TEST_F(
   adjRib_->egressEoRsSent_ = true;
 
   LOG(INFO) << "Initial queue ref count: "
-            << adjRib_->boundedAdjRibOutQueue_.use_count();
+            << adjRib_->adjRibOutQueue_.use_count();
 
   // Step 1: Fill the queue to the high watermark to force it into blocked state
   FillQueueToSize(highWm_);
 
   // Verify the queue is blocked
-  EXPECT_TRUE(adjRib_->boundedAdjRibOutQueue_->isBlocked());
+  EXPECT_TRUE(adjRib_->adjRibOutQueue_->isBlocked());
 
   UpdateAttrToPrefixMap(GetBgpPath(kV4Nexthop1), {kV4Prefix1});
   UpdateAttrToPrefixMap(GetBgpPath(kV4Nexthop2), {kV4Prefix2});
@@ -1561,13 +1558,13 @@ CO_TEST_F(
   co_await folly::coro::co_withExecutor(
       &evb_,
       facebook::bgp::test::boundedPop(
-          *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_"));
+          *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_"));
 
   // Verify the task has started (should be blocked waiting for queue space)
   EXPECT_TRUE(sendBgpUpdatesStarted.load());
 
   LOG(INFO) << "Before releasing fixture queue ref count: "
-            << adjRib_->boundedAdjRibOutQueue_.use_count();
+            << adjRib_->adjRibOutQueue_.use_count();
 
   /*
    * Step 3: Release the fixture's ownership of the queue
@@ -1576,7 +1573,7 @@ CO_TEST_F(
   boundedAdjRibOutQ_.reset();
 
   LOG(INFO) << "After releasing fixture queue ref count: "
-            << adjRib_->boundedAdjRibOutQueue_.use_count();
+            << adjRib_->adjRibOutQueue_.use_count();
 
   /*
    * Step 4: Call sessionTerminated() while the queue is still active
@@ -1593,12 +1590,12 @@ CO_TEST_F(
   LOG(INFO) << "After sessionTerminated - queue destroyed";
 
   /*
-   * Step 5: Verify that the boundedAdjRibOutQueue_ on the AdjRib is closed
+   * Step 5: Verify that the adjRibOutQueue_ on the AdjRib is closed
    * (not nullptr - a new queue will be provided when a new session is
    * established)
    */
-  EXPECT_NE(nullptr, adjRib_->boundedAdjRibOutQueue_);
-  EXPECT_TRUE(adjRib_->boundedAdjRibOutQueue_->isClosed());
+  EXPECT_NE(nullptr, adjRib_->adjRibOutQueue_);
+  EXPECT_TRUE(adjRib_->adjRibOutQueue_->isClosed());
 
   // Run the event loop briefly to let cancelled tasks exit
   /* sleep override */
@@ -1644,7 +1641,7 @@ CO_TEST_F(
   FillQueueToSize(highWm_);
 
   /* Verify the queue is blocked */
-  EXPECT_TRUE(adjRib_->boundedAdjRibOutQueue_->isBlocked());
+  EXPECT_TRUE(adjRib_->adjRibOutQueue_->isBlocked());
 
   /**
    * Add an update to the packing list so sendBgpUpdates will need to call
@@ -1680,7 +1677,7 @@ CO_TEST_F(
   co_await folly::coro::co_withExecutor(
       &evb_,
       facebook::bgp::test::boundedPop(
-          *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_"));
+          *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_"));
 
   /**
    * Verify that egressQueueBlocks was incremented, confirming we hit
@@ -1722,12 +1719,11 @@ CO_TEST_F(
   }
 
   /* Pop all items from the queue and verify there are no EoRs */
-  while (!adjRib_->boundedAdjRibOutQueue_->empty()) {
+  while (!adjRib_->adjRibOutQueue_->empty()) {
     auto msg = co_await folly::coro::co_withExecutor(
         &evb_,
         facebook::bgp::test::boundedPop(
-            *adjRib_->boundedAdjRibOutQueue_,
-            "adjRib_->boundedAdjRibOutQueue_"));
+            *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_"));
     if (msg) {
       /**
        * Verify that no EoRs were sent because sessionTerminated interrupted
@@ -1738,7 +1734,7 @@ CO_TEST_F(
   }
 
   /* Verify the queue is closed */
-  EXPECT_TRUE(adjRib_->boundedAdjRibOutQueue_->isClosed());
+  EXPECT_TRUE(adjRib_->adjRibOutQueue_->isClosed());
 
   /**
    * Verify changeListConsumeTimer_ was reset to nullptr during
@@ -1816,9 +1812,9 @@ CO_TEST_F(
 
   /* Drain padding and collect real messages. */
   std::vector<std::shared_ptr<const BgpUpdate2>> realMessages;
-  while (!adjRib_->boundedAdjRibOutQueue_->empty()) {
+  while (!adjRib_->adjRibOutQueue_->empty()) {
     auto msg = co_await facebook::bgp::test::boundedPop(
-        *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
+        *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
     auto update = std::get<std::shared_ptr<const BgpUpdate2>>(*msg);
     if (update) {
       realMessages.push_back(update);
@@ -1865,9 +1861,9 @@ CO_TEST_F(
   EXPECT_TRUE(adjRib_->attrToPrefixMap_.empty());
 
   size_t updateCount = 0;
-  while (!adjRib_->boundedAdjRibOutQueue_->empty()) {
+  while (!adjRib_->adjRibOutQueue_->empty()) {
     auto message = co_await facebook::bgp::test::boundedPop(
-        *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
+        *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
     if (message &&
         std::get<std::shared_ptr<const BgpUpdate2>>(*message) != nullptr) {
       ++updateCount;
@@ -1909,7 +1905,7 @@ TEST_F(
   EXPECT_TRUE(adjRib_->attrToPrefixMap_.empty());
 
   // Messages should be in the queue
-  EXPECT_EQ(2, adjRib_->boundedAdjRibOutQueue_->size());
+  EXPECT_EQ(2, adjRib_->adjRibOutQueue_->size());
 
   // Clean up
   adjRib_->adjRibOutGroup_ = nullptr;

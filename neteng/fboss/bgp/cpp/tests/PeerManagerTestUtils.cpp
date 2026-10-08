@@ -808,9 +808,9 @@ PeerManagerTestFixture::setupMockSessionManager(
 
   auto globalConfig = config_->getBgpGlobalConfig();
 
-  auto iQueue = std::make_shared<AdjRib::AdjRibOutQueueT>();
+  auto iQueue = std::make_shared<nettools::bgplib::FiberBgpPeer::InputQueueT>();
   auto oQueue = std::make_shared<AdjRib::AdjRibInQueueT>();
-  auto biQueue = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+  auto biQueue = std::make_shared<AdjRib::AdjRibOutQueueT>(
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
 
   auto mockSessionMgr = std::make_shared<MockSessionManager>(
@@ -907,7 +907,7 @@ PeerManagerTestFixture::getMockPeerInfo(
 
 folly::coro::Task<void> PeerManagerTestFixture::waitForAdjRibsToProcessUpdates(
     folly::EventBase& evb,
-    std::vector<std::shared_ptr<AdjRib::BoundedAdjRibOutQueueT>> queues) {
+    std::vector<std::shared_ptr<AdjRib::AdjRibOutQueueT>> queues) {
   evb.loopOnce();
   for (auto& q : queues) {
     while (!q->empty()) {

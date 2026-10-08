@@ -2560,7 +2560,7 @@ AdjRibOutGroup::PushResult AdjRibOutGroup::tryPushToPeer(
     const std::shared_ptr<AdjRib>& adjRib,
     uint64_t bitPos,
     folly::Function<void() noexcept> onResolved) noexcept {
-  auto boundedQueue = adjRib->getBoundedAdjRibOutQueue();
+  auto boundedQueue = adjRib->getAdjRibOutQueue();
   if (!boundedQueue) {
     XLOGF(
         WARN,

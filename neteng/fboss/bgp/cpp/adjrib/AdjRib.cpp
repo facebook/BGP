@@ -557,7 +557,7 @@ void AdjRib::logPeerEvent(const std::string& phase, const std::string& src) {
 void AdjRib::sessionEstablished(
     const std::optional<uint16_t>& remoteGrRestartTime,
     std::shared_ptr<AdjRibInQueueT> adjRibInQueue,
-    std::shared_ptr<BoundedAdjRibOutQueueT> boundedAdjRibOutQueue,
+    std::shared_ptr<AdjRibOutQueueT> adjRibOutQueue,
     const AfiIpv4Negotiated& isAfiIpv4Negotiated,
     const AfiIpv6Negotiated& isAfiIpv6Negotiated,
     const V4OverV6Nexthop& isV4OverV6NexthopNegotiated,
@@ -571,7 +571,7 @@ void AdjRib::sessionEstablished(
       peeringParams_.remoteAs,
       remoteGrRestartTime,
       std::move(adjRibInQueue),
-      std::move(boundedAdjRibOutQueue),
+      std::move(adjRibOutQueue),
       isAfiIpv4Negotiated,
       isAfiIpv6Negotiated,
       isV4OverV6NexthopNegotiated,
@@ -587,7 +587,7 @@ void AdjRib::sessionEstablished(
     uint32_t remoteAs,
     const std::optional<uint16_t>& remoteGrRestartTime,
     std::shared_ptr<AdjRibInQueueT> adjRibInQueue,
-    std::shared_ptr<BoundedAdjRibOutQueueT> boundedAdjRibOutQueue,
+    std::shared_ptr<AdjRibOutQueueT> adjRibOutQueue,
     const AfiIpv4Negotiated& isAfiIpv4Negotiated,
     const AfiIpv6Negotiated& isAfiIpv6Negotiated,
     const V4OverV6Nexthop& isV4OverV6NexthopNegotiated,
@@ -629,9 +629,9 @@ void AdjRib::sessionEstablished(
       (remoteGrRestartTime ? std::chrono::seconds(*remoteGrRestartTime) : 0s);
 
   adjRibInQueue_ = std::move(adjRibInQueue);
-  boundedAdjRibOutQueue_ = std::move(boundedAdjRibOutQueue);
+  adjRibOutQueue_ = std::move(adjRibOutQueue);
 
-  CHECK(boundedAdjRibOutQueue_ != nullptr);
+  CHECK(adjRibOutQueue_ != nullptr);
   logPeerEvent("SESSION_QUEUES_INITIALIZED", BGP_LOG_SRC());
 
   isAfiIpv4Negotiated_ = isAfiIpv4Negotiated;
@@ -835,8 +835,8 @@ folly::coro::Task<void> AdjRib::sessionTerminated(
    * so the old queue on this adjRib will be replaced and destroyed then
    * by shared_ptr handling.
    */
-  if (boundedAdjRibOutQueue_) {
-    boundedAdjRibOutQueue_->close();
+  if (adjRibOutQueue_) {
+    adjRibOutQueue_->close();
   }
 
   if (asyncScope_) {

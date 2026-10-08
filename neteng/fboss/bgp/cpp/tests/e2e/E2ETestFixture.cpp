@@ -1414,8 +1414,9 @@ void E2ETestFixture::establishSession(
 
   auto qs = getQueueSizesForPeer(peerId.peerAddr);
   auto adjRibInQ = std::make_shared<AdjRib::AdjRibInQueueT>();
-  auto adjRibOutQ = std::make_shared<AdjRib::AdjRibOutQueueT>();
-  auto boundedAdjRibOutQ = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+  auto adjRibOutQ =
+      std::make_shared<nettools::bgplib::FiberBgpPeer::InputQueueT>();
+  auto boundedAdjRibOutQ = std::make_shared<AdjRib::AdjRibOutQueueT>(
       qs.capacity, qs.highWm, qs.lowWm);
 
   XLOGF(
@@ -1497,8 +1498,9 @@ void E2ETestFixture::dispatchStaleSessionEstablished(
 
   auto staleQs = getQueueSizesForPeer(peerAddr);
   auto adjRibInQ = std::make_shared<AdjRib::AdjRibInQueueT>();
-  auto adjRibOutQ = std::make_shared<AdjRib::AdjRibOutQueueT>();
-  auto boundedAdjRibOutQ = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+  auto adjRibOutQ =
+      std::make_shared<nettools::bgplib::FiberBgpPeer::InputQueueT>();
+  auto boundedAdjRibOutQ = std::make_shared<AdjRib::AdjRibOutQueueT>(
       staleQs.capacity, staleQs.highWm, staleQs.lowWm);
 
   // Create VersionNumber with an initial value
@@ -2745,8 +2747,8 @@ std::optional<size_t> E2ETestFixture::getSubscriberQueueSize(
   }
   peerManager_->getEventBase().runInEventBaseThreadAndWait([&]() {
     auto* subscriber = peerManager_->getStreamSubscriber(subscriberName);
-    if (subscriber && subscriber->boundedPeerInputQ) {
-      size = subscriber->boundedPeerInputQ->size();
+    if (subscriber && subscriber->peerInputQ) {
+      size = subscriber->peerInputQ->size();
     }
   });
   return size;
@@ -2760,8 +2762,8 @@ std::optional<bool> E2ETestFixture::isSubscriberQueueBlocked(
   }
   peerManager_->getEventBase().runInEventBaseThreadAndWait([&]() {
     auto* subscriber = peerManager_->getStreamSubscriber(subscriberName);
-    if (subscriber && subscriber->boundedPeerInputQ) {
-      blocked = subscriber->boundedPeerInputQ->isBlocked();
+    if (subscriber && subscriber->peerInputQ) {
+      blocked = subscriber->peerInputQ->isBlocked();
     }
   });
   return blocked;

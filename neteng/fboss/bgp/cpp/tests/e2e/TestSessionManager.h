@@ -54,9 +54,10 @@ class E2ETestSessionManager : public SessionManager {
 
   std::shared_ptr<AdjRib::AdjRibInQueueT> getPeerOutputQueue(
       const nettools::bgplib::BgpPeerId& peerId) noexcept override;
-  std::shared_ptr<AdjRib::AdjRibOutQueueT> getPeerInputQueue(
+  std::shared_ptr<nettools::bgplib::FiberBgpPeer::InputQueueT>
+  getPeerInputQueue(
       const nettools::bgplib::BgpPeerId& peerId) noexcept override;
-  std::shared_ptr<AdjRib::BoundedAdjRibOutQueueT> getBoundedPeerInputQueue(
+  std::shared_ptr<AdjRib::AdjRibOutQueueT> getBoundedPeerInputQueue(
       const nettools::bgplib::BgpPeerId& peerId) noexcept override;
 
   /* ========== Test Simulation API ========== */
@@ -93,8 +94,8 @@ class E2ETestSessionManager : public SessionManager {
 
   struct PeerSessionState {
     std::shared_ptr<AdjRib::AdjRibInQueueT> adjRibInQ;
-    std::shared_ptr<AdjRib::AdjRibOutQueueT> adjRibOutQ;
-    std::shared_ptr<AdjRib::BoundedAdjRibOutQueueT> boundedAdjRibOutQ;
+    std::shared_ptr<nettools::bgplib::FiberBgpPeer::InputQueueT> adjRibOutQ;
+    std::shared_ptr<AdjRib::AdjRibOutQueueT> boundedAdjRibOutQ;
     std::shared_ptr<nettools::bgplib::VersionNumber> versionNumber;
     nettools::bgplib::BgpPeerDisplayInfo displayInfo;
     bool established{false};

@@ -263,9 +263,9 @@ TEST_F(
   // Simulate that peerVersion is no longer valid when established is called.
   uint64_t version = 0x100;
   auto versionNumber = std::make_shared<VersionNumber>(0);
-  auto iQueue = std::make_shared<AdjRib::AdjRibOutQueueT>();
+  auto iQueue = std::make_shared<nettools::bgplib::FiberBgpPeer::InputQueueT>();
   auto oQueue = std::make_shared<AdjRib::AdjRibInQueueT>();
-  auto biQueue = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+  auto biQueue = std::make_shared<AdjRib::AdjRibOutQueueT>(
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
 
   auto& evb = mockPeerMgr->getEventBase();
@@ -957,7 +957,7 @@ CO_TEST_F(PeerManagerTestFixture, SessionTerminated_VipErasesDynamicEorState) {
       kVipAsn,
       std::nullopt,
       std::make_shared<AdjRib::AdjRibInQueueT>(),
-      std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+      std::make_shared<AdjRib::AdjRibOutQueueT>(
           kMaxEgressQueueSize,
           kEgressQueueHighWatermark,
           kEgressQueueLowWatermark));
@@ -1018,7 +1018,7 @@ CO_TEST_F(PeerManagerTestFixture, SessionTerminated_ShutdownSkipsProcessing) {
       kVipAsn,
       std::nullopt,
       std::make_shared<AdjRib::AdjRibInQueueT>(),
-      std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+      std::make_shared<AdjRib::AdjRibOutQueueT>(
           kMaxEgressQueueSize,
           kEgressQueueHighWatermark,
           kEgressQueueLowWatermark));

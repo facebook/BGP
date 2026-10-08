@@ -171,7 +171,7 @@ void AdjRibOutboundFixture::setupAdjRib(
        *
        * Whenever we set up the adjRib, we should always provide a fresh queue.
        */
-      boundedAdjRibOutQ_ = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+      boundedAdjRibOutQ_ = std::make_shared<AdjRib::AdjRibOutQueueT>(
           nettools::bgplib::kMaxEgressQueueSize,
           nettools::bgplib::kEgressQueueHighWatermark,
           nettools::bgplib::kEgressQueueLowWatermark);

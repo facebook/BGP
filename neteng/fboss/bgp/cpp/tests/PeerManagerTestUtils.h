@@ -266,7 +266,7 @@ class PeerManagerTestFixture : public ::testing::Test {
    */
   folly::coro::Task<void> waitForAdjRibsToProcessUpdates(
       folly::EventBase& evb,
-      std::vector<std::shared_ptr<AdjRib::BoundedAdjRibOutQueueT>> queues);
+      std::vector<std::shared_ptr<AdjRib::AdjRibOutQueueT>> queues);
 };
 
 /**

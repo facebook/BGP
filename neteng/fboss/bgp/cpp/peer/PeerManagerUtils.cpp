@@ -288,7 +288,7 @@ std::vector<TUpdateGroupInfo> PeerManagerBase::getUpdateGroupInfo(
         peerInfo.remote_as() = 0;
 
         peerInfo.last_seen_rib_version() = adjRib->getLastSeenRibVersion();
-        auto queue = adjRib->getBoundedAdjRibOutQueue();
+        auto queue = adjRib->getAdjRibOutQueue();
         peerInfo.queue_size() = queue ? static_cast<int64_t>(queue->size()) : 0;
         /*
          * In-sync peers use group-owned RIB-OUT entries and therefore have no

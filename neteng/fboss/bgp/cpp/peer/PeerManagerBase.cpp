@@ -168,7 +168,7 @@ void StreamSubscriber::resetQueues() {
    * A subscriber uses the same queue sizes as a peer. The sizes come from the
    * shared constants in BgpStructs.h. A subscriber has no separate knob.
    */
-  boundedPeerInputQ = std::make_shared<FiberBgpPeer::BoundedInputQueueT>(
+  peerInputQ = std::make_shared<FiberBgpPeer::BoundedInputQueueT>(
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
   peerOutputQ =
       std::make_shared<FiberBgpPeer::OutputQueueT>(kMaxIngressQueueSize);
@@ -726,8 +726,8 @@ void PeerManagerBase::stop() noexcept {
       if (subscriber.streamCancelSource) {
         subscriber.streamCancelSource->requestCancellation();
       }
-      if (subscriber.boundedPeerInputQ) {
-        subscriber.boundedPeerInputQ->close();
+      if (subscriber.peerInputQ) {
+        subscriber.peerInputQ->close();
       }
       subscriber.state = TBgpPeerState::IDLE;
     }
@@ -1145,7 +1145,7 @@ void PeerManagerBase::reportStreamSubscriberBackpressureStats() noexcept {
   bool anyBoundedSubscriber = false;
 
   for (auto& [subscriberName, subscriber] : streamSubscribers_) {
-    if (!subscriber.boundedPeerInputQ) {
+    if (!subscriber.peerInputQ) {
       continue;
     }
     /*
@@ -1171,10 +1171,9 @@ void PeerManagerBase::reportStreamSubscriberBackpressureStats() noexcept {
       continue;
     }
     deepestQueue = std::max(
-        deepestQueue,
-        static_cast<int64_t>(subscriber.boundedPeerInputQ->size()));
+        deepestQueue, static_cast<int64_t>(subscriber.peerInputQ->size()));
 
-    const bool blocked = subscriber.boundedPeerInputQ->isBlocked();
+    const bool blocked = subscriber.peerInputQ->isBlocked();
     if (blocked && !subscriber.blockStartTimeMs.has_value()) {
       /*
        * The start of the block uses the steady clock. The duration below is
@@ -1196,7 +1195,7 @@ void PeerManagerBase::reportStreamSubscriberBackpressureStats() noexcept {
           "{}Stream subscriber {} egress queue blocked at depth {}",
           facebook::fboss::BGPAlert().str(),
           subscriberName,
-          subscriber.boundedPeerInputQ->size());
+          subscriber.peerInputQ->size());
     } else if (!blocked && subscriber.blockStartTimeMs.has_value()) {
       BgpStats::addStreamSubscriberBlockDuration(
           static_cast<uint64_t>(nowSteadyMs()) - *subscriber.blockStartTimeMs);
@@ -1207,7 +1206,7 @@ void PeerManagerBase::reportStreamSubscriberBackpressureStats() noexcept {
           INFO,
           "Stream subscriber {} egress queue unblocked at depth {}",
           subscriberName,
-          subscriber.boundedPeerInputQ->size());
+          subscriber.peerInputQ->size());
     }
 
     reclaimIdleStreamSubscriber(subscriberName, subscriber);
@@ -1285,7 +1284,7 @@ void PeerManagerBase::reclaimIdleStreamSubscriber(
       "consumer.",
       facebook::fboss::BGPAlert().str(),
       subscriberName,
-      subscriber.boundedPeerInputQ->size(),
+      subscriber.peerInputQ->size(),
       noProgressMs,
       FLAGS_stream_subscriber_idle_timeout_ms);
 
@@ -1589,7 +1588,7 @@ void PeerManagerBase::processRibDumpReq(
       "Handling RibDumpReq inside ShadowRib from peer {}",
       adjRib->getRemotePeerId().str());
 
-  if (!adjRib->getBoundedAdjRibOutQueue()) {
+  if (!adjRib->getAdjRibOutQueue()) {
     XLOGF(
         ERR,
         "Skip RibDumpReq since session queues not initialized for {}.",
@@ -2840,9 +2839,9 @@ folly::coro::Task<void> PeerManagerBase::sessionEstablished(
   auto& oqueue = sessionInfo->outputQueue;
   CHECK(oqueue != nullptr);
 
-  /* Get bgp bounded peer input queue, aka, boundedAdjRibOutQueue. */
-  auto& boundedIqueue = sessionInfo->boundedInputQueue;
-  CHECK(boundedIqueue != nullptr);
+  /* Get bgp bounded peer input queue, aka, adjRibOutQueue. */
+  auto& iqueue = sessionInfo->boundedInputQueue;
+  CHECK(iqueue != nullptr);
 
   { // start of the critical section, protected by versionLock
     auto versionLock = sessionInfo->currentVersion->grabScopedLock();
@@ -2910,7 +2909,7 @@ folly::coro::Task<void> PeerManagerBase::sessionEstablished(
         evt.remoteAs,
         std::optional<uint16_t>(peerInfo->remoteGrRestartTime),
         oqueue, /* aka adjRibInQueue */
-        boundedIqueue, /* aka, boundedAdjRibOutQueue */
+        iqueue, /* aka, adjRibOutQueue */
         AfiIpv4Negotiated{*peerInfo->negotiatedCapabilities.mpExtV4Unicast()},
         AfiIpv6Negotiated{*peerInfo->negotiatedCapabilities.mpExtV6Unicast()},
         V4OverV6Nexthop{
@@ -3698,7 +3697,7 @@ void PeerManagerBase::setSubscriberAdjRib(
   auto addPathCapa = nettools::bgplib::BgpAddPathSendRec::SEND;
   /*
    * The AdjRib of the subscriber runs the same cycle as the AdjRib of a peer.
-   * It writes into boundedPeerInputQ. When that queue reaches the high
+   * It writes into peerInputQ. When that queue reaches the high
    * watermark, waitForQueueSpace() cancels the change-list consume timer. The
    * timer starts again when the reader takes the queue below the low
    * watermark.
@@ -3715,7 +3714,7 @@ void PeerManagerBase::setSubscriberAdjRib(
   adjRib->sessionEstablished(
       std::nullopt, /* GR disabled */
       subscriber.peerOutputQ, /* aka adjRibInQueue */
-      subscriber.boundedPeerInputQ, /* aka boundedAdjRibOutQueue */
+      subscriber.peerInputQ, /* aka adjRibOutQueue */
       AfiIpv4Negotiated{true}, /* default argument */
       AfiIpv6Negotiated{true}, /* default argument */
       V4OverV6Nexthop{true}, /* isV4OverV6NexthopNegotiated */
@@ -4060,7 +4059,7 @@ apache::thrift::ServerStream<TBgpRouteDelta> PeerManagerBase::subscribe(
     resultStream =
         std::make_unique<apache::thrift::ServerStream<TBgpRouteDelta>>(
             subscriberStreamGenerator(
-                subscriber.boundedPeerInputQ,
+                subscriber.peerInputQ,
                 subscriber.streamCancelSource->getToken(),
                 subscriber.sessionState,
                 peerId,

@@ -95,7 +95,7 @@ struct StreamSubscriber {
   nettools::bgplib::BgpPeerId peerId;
 
   std::shared_ptr<nettools::bgplib::FiberBgpPeer::BoundedInputQueueT>
-      boundedPeerInputQ;
+      peerInputQ;
 
   /*
    * The state that evb_ shares with the generator of the session.
@@ -108,7 +108,7 @@ struct StreamSubscriber {
   struct StreamSessionState {
     /*
      * The count of the messages that the generator took from
-     * boundedPeerInputQ. The generator raises the count. The stats task reads
+     * peerInputQ. The generator raises the count. The stats task reads
      * it to learn whether the client makes progress.
      *
      * The depth of the queue alone does not show progress. A consumer that
@@ -158,7 +158,7 @@ struct StreamSubscriber {
   std::shared_ptr<folly::CancellationSource> streamCancelSource;
 
   /*
-   * The steady-clock time in ms when bgpd saw boundedPeerInputQ enter the
+   * The steady-clock time in ms when bgpd saw peerInputQ enter the
    * blocked state. bgpd clears the value when it sees the queue unblocked.
    *
    * The value comes from the steady clock because the duration that bgpd

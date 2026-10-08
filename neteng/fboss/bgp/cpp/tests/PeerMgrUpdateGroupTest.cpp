@@ -94,10 +94,10 @@ class PeerManagerUpdateGroupTestFixture : public PeerManagerTestFixture {
 
   std::shared_ptr<AdjRib::AdjRibInQueueT> adjRibInQ_ =
       std::make_shared<AdjRib::AdjRibInQueueT>();
-  std::shared_ptr<AdjRib::AdjRibOutQueueT> adjRibOutQ_ =
-      std::make_shared<AdjRib::AdjRibOutQueueT>();
-  std::shared_ptr<AdjRib::BoundedAdjRibOutQueueT> boundedAdjRibOutQ_ =
-      std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+  std::shared_ptr<nettools::bgplib::FiberBgpPeer::InputQueueT> adjRibOutQ_ =
+      std::make_shared<nettools::bgplib::FiberBgpPeer::InputQueueT>();
+  std::shared_ptr<AdjRib::AdjRibOutQueueT> boundedAdjRibOutQ_ =
+      std::make_shared<AdjRib::AdjRibOutQueueT>(
           kMaxEgressQueueSize,
           kEgressQueueHighWatermark,
           kEgressQueueLowWatermark);

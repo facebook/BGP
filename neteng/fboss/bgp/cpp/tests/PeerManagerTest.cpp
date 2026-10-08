@@ -5513,7 +5513,7 @@ constexpr uint64_t kTestElapsedMs = kTestIdleTimeoutMs + 1000;
  */
 void fillEgressQueueToHighWatermark(StreamSubscriber& subscriber) {
   for (size_t i = 0; i < kEgressQueueHighWatermark; ++i) {
-    subscriber.boundedPeerInputQ->push(BgpEndOfRib{});
+    subscriber.peerInputQ->push(BgpEndOfRib{});
   }
 }
 
@@ -5538,7 +5538,7 @@ void ageBlockStart(StreamSubscriber& subscriber, uint64_t elapsedMs) {
  * caller must run on the peer-manager EventBase.
  */
 void consumeOneEgressMessage(StreamSubscriber& subscriber) {
-  subscriber.boundedPeerInputQ->get();
+  subscriber.peerInputQ->get();
   subscriber.sessionState->consumedCount.fetch_add(
       1, std::memory_order_relaxed);
 }
@@ -5576,10 +5576,10 @@ TEST_F(StreamSubscriberFixture, StreamSubscriberIdleTimeoutReclaimsSession) {
    */
   evb.runInEventBaseThreadAndWait([&]() {
     auto& subscriber = peerMgr->streamSubscribers_.at(*subscriberName);
-    EXPECT_NE(nullptr, subscriber.boundedPeerInputQ);
+    EXPECT_NE(nullptr, subscriber.peerInputQ);
 
     fillEgressQueueToHighWatermark(subscriber);
-    EXPECT_TRUE(subscriber.boundedPeerInputQ->isBlocked());
+    EXPECT_TRUE(subscriber.peerInputQ->isBlocked());
 
     // The first sample records the start of the block.
     peerMgr->reportStreamSubscriberBackpressureStats();
@@ -5624,7 +5624,7 @@ TEST_F(StreamSubscriberFixture, StreamSubscriberIdleTimeoutDisabled) {
   evb.runInEventBaseThreadAndWait([&]() {
     auto& subscriber = peerMgr->streamSubscribers_.at(*subscriberName);
     fillEgressQueueToHighWatermark(subscriber);
-    EXPECT_TRUE(subscriber.boundedPeerInputQ->isBlocked());
+    EXPECT_TRUE(subscriber.peerInputQ->isBlocked());
 
     peerMgr->reportStreamSubscriberBackpressureStats();
     EXPECT_TRUE(subscriber.blockStartTimeMs.has_value());
@@ -5667,7 +5667,7 @@ TEST_F(StreamSubscriberFixture, StreamSubscriberIdleTimeoutDrainedQueue) {
      * Take the queue to the low watermark. The queue leaves the blocked state
      * at that depth.
      */
-    while (subscriber.boundedPeerInputQ->isBlocked()) {
+    while (subscriber.peerInputQ->isBlocked()) {
       consumeOneEgressMessage(subscriber);
     }
 
@@ -5725,8 +5725,8 @@ TEST_F(StreamSubscriberFixture, StreamSubscriberIdleTimeoutSlowClient) {
      * unblocked.
      */
     consumeOneEgressMessage(subscriber);
-    subscriber.boundedPeerInputQ->push(BgpEndOfRib{});
-    EXPECT_TRUE(subscriber.boundedPeerInputQ->isBlocked());
+    subscriber.peerInputQ->push(BgpEndOfRib{});
+    EXPECT_TRUE(subscriber.peerInputQ->isBlocked());
 
     ageBlockStart(subscriber, kTestElapsedMs);
     peerMgr->reportStreamSubscriberBackpressureStats();

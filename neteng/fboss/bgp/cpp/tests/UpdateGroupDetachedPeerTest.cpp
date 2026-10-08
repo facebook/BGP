@@ -5219,16 +5219,16 @@ TEST_F(UpdateGroupDetachedPeerTest, RibWalkDetachCopiesEgressEoRsPending) {
   auto adjRib1 = createAndRegisterPeer(1);
 
   /* Give peer0 a tiny bounded queue that's already blocked */
-  auto blockedQueue = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(3, 2, 1);
+  auto blockedQueue = std::make_shared<AdjRib::AdjRibOutQueueT>(3, 2, 1);
   /* Fill past high watermark to make it blocked */
   blockedQueue->push(std::nullopt);
   blockedQueue->push(std::nullopt);
   ASSERT_TRUE(blockedQueue->isBlocked());
-  adjRib0->boundedAdjRibOutQueue_ = blockedQueue;
+  adjRib0->adjRibOutQueue_ = blockedQueue;
 
   /* Give peer1 a normal queue */
-  adjRib1->boundedAdjRibOutQueue_ =
-      std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(1000, 500, 100);
+  adjRib1->adjRibOutQueue_ =
+      std::make_shared<AdjRib::AdjRibOutQueueT>(1000, 500, 100);
 
   /* Set up change tracker and consumer for detachSlowPeer */
   auto changeTracker =

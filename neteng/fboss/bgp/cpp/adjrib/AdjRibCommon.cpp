@@ -212,11 +212,11 @@ void tryUpdateAttrToPrefixMapImpl(
     /**
      * Two cases:
      * 1. We find the prefix in the prefix set; we did not
-     *    queue this packed prefix to boundedAdjRibOutQueue_ before the next
+     *    queue this packed prefix to adjRibOutQueue_ before the next
      *    update came in.
      *
      * 2. We don't find this prefix in the prefix set. We already
-     *    wrote this update to boundedAdjRibOutQueue_ and removed it from the
+     *    wrote this update to adjRibOutQueue_ and removed it from the
      *    packing list.
      *
      * Both are valid scenarios. We handle (1) below.

@@ -2726,7 +2726,7 @@ TEST_F(AdjRibGroupPackingFixture, EorCountedSeparatelyFromUpdate) {
   auto adjRib = createMinimalAdjRib();
   auto adjRibInQ = std::make_shared<AdjRib::AdjRibInQueueT>(
       nettools::bgplib::kMaxIngressQueueSize);
-  auto boundedAdjRibOutQ = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+  auto boundedAdjRibOutQ = std::make_shared<AdjRib::AdjRibOutQueueT>(
       nettools::bgplib::kMaxEgressQueueSize,
       nettools::bgplib::kEgressQueueHighWatermark,
       nettools::bgplib::kEgressQueueLowWatermark);
@@ -2825,13 +2825,12 @@ CO_TEST_F(
   adjRib->setUpdateGroup(adjRibOutGroup_);
   adjRib->setPeerState(PeerUpdateState::JOINED_RUNNING);
   co_await adjRib->ensureAsyncScopeInitialized();
-  adjRib->boundedAdjRibOutQueue_ =
-      std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
-          3 /* capacity */, 1 /* highWm */, 0 /* lowWm */);
+  adjRib->adjRibOutQueue_ = std::make_shared<AdjRib::AdjRibOutQueueT>(
+      3 /* capacity */, 1 /* highWm */, 0 /* lowWm */);
 
   nettools::bgplib::FiberBgpPeer::InputMessageT dummy =
       nettools::bgplib::BgpEndOfRib();
-  adjRib->boundedAdjRibOutQueue_->push(dummy);
+  adjRib->adjRibOutQueue_->push(dummy);
 
   auto attrs1 = std::make_shared<BgpPath>(BgpPathFields());
   attrs1->setLocalPref(100);
@@ -2862,12 +2861,12 @@ CO_TEST_F(
     EXPECT_EQ(0, adjRibOutGroup_->getStats().getSentUpdateMsgs());
 
     co_await facebook::bgp::test::boundedPop(
-        *adjRib->boundedAdjRibOutQueue_, "adjRib->boundedAdjRibOutQueue_");
-    while (adjRib->boundedAdjRibOutQueue_->empty()) {
+        *adjRib->adjRibOutQueue_, "adjRib->adjRibOutQueue_");
+    while (adjRib->adjRibOutQueue_->empty()) {
       co_await folly::coro::co_reschedule_on_current_executor;
     }
     co_await facebook::bgp::test::boundedPop(
-        *adjRib->boundedAdjRibOutQueue_, "adjRib->boundedAdjRibOutQueue_");
+        *adjRib->adjRibOutQueue_, "adjRib->adjRibOutQueue_");
   };
 
   co_await folly::coro::collectAll(
@@ -2879,7 +2878,7 @@ CO_TEST_F(
 
   /* Only the group UPDATE built after clear belongs to the new epoch. */
   EXPECT_EQ(1, adjRibOutGroup_->getStats().getSentUpdateMsgs());
-  EXPECT_EQ(1, adjRib->boundedAdjRibOutQueue_->size());
+  EXPECT_EQ(1, adjRib->adjRibOutQueue_->size());
 }
 
 CO_TEST_F(AdjRibGroupDistributionFixture, CommittedEorCountDoesNotCrossClear) {
@@ -2887,13 +2886,12 @@ CO_TEST_F(AdjRibGroupDistributionFixture, CommittedEorCountDoesNotCrossClear) {
   adjRib->setUpdateGroup(adjRibOutGroup_);
   adjRib->setPeerState(PeerUpdateState::JOINED_RUNNING);
   co_await adjRib->ensureAsyncScopeInitialized();
-  adjRib->boundedAdjRibOutQueue_ =
-      std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
-          3 /* capacity */, 1 /* highWm */, 0 /* lowWm */);
+  adjRib->adjRibOutQueue_ = std::make_shared<AdjRib::AdjRibOutQueueT>(
+      3 /* capacity */, 1 /* highWm */, 0 /* lowWm */);
 
   nettools::bgplib::FiberBgpPeer::InputMessageT dummy =
       nettools::bgplib::BgpEndOfRib();
-  adjRib->boundedAdjRibOutQueue_->push(dummy);
+  adjRib->adjRibOutQueue_->push(dummy);
   adjRib->setEgressEoRsPending(true, true);
   adjRibOutGroup_->markPeerInSync(adjRib);
 
@@ -2909,12 +2907,12 @@ CO_TEST_F(AdjRibGroupDistributionFixture, CommittedEorCountDoesNotCrossClear) {
     EXPECT_EQ(0, adjRibOutGroup_->getStats().getSentEndOfRibMsgs());
 
     co_await facebook::bgp::test::boundedPop(
-        *adjRib->boundedAdjRibOutQueue_, "adjRib->boundedAdjRibOutQueue_");
-    while (adjRib->boundedAdjRibOutQueue_->empty()) {
+        *adjRib->adjRibOutQueue_, "adjRib->adjRibOutQueue_");
+    while (adjRib->adjRibOutQueue_->empty()) {
       co_await folly::coro::co_reschedule_on_current_executor;
     }
     co_await facebook::bgp::test::boundedPop(
-        *adjRib->boundedAdjRibOutQueue_, "adjRib->boundedAdjRibOutQueue_");
+        *adjRib->adjRibOutQueue_, "adjRib->adjRibOutQueue_");
   };
 
   co_await folly::coro::collectAll(
@@ -2927,7 +2925,7 @@ CO_TEST_F(AdjRibGroupDistributionFixture, CommittedEorCountDoesNotCrossClear) {
   /* Only the v6 group EoR accepted after clear belongs to the new epoch. */
   EXPECT_EQ(1, adjRibOutGroup_->getStats().getSentEndOfRibMsgs());
   EXPECT_EQ(2, adjRib->getStats().getSentEndOfRibMsgs());
-  EXPECT_EQ(1, adjRib->boundedAdjRibOutQueue_->size());
+  EXPECT_EQ(1, adjRib->adjRibOutQueue_->size());
 }
 
 /**

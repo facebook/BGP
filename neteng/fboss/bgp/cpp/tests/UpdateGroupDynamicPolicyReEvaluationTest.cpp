@@ -436,8 +436,8 @@ TEST_F(
    */
   evb.runInEventBaseThreadAndWait([&]() {
     auto& adjRib = ctx.adjRib1;
-    adjRib->boundedAdjRibOutQueue_ =
-        std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(10, 8, 2);
+    adjRib->adjRibOutQueue_ =
+        std::make_shared<AdjRib::AdjRibOutQueueT>(10, 8, 2);
     adjRib->pathIdGenerator_ = std::make_unique<PathIdGenerator>(false);
     adjRib->isAfiIpv4Negotiated_ = true;
   });
@@ -1539,13 +1539,13 @@ CO_TEST_F(
   // deferredPushToPeer runs on evb_ via asyncScope_, so we need it looping.
   std::thread evbThread([this]() { evb_->loopForever(); });
 
-  auto boundedQueue = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(3, 2, 1);
+  auto boundedQueue = std::make_shared<AdjRib::AdjRibOutQueueT>(3, 2, 1);
   uint64_t originalBit = 0;
   std::shared_ptr<AdjRib> adjRib2;
 
   // Phase 1: Set up bounded queue, fill it, trigger blocking via tryPushToPeer
   evb_->runInEventBaseThreadAndWait([&]() {
-    adjRib_->boundedAdjRibOutQueue_ = boundedQueue;
+    adjRib_->adjRibOutQueue_ = boundedQueue;
     adjRib_->setPeerState(PeerUpdateState::JOINED_RUNNING);
 
     // Fill queue to high watermark to trigger blocking

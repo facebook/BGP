@@ -254,8 +254,8 @@ folly::coro::Task<void> AdjRib::deferredPushToPeer(
 
   co_await folly::coro::co_safe_point;
 
-  if (boundedAdjRibOutQueue_ && co_await boundedAdjRibOutQueue_->waitToPush()) {
-    pushed = boundedAdjRibOutQueue_->push(message);
+  if (adjRibOutQueue_ && co_await adjRibOutQueue_->waitToPush()) {
+    pushed = adjRibOutQueue_->push(message);
     /* Run the continuation only on a successful push. */
     if (pushed && onResolved) {
       onResolved();
@@ -272,7 +272,7 @@ folly::coro::Task<void> AdjRib::deferredPushToPeer(
  */
 folly::coro::Task<bool> AdjRib::waitForQueueSpace() noexcept {
   /* Record if we experienced a write block when checking to wait. */
-  bool writeBlocked = boundedAdjRibOutQueue_->isBlocked();
+  bool writeBlocked = adjRibOutQueue_->isBlocked();
   if (writeBlocked) {
     BgpStats::incrementEgressQueueBackpressuredEvents();
     stats_.incrementEgressQueueBackpressuredEvents();
@@ -294,7 +294,7 @@ folly::coro::Task<bool> AdjRib::waitForQueueSpace() noexcept {
       setPeerState(PeerUpdateState::DETACHED_BLOCKED);
     }
     auto beforeWait = getCurrentTimeMs();
-    co_await boundedAdjRibOutQueue_->waitToPush();
+    co_await adjRibOutQueue_->waitToPush();
 
     stats_.setLastEgressQueueBlockTime(beforeWait);
     stats_.addEgressQueueBlockDuration(getCurrentTimeMs() - beforeWait);
@@ -409,7 +409,7 @@ folly::coro::Task<void> AdjRib::sendBgpUpdates(
        * We waited for the queue to be unblocked before building the message;
        * guaranteed to succeed writing.
        */
-      boundedAdjRibOutQueue_->push(std::move(update));
+      adjRibOutQueue_->push(std::move(update));
       /*
        * Queue insertion is the counter commit point. Publish the counter
        * before any subsequent suspension so counter clear and cancellation
@@ -480,14 +480,14 @@ AdjRib::sendPendingEoRs() noexcept {
    */
   if (isAdjRibFlagSet(EGRESS_EOR_PENDING_V4)) {
     backpressured |= co_await waitForQueueSpace();
-    boundedAdjRibOutQueue_->push(buildEndOfRib(BgpUpdateAfi::AFI_IPv4));
+    adjRibOutQueue_->push(buildEndOfRib(BgpUpdateAfi::AFI_IPv4));
     stats_.incrementSentEndOfRibMsgs(1);
     ++eorCnt;
     clearAdjRibFlag(EGRESS_EOR_PENDING_V4);
   }
   if (isAdjRibFlagSet(EGRESS_EOR_PENDING_V6)) {
     backpressured |= co_await waitForQueueSpace();
-    boundedAdjRibOutQueue_->push(buildEndOfRib(BgpUpdateAfi::AFI_IPv6));
+    adjRibOutQueue_->push(buildEndOfRib(BgpUpdateAfi::AFI_IPv6));
     stats_.incrementSentEndOfRibMsgs(1);
     ++eorCnt;
     clearAdjRibFlag(EGRESS_EOR_PENDING_V6);
@@ -681,10 +681,10 @@ bool AdjRib::buildAndSendRouteRefresh(
 
   auto routeRefresh =
       buildRouteRefresh(afi, subtype, BgpUpdateSafi::SAFI_UNICAST);
-  if (!boundedAdjRibOutQueue_ || boundedAdjRibOutQueue_->isBlocked()) {
+  if (!adjRibOutQueue_ || adjRibOutQueue_->isBlocked()) {
     return false;
   }
-  return boundedAdjRibOutQueue_->push(std::move(routeRefresh));
+  return adjRibOutQueue_->push(std::move(routeRefresh));
 }
 
 void AdjRib::markEgressEoRsPendingFor(

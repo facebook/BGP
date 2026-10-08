@@ -174,7 +174,7 @@ void establishSessionForRibDump(const std::shared_ptr<AdjRib>& adjRib) {
   adjRib->sessionEstablished(
       std::nullopt,
       std::make_shared<AdjRib::AdjRibInQueueT>(),
-      std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+      std::make_shared<AdjRib::AdjRibOutQueueT>(
           kMaxEgressQueueSize,
           kEgressQueueHighWatermark,
           kEgressQueueLowWatermark));
@@ -212,7 +212,7 @@ class RibInitialAnnouncementTestFixture : public PeerManagerTestFixture {
   }
 
   void refreshSessionInfo() {
-    boundedAdjRibOutQ_ = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+    boundedAdjRibOutQ_ = std::make_shared<AdjRib::AdjRibOutQueueT>(
         kMaxEgressQueueSize,
         kEgressQueueHighWatermark,
         kEgressQueueLowWatermark);
@@ -271,10 +271,10 @@ class RibInitialAnnouncementTestFixture : public PeerManagerTestFixture {
 
   std::shared_ptr<AdjRib::AdjRibInQueueT> adjRibInQ_ =
       std::make_shared<AdjRib::AdjRibInQueueT>();
-  std::shared_ptr<AdjRib::AdjRibOutQueueT> adjRibOutQ_ =
-      std::make_shared<AdjRib::AdjRibOutQueueT>();
-  std::shared_ptr<AdjRib::BoundedAdjRibOutQueueT> boundedAdjRibOutQ_ =
-      std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+  std::shared_ptr<nettools::bgplib::FiberBgpPeer::InputQueueT> adjRibOutQ_ =
+      std::make_shared<nettools::bgplib::FiberBgpPeer::InputQueueT>();
+  std::shared_ptr<AdjRib::AdjRibOutQueueT> boundedAdjRibOutQ_ =
+      std::make_shared<AdjRib::AdjRibOutQueueT>(
           kMaxEgressQueueSize,
           kEgressQueueHighWatermark,
           kEgressQueueLowWatermark);
@@ -760,9 +760,9 @@ CO_TEST_F(PeerManagerTestFixture, ShadowRibEntryMultiUpdateTest) {
   auto& evb = peerMgr->getEventBase();
   auto adjRibInQ1 = std::make_shared<AdjRib::AdjRibInQueueT>();
 
-  auto boundedOutQ1 = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+  auto boundedOutQ1 = std::make_shared<AdjRib::AdjRibOutQueueT>(
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
-  auto boundedOutQ2 = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+  auto boundedOutQ2 = std::make_shared<AdjRib::AdjRibOutQueueT>(
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
 
   auto adjRib1 = setupAdjRib(
@@ -819,7 +819,7 @@ CO_TEST_F(PeerManagerTestFixture, ShadowRibEntryMultiUpdateTest) {
   EXPECT_EQ(1, adjRib1->stats_.getPreOutPrefixCount());
   evb.loopOnce();
   co_await facebook::bgp::test::boundedPop(
-      *adjRib1->boundedAdjRibOutQueue_, "adjRib1->boundedAdjRibOutQueue_");
+      *adjRib1->adjRibOutQueue_, "adjRib1->adjRibOutQueue_");
 
   /*
    * Step 0.3: send Single RIB update immediately followed by withdrawal
@@ -840,7 +840,7 @@ CO_TEST_F(PeerManagerTestFixture, ShadowRibEntryMultiUpdateTest) {
   co_await adjRib1->getChangeListConsumer()->consumeChanges();
   evb.loopOnce();
   co_await facebook::bgp::test::boundedPop(
-      *adjRib1->boundedAdjRibOutQueue_, "adjRib1->boundedAdjRibOutQueue_");
+      *adjRib1->adjRibOutQueue_, "adjRib1->adjRibOutQueue_");
 
   /* adjrib should have correctly received final withdrawal */
   EXPECT_EQ(0, adjRib1->stats_.getPreOutPrefixCount());
@@ -877,9 +877,9 @@ CO_TEST_F(PeerManagerTestFixture, RibDumpReqPositiveTest) {
       std::numeric_limits<size_t>::max());
   auto adjRibInQ2 = std::make_shared<AdjRib::AdjRibInQueueT>(
       std::numeric_limits<size_t>::max());
-  auto boundedOutQ1 = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+  auto boundedOutQ1 = std::make_shared<AdjRib::AdjRibOutQueueT>(
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
-  auto boundedOutQ2 = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+  auto boundedOutQ2 = std::make_shared<AdjRib::AdjRibOutQueueT>(
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
 
   auto adjRib1 = setupAdjRib(
@@ -1001,9 +1001,9 @@ CO_TEST_F(PeerManagerTestFixture, RibDumpReqPositiveTest) {
     /* Let the sendBgpMessages coro run once */
     evb.loopOnce();
     auto eor1 = co_await facebook::bgp::test::boundedPop(
-        *adjRib1->boundedAdjRibOutQueue_, "adjRib1->boundedAdjRibOutQueue_");
+        *adjRib1->adjRibOutQueue_, "adjRib1->adjRibOutQueue_");
     auto eor2 = co_await facebook::bgp::test::boundedPop(
-        *adjRib1->boundedAdjRibOutQueue_, "adjRib1->boundedAdjRibOutQueue_");
+        *adjRib1->adjRibOutQueue_, "adjRib1->adjRibOutQueue_");
     EXPECT_TRUE(std::holds_alternative<BgpEndOfRib>(*eor1));
     EXPECT_TRUE(std::holds_alternative<BgpEndOfRib>(*eor2));
     EXPECT_EQ(lastAdjRib1SendUpdateMsgs, adjRib1->stats_.getSentUpdateMsgs());
@@ -1027,11 +1027,11 @@ CO_TEST_F(PeerManagerTestFixture, RibDumpReqPositiveTest) {
     /* Let the sendBgpMessages coro run once */
     evb.loopOnce();
     auto update = co_await facebook::bgp::test::boundedPop(
-        *adjRib1->boundedAdjRibOutQueue_, "adjRib1->boundedAdjRibOutQueue_");
+        *adjRib1->adjRibOutQueue_, "adjRib1->adjRibOutQueue_");
     auto eor1 = co_await facebook::bgp::test::boundedPop(
-        *adjRib1->boundedAdjRibOutQueue_, "adjRib1->boundedAdjRibOutQueue_");
+        *adjRib1->adjRibOutQueue_, "adjRib1->adjRibOutQueue_");
     auto eor2 = co_await facebook::bgp::test::boundedPop(
-        *adjRib1->boundedAdjRibOutQueue_, "adjRib1->boundedAdjRibOutQueue_");
+        *adjRib1->adjRibOutQueue_, "adjRib1->adjRibOutQueue_");
     EXPECT_TRUE(
         std::holds_alternative<std::shared_ptr<const BgpUpdate2>>(*update));
     EXPECT_TRUE(std::holds_alternative<BgpEndOfRib>(*eor1));
@@ -2628,7 +2628,7 @@ CO_TEST_F(
   // There should be 0 pending rib dump reqs for this peer.
   EXPECT_EQ(0, peerMgr_->pendingRibDumpReqs_.size());
   /*
-   * Restore closed boundedAdjRibOutQueue_ queue which was closed
+   * Restore closed adjRibOutQueue_ queue which was closed
    * during sessionTerminated.
    */
   refreshSessionInfo();
@@ -2774,9 +2774,9 @@ TEST_F(PeerManagerTestFixture, ReplicateRibMessageInitialadjRibsTest) {
 
   auto adjRibInQ1 = std::make_shared<AdjRib::AdjRibInQueueT>();
   auto adjRibInQ2 = std::make_shared<AdjRib::AdjRibInQueueT>();
-  auto boundedOutQ1 = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+  auto boundedOutQ1 = std::make_shared<AdjRib::AdjRibOutQueueT>(
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
-  auto boundedOutQ2 = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+  auto boundedOutQ2 = std::make_shared<AdjRib::AdjRibOutQueueT>(
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
 
   // batons used to do synchronization to notify destruction sequence
@@ -2885,9 +2885,9 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
   auto& evb = peerMgr->getEventBase();
   auto adjRibInQ1 = std::make_shared<AdjRib::AdjRibInQueueT>();
   auto adjRibInQ2 = std::make_shared<AdjRib::AdjRibInQueueT>();
-  auto boundedOutQ1 = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+  auto boundedOutQ1 = std::make_shared<AdjRib::AdjRibOutQueueT>(
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
-  auto boundedOutQ2 = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+  auto boundedOutQ2 = std::make_shared<AdjRib::AdjRibOutQueueT>(
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
 
   auto adjRib1 = setupAdjRib(
@@ -2980,7 +2980,7 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
    * - adjRib2 (addpath) gets ONLY kV4Prefix2 (which has multipaths)
    */
   co_await waitForAdjRibsToProcessUpdates(
-      evb, {adjRib1->boundedAdjRibOutQueue_, adjRib2->boundedAdjRibOutQueue_});
+      evb, {adjRib1->adjRibOutQueue_, adjRib2->adjRibOutQueue_});
 
   EXPECT_EQ(2, adjRib1->stats_.getPreOutPrefixCount()); // both prefixes
   EXPECT_EQ(1, adjRib2->stats_.getPreOutPrefixCount()); // only kV4Prefix2
@@ -3022,7 +3022,7 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
   co_await adjRib1->getChangeListConsumer()->consumeChanges();
   co_await adjRib2->getChangeListConsumer()->consumeChanges();
   co_await waitForAdjRibsToProcessUpdates(
-      evb, {adjRib1->boundedAdjRibOutQueue_, adjRib2->boundedAdjRibOutQueue_});
+      evb, {adjRib1->adjRibOutQueue_, adjRib2->adjRibOutQueue_});
 
   // Both adjRibs should receive the bestpath change
   EXPECT_EQ(3, adjRib1->stats_.getPreOutPrefixCount());
@@ -3062,7 +3062,7 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
   co_await adjRib1->getChangeListConsumer()->consumeChanges();
   co_await adjRib2->getChangeListConsumer()->consumeChanges();
   co_await waitForAdjRibsToProcessUpdates(
-      evb, {adjRib1->boundedAdjRibOutQueue_, adjRib2->boundedAdjRibOutQueue_});
+      evb, {adjRib1->adjRibOutQueue_, adjRib2->adjRibOutQueue_});
 
   // Only adjRib2 should receive the multipath-only change
   EXPECT_EQ(3, adjRib1->stats_.getPreOutPrefixCount()); // unchanged
@@ -3108,7 +3108,7 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
   co_await adjRib1->getChangeListConsumer()->consumeChanges();
   co_await adjRib2->getChangeListConsumer()->consumeChanges();
   co_await waitForAdjRibsToProcessUpdates(
-      evb, {adjRib1->boundedAdjRibOutQueue_, adjRib2->boundedAdjRibOutQueue_});
+      evb, {adjRib1->adjRibOutQueue_, adjRib2->adjRibOutQueue_});
 
   /*
    * Both adjRibs should receive the bestpath change (multipath cannot
@@ -3186,7 +3186,7 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationBestpathTest) {
   co_await adjRib1->getChangeListConsumer()->consumeChanges();
   co_await adjRib2->getChangeListConsumer()->consumeChanges();
   co_await waitForAdjRibsToProcessUpdates(
-      evb, {adjRib1->boundedAdjRibOutQueue_, adjRib2->boundedAdjRibOutQueue_});
+      evb, {adjRib1->adjRibOutQueue_, adjRib2->adjRibOutQueue_});
 
   // Both adjRibs should have received the changes
   EXPECT_EQ(5, adjRib1->stats_.getPreOutPrefixCount());
@@ -3210,9 +3210,9 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationAddPathTest) {
   auto& evb = peerMgr->getEventBase();
   auto adjRibInQ1 = std::make_shared<AdjRib::AdjRibInQueueT>();
   auto adjRibInQ2 = std::make_shared<AdjRib::AdjRibInQueueT>();
-  auto boundedOutQ1 = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+  auto boundedOutQ1 = std::make_shared<AdjRib::AdjRibOutQueueT>(
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
-  auto boundedOutQ2 = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+  auto boundedOutQ2 = std::make_shared<AdjRib::AdjRibOutQueueT>(
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
 
   // Create adjRib1: add-path capable peer
@@ -3279,7 +3279,7 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationAddPathTest) {
   co_await adjRib1->getChangeListConsumer()->consumeChanges();
   co_await adjRib2->getChangeListConsumer()->consumeChanges();
   co_await waitForAdjRibsToProcessUpdates(
-      evb, {adjRib1->boundedAdjRibOutQueue_, adjRib2->boundedAdjRibOutQueue_});
+      evb, {adjRib1->adjRibOutQueue_, adjRib2->adjRibOutQueue_});
 
   // Only adjRib1 (add-path capable) should have received the add-path route
   EXPECT_EQ(1, adjRib1->stats_.getPreOutPrefixCount());
@@ -3303,9 +3303,9 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationMixTest) {
   auto& evb = peerMgr->getEventBase();
   auto adjRibInQ1 = std::make_shared<AdjRib::AdjRibInQueueT>();
   auto adjRibInQ2 = std::make_shared<AdjRib::AdjRibInQueueT>();
-  auto boundedOutQ1 = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+  auto boundedOutQ1 = std::make_shared<AdjRib::AdjRibOutQueueT>(
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
-  auto boundedOutQ2 = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+  auto boundedOutQ2 = std::make_shared<AdjRib::AdjRibOutQueueT>(
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
 
   // Create adjRib1: add-path capable peer
@@ -3356,7 +3356,7 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationMixTest) {
       RibDumpReq(kPeerId2, false /* sendAddPath */)));
 
   co_await waitForAdjRibsToProcessUpdates(
-      evb, {adjRib1->boundedAdjRibOutQueue_, adjRib2->boundedAdjRibOutQueue_});
+      evb, {adjRib1->adjRibOutQueue_, adjRib2->adjRibOutQueue_});
   co_await adjRib1->getChangeListConsumer()->consumeChanges();
   co_await adjRib2->getChangeListConsumer()->consumeChanges();
 
@@ -3382,7 +3382,7 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationMixTest) {
   co_await adjRib1->getChangeListConsumer()->consumeChanges();
   co_await adjRib2->getChangeListConsumer()->consumeChanges();
   co_await waitForAdjRibsToProcessUpdates(
-      evb, {adjRib1->boundedAdjRibOutQueue_, adjRib2->boundedAdjRibOutQueue_});
+      evb, {adjRib1->adjRibOutQueue_, adjRib2->adjRibOutQueue_});
 
   EXPECT_EQ(1, adjRib1->stats_.getPreOutPrefixCount());
   EXPECT_EQ(1, adjRib2->stats_.getPreOutPrefixCount());
@@ -3403,7 +3403,7 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationMixTest) {
   co_await adjRib1->getChangeListConsumer()->consumeChanges();
   co_await adjRib2->getChangeListConsumer()->consumeChanges();
   co_await waitForAdjRibsToProcessUpdates(
-      evb, {adjRib1->boundedAdjRibOutQueue_, adjRib2->boundedAdjRibOutQueue_});
+      evb, {adjRib1->adjRibOutQueue_, adjRib2->adjRibOutQueue_});
 
   // adjRib1 should have both prefixes
   EXPECT_EQ(2, adjRib1->stats_.getPreOutPrefixCount());
@@ -3431,7 +3431,7 @@ CO_TEST_F(PeerManagerTestFixture, SelectiveMultipathNotificationMixTest) {
   co_await adjRib1->getChangeListConsumer()->consumeChanges();
   co_await adjRib2->getChangeListConsumer()->consumeChanges();
   co_await waitForAdjRibsToProcessUpdates(
-      evb, {adjRib1->boundedAdjRibOutQueue_, adjRib2->boundedAdjRibOutQueue_});
+      evb, {adjRib1->adjRibOutQueue_, adjRib2->adjRibOutQueue_});
 
   // Both adjRibs should have received the third bestpath route
   EXPECT_EQ(3, adjRib1->stats_.getPreOutPrefixCount());

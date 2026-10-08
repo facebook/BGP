@@ -65,9 +65,8 @@ class AdjRibOutDelayFixture : public AdjRibOutboundFixture {
     adjRib_->pathIdGenerator_ = std::make_unique<PathIdGenerator>(false);
 
     /* Attach queues. */
-    adjRib_->boundedAdjRibOutQueue_ =
-        std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
-            5 /* capacity */, 3 /* highWm */, 0 /* lowWm */);
+    adjRib_->adjRibOutQueue_ = std::make_shared<AdjRib::AdjRibOutQueueT>(
+        5 /* capacity */, 3 /* highWm */, 0 /* lowWm */);
   }
 
   /**
@@ -256,12 +255,12 @@ CO_TEST_F(AdjRibOutDelayFixture, SimpleOutDelayTest) {
 
   /* Wait for prefixes to come through to the queue. */
   auto msg = co_await facebook::bgp::test::boundedPop(
-      *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
+      *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
 
   /* Event loop will naturally drain all pending callbacks and terminate */
   evbThread.join();
 
-  EXPECT_TRUE(adjRib_->boundedAdjRibOutQueue_->empty());
+  EXPECT_TRUE(adjRib_->adjRibOutQueue_->empty());
 
   verifyPrefixesInUpdates({msg}, {kV4Prefix1, kV4Prefix2});
 
@@ -326,11 +325,11 @@ CO_TEST_F(AdjRibOutDelayFixture, WithdrawBeforeOutDelayTimerFiresTest) {
 
   /* Wait for prefixes to come through to the queue. */
   auto msg = co_await facebook::bgp::test::boundedPop(
-      *adjRib_->boundedAdjRibOutQueue_, "adjRib_->boundedAdjRibOutQueue_");
+      *adjRib_->adjRibOutQueue_, "adjRib_->adjRibOutQueue_");
 
   evbThread.join();
 
-  EXPECT_TRUE(adjRib_->boundedAdjRibOutQueue_->empty());
+  EXPECT_TRUE(adjRib_->adjRibOutQueue_->empty());
 
   EXPECT_FALSE(adjRib_->getRibEntry(/*ingress=*/false, kV4Prefix1));
 
@@ -374,9 +373,9 @@ CO_TEST_F(AdjRibOutDelayFixture, RibInitialDumpHasNoOutDelayTest) {
   std::thread evbThread([this]() { evb_.loopForever(); });
 
   auto msg1 = co_await folly::coro::co_withExecutor(
-      &evb_, adjRib_->boundedAdjRibOutQueue_->pop());
+      &evb_, adjRib_->adjRibOutQueue_->pop());
   auto eor = co_await folly::coro::co_withExecutor(
-      &evb_, adjRib_->boundedAdjRibOutQueue_->pop());
+      &evb_, adjRib_->adjRibOutQueue_->pop());
 
   evbThread.join();
 
@@ -428,7 +427,7 @@ CO_TEST_F(AdjRibOutDelayFixture, OutDelayPrefixesInBackpressureTest) {
   std::thread evbThread([this]() { evb_.loopForever(); });
 
   auto msg1 = co_await folly::coro::co_withExecutor(
-      &evb_, adjRib->boundedAdjRibOutQueue_->pop());
+      &evb_, adjRib->adjRibOutQueue_->pop());
 
   verifyPrefixesInUpdates(
       {msg1},
@@ -473,18 +472,18 @@ CO_TEST_F(AdjRibOutDelayFixture, OutDelayPrefixesInBackpressureTest) {
    * out delayed prefix kV4Prefix7 is still stuck in deferredUpdates_.
    */
   auto msg2 = co_await folly::coro::co_withExecutor(
-      &evb_, adjRib->boundedAdjRibOutQueue_->pop());
+      &evb_, adjRib->adjRibOutQueue_->pop());
 
-  EXPECT_TRUE(adjRib->boundedAdjRibOutQueue_->isBlocked());
+  EXPECT_TRUE(adjRib->adjRibOutQueue_->isBlocked());
   EXPECT_FALSE(adjRib->changeListConsumeTimer_->isScheduled());
   EXPECT_FALSE(adjRib->outDelayTimer_->isScheduled());
   EXPECT_EQ(1, adjRib->deferredUpdates_.size());
   EXPECT_TRUE(adjRib->deferredUpdates_.contains(kV4Prefix7));
 
   auto msg3 = co_await folly::coro::co_withExecutor(
-      &evb_, adjRib->boundedAdjRibOutQueue_->pop());
+      &evb_, adjRib->adjRibOutQueue_->pop());
   auto msg4 = co_await folly::coro::co_withExecutor(
-      &evb_, adjRib->boundedAdjRibOutQueue_->pop());
+      &evb_, adjRib->adjRibOutQueue_->pop());
 
   /*
    * From msg2 to msg4, we managed to unblock the queue by popping
@@ -492,17 +491,17 @@ CO_TEST_F(AdjRibOutDelayFixture, OutDelayPrefixesInBackpressureTest) {
    * After msg5 we know the queue freed up space.
    */
   auto msg5 = co_await folly::coro::co_withExecutor(
-      &evb_, adjRib->boundedAdjRibOutQueue_->pop());
-  EXPECT_FALSE(adjRib->boundedAdjRibOutQueue_->isBlocked());
+      &evb_, adjRib->adjRibOutQueue_->pop());
+  EXPECT_FALSE(adjRib->adjRibOutQueue_->isBlocked());
 
   /* Wait for the out-delay prefix to get processed. */
   auto msg6 = co_await folly::coro::co_withExecutor(
-      &evb_, adjRib->boundedAdjRibOutQueue_->pop());
+      &evb_, adjRib->adjRibOutQueue_->pop());
 
   evb_.terminateLoopSoon();
   evbThread.join();
 
-  EXPECT_TRUE(adjRib->boundedAdjRibOutQueue_->empty());
+  EXPECT_TRUE(adjRib->adjRibOutQueue_->empty());
 
   /*
    * Verify that we received updates for all of the prefixes from
@@ -571,26 +570,26 @@ CO_TEST_F(AdjRibOutDelayFixture, NumBackpressureEventsStatsTest) {
    * until they are both drained to 0.
    */
   auto msgFromQ1 = co_await folly::coro::co_withExecutor(
-      &evb_, adjRib1->boundedAdjRibOutQueue_->pop());
+      &evb_, adjRib1->adjRibOutQueue_->pop());
   auto msgFromQ2 = co_await folly::coro::co_withExecutor(
-      &evb_, adjRib2->boundedAdjRibOutQueue_->pop());
-  EXPECT_TRUE(adjRib1->boundedAdjRibOutQueue_->isBlocked());
-  EXPECT_TRUE(adjRib2->boundedAdjRibOutQueue_->isBlocked());
+      &evb_, adjRib2->adjRibOutQueue_->pop());
+  EXPECT_TRUE(adjRib1->adjRibOutQueue_->isBlocked());
+  EXPECT_TRUE(adjRib2->adjRibOutQueue_->isBlocked());
   /*
    * Drain queues to let sendBgpMessages continue queueing updates.
    */
-  while (!adjRib1->boundedAdjRibOutQueue_->empty()) {
+  while (!adjRib1->adjRibOutQueue_->empty()) {
     co_await facebook::bgp::test::boundedPop(
-        *adjRib1->boundedAdjRibOutQueue_, "adjRib1->boundedAdjRibOutQueue_");
+        *adjRib1->adjRibOutQueue_, "adjRib1->adjRibOutQueue_");
   }
   co_await facebook::bgp::test::boundedPop(
-      *adjRib1->boundedAdjRibOutQueue_, "adjRib1->boundedAdjRibOutQueue_");
-  while (!adjRib2->boundedAdjRibOutQueue_->empty()) {
+      *adjRib1->adjRibOutQueue_, "adjRib1->adjRibOutQueue_");
+  while (!adjRib2->adjRibOutQueue_->empty()) {
     co_await facebook::bgp::test::boundedPop(
-        *adjRib2->boundedAdjRibOutQueue_, "adjRib2->boundedAdjRibOutQueue_");
+        *adjRib2->adjRibOutQueue_, "adjRib2->adjRibOutQueue_");
   }
   co_await facebook::bgp::test::boundedPop(
-      *adjRib2->boundedAdjRibOutQueue_, "adjRib2->boundedAdjRibOutQueue_");
+      *adjRib2->adjRibOutQueue_, "adjRib2->adjRibOutQueue_");
 
   facebook::fb303::ThreadCachedServiceData::get()->publishStats();
   EXPECT_EQ(

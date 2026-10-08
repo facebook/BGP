@@ -232,8 +232,8 @@ class AdjRibOutboundFixture : public ::testing::Test {
       std::make_shared<AdjRib::AdjRibInQueueT>(
           nettools::bgplib::kMaxIngressQueueSize);
 
-  std::shared_ptr<AdjRib::BoundedAdjRibOutQueueT> boundedAdjRibOutQ_ =
-      std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+  std::shared_ptr<AdjRib::AdjRibOutQueueT> boundedAdjRibOutQ_ =
+      std::make_shared<AdjRib::AdjRibOutQueueT>(
           nettools::bgplib::kMaxEgressQueueSize,
           nettools::bgplib::kEgressQueueHighWatermark,
           nettools::bgplib::kEgressQueueLowWatermark);

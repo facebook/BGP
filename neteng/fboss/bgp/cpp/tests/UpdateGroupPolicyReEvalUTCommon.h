@@ -144,7 +144,7 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
 
     // Queues created by triggerPeerUpOnEvb that need cleanup in tearDown
     std::vector<std::shared_ptr<AdjRib::AdjRibInQueueT>> sessionInQueues;
-    std::vector<std::shared_ptr<AdjRib::BoundedAdjRibOutQueueT>>
+    std::vector<std::shared_ptr<AdjRib::AdjRibOutQueueT>>
         sessionBoundedOutQueues;
 
     int ribBaseVersion{0};
@@ -246,11 +246,10 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
         configManager);
     adjRib->peeringParams_.description = description;
     adjRib->peeringParams_.peerGroupName = peerGroupName;
-    adjRib->boundedAdjRibOutQueue_ =
-        std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
-            kDefaultOutQueueCapacity,
-            kDefaultOutQueueHighWm,
-            kDefaultOutQueueLowWm);
+    adjRib->adjRibOutQueue_ = std::make_shared<AdjRib::AdjRibOutQueueT>(
+        kDefaultOutQueueCapacity,
+        kDefaultOutQueueHighWm,
+        kDefaultOutQueueLowWm);
     adjRib->pathIdGenerator_ = std::make_unique<PathIdGenerator>(false);
     adjRib->isAfiIpv4Negotiated_ = true;
     adjRib->remoteAs_ = remoteAs;
@@ -469,7 +468,7 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
   }
 
   void drainOne(TestContext& ctx, const BgpPeerId& peerId) {
-    auto queue = ctx.adjRibs.at(peerId)->boundedAdjRibOutQueue_;
+    auto queue = ctx.adjRibs.at(peerId)->adjRibOutQueue_;
     XLOGF(
         DBG5,
         "drainOne for peer {}: queue size={}",
@@ -492,7 +491,7 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
   }
 
   void drainQueue(TestContext& ctx, const BgpPeerId& peerId) {
-    auto queue = ctx.adjRibs.at(peerId)->boundedAdjRibOutQueue_;
+    auto queue = ctx.adjRibs.at(peerId)->adjRibOutQueue_;
     auto initialSize = queue->size();
     size_t popped = 0;
     while (!queue->empty()) {
@@ -512,8 +511,8 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
       size_t capacity,
       size_t hiWm,
       size_t loWm) {
-    adjRib->boundedAdjRibOutQueue_ =
-        std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(capacity, hiWm, loWm);
+    adjRib->adjRibOutQueue_ =
+        std::make_shared<AdjRib::AdjRibOutQueueT>(capacity, hiWm, loWm);
   }
 
   /*
@@ -925,8 +924,9 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
       int queueCapacity = kDefaultOutQueueCapacity,
       int queueHighWm = kDefaultOutQueueHighWm,
       int queueLowWm = kDefaultOutQueueLowWm) {
-    auto adjRibOutQ = std::make_shared<AdjRib::AdjRibOutQueueT>();
-    auto boundedAdjRibOutQ = std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
+    auto adjRibOutQ =
+        std::make_shared<nettools::bgplib::FiberBgpPeer::InputQueueT>();
+    auto boundedAdjRibOutQ = std::make_shared<AdjRib::AdjRibOutQueueT>(
         queueCapacity, queueHighWm, queueLowWm);
     auto adjRibInQ = std::make_shared<AdjRib::AdjRibInQueueT>();
     auto versionNumber = std::make_shared<nettools::bgplib::VersionNumber>(1);
@@ -1841,7 +1841,7 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
     // Drain and close all peer queues.
     for (auto& [peerId, adjRib] : ctx.adjRibs) {
       drainQueue(ctx, peerId);
-      auto queue = adjRib->boundedAdjRibOutQueue_;
+      auto queue = adjRib->adjRibOutQueue_;
       if (queue) {
         queue->close();
       }
