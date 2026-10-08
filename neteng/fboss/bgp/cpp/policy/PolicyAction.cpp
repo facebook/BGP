@@ -79,7 +79,8 @@ folly::IPAddress AddBackupAddr::validateAndGetBackupAddr(
   }
 
   const auto& addBackupAddr = *policyAction.add_backup_addr();
-  if (!addBackupAddr.address().is_set()) {
+  if (!apache::thrift::is_non_optional_field_set_manually_or_by_serializer(
+          addBackupAddr.address())) {
     throw BgpError("Malformed add_backup_addr config. address missing");
   }
 

@@ -372,7 +372,8 @@ void BgpdDevServerProc::matchPolicyConfig(
     }
 
     if (config.policies().has_value() &&
-        config.policies()->bgp_policy_statements().is_set()) {
+        apache::thrift::is_non_optional_field_set_manually_or_by_serializer(
+            config.policies()->bgp_policy_statements())) {
       for (const auto& stmt : *config.policies()->bgp_policy_statements()) {
         auto pos = configStr.find(*stmt.name());
         if (pos != std::string::npos) {

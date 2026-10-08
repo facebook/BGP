@@ -98,7 +98,9 @@ TEST_F(E2ERouteReflectionTest, ReflectedAttributesUseDistinctIdentifiers) {
   const auto update = waitForOutboundUpdate(kPeerId4);
   ASSERT_TRUE(update.has_value());
   ASSERT_TRUE(findPrefixInAnnouncements(**update, /*isV4=*/true, prefix));
-  ASSERT_TRUE((*update)->attrs()->originatorId().has_value());
+  ASSERT_TRUE(
+      apache::thrift::is_non_optional_field_set_manually_or_by_serializer(
+          (*update)->attrs()->originatorId()));
   EXPECT_EQ(
       kPeerAddr3.asV4().toLong(), (*update)->attrs()->originatorId().value());
   const std::vector<int64_t> expectedClusterList{

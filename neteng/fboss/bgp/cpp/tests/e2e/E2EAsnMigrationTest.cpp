@@ -132,7 +132,9 @@ class E2EAsnMigrationTest : public E2ESessionTestFixture {
         std::make_shared<nettools::bgplib::BgpPeerDisplayInfo>(
             peerState->second.displayInfo));
     const auto sessions = peerManager_->getDetailSessionInfos(peerInfoMap);
-    if (sessions.size() != 1 || !sessions.front().peer().has_value()) {
+    if (sessions.size() != 1 ||
+        !apache::thrift::is_non_optional_field_set_manually_or_by_serializer(
+            sessions.front().peer())) {
       return std::nullopt;
     }
     return *sessions.front().peer()->remote_as_4_byte();

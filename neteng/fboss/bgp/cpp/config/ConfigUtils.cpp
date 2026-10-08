@@ -74,10 +74,14 @@ DeDuplicatedAsPath createBgpAttrAsPathDedup(
      */
     std::vector<uint32_t> asns;
     // Python thirft may default to empty list.
-    if (asPath.asns_4_byte().is_set() && !asPath.asns_4_byte()->empty()) {
+    if (apache::thrift::is_non_optional_field_set_manually_or_by_serializer(
+            asPath.asns_4_byte()) &&
+        !asPath.asns_4_byte()->empty()) {
       asns = std::vector<uint32_t>(
           asPath.asns_4_byte()->begin(), asPath.asns_4_byte()->end());
-    } else if (asPath.asns().is_set()) {
+    } else if (apache::thrift::
+                   is_non_optional_field_set_manually_or_by_serializer(
+                       asPath.asns())) {
       asns =
           std::vector<uint32_t>(asPath.asns()->begin(), asPath.asns()->end());
     }
