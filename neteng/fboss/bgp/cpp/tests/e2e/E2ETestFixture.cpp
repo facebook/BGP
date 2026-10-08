@@ -1036,11 +1036,8 @@ void E2ETestFixture::TearDown() {
 
   /* Log the state of all peers before termination */
   for (const auto& [peerId, queues] : allQueues) {
-    const bool useBoundedQueue =
-        FLAGS_enable_egress_backpressure_in_peer_mgr_tests;
-    size_t queueSize = useBoundedQueue ? queues.boundedAdjRibOutQ->size()
-                                       : queues.adjRibOutQ->size();
-    bool isBlocked = useBoundedQueue && queues.boundedAdjRibOutQ->isBlocked();
+    size_t queueSize = queues.boundedAdjRibOutQ->size();
+    bool isBlocked = queues.boundedAdjRibOutQ->isBlocked();
     XLOGF(
         INFO,
         "TearDown: peer {} queueSize={} isBlocked={}",
@@ -1371,11 +1368,12 @@ BgpPeerDisplayInfo createDisplayInfo(
 
 void E2ETestFixture::createPeerManager(
     bool enableUpdateGroup,
-    bool enableEgressBackpressure,
+    bool /* enableEgressBackpressure */,
     bool enableSerializeGroupPdu) {
   XLOG(INFO, "=== Creating PeerManagerBase... ===");
 
-  FLAGS_enable_egress_backpressure_in_peer_mgr_tests = enableEgressBackpressure;
+  /* bgp++ always runs with egress queue backpressure. */
+  FLAGS_enable_egress_backpressure_in_peer_mgr_tests = true;
 
   /* Get config with dynamic peers */
   config_ = getConfig(enableUpdateGroup, enableSerializeGroupPdu);
@@ -1636,22 +1634,13 @@ using QueueMessage = std::variant<
     nettools::bgplib::BgpNotification>;
 
 std::optional<QueueMessage> popFromQueue(
-    const E2ETestFixture::PeerQueues& queues,
-    bool useBoundedQueue) {
+    const E2ETestFixture::PeerQueues& queues) {
   try {
-    if (useBoundedQueue) {
-      XLOGF(
-          INFO,
-          "Test READING from QUEUE POINTER {}",
-          (void*)queues.boundedAdjRibOutQ.get());
-      return boundedBlockingPop(*queues.boundedAdjRibOutQ, "boundedAdjRibOutQ");
-    } else {
-      XLOGF(
-          INFO,
-          "Test READING from QUEUE POINTER {}",
-          (void*)queues.adjRibOutQ.get());
-      return boundedBlockingPop(*queues.adjRibOutQ, "adjRibOutQ");
-    }
+    XLOGF(
+        INFO,
+        "Test READING from QUEUE POINTER {}",
+        (void*)queues.boundedAdjRibOutQ.get());
+    return boundedBlockingPop(*queues.boundedAdjRibOutQ, "boundedAdjRibOutQ");
   } catch (const BoundedWaitTimeout&) {
     /*
      * Wait timed out — propagate so the test fails fast with the
@@ -2028,7 +2017,6 @@ std::optional<std::shared_ptr<const BgpUpdate2>> deserializeUpdateDescriptor(
  */
 std::optional<std::shared_ptr<const BgpUpdate2>> tryReadUpdateFromQueue(
     const E2ETestFixture::PeerQueues& queues,
-    bool useBoundedQueue,
     int maxDrainAttempts = 0) {
   std::optional<std::shared_ptr<const BgpUpdate2>> result;
   int attempts = 0;
@@ -2036,8 +2024,7 @@ std::optional<std::shared_ptr<const BgpUpdate2>> tryReadUpdateFromQueue(
   /* Keep reading messages until we find a non-EoR UPDATE */
   while (!result.has_value()) {
     if (maxDrainAttempts > 0) {
-      bool queueEmpty = useBoundedQueue ? queues.boundedAdjRibOutQ->empty()
-                                        : queues.adjRibOutQ->empty();
+      bool queueEmpty = queues.boundedAdjRibOutQ->empty();
       if (queueEmpty) {
         /* Queue drained — bail rather than block on an empty pop */
         break;
@@ -2046,7 +2033,7 @@ std::optional<std::shared_ptr<const BgpUpdate2>> tryReadUpdateFromQueue(
         break;
       }
     }
-    auto msg = popFromQueue(queues, useBoundedQueue);
+    auto msg = popFromQueue(queues);
     if (!msg.has_value()) {
       break;
     }
@@ -2090,11 +2077,9 @@ std::optional<std::shared_ptr<const BgpUpdate2>> tryReadUpdateFromQueue(
  * Helper to wait for and consume EoR from peer's outbound queue
  * Returns true if EoR was found, false otherwise
  */
-bool tryConsumeEoRFromQueue(
-    const E2ETestFixture::PeerQueues& queues,
-    bool useBoundedQueue) {
+bool tryConsumeEoRFromQueue(const E2ETestFixture::PeerQueues& queues) {
   while (true) {
-    auto msg = popFromQueue(queues, useBoundedQueue);
+    auto msg = popFromQueue(queues);
     if (!msg.has_value()) {
       return false;
     }
@@ -2126,22 +2111,18 @@ E2ETestFixture::readOutboundUpdateToPeer(const BgpPeerId& peerId) {
     return std::nullopt;
   }
 
-  const bool useBoundedQueue =
-      FLAGS_enable_egress_backpressure_in_peer_mgr_tests;
-
   XLOGF(
       INFO,
-      "Test reading from peer {} bounded queue {} (useBoundedQueue={})",
+      "Test reading from peer {} bounded queue {}",
       peerId.peerAddr.str(),
-      (void*)queues->boundedAdjRibOutQ.get(),
-      useBoundedQueue);
+      (void*)queues->boundedAdjRibOutQ.get());
 
   /*
    * popFromQueue() is now bounded (boundedBlockingPop, kDefaultPopTimeout).
    * If no UPDATE arrives within that budget, the test fails with a
    * descriptive BoundedWaitTimeout instead of hanging until tpx kills it.
    */
-  return tryReadUpdateFromQueue(*queues, useBoundedQueue);
+  return tryReadUpdateFromQueue(*queues);
 }
 
 std::optional<nettools::bgplib::BgpRouteRefresh>
@@ -2151,8 +2132,7 @@ E2ETestFixture::readOutboundRouteRefreshFromPeer(const BgpPeerId& peerId) {
     return std::nullopt;
   }
 
-  const auto msg = popFromQueue(
-      it->second, FLAGS_enable_egress_backpressure_in_peer_mgr_tests);
+  const auto msg = popFromQueue(it->second);
   if (!msg.has_value()) {
     return std::nullopt;
   }
@@ -2187,9 +2167,6 @@ E2ETestFixture::waitForOutboundUpdate(const BgpPeerId& peerId, int maxRetries) {
     return std::nullopt;
   }
 
-  const bool useBoundedQueue =
-      FLAGS_enable_egress_backpressure_in_peer_mgr_tests;
-
   XLOGF(
       DBG2,
       "waitForOutboundUpdate: waiting for update from peer {} (maxRetries={})",
@@ -2203,8 +2180,7 @@ E2ETestFixture::waitForOutboundUpdate(const BgpPeerId& peerId, int maxRetries) {
    * 3. Repeat up to maxRetries
    */
   for (int retry = 0; retry < maxRetries; ++retry) {
-    bool queueEmpty = useBoundedQueue ? queues->boundedAdjRibOutQ->empty()
-                                      : queues->adjRibOutQ->empty();
+    bool queueEmpty = queues->boundedAdjRibOutQ->empty();
 
     if (!queueEmpty) {
       XLOGF(
@@ -2216,8 +2192,7 @@ E2ETestFixture::waitForOutboundUpdate(const BgpPeerId& peerId, int maxRetries) {
        * to empty between empty()-check and pop() doesn't trap us in
        * the inner blockingWait of tryReadUpdateFromQueue.
        */
-      return tryReadUpdateFromQueue(
-          *queues, useBoundedQueue, /*maxDrainAttempts=*/maxRetries);
+      return tryReadUpdateFromQueue(*queues, /*maxDrainAttempts=*/maxRetries);
     }
 
     /* Sleep briefly to allow async processing to complete */
@@ -2238,12 +2213,10 @@ bool E2ETestFixture::waitForEoR(const BgpPeerId& peerId) {
     return false;
   }
 
-  const bool useBoundedQueue =
-      FLAGS_enable_egress_backpressure_in_peer_mgr_tests;
   bool result = false;
 
   WITH_RETRIES_N(10, {
-    result = tryConsumeEoRFromQueue(*queues, useBoundedQueue);
+    result = tryConsumeEoRFromQueue(*queues);
     EXPECT_EVENTUALLY_TRUE(result);
   });
 
@@ -2258,13 +2231,6 @@ bool E2ETestFixture::waitForEoR(const BgpPeerId& peerId) {
 bool E2ETestFixture::isPeerQueueBlocked(const BgpPeerId& peerId) {
   auto queues = getPeerQueues(peerId);
   if (!queues) {
-    return false;
-  }
-
-  const bool useBoundedQueue =
-      FLAGS_enable_egress_backpressure_in_peer_mgr_tests;
-  if (!useBoundedQueue) {
-    /* Unbounded queue never blocks */
     return false;
   }
 
@@ -2286,12 +2252,6 @@ size_t E2ETestFixture::getPeerQueueSize(const BgpPeerId& peerId) {
   auto queues = getPeerQueues(peerId);
   if (!queues) {
     return 0;
-  }
-
-  const bool useBoundedQueue =
-      FLAGS_enable_egress_backpressure_in_peer_mgr_tests;
-  if (!useBoundedQueue) {
-    return queues->adjRibOutQ->size();
   }
 
   return queues->boundedAdjRibOutQ->size();
@@ -2392,16 +2352,12 @@ E2ETestFixture::countPrefixOccurrencesAndDrain(
     return counts;
   }
 
-  const bool useBoundedQueue =
-      FLAGS_enable_egress_backpressure_in_peer_mgr_tests;
-
   XLOGF(
       INFO,
       "countPrefixOccurrencesAndDrain: draining peer {} for prefix {} "
-      "(useBoundedQueue={}, maxRetries={}, maxMessages={})",
+      "(maxRetries={}, maxMessages={})",
       peerId.peerAddr.str(),
       folly::IPAddress::networkToString(prefix),
-      useBoundedQueue,
       maxRetries,
       maxMessages);
 
@@ -2417,8 +2373,7 @@ E2ETestFixture::countPrefixOccurrencesAndDrain(
       break;
     }
 
-    bool queueEmpty = useBoundedQueue ? queues->boundedAdjRibOutQ->empty()
-                                      : queues->adjRibOutQ->empty();
+    bool queueEmpty = queues->boundedAdjRibOutQ->empty();
     if (queueEmpty) {
       if (emptyRetries >= maxRetries) {
         break;
@@ -2435,7 +2390,7 @@ E2ETestFixture::countPrefixOccurrencesAndDrain(
     }
     emptyRetries = 0;
 
-    auto msg = popFromQueue(*queues, useBoundedQueue);
+    auto msg = popFromQueue(*queues);
     if (!msg.has_value()) {
       break;
     }
@@ -2503,15 +2458,11 @@ E2ETestFixture::drainPeerQueueAndCollectUpdates(
     return updates;
   }
 
-  const bool useBoundedQueue =
-      FLAGS_enable_egress_backpressure_in_peer_mgr_tests;
-
   XLOGF(
       INFO,
       "drainPeerQueueAndCollectUpdates: draining peer {} "
-      "(useBoundedQueue={}, maxRetries={}, maxMessages={})",
+      "(maxRetries={}, maxMessages={})",
       peerId.peerAddr.str(),
-      useBoundedQueue,
       maxRetries,
       maxMessages);
 
@@ -2521,8 +2472,7 @@ E2ETestFixture::drainPeerQueueAndCollectUpdates(
     if (maxMessages > 0 && static_cast<int>(totalDrained) >= maxMessages) {
       break;
     }
-    bool queueEmpty = useBoundedQueue ? queues->boundedAdjRibOutQ->empty()
-                                      : queues->adjRibOutQ->empty();
+    bool queueEmpty = queues->boundedAdjRibOutQ->empty();
     if (queueEmpty) {
       if (emptyRetries >= maxRetries) {
         break;
@@ -2538,7 +2488,7 @@ E2ETestFixture::drainPeerQueueAndCollectUpdates(
     }
     emptyRetries = 0;
 
-    auto msg = popFromQueue(*queues, useBoundedQueue);
+    auto msg = popFromQueue(*queues);
     if (!msg.has_value()) {
       break;
     }
@@ -3026,14 +2976,11 @@ E2ETestFixture::drainAllOutboundMessagesToOrderedVec(
         peerId.peerAddr.str());
     return result;
   }
-  const bool useBoundedQueue =
-      FLAGS_enable_egress_backpressure_in_peer_mgr_tests;
 
   XLOGF(
       INFO,
-      "drainAllOutboundMessagesToOrderedVec: draining queue for peer {} (useBoundedQueue={}, idleRetries={}, maxMessages={}, sleepMsBetweenRetries={})",
+      "drainAllOutboundMessagesToOrderedVec: draining queue for peer {} (idleRetries={}, maxMessages={}, sleepMsBetweenRetries={})",
       peerId.peerAddr.str(),
-      useBoundedQueue,
       idleRetries,
       maxMessages,
       sleepMsBetweenRetries);
@@ -3058,8 +3005,7 @@ E2ETestFixture::drainAllOutboundMessagesToOrderedVec(
      */
     bool available = false;
     for (int i = 0; i < idleRetries; ++i) {
-      bool empty = useBoundedQueue ? queues->boundedAdjRibOutQ->empty()
-                                   : queues->adjRibOutQ->empty();
+      bool empty = queues->boundedAdjRibOutQ->empty();
       if (!empty) {
         available = true;
         break;
@@ -3084,7 +3030,7 @@ E2ETestFixture::drainAllOutboundMessagesToOrderedVec(
       break;
     }
 
-    auto msg = popFromQueue(*queues, useBoundedQueue);
+    auto msg = popFromQueue(*queues);
     if (!msg.has_value()) {
       continue;
     }
@@ -3218,8 +3164,6 @@ bool E2ETestFixture::drainAndFindRouteAdvertised(
     return false;
   }
 
-  const bool useBoundedQueue =
-      FLAGS_enable_egress_backpressure_in_peer_mgr_tests;
   const folly::CIDRNetwork expectedCidr{folly::IPAddress(prefix), prefixLen};
 
   XLOGF(
@@ -3232,8 +3176,7 @@ bool E2ETestFixture::drainAndFindRouteAdvertised(
 
   int emptyFlushes = 0;
   while (true) {
-    bool queueEmpty = useBoundedQueue ? queues->boundedAdjRibOutQ->empty()
-                                      : queues->adjRibOutQ->empty();
+    bool queueEmpty = queues->boundedAdjRibOutQ->empty();
     if (queueEmpty) {
       if (emptyFlushes >= maxFlushRetries) {
         XLOGF(
@@ -3270,8 +3213,8 @@ bool E2ETestFixture::drainAndFindRouteAdvertised(
      * on popFromQueue's unbounded blockingWait — and our outer empty-check
      * never re-runs. Bound by maxFlushRetries so caller can tune.
      */
-    auto updateOpt = tryReadUpdateFromQueue(
-        *queues, useBoundedQueue, /*maxDrainAttempts=*/maxFlushRetries);
+    auto updateOpt =
+        tryReadUpdateFromQueue(*queues, /*maxDrainAttempts=*/maxFlushRetries);
     if (!updateOpt.has_value()) {
       /* Queue ran dry while we were popping — loop will re-check */
       continue;

@@ -68,7 +68,7 @@ TEST_F(E2ELocalRouteFailoverTest, LocalRouteBeatsRemoteRoute) {
   /*
    * Drain the post-initial-dump EoRs left in peer4's queue. The peer
    * negotiates both AFIs (v4Nexthop + v6Nexthop in kDefaultPeerSpec4), and
-   * AdjRib::buildAndQueueEoRs pushes one EoR per negotiated AFI. After
+   * AdjRib::sendPendingEoRs pushes one EoR per negotiated AFI. After
    * verifyRouteAdd consumes the v4 announcement, peer4's queue still
    * contains an IPv4 EoR and an IPv6 EoR. Drain them here so the
    * post-addRoute assertion below measures only messages produced by

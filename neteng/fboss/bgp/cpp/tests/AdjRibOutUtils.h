@@ -146,17 +146,6 @@ class AdjRibOutboundFixture : public ::testing::Test {
 
   void TestBody() override {}
 
-  /*
-   * Sets up all the peer-adjs. It is expected that clients pass 3 or 4
-   * peer parameters to be set up.
-   */
-  void setupOutDelayAdjs(
-      std::vector<std::tuple<
-          std::shared_ptr<AdjRib::AdjRibInQueueT>&,
-          std::shared_ptr<AdjRib::AdjRibOutQueueT>&,
-          std::shared_ptr<AdjRib::BoundedAdjRibOutQueueT>&,
-          std::shared_ptr<AdjRib>&>>&& peerInfo);
-
   /**
    * @brief: This setupAdjRib(...) function is taking the BgpPeerId as a
    * parameter as opposed to the other overload function which is taking the

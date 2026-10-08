@@ -436,11 +436,9 @@ TEST_F(
    */
   evb.runInEventBaseThreadAndWait([&]() {
     auto& adjRib = ctx.adjRib1;
-    adjRib->adjRibOutQueue_ = std::make_shared<AdjRib::AdjRibOutQueueT>();
     adjRib->boundedAdjRibOutQueue_ =
         std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(10, 8, 2);
     adjRib->pathIdGenerator_ = std::make_unique<PathIdGenerator>(false);
-    adjRib->enableEgressQueueBackpressure(true);
     adjRib->isAfiIpv4Negotiated_ = true;
   });
 

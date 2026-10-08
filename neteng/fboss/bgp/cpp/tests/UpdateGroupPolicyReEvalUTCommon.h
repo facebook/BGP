@@ -246,14 +246,12 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
         configManager);
     adjRib->peeringParams_.description = description;
     adjRib->peeringParams_.peerGroupName = peerGroupName;
-    adjRib->adjRibOutQueue_ = std::make_shared<AdjRib::AdjRibOutQueueT>();
     adjRib->boundedAdjRibOutQueue_ =
         std::make_shared<AdjRib::BoundedAdjRibOutQueueT>(
             kDefaultOutQueueCapacity,
             kDefaultOutQueueHighWm,
             kDefaultOutQueueLowWm);
     adjRib->pathIdGenerator_ = std::make_unique<PathIdGenerator>(false);
-    adjRib->enableEgressQueueBackpressure(true);
     adjRib->isAfiIpv4Negotiated_ = true;
     adjRib->remoteAs_ = remoteAs;
     adjRib->markStateEstablished();

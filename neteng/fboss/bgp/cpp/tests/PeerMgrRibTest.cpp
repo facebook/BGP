@@ -239,13 +239,8 @@ class RibInitialAnnouncementTestFixture : public PeerManagerTestFixture {
     int numAnnouncements = 0;
     /* Count number of announcements seen until EoR. */
     do {
-      if (FLAGS_enable_egress_backpressure_in_peer_mgr_tests) {
-        msg = co_await facebook::bgp::test::boundedPop(
-            *boundedAdjRibOutQ_, "boundedAdjRibOutQ_");
-      } else {
-        msg = co_await facebook::bgp::test::boundedPop(
-            *adjRibOutQ_, "adjRibOutQ_");
-      }
+      msg = co_await facebook::bgp::test::boundedPop(
+          *boundedAdjRibOutQ_, "boundedAdjRibOutQ_");
       if (std::holds_alternative<std::shared_ptr<const BgpUpdate2>>(*msg)) {
         ++numAnnouncements;
       }
@@ -777,8 +772,6 @@ CO_TEST_F(PeerManagerTestFixture, ShadowRibEntryMultiUpdateTest) {
       config,
       peerMgr->addPathConsumerBitmap_,
       peerMgr->nonAddPathConsumerBitmap_);
-  adjRib1->enableEgressQueueBackpressure(
-      FLAGS_enable_egress_backpressure_in_peer_mgr_tests);
 
   peerMgr->ribInitialAnnouncementStarted_ = true;
   peerMgr->ribInitialAnnouncementDone_ = true;
@@ -823,11 +816,9 @@ CO_TEST_F(PeerManagerTestFixture, ShadowRibEntryMultiUpdateTest) {
    */
 
   EXPECT_EQ(1, adjRib1->stats_.getPreOutPrefixCount());
-  if (FLAGS_enable_egress_backpressure_in_peer_mgr_tests) {
-    evb.loopOnce();
-    co_await facebook::bgp::test::boundedPop(
-        *adjRib1->boundedAdjRibOutQueue_, "adjRib1->boundedAdjRibOutQueue_");
-  }
+  evb.loopOnce();
+  co_await facebook::bgp::test::boundedPop(
+      *adjRib1->boundedAdjRibOutQueue_, "adjRib1->boundedAdjRibOutQueue_");
 
   /*
    * Step 0.3: send Single RIB update immediately followed by withdrawal
@@ -846,11 +837,9 @@ CO_TEST_F(PeerManagerTestFixture, ShadowRibEntryMultiUpdateTest) {
   peerMgr->handleShadowRibEntryWithdrawal(ribWithdrawal);
 
   co_await adjRib1->getChangeListConsumer()->consumeChanges();
-  if (FLAGS_enable_egress_backpressure_in_peer_mgr_tests) {
-    evb.loopOnce();
-    co_await facebook::bgp::test::boundedPop(
-        *adjRib1->boundedAdjRibOutQueue_, "adjRib1->boundedAdjRibOutQueue_");
-  }
+  evb.loopOnce();
+  co_await facebook::bgp::test::boundedPop(
+      *adjRib1->boundedAdjRibOutQueue_, "adjRib1->boundedAdjRibOutQueue_");
 
   /* adjrib should have correctly received final withdrawal */
   EXPECT_EQ(0, adjRib1->stats_.getPreOutPrefixCount());
@@ -1012,16 +1001,14 @@ CO_TEST_F(PeerManagerTestFixture, RibDumpReqPositiveTest) {
      * Because both the prefixes are on change-list, they won't be sent
      * in response to RibDumpRequest. Only EoR for each AFI sent
      */
-    if (FLAGS_enable_egress_backpressure_in_peer_mgr_tests) {
-      /* Let the sendBgpMessages coro run once */
-      evb.loopOnce();
-      auto eor1 = co_await facebook::bgp::test::boundedPop(
-          *adjRib1->boundedAdjRibOutQueue_, "adjRib1->boundedAdjRibOutQueue_");
-      auto eor2 = co_await facebook::bgp::test::boundedPop(
-          *adjRib1->boundedAdjRibOutQueue_, "adjRib1->boundedAdjRibOutQueue_");
-      EXPECT_TRUE(std::holds_alternative<BgpEndOfRib>(*eor1));
-      EXPECT_TRUE(std::holds_alternative<BgpEndOfRib>(*eor2));
-    }
+    /* Let the sendBgpMessages coro run once */
+    evb.loopOnce();
+    auto eor1 = co_await facebook::bgp::test::boundedPop(
+        *adjRib1->boundedAdjRibOutQueue_, "adjRib1->boundedAdjRibOutQueue_");
+    auto eor2 = co_await facebook::bgp::test::boundedPop(
+        *adjRib1->boundedAdjRibOutQueue_, "adjRib1->boundedAdjRibOutQueue_");
+    EXPECT_TRUE(std::holds_alternative<BgpEndOfRib>(*eor1));
+    EXPECT_TRUE(std::holds_alternative<BgpEndOfRib>(*eor2));
     EXPECT_EQ(lastAdjRib1SendUpdateMsgs, adjRib1->stats_.getSentUpdateMsgs());
     EXPECT_EQ(
         lastAdjRib1SendEorMsgs + 2, adjRib1->stats_.getSentEndOfRibMsgs());
@@ -1040,20 +1027,18 @@ CO_TEST_F(PeerManagerTestFixture, RibDumpReqPositiveTest) {
      * Because change-list had been consumed, one update message with
      * all the prefixes sent, and EoR for each AFI
      */
-    if (FLAGS_enable_egress_backpressure_in_peer_mgr_tests) {
-      /* Let the sendBgpMessages coro run once */
-      evb.loopOnce();
-      auto update = co_await facebook::bgp::test::boundedPop(
-          *adjRib1->boundedAdjRibOutQueue_, "adjRib1->boundedAdjRibOutQueue_");
-      auto eor1 = co_await facebook::bgp::test::boundedPop(
-          *adjRib1->boundedAdjRibOutQueue_, "adjRib1->boundedAdjRibOutQueue_");
-      auto eor2 = co_await facebook::bgp::test::boundedPop(
-          *adjRib1->boundedAdjRibOutQueue_, "adjRib1->boundedAdjRibOutQueue_");
-      EXPECT_TRUE(
-          std::holds_alternative<std::shared_ptr<const BgpUpdate2>>(*update));
-      EXPECT_TRUE(std::holds_alternative<BgpEndOfRib>(*eor1));
-      EXPECT_TRUE(std::holds_alternative<BgpEndOfRib>(*eor2));
-    }
+    /* Let the sendBgpMessages coro run once */
+    evb.loopOnce();
+    auto update = co_await facebook::bgp::test::boundedPop(
+        *adjRib1->boundedAdjRibOutQueue_, "adjRib1->boundedAdjRibOutQueue_");
+    auto eor1 = co_await facebook::bgp::test::boundedPop(
+        *adjRib1->boundedAdjRibOutQueue_, "adjRib1->boundedAdjRibOutQueue_");
+    auto eor2 = co_await facebook::bgp::test::boundedPop(
+        *adjRib1->boundedAdjRibOutQueue_, "adjRib1->boundedAdjRibOutQueue_");
+    EXPECT_TRUE(
+        std::holds_alternative<std::shared_ptr<const BgpUpdate2>>(*update));
+    EXPECT_TRUE(std::holds_alternative<BgpEndOfRib>(*eor1));
+    EXPECT_TRUE(std::holds_alternative<BgpEndOfRib>(*eor2));
     EXPECT_EQ(
         lastAdjRib1SendUpdateMsgs + 1, adjRib1->stats_.getSentUpdateMsgs());
     EXPECT_EQ(
@@ -2844,16 +2829,11 @@ TEST_F(PeerManagerTestFixture, ReplicateRibMessageInitialadjRibsTest) {
   });
 
   fm.addTask([&] {
-    auto msg = FLAGS_enable_egress_backpressure_in_peer_mgr_tests
-        ? facebook::bgp::test::boundedBlockingPop(*boundedOutQ1, "boundedOutQ1")
-        : facebook::bgp::test::boundedBlockingPop(*adjRibOutQ1, "adjRibOutQ1");
+    auto msg =
+        facebook::bgp::test::boundedBlockingPop(*boundedOutQ1, "boundedOutQ1");
     ASSERT_TRUE(msg);
     // 2 EoRs as a result of initial announcement
-    if (FLAGS_enable_egress_backpressure_in_peer_mgr_tests) {
-      ASSERT_EQ(2, boundedOutQ1->size());
-    } else {
-      ASSERT_EQ(2, adjRibOutQ1->size());
-    }
+    ASSERT_EQ(2, boundedOutQ1->size());
     ASSERT_TRUE(
         std::holds_alternative<std::shared_ptr<const BgpUpdate2>>(*msg));
     // Verify that announcement message is notified to Fiber Bgp Peer properly
@@ -2870,11 +2850,7 @@ TEST_F(PeerManagerTestFixture, ReplicateRibMessageInitialadjRibsTest) {
   });
 
   fm.addTask([&] {
-    if (FLAGS_enable_egress_backpressure_in_peer_mgr_tests) {
-      REPEAT({ EXPECT_EQ(0, boundedOutQ2->size()); });
-    } else {
-      REPEAT({ EXPECT_EQ(0, adjRibOutQ2->size()); });
-    }
+    REPEAT({ EXPECT_EQ(0, boundedOutQ2->size()); });
     // notify verification done
     baton2.post();
   });

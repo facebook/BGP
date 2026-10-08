@@ -27,7 +27,8 @@
   FRIEND_TEST(AdjRibOutDelayFixture, WithdrawBeforeOutDelayTimerFiresTest); \
   FRIEND_TEST(AdjRibOutDelayFixture, RibInitialDumpHasNoOutDelayTest);      \
   FRIEND_TEST(AdjRibOutDelayFixture, OutDelayPrefixesInBackpressureTest);   \
-  FRIEND_TEST(AdjRibOutDelayFixture, NumBackpressureEventsStatsTest);
+  FRIEND_TEST(AdjRibOutDelayFixture, NumBackpressureEventsStatsTest);       \
+  FRIEND_TEST(AdjRibOutDelayFixture, OutDelayTimerTest);
 
 #define AdjRibStats_TEST_FRIENDS      \
   friend class AdjRibOutDelayFixture; \
@@ -618,6 +619,49 @@ CO_TEST_F(AdjRibOutDelayFixture, NumBackpressureEventsStatsTest) {
 
   adjRib1->resetChangeListConsumer();
   adjRib2->resetChangeListConsumer();
+}
+
+TEST_F(AdjRibOutDelayFixture, OutDelayTimerTest) {
+  // Peer-1 has out-delay 1sec
+  SetUpOutDelayAdjRib(kPeerId1, 1s);
+  adjRib_->egressEoRsSent_ = true;
+
+  fm_->addTask([&]() {
+    auto attrs1 = std::make_shared<BgpPath>(*buildBgpPathFields(1, 1, 1, 1));
+    auto ribMsg =
+        buildAnnouncementWithInstallTimestamp({{attrs1, {kV4Prefix1}}});
+    pushRibOutMsgToAdjRib(ribMsg);
+
+    fiberSleepFor(1s);
+    std::vector<folly::CIDRNetwork> newDeferredPrefixes = {kV4Prefix1};
+    AdjRibOutDelayEntry entry(
+        std::chrono::system_clock::now(), newDeferredPrefixes);
+
+    // Add 15 items to the priority queue.
+    for (int i = 0; i < 15; i++) {
+      adjRib_->outDelayPQ_.push(entry);
+    }
+
+    /*
+     * Each programOutDelayTimer() call handles up to
+     * 8 deferred items in the queue
+     * If there is any item left in the PQ,
+     * it sets up a timer that calls
+     * the same function after 25 ms
+     */
+    adjRib_->programOutDelayTimer();
+    EXPECT_TRUE(adjRib_->outDelayPQ_.size() > 0);
+    EXPECT_TRUE(adjRib_->outDelayTimer_->isScheduled());
+
+    // The remaining items in the queue should be flushed out after 25 ms
+    fiberSleepFor(550ms);
+    EXPECT_EQ(adjRib_->outDelayPQ_.size(), 0);
+    EXPECT_FALSE(adjRib_->outDelayTimer_->isScheduled());
+
+    evb_.terminateLoopSoon();
+  });
+
+  evb_.loopForever();
 }
 
 } // namespace facebook::bgp

@@ -604,8 +604,6 @@ std::shared_ptr<AdjRib> PeerManagerTestFixture::setupAdjRib(
       dummyAddPathBitmap,
       dummyNonAddPathBitmap);
   adjRib->setChangeListConsumer(changeListConsumer);
-  adjRib->enableEgressQueueBackpressure(
-      FLAGS_enable_egress_backpressure_in_peer_mgr_tests);
   return adjRib;
 }
 
@@ -680,8 +678,6 @@ std::shared_ptr<AdjRib> PeerManagerTestFixture::setupAdjRib(
       addPathBitmap,
       nonAddPathBitmap);
   adjRib->setChangeListConsumer(changeListConsumer);
-  adjRib->enableEgressQueueBackpressure(
-      FLAGS_enable_egress_backpressure_in_peer_mgr_tests);
   return adjRib;
 }
 
@@ -736,8 +732,6 @@ std::shared_ptr<MockAdjRib> PeerManagerTestFixture::setupMockAdjRib(
       sessionTerminateBaton,
       nullptr /* PolicyManager */,
       isSafeModeOn_);
-  adjRib->enableEgressQueueBackpressure(
-      FLAGS_enable_egress_backpressure_in_peer_mgr_tests);
   return adjRib;
 }
 
