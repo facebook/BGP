@@ -831,6 +831,295 @@ PeerManagerTestFixture::setupMockSessionManager(
   return mockSessionMgr;
 }
 
+void PeerManagerTestFixture::runEoRTest(
+    bool isSess1Restarting,
+    bool isSess2Restarting) {
+  static int numRuns;
+  numRuns++;
+
+  auto config = getConfig(
+      true, /* includeStaticPeer */
+      false, /* includeDynamicShivPeer */
+      false, /* includeDynamicMonitorPeer */
+      false, /* includeDynamicVipInjectorPeer */
+      false, /* enableStatefulHa */
+      false /* enableVipService */
+  );
+
+  std::chrono::seconds const eor_time{config->getConfig().eor_time_s().value()};
+
+  auto configManager = std::make_shared<ConfigManager>(config);
+  auto peerMgr = std::make_shared<PeerManagerBase>(
+      configManager,
+      nullptr,
+      ribInQ_, /* write to the queue */
+      ribOutQ_, /* read from the queue */
+      nbrRouteChangeQ_);
+  auto localSessionMgr = std::make_shared<SessionManager>(
+      *config->getBgpGlobalConfig(),
+      false, /* enableMessagesOverNotifyQueue */
+      true); /* enableCoroNotifyQueue - required for PeerManagerBase's
+                processPeerEventLoop */
+  peerMgr->setSessionManager(localSessionMgr);
+
+  folly::EventBase evb;
+
+  auto& fm = folly::fibers::getFiberManager(evb, options_);
+  initTwoSessionMgrs(&fm);
+
+  auto start = std::chrono::steady_clock::now();
+
+  uint32_t numAnnouncementsSent{0};
+  /*
+   * read ribInQ_, expect to get two announcements (one from sessionMgr1_,
+   * one from sessionMgr2_), then one EoR at the end
+   */
+  uint32_t peer1AnnouncementCnt{0}, peer2AnnouncementCnt{0};
+  uint32_t numAnnouncementsRcvd{0}, numWithdrawsRcvd{0};
+  bool eorReceived{false};
+
+  // Synchronization primitive
+  folly::fibers::Baton stopPeerBaton, peerStoppedBaton;
+  std::vector<folly::Future<folly::Unit>> taskFutures;
+
+  XLOG(INFO, "Add peers to session mgr called.");
+  const int peerMgrPort = *config->getConfig().listen_port();
+  sessionMgr1_->setRestartingState(isSess1Restarting);
+  sessionMgr2_->setRestartingState(isSess2Restarting);
+  sessionMgr1_->addPeer(
+      kLocalAddr1, kAsn1, kPeerAsn3, {kPeerAddr3, 0}, peerMgrPort);
+  sessionMgr2_->addPeer(
+      kLocalAddr1, kAsn1, kPeerAsn4, {kPeerAddr4, 0}, peerMgrPort);
+
+  XLOG(INFO, "Fiber task (1/4) finished to add peer to session managers");
+
+  // task to wait session up and send EoRs
+  {
+    auto task = fm.addTaskFuture([&] {
+      folly::collectAll(
+          sessionMgr1_->getSessionsComeUpFuture({kLocalPeerId1}),
+          sessionMgr2_->getSessionsComeUpFuture({kLocalPeerId1}))
+          .get();
+
+      /*
+       * TODO: remove this sleep after fixing the race between
+       * getSessionsComeUpFuture and getEstablishedCallback().
+       */
+      nettools::bgplib::fiberSleepFor(100ms);
+      // confirm that session comes up
+      EXPECT_EQ(numRuns, callback1_.getEstablishedCallbackCount(kLocalPeerId1));
+      EXPECT_EQ(
+          (numRuns - 1), callback1_.getTerminatedCallbackCount(kLocalPeerId1));
+      EXPECT_TRUE(callback1_.isSessionUp(kLocalPeerId1));
+
+      EXPECT_EQ(numRuns, callback2_.getEstablishedCallbackCount(kLocalPeerId1));
+      EXPECT_EQ(
+          (numRuns - 1), callback2_.getTerminatedCallbackCount(kLocalPeerId1));
+      EXPECT_TRUE(callback2_.isSessionUp(kLocalPeerId1));
+
+      // create 10 update messages
+      std::vector<std::unique_ptr<nettools::bgplib::BgpUpdate2>> updates1,
+          updates2;
+      updates1.emplace_back(createBgpUpdate2(5, kPeerAddr3));
+      updates2.emplace_back(createBgpUpdate2(5, kPeerAddr4));
+
+      // send updates and EoR to peerMgr
+      if (!isSess1Restarting) {
+        ASSERT_FALSE(
+            sessionMgr1_->sendUpdates(kLocalPeerId1, std::move(updates1))
+                .hasError());
+        ASSERT_FALSE(sessionMgr1_->sendEndOfRib(kLocalPeerId1).hasError());
+        numAnnouncementsSent++;
+      }
+      if (!isSess2Restarting) {
+        ASSERT_FALSE(
+            sessionMgr2_->sendUpdates(kLocalPeerId1, std::move(updates2))
+                .hasError());
+        ASSERT_FALSE(sessionMgr2_->sendEndOfRib(kLocalPeerId1).hasError());
+        numAnnouncementsSent++;
+      }
+      // wait for EoR time to finish sending out updates and EoRs
+      nettools::bgplib::fiberSleepFor(eor_time + 100ms);
+      /*
+       * Simulate session was up and running and then post baton to trigger
+       * session tear-down.
+       */
+      stopPeerBaton.post();
+
+      XLOG(INFO, "Fiber task (2/4) finished to send out updates and EoRs");
+    });
+    taskFutures.emplace_back(std::move(task));
+  }
+
+  // task to read ribInQ for verification
+  {
+    /*
+     * The boundedBlockingPop below throws BoundedWaitTimeout on a hung
+     * queue. Because this task runs inside FiberManager::addTaskFuture, a
+     * throw here crashes the process rather than yielding a clean gtest
+     * assertion — still a land-blocking CRITICAL outcome (not a suppressed
+     * tpx TIMEOUT), and the BoundedWaitTimeout `what()` message is in the
+     * crash log, so the root cause stays visible.
+     */
+    auto task = fm
+                    .addTaskFuture(
+                        [&] {
+                          while (true) {
+                            auto msg = facebook::bgp::test::boundedBlockingPop(
+                                ribInQ_, "ribInQ_");
+                            folly::variant_match(
+            msg,
+            [&](RibInAnnouncement announcement) {
+              if (announcement.peer.addr == kPeerAddr3) {
+                peer1AnnouncementCnt++;
+              }
+              if (announcement.peer.addr == kPeerAddr4) {
+                peer2AnnouncementCnt++;
+              }
+              numAnnouncementsRcvd++;
+            },
+            [&](RibInWithdrawal /* unused */) { numWithdrawsRcvd++; },
+            [&](RibInInitialPathComputation /* unused */) {
+              /*
+               * This is the crux of the EoR test.  In order to prevent
+               * EoR deadlock, we assert that if other side is in
+               * restarting state, peerMgr does not wait to receive
+               * announcements / EoR from other side before notifying
+               * RibInInitialPathComputation
+               */
+              auto end = std::chrono::steady_clock::now();
+              auto elapsed =
+                  std::chrono::duration_cast<std::chrono::milliseconds>(
+                      end - start);
+              XLOGF(
+                  INFO,
+                  "Received EoR. Elapsed time: {}ms. EoR timeout: {}s",
+                  elapsed.count(),
+                  eor_time.count());
+              EXPECT_LT(elapsed, eor_time);
+              if (isSess1Restarting) {
+                EXPECT_EQ(0, peer1AnnouncementCnt);
+              } else {
+                EXPECT_EQ(1, peer1AnnouncementCnt);
+              }
+              if (isSess2Restarting) {
+                EXPECT_EQ(0, peer2AnnouncementCnt);
+              } else {
+                EXPECT_EQ(1, peer2AnnouncementCnt);
+              }
+              eorReceived = true;
+            },
+            [&](RibDumpReq /* unused */) {},
+            [&](PauseBestPathAndFibProgramming /* unused */) {},
+            [&](ResumeBestPathAndFibProgramming /* unused */) {},
+            [&](const RibInNexthopUpdate& /* unused */) {},
+            [&](const NexthopResolutionUpdate& /* unused */) {},
+            [&](const RibInAddPathGrUpdate& /* unused */) {});
+                            /*
+                             * Exit when EoR is received and all expected
+                             * announcements have arrived. Note: stop() calls
+                             * markDaemonShutdown() which skips sending
+                             * withdrawals during session termination (fast
+                             * cleanup path). Therefore, we don't wait for
+                             * withdrawals here
+                             */
+                            if (eorReceived &&
+                                numAnnouncementsRcvd == numAnnouncementsSent) {
+                              break;
+                            }
+                          }
+
+                          XLOG(
+                              INFO,
+                              "Fiber task (3/4) finished to verify EoR stats.");
+                        });
+    taskFutures.emplace_back(std::move(task));
+  }
+
+  // task to verify that stop will save GR state, it has expected peers.
+  {
+    auto task = fm.addTaskFuture([&] {
+      /*
+       * Wait for sessions to be established and updates sent before
+       * terminating the sessions.
+       */
+      facebook::bgp::test::boundedBatonWait(
+          peerStoppedBaton,
+          "peerStoppedBaton",
+          facebook::bgp::test::kDefaultPopTimeout);
+
+      auto sessionDownFuture1 =
+          sessionMgr1_->getSessionsGoDownFuture({kLocalPeerId1});
+      auto sessionDownFuture2 =
+          sessionMgr2_->getSessionsGoDownFuture({kLocalPeerId1});
+
+      sessionMgr1_->shutdownWithGR(false);
+      sessionMgr2_->shutdownWithGR(false);
+
+      // Order of addresses in file is immaterial.
+      auto grLoadResult = peerMgr->readGrState();
+      ASSERT_NE(nullptr, grLoadResult.peers);
+      std::unordered_set<BgpPeerId> expectedPeers = {kPeerId3, kPeerId4};
+      EXPECT_EQ(expectedPeers, *(grLoadResult.peers));
+
+      folly::collectAll(sessionDownFuture1, sessionDownFuture2).get();
+
+      sessionMgr1_->stop();
+      sessionMgr2_->stop();
+
+      XLOG(INFO, "Fiber task (4/4) finished to verify GR state.");
+    });
+    taskFutures.emplace_back(std::move(task));
+  }
+
+  // create peer manager thread
+  auto peerMgrThread = peerMgr->runInThread();
+  auto localSessionMgrThread = localSessionMgr->runInThread();
+  auto sessionMgr1Thread = sessionMgr1_->runInThread();
+  auto sessionMgr2Thread = sessionMgr2_->runInThread();
+
+  // create evbThread to pump all of the fiber tasks
+  auto evbThread = std::thread([&]() { evb.loop(); });
+  evb.waitUntilRunning();
+
+  /*
+   * Step1: wait for session establishment with advertisement + EoR sending
+   */
+  facebook::bgp::test::boundedBatonWait(
+      stopPeerBaton, "stopPeerBaton", facebook::bgp::test::kDefaultPopTimeout);
+
+  /*
+   * Step2: stop sessions by shutting down PeerManagerBase to save GR state.
+   * Mirrors Main.cpp shutdown: markDaemonShutdown → saveGrState → stop.
+   */
+  peerMgr->markDaemonShutdown();
+  peerMgr->saveGrState();
+  localSessionMgr->stop();
+  peerMgr->stop();
+
+  /*
+   * Step3: signal waiting tasks that PeerManagerBase teardown is complete.
+   */
+  peerStoppedBaton.post();
+
+  /*
+   * Step4: wait for all fiber task futures to be completed, including the
+   * EoR verification task.
+   */
+  folly::collectAll(taskFutures.begin(), taskFutures.end()).get();
+
+  peerMgrThread.join();
+  localSessionMgrThread.join();
+  sessionMgr1Thread.join();
+  sessionMgr2Thread.join();
+  evbThread.join();
+
+  // release the session managers before evb is destroyed
+  sessionMgr1_.reset();
+  sessionMgr2_.reset();
+  peerMgr.reset();
+}
+
 // Helper function to create a mock peer info for a static peer
 std::shared_ptr<nettools::bgplib::BgpPeerDisplayInfo>
 PeerManagerTestFixture::getMockPeerInfo(

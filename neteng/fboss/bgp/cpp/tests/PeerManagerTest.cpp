@@ -1101,6 +1101,22 @@ TEST_F(StreamSubscriberFixture, ThriftStreamSubscribePostInitializationTest) {
   EXPECT_EQ(TBgpPeerState::IDLE, peerMgr->streamSubscribers_.at(*myName).state);
 }
 
+TEST_F(PeerManagerTestFixture, EoRTestNeitherSessionRestarting) {
+  runEoRTest(false, false);
+}
+
+TEST_F(PeerManagerTestFixture, EoRTestSecondSessionRestarting) {
+  runEoRTest(false, true);
+}
+
+TEST_F(PeerManagerTestFixture, EoRTestFirstSessionRestarting) {
+  runEoRTest(true, false);
+}
+
+TEST_F(PeerManagerTestFixture, EoRTestBothSessionsRestarting) {
+  runEoRTest(true, true);
+}
+
 // Verify that stateful GR file is created only if configured
 TEST_F(PeerManagerTestFixture, StatefulGrConfigEnabled) {
   std::vector<folly::Future<folly::Unit>> taskFutures;

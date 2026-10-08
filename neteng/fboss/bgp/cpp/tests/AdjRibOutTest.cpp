@@ -1661,6 +1661,200 @@ TEST_F(AdjRibOutboundFixture, UpdatePolicyProcessingIBgpPeer) {
   evb_.loop();
 }
 
+/*
+ * Verify that a prefix which is denied due to policy, later changes it's
+ * attributes, and is permitted by policy due to attribute changes is
+ * processed properly and notified to Rib Verify that EORs are sent even if
+ * policy denies all prefixes.
+ */
+TEST_F(AdjRibOutboundFixture, VerifyPermitAfterDeny) {
+  /*
+   * Create a policy with two terms
+   * Term1 match origin IGP and deny
+   * Term2 permit all
+   */
+  const std::string policyName = kEgressPolicyName;
+  auto policyManager = setupDenyIgpOriginAcceptAllPolicy(policyName);
+  // IBGP peer
+  setupAdjRib(policyManager, policyName);
+
+  fm_->addTask([&] {
+    {
+      // Announcement 1 which will be denied by policy
+      auto ribMsg = createRibSingleAnnounce(
+          kV4Prefix1,
+          kV4Nexthop1,
+          localPeerV4_,
+          true, // EOR is true.
+          BgpAttrOrigin::BGP_ORIGIN_IGP);
+      pushRibOutMsgToAdjRib(ribMsg);
+    }
+    /*
+     * Announcements after the initial dump are ignored until its EoR has been
+     * sent, so let sendBgpUpdates send the EoRs first.
+     */
+    fiberSleepFor(40ms);
+    {
+      /*
+       * Announcement 2 (modified origin) for same prefix will be accepted
+       * by policy
+       */
+      auto ribMsg = createRibSingleAnnounce(
+          kV4Prefix1,
+          kV4Nexthop1,
+          localPeerV4_,
+          false,
+          BgpAttrOrigin::BGP_ORIGIN_EGP);
+      pushRibOutMsgToAdjRib(ribMsg);
+    }
+  });
+
+  fm_->addTask([&] {
+    /* Let sendBgpUpdates coro run if scheduled. */
+    fiberSleepFor(10ms);
+    /*
+     * Announcement 1 will not lead to any bgp update but
+     * we should see v4 and v6 EoRs
+     */
+    auto msg = folly::coro::blockingWait(popFromEgressQueue());
+    ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*msg));
+    msg = folly::coro::blockingWait(popFromEgressQueue());
+    ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*msg));
+
+    // Verifying only after Announcement 2 is sent
+    msg = folly::coro::blockingWait(popFromEgressQueue());
+    ASSERT_TRUE(
+        std::holds_alternative<std::shared_ptr<const BgpUpdate2>>(*msg));
+    auto bgpUpdate = std::get<std::shared_ptr<const BgpUpdate2>>(*msg);
+    ASSERT_EQ(1, bgpUpdate->mpAnnounced()->prefixes()->size());
+    EXPECT_EQ(
+        toIPPrefix(kV4Prefix1),
+        *bgpUpdate->mpAnnounced()->prefixes()[0].prefix());
+    EXPECT_EQ(BgpAttrOrigin::BGP_ORIGIN_EGP, *bgpUpdate->attrs()->origin());
+
+    EXPECT_TRUE(boundedAdjRibOutQ_->empty());
+    // Verify adjrib entry is proper
+    auto adjRibEntry = adjRib_->getRibEntry(/*ingress=*/false, kV4Prefix1);
+    ASSERT_NE(nullptr, adjRibEntry->getPreOut());
+    ASSERT_NE(nullptr, adjRibEntry->getPostAttr());
+    EXPECT_EQ(adjRibEntry->getPreOut(), adjRibEntry->getPostAttr());
+    EXPECT_EQ(
+        BgpAttrOrigin::BGP_ORIGIN_EGP, adjRibEntry->getPreOut()->getOrigin());
+    // Verify stats
+    EXPECT_EQ(1, adjRib_->getStats().getPostOutPrefixCount());
+
+    terminateAdjRib();
+  });
+  evb_.loop();
+}
+
+/*
+ *  1. Create egress policy
+ *  2. Setup AdjRib with egress policy and add path enabled
+ *  3. Send Rib announcement of a prefix that is denied by policy
+ *  4. Verify adjrib entry and adjrib tree
+ *  5. Re-send same prefix with different attributes that is now allowed by
+ *     policy
+ *  6. Verify again adjrib entry and adjrib tree
+ */
+TEST_F(AdjRibOutboundFixture, VerifyPermitAfterDenyAddPath) {
+  /*
+   * Create a policy with two terms
+   * Term1 match origin IGP and deny
+   * Term2 permit all
+   */
+  const std::string policyName = kEgressPolicyName;
+  auto policyManager = setupDenyIgpOriginAcceptAllPolicy(policyName);
+  // IBGP peer
+  setupAdjRib(policyManager, policyName, true, true);
+
+  fm_->addTask([&] {
+    {
+      // Announcement 1 which will be denied by policy
+      auto ribMsg = createRibSingleAnnounce(
+          kV4Prefix1,
+          kV4Nexthop1,
+          localPeerV4_,
+          true, // EOR is true.
+          BgpAttrOrigin::BGP_ORIGIN_IGP,
+          {},
+          std::nullopt,
+          std::nullopt,
+          nullptr,
+          true,
+          kPlaceholderPathID);
+      pushRibOutMsgToAdjRib(ribMsg);
+    }
+    /*
+     * Announcements after the initial dump are ignored until its EoR has been
+     * sent, so let sendBgpUpdates send the EoRs first.
+     */
+    fiberSleepFor(40ms);
+    {
+      /*
+       * Announcement 2 (modified origin) for same prefix will be accepted
+       * by policy
+       */
+      auto ribMsg = createRibSingleAnnounce(
+          kV4Prefix1,
+          kV4Nexthop1,
+          localPeerV4_,
+          false,
+          BgpAttrOrigin::BGP_ORIGIN_EGP,
+          {},
+          std::nullopt,
+          std::nullopt,
+          nullptr,
+          true,
+          kPlaceholderPathID);
+      pushRibOutMsgToAdjRib(ribMsg);
+    }
+  });
+
+  fm_->addTask([&] {
+    /* Let sendBgpUpdates coro run if scheduled. */
+    fiberSleepFor(10ms);
+    /*
+     * Announcement 1 will not lead to any bgp update but
+     * we should see v4 and v6 EoRs
+     */
+    auto msg = folly::coro::blockingWait(popFromEgressQueue());
+    ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*msg));
+    msg = folly::coro::blockingWait(popFromEgressQueue());
+    ASSERT_TRUE(std::holds_alternative<BgpEndOfRib>(*msg));
+
+    // Verifying only after Announcement 2 is sent
+    msg = folly::coro::blockingWait(popFromEgressQueue());
+    ASSERT_TRUE(
+        std::holds_alternative<std::shared_ptr<const BgpUpdate2>>(*msg));
+    auto bgpUpdate = std::get<std::shared_ptr<const BgpUpdate2>>(*msg);
+    ASSERT_EQ(1, bgpUpdate->mpAnnounced()->prefixes()->size());
+    EXPECT_EQ(
+        toIPPrefix(kV4Prefix1),
+        *bgpUpdate->mpAnnounced()->prefixes()[0].prefix());
+    EXPECT_EQ(BgpAttrOrigin::BGP_ORIGIN_EGP, *bgpUpdate->attrs()->origin());
+
+    EXPECT_TRUE(boundedAdjRibOutQ_->empty());
+    // Verify adjrib entry is proper
+    auto adjRibEntry = adjRib_->getRibEntry(/*ingress=*/false, kV4Prefix1);
+    ASSERT_NE(nullptr, adjRibEntry->getPreOut());
+    ASSERT_NE(nullptr, adjRibEntry->getPostAttr());
+    EXPECT_EQ(adjRibEntry->getPreOut(), adjRibEntry->getPostAttr());
+    EXPECT_EQ(
+        BgpAttrOrigin::BGP_ORIGIN_EGP, adjRibEntry->getPreOut()->getOrigin());
+
+    // Verify AdjRibTree size is non-zero
+    EXPECT_EQ(
+        1,
+        adjRib_->getRibTreeSize(/*ingress=*/false, /*isAddPathEnabled=*/true));
+    // Verify stats
+    EXPECT_EQ(1, adjRib_->getStats().getPostOutPrefixCount());
+
+    terminateAdjRib();
+  });
+  evb_.loop();
+}
+
 /**
  * Create four peers with different options for advertiseLinkBandwidth
  * config: DISABLE, BEST_PATH, SET_LINK_BPS, and AGGREGATE_RECEIVED. Create
