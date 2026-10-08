@@ -208,7 +208,11 @@ class RibInitialAnnouncementTestFixture : public PeerManagerTestFixture {
     mockInfo.negotiatedCapabilities.mpExtV4Unicast() = true;
 
     sessionInfo_ = FiberBgpPeer::getObservableSessionInfo(
-        mockInfo, adjRibOutQ_, boundedAdjRibOutQ_, adjRibInQ_, versionNumber);
+        mockInfo,
+        nullptr /* unbounded input queue, unused */,
+        boundedAdjRibOutQ_,
+        adjRibInQ_,
+        versionNumber);
   }
 
   void refreshSessionInfo() {
@@ -223,7 +227,11 @@ class RibInitialAnnouncementTestFixture : public PeerManagerTestFixture {
     mockInfo.negotiatedCapabilities.mpExtV4Unicast() = true;
 
     sessionInfo_ = FiberBgpPeer::getObservableSessionInfo(
-        mockInfo, adjRibOutQ_, boundedAdjRibOutQ_, adjRibInQ_, versionNumber);
+        mockInfo,
+        nullptr /* unbounded input queue, unused */,
+        boundedAdjRibOutQ_,
+        adjRibInQ_,
+        versionNumber);
   }
 
   void cleanUp() {
@@ -271,8 +279,6 @@ class RibInitialAnnouncementTestFixture : public PeerManagerTestFixture {
 
   std::shared_ptr<AdjRib::AdjRibInQueueT> adjRibInQ_ =
       std::make_shared<AdjRib::AdjRibInQueueT>();
-  std::shared_ptr<nettools::bgplib::FiberBgpPeer::InputQueueT> adjRibOutQ_ =
-      std::make_shared<nettools::bgplib::FiberBgpPeer::InputQueueT>();
   std::shared_ptr<AdjRib::AdjRibOutQueueT> boundedAdjRibOutQ_ =
       std::make_shared<AdjRib::AdjRibOutQueueT>(
           kMaxEgressQueueSize,

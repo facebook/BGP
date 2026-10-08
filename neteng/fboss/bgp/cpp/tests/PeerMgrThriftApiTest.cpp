@@ -381,7 +381,7 @@ TEST_P(
 
   auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
       mockInfo1_,
-      sessionMgr->iQueue_,
+      nullptr /* unbounded input queue, unused */,
       sessionMgr->boundedIqueue_,
       adjRibInQueue,
       versionNumber);

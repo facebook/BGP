@@ -89,11 +89,8 @@ E2ETestSessionManager::getPeerOutputQueue(const BgpPeerId& peerId) noexcept {
 }
 
 std::shared_ptr<nettools::bgplib::FiberBgpPeer::InputQueueT>
-E2ETestSessionManager::getPeerInputQueue(const BgpPeerId& peerId) noexcept {
-  auto it = peerStates_.find(peerId);
-  if (it != peerStates_.end()) {
-    return it->second.adjRibOutQ;
-  }
+E2ETestSessionManager::getPeerInputQueue(
+    const BgpPeerId& /* peerId */) noexcept {
   return nullptr;
 }
 
@@ -120,8 +117,6 @@ uint64_t E2ETestSessionManager::simulateSessionEstablished(
       peerId.peerAddr.str());
 
   auto adjRibInQ = std::make_shared<AdjRib::AdjRibInQueueT>();
-  auto adjRibOutQ =
-      std::make_shared<nettools::bgplib::FiberBgpPeer::InputQueueT>();
   auto boundedAdjRibOutQ = std::make_shared<AdjRib::AdjRibOutQueueT>(
       queueCapacity, queueHighWm, queueLowWm);
 
@@ -131,7 +126,6 @@ uint64_t E2ETestSessionManager::simulateSessionEstablished(
   }
   const auto version = state.versionNumber->bumpUp();
   state.adjRibInQ = adjRibInQ;
-  state.adjRibOutQ = adjRibOutQ;
   state.boundedAdjRibOutQ = boundedAdjRibOutQ;
   state.displayInfo = displayInfo;
   state.displayInfo.state = BgpSessionState::ESTABLISHED;
@@ -144,7 +138,7 @@ uint64_t E2ETestSessionManager::simulateSessionEstablished(
 
   auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
       state.displayInfo,
-      adjRibOutQ,
+      nullptr /* unbounded input queue, unused */,
       boundedAdjRibOutQ,
       adjRibInQ,
       state.versionNumber);

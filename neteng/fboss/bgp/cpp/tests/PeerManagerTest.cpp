@@ -2002,7 +2002,7 @@ TEST_F(PeerManagerTestFixture, MultipleFlapTest) {
 
     auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
         mockInfo1_,
-        sessionMgr->iQueue_,
+        nullptr /* unbounded input queue, unused */,
         sessionMgr->boundedIqueue_,
         sessionMgr->oQueue_,
         versionNumber);
@@ -2172,7 +2172,7 @@ TEST_F(PeerManagerTestFixture, MultipleFlapMultiplePeersTest) {
 
     auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
         mockInfo1_,
-        sessionMgr->iQueue_,
+        nullptr /* unbounded input queue, unused */,
         sessionMgr->boundedIqueue_,
         sessionMgr->oQueue_,
         versionNumber);
@@ -2374,7 +2374,7 @@ TEST_F(PeerManagerTestFixture, BusyWaitTest) {
     // Simulate FiberBgpPeer is consistent as seen by peerManager
     auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
         mockInfo1_,
-        sessionMgr->iQueue_,
+        nullptr /* unbounded input queue, unused */,
         sessionMgr->boundedIqueue_,
         sessionMgr->oQueue_,
         versionNumber);
@@ -4457,7 +4457,7 @@ TEST_P(SafeModeTestFixture, InitializeAdjRibWithGoldenPrefixPolicy) {
 
     auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
         mockInfo1_,
-        sessionMgr->iQueue_,
+        nullptr /* unbounded input queue, unused */,
         sessionMgr->boundedIqueue_,
         sessionMgr->oQueue_,
         versionNumber);
@@ -4934,7 +4934,7 @@ TEST_F(PeerManagerTestFixture, SafeModeOnAllSessionsTest) {
      */
     auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
         mockInfo1_,
-        sessionMgr->iQueue_,
+        nullptr /* unbounded input queue, unused */,
         sessionMgr->boundedIqueue_,
         sessionMgr->oQueue_,
         versionNumber);
@@ -5247,7 +5247,7 @@ TEST_F(PeerManagerTestFixture, TriggerRouteRefreshRequestNegativeTest) {
 
     auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
         mockInfo1_,
-        sessionMgr->iQueue_,
+        nullptr /* unbounded input queue, unused */,
         sessionMgr->boundedIqueue_,
         sessionMgr->oQueue_,
         versionNumber);
@@ -5302,7 +5302,7 @@ TEST_F(PeerManagerTestFixture, TriggerRouteRefreshRequestTest) {
   fm.addTask([&] {
     auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
         mockInfo1_,
-        sessionMgr->iQueue_,
+        nullptr /* unbounded input queue, unused */,
         sessionMgr->boundedIqueue_,
         sessionMgr->oQueue_,
         versionNumber);
@@ -5335,7 +5335,6 @@ TEST_F(PeerManagerTestFixture, TriggerRouteRefreshRequestTest) {
         mockPeerMgr->triggerRouteRefreshRequestsForPeers({kPeerId3});
 
     EXPECT_TRUE(failedPeers.empty());
-    EXPECT_TRUE(sessionMgr->iQueue_->empty());
     EXPECT_EQ(sessionMgr->boundedIqueue_->size(), 1);
     if (!sessionMgr->boundedIqueue_->empty()) {
       const auto routeRefresh = facebook::bgp::test::boundedBlockingPop(
@@ -6898,7 +6897,7 @@ TEST_F(PeerManagerTestFixture, SessionFlapRaceConditionTest) {
 
     auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
         mockInfo1_,
-        sessionMgr->iQueue_,
+        nullptr /* unbounded input queue, unused */,
         sessionMgr->boundedIqueue_,
         sessionMgr->oQueue_,
         versionNumber);
@@ -7314,7 +7313,7 @@ TEST_F(
   fm.addTask([&] {
     auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
         mockInfo1_,
-        sessionMgr->iQueue_,
+        nullptr /* unbounded input queue, unused */,
         sessionMgr->boundedIqueue_,
         sessionMgr->oQueue_,
         versionNumber);
@@ -7427,7 +7426,7 @@ TEST_F(PeerManagerTestFixture, LivePeerGroupsSessionLifecycleTest) {
 
     auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
         mockInfo,
-        sessionMgr->iQueue_,
+        nullptr /* unbounded input queue, unused */,
         sessionMgr->boundedIqueue_,
         sessionMgr->oQueue_,
         versionNumber);

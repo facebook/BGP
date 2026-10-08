@@ -1363,7 +1363,6 @@ class E2ETestFixture : public ::testing::Test {
 
   struct PeerQueues {
     std::shared_ptr<AdjRib::AdjRibInQueueT> adjRibInQ;
-    std::shared_ptr<nettools::bgplib::FiberBgpPeer::InputQueueT> adjRibOutQ;
     std::shared_ptr<AdjRib::AdjRibOutQueueT> boundedAdjRibOutQ;
   };
 

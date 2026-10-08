@@ -151,7 +151,7 @@ TEST_F(
   bringUpPeerAndWait(kPeerAddr3);
   BgpPeerId peerId3{kPeerAddr3, kPeerAddr3.asV4().toLongHBO()};
   auto oldVersion = testSessionManager_->getPeerVersionNumber(peerId3);
-  auto oldInputQueue = testSessionManager_->getPeerInputQueue(peerId3);
+  auto oldInputQueue = testSessionManager_->getBoundedPeerInputQueue(peerId3);
   ASSERT_NE(oldVersion, nullptr);
   ASSERT_NE(oldInputQueue, nullptr);
   const auto oldVersionValue = oldVersion->get();
@@ -164,7 +164,7 @@ TEST_F(
   ASSERT_TRUE(waitForSessionEstablished(kPeerAddr3));
   auto& peerState = testSessionManager_->getPeerStates().at(peerId3);
   EXPECT_GT(peerState.versionNumber->get(), oldVersionValue);
-  EXPECT_NE(peerState.adjRibOutQ, oldInputQueue);
+  EXPECT_NE(peerState.boundedAdjRibOutQ, oldInputQueue);
   EXPECT_TRUE(peerState.established);
 }
 

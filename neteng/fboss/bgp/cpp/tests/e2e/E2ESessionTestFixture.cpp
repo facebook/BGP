@@ -374,10 +374,7 @@ std::optional<E2ETestFixture::PeerQueues> E2ESessionTestFixture::getPeerQueues(
   if (it == states.end()) {
     return std::nullopt;
   }
-  return PeerQueues{
-      it->second.adjRibInQ,
-      it->second.adjRibOutQ,
-      it->second.boundedAdjRibOutQ};
+  return PeerQueues{it->second.adjRibInQ, it->second.boundedAdjRibOutQ};
 }
 
 std::unordered_map<BgpPeerId, E2ETestFixture::PeerQueues>
@@ -388,8 +385,7 @@ E2ESessionTestFixture::getAllPeerQueues() const {
   }
   for (const auto& [peerId, state] : testSessionManager_->getPeerStates()) {
     result.emplace(
-        peerId,
-        PeerQueues{state.adjRibInQ, state.adjRibOutQ, state.boundedAdjRibOutQ});
+        peerId, PeerQueues{state.adjRibInQ, state.boundedAdjRibOutQ});
   }
   return result;
 }

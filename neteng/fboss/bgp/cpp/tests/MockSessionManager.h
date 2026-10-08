@@ -30,8 +30,6 @@ class MockSessionManager : public SessionManager {
   explicit MockSessionManager(
       const bgp::BgpGlobalConfig& config,
       bool enableMessagesOverNotifyQueue = true,
-      std::shared_ptr<nettools::bgplib::FiberBgpPeer::InputQueueT> iQueue =
-          nullptr,
       std::shared_ptr<AdjRib::AdjRibOutQueueT> boundedIqueue = nullptr,
       std::shared_ptr<AdjRib::AdjRibInQueueT> oQueue = nullptr,
       bool enableCoroNotifyQueue = true)
@@ -39,7 +37,6 @@ class MockSessionManager : public SessionManager {
             config,
             enableMessagesOverNotifyQueue,
             enableCoroNotifyQueue) {
-    iQueue_ = iQueue;
     boundedIqueue_ = boundedIqueue;
     oQueue_ = oQueue;
   }
@@ -137,7 +134,6 @@ class MockSessionManager : public SessionManager {
     return boundedIqueue_;
   }
 
-  std::shared_ptr<nettools::bgplib::FiberBgpPeer::InputQueueT> iQueue_;
   std::shared_ptr<AdjRib::AdjRibOutQueueT> boundedIqueue_;
   std::shared_ptr<AdjRib::AdjRibInQueueT> oQueue_;
 };

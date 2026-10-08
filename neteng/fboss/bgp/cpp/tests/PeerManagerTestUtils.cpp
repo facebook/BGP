@@ -808,7 +808,6 @@ PeerManagerTestFixture::setupMockSessionManager(
 
   auto globalConfig = config_->getBgpGlobalConfig();
 
-  auto iQueue = std::make_shared<nettools::bgplib::FiberBgpPeer::InputQueueT>();
   auto oQueue = std::make_shared<AdjRib::AdjRibInQueueT>();
   auto biQueue = std::make_shared<AdjRib::AdjRibOutQueueT>(
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
@@ -816,7 +815,6 @@ PeerManagerTestFixture::setupMockSessionManager(
   auto mockSessionMgr = std::make_shared<MockSessionManager>(
       *globalConfig,
       false, /* enableMessagesOverNotifyQueue */
-      iQueue,
       biQueue,
       oQueue,
       true /* enableCoroNotifyQueue - required for PeerManagerBase's

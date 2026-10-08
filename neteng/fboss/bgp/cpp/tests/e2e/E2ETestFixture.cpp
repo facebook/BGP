@@ -1414,8 +1414,6 @@ void E2ETestFixture::establishSession(
 
   auto qs = getQueueSizesForPeer(peerId.peerAddr);
   auto adjRibInQ = std::make_shared<AdjRib::AdjRibInQueueT>();
-  auto adjRibOutQ =
-      std::make_shared<nettools::bgplib::FiberBgpPeer::InputQueueT>();
   auto boundedAdjRibOutQ = std::make_shared<AdjRib::AdjRibOutQueueT>(
       qs.capacity, qs.highWm, qs.lowWm);
 
@@ -1428,7 +1426,7 @@ void E2ETestFixture::establishSession(
       qs.highWm,
       qs.lowWm);
 
-  peerQueues_[peerId] = {adjRibInQ, adjRibOutQ, boundedAdjRibOutQ};
+  peerQueues_[peerId] = {adjRibInQ, boundedAdjRibOutQ};
   auto currentVersion = std::make_shared<VersionNumber>(versionNumber);
 
   // Get peer configuration to populate peeringParams
@@ -1467,7 +1465,7 @@ void E2ETestFixture::establishSession(
 
   auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
       displayInfo,
-      std::move(adjRibOutQ),
+      nullptr /* unbounded input queue, unused */,
       std::move(boundedAdjRibOutQ),
       std::move(adjRibInQ),
       currentVersion);
@@ -1498,8 +1496,6 @@ void E2ETestFixture::dispatchStaleSessionEstablished(
 
   auto staleQs = getQueueSizesForPeer(peerAddr);
   auto adjRibInQ = std::make_shared<AdjRib::AdjRibInQueueT>();
-  auto adjRibOutQ =
-      std::make_shared<nettools::bgplib::FiberBgpPeer::InputQueueT>();
   auto boundedAdjRibOutQ = std::make_shared<AdjRib::AdjRibOutQueueT>(
       staleQs.capacity, staleQs.highWm, staleQs.lowWm);
 
@@ -1519,7 +1515,7 @@ void E2ETestFixture::dispatchStaleSessionEstablished(
 
   auto sessionInfo = FiberBgpPeer::getObservableSessionInfo(
       displayInfo,
-      std::move(adjRibOutQ),
+      nullptr /* unbounded input queue, unused */,
       std::move(boundedAdjRibOutQ),
       std::move(adjRibInQ),
       currentVersion);

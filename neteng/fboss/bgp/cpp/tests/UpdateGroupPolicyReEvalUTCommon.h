@@ -924,8 +924,6 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
       int queueCapacity = kDefaultOutQueueCapacity,
       int queueHighWm = kDefaultOutQueueHighWm,
       int queueLowWm = kDefaultOutQueueLowWm) {
-    auto adjRibOutQ =
-        std::make_shared<nettools::bgplib::FiberBgpPeer::InputQueueT>();
     auto boundedAdjRibOutQ = std::make_shared<AdjRib::AdjRibOutQueueT>(
         queueCapacity, queueHighWm, queueLowWm);
     auto adjRibInQ = std::make_shared<AdjRib::AdjRibInQueueT>();
@@ -951,7 +949,11 @@ class UpdateGroupPolicyReEvalUTBase : public PeerManagerTestFixture {
     displayInfo.remoteCapabilities.mpExtExist() = true;
 
     auto sessionInfo = nettools::bgplib::FiberBgpPeer::getObservableSessionInfo(
-        displayInfo, adjRibOutQ, boundedAdjRibOutQ, adjRibInQ, versionNumber);
+        displayInfo,
+        nullptr /* unbounded input queue, unused */,
+        boundedAdjRibOutQ,
+        adjRibInQ,
+        versionNumber);
 
     nettools::bgplib::FiberBgpPeer::ObservableStateT stateEvt{
         .peerId = peerId,
