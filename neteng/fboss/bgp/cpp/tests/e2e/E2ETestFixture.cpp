@@ -123,10 +123,7 @@ std::shared_ptr<Config> E2ETestFixture::getConfig(
   if (enableDynamicPolicyEvaluation_) {
     tBgpSettingConfig.enable_dynamic_policy_evaluation() = true;
   }
-  if (enableStreamSubscriberBackpressure_.has_value()) {
-    tBgpSettingConfig.enable_stream_subscriber_backpressure() =
-        *enableStreamSubscriberBackpressure_;
-  }
+
   thriftConfig.bgp_setting_config() = std::move(tBgpSettingConfig);
 
   FeatureFlags::LoadFromThriftConfig(thriftConfig);

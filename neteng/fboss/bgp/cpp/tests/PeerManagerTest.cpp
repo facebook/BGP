@@ -5554,7 +5554,6 @@ void consumeOneEgressMessage(StreamSubscriber& subscriber) {
  */
 TEST_F(StreamSubscriberFixture, StreamSubscriberIdleTimeoutReclaimsSession) {
   gflags::FlagSaver flags;
-  FLAGS_enable_stream_subscriber_backpressure = true;
   FLAGS_stream_subscriber_idle_timeout_ms = kTestIdleTimeoutMs;
 
   SetUp(true /* configureMonitorPeer */, true /* initialAnnouncementDone */);
@@ -5577,7 +5576,6 @@ TEST_F(StreamSubscriberFixture, StreamSubscriberIdleTimeoutReclaimsSession) {
    */
   evb.runInEventBaseThreadAndWait([&]() {
     auto& subscriber = peerMgr->streamSubscribers_.at(*subscriberName);
-    EXPECT_TRUE(subscriber.boundedEgress);
     EXPECT_NE(nullptr, subscriber.boundedPeerInputQ);
 
     fillEgressQueueToHighWatermark(subscriber);
@@ -5613,7 +5611,6 @@ TEST_F(StreamSubscriberFixture, StreamSubscriberIdleTimeoutReclaimsSession) {
  */
 TEST_F(StreamSubscriberFixture, StreamSubscriberIdleTimeoutDisabled) {
   gflags::FlagSaver flags;
-  FLAGS_enable_stream_subscriber_backpressure = true;
   FLAGS_stream_subscriber_idle_timeout_ms = 0;
 
   SetUp(true /* configureMonitorPeer */, true /* initialAnnouncementDone */);
@@ -5650,7 +5647,6 @@ TEST_F(StreamSubscriberFixture, StreamSubscriberIdleTimeoutDisabled) {
  */
 TEST_F(StreamSubscriberFixture, StreamSubscriberIdleTimeoutDrainedQueue) {
   gflags::FlagSaver flags;
-  FLAGS_enable_stream_subscriber_backpressure = true;
   FLAGS_stream_subscriber_idle_timeout_ms = kTestIdleTimeoutMs;
 
   SetUp(true /* configureMonitorPeer */, true /* initialAnnouncementDone */);
@@ -5706,7 +5702,6 @@ TEST_F(StreamSubscriberFixture, StreamSubscriberIdleTimeoutDrainedQueue) {
  */
 TEST_F(StreamSubscriberFixture, StreamSubscriberIdleTimeoutSlowClient) {
   gflags::FlagSaver flags;
-  FLAGS_enable_stream_subscriber_backpressure = true;
   FLAGS_stream_subscriber_idle_timeout_ms = kTestIdleTimeoutMs;
 
   SetUp(true /* configureMonitorPeer */, true /* initialAnnouncementDone */);
@@ -5762,7 +5757,6 @@ TEST_F(StreamSubscriberFixture, StreamSubscriberIdleTimeoutSlowClient) {
  */
 TEST_F(StreamSubscriberFixture, StreamSubscriberIdleTimeoutNotifiesClient) {
   gflags::FlagSaver flags;
-  FLAGS_enable_stream_subscriber_backpressure = true;
   FLAGS_stream_subscriber_idle_timeout_ms = kTestIdleTimeoutMs;
 
   SetUp(true /* configureMonitorPeer */, true /* initialAnnouncementDone */);

@@ -62,7 +62,6 @@ DECLARE_int32(max_session_dampen_time_ms);
 DECLARE_int32(counter_update_time_s);
 DECLARE_string(gr_state_file);
 DECLARE_string(safemode_file);
-DECLARE_bool(enable_stream_subscriber_backpressure);
 DECLARE_int32(stream_subscriber_idle_timeout_ms);
 
 namespace facebook::bgp {
@@ -94,7 +93,6 @@ struct StreamSubscriber {
   }
 
   nettools::bgplib::BgpPeerId peerId;
-  std::shared_ptr<nettools::bgplib::FiberBgpPeer::InputQueueT> peerInputQ;
 
   std::shared_ptr<nettools::bgplib::FiberBgpPeer::BoundedInputQueueT>
       boundedPeerInputQ;
@@ -150,27 +148,6 @@ struct StreamSubscriber {
   std::optional<uint64_t> noProgressConsumedCount;
 
   std::shared_ptr<nettools::bgplib::FiberBgpPeer::OutputQueueT> peerOutputQ;
-
-  /*
-   * The unbounded path uses this publisher. The bounded path uses an
-   * AsyncGenerator and leaves this member empty.
-   *
-   * ServerStreamPublisher::next() never blocks and gives no access to the
-   * stream credit of the client. Therefore a publisher cannot throttle
-   * itself, and the bounded path needs a generator.
-   */
-  std::unique_ptr<apache::thrift::ServerStreamPublisher<
-      neteng::fboss::bgp::thrift::TBgpRouteDelta>>
-      publisher;
-
-  /*
-   * True when the egress path of this subscriber is bounded and
-   * backpressured. subscribe() reads the mode one time for each session and
-   * writes it here. If the code read the mode again later, a config change
-   * during the session could leave the AdjRib writing to one queue while the
-   * reader takes from the other queue.
-   */
-  bool boundedEgress{false};
 
   /*
    * The server uses this source to end the stream generator of the bounded
@@ -593,14 +570,6 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
    * subscriber limit, false otherwise.
    */
   bool exceedsStreamSubscriberLimit();
-
-  /**
-   * Returns true when a new subscription must use the bounded, backpressured
-   * egress path. The BgpConfig field
-   * enable_stream_subscriber_backpressure decides when the config sets it.
-   * Otherwise FLAGS_enable_stream_subscriber_backpressure decides.
-   */
-  bool streamSubscriberBackpressureEnabled() const;
 
   /**
    * Returns the stream subscriber with this name, or nullptr when no
@@ -1041,13 +1010,6 @@ class PeerManagerBase : public BgpModuleBase, public MonitoredModule {
 
   // process Rib message and send to target AdjRibs
   folly::coro::Task<void> processRibOutMsgLoop() noexcept;
-
-  /*
-   * coro tasks for periodic publish all outstanding updates to
-   * thrift stream subscribers
-   */
-  folly::coro::Task<void> publishUpdatesRoutine();
-  folly::coro::Task<void> publishUpdates();
 
   /**
    * @brief The stream body of the bounded mode. It pops the bounded egress

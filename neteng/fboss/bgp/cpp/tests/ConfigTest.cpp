@@ -326,11 +326,8 @@ TEST_F(ConfigTestFixture, enableLegacyV4NlriEncodingTest) {
  * This test checks that Config reads enable_stream_subscriber_backpressure
  * from thrift::BgpConfig into BgpGlobalConfig. The result has three states.
  *
- * The unset state and the false state are different. In the unset state the
- * gflag FLAGS_enable_stream_subscriber_backpressure sets the behavior. In the
- * false state the config disables the bounded egress path of the MP-BGP
- * monitor. The gflag is true by default. Thus the false state is the only way
- * to disable the feature from the config.
+ * The field is deprecated: bgp++ always uses the bounded egress path of the
+ * MP-BGP monitor and ignores the value.
  */
 TEST_F(ConfigTestFixture, enableStreamSubscriberBackpressureTest) {
   thrift::BgpConfig thriftConfig;

@@ -348,15 +348,7 @@ struct BgpGlobalConfig {
    * client gives stream credit. If the subscriber does not read the stream,
    * the change-list consumer also stops.
    *
-   * If the value is false, the AdjRib of the subscriber uses an unbounded
-   * queue. The publish loop moves the data to an unbounded thrift publisher.
-   * A slow subscriber makes both buffers increase without a limit.
-   *
-   * The value has three states. std::nullopt means that the config does not
-   * set the behavior. Then FLAGS_enable_stream_subscriber_backpressure sets
-   * the behavior. A value in the config replaces the value of the gflag.
-   * Thus you can set false in the config to disable the feature while the
-   * gflag stays true.
+   * DEPRECATED: bgp++ ignores this value and always uses the bounded path.
    */
   const std::optional<bool> enableStreamSubscriberBackpressure;
 

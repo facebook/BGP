@@ -70,22 +70,6 @@ DEFINE_int32(
     "Gap in milliseconds between thrift stream publisher loop");
 
 /*
- * This gflag selects the egress path of a thrift stream subscriber. The
- * default is the bounded path. Set the gflag to false to return a device to
- * the unbounded path without a config push.
- *
- * The BgpConfig field enable_stream_subscriber_backpressure overrides this
- * gflag when the config sets it. See
- * PeerManagerBase::streamSubscriberBackpressureEnabled().
- */
-DEFINE_bool(
-    enable_stream_subscriber_backpressure,
-    true,
-    "Use the bounded, backpressured egress path for thrift stream subscribers "
-    "(the MP-BGP monitor). The BgpConfig field of the same name overrides this "
-    "gflag when the config sets it.");
-
-/*
  * A client of a bounded stream subscriber can hold its stream open and can
  * stop to give thrift stream credit. Then the generator of that subscriber
  * waits at its co_yield. Thrift resumes such a generator only on new credit
@@ -184,7 +168,6 @@ void StreamSubscriber::resetQueues() {
    * A subscriber uses the same queue sizes as a peer. The sizes come from the
    * shared constants in BgpStructs.h. A subscriber has no separate knob.
    */
-  peerInputQ = std::make_shared<FiberBgpPeer::InputQueueT>();
   boundedPeerInputQ = std::make_shared<FiberBgpPeer::BoundedInputQueueT>(
       kMaxEgressQueueSize, kEgressQueueHighWatermark, kEgressQueueLowWatermark);
   peerOutputQ =
@@ -389,7 +372,6 @@ void PeerManagerBase::scheduleCoroTasks() noexcept {
   if (nbrRouteChangeQ_) {
     asyncScope_.add(co_withExecutor(&evb_, processNeighborRouteChangeLoop()));
   }
-  asyncScope_.add(co_withExecutor(&evb_, publishUpdatesRoutine()));
   asyncScope_.add(co_withExecutor(&evb_, reportStreamSubscriberStatsRoutine()));
   asyncScope_.add(
       co_withExecutor(&evb_, startPeriodicPolicyCacheEvictionRoutine()));
@@ -738,19 +720,8 @@ void PeerManagerBase::stop() noexcept {
      * of the client. Therefore PeerManagerBase must stay alive until the
      * threads of the thrift server stop. The main function joins those
      * threads before it destroys PeerManagerBase.
-     *
-     * This loop skips the unbounded subscribers. This task runs on evb_, and
-     * ServerStreamPublisher::complete() calls the completion callback of
-     * createPublisher on the calling thread. That callback calls
-     * evb_.runInEventBaseThreadAndWait(). That function logs DFATAL and drops
-     * its functor when it is already on the EventBase thread. Therefore a
-     * complete() here would abort a dev build and would skip the teardown in
-     * an opt build.
      */
     for (auto& [subscriberName, subscriber] : streamSubscribers_) {
-      if (!subscriber.boundedEgress) {
-        continue;
-      }
       XLOGF(INFO, "Stopping stream subscriber {}", subscriberName);
       if (subscriber.streamCancelSource) {
         subscriber.streamCancelSource->requestCancellation();
@@ -938,22 +909,6 @@ folly::coro::Task<void> PeerManagerBase::processAdjRibEvent(
   co_await std::visit(overload, evt.message);
 }
 
-folly::coro::Task<void> PeerManagerBase::publishUpdatesRoutine() {
-  XLOG(DBG1, "Start periodic stream updates coro task...");
-
-  while (true) {
-    // when cancelAndJoinAsync is called, loop will be broken to exit
-    co_await folly::coro::co_safe_point;
-
-    co_await folly::coro::sleepReturnEarlyOnCancel(
-        milliseconds(FLAGS_thrift_stream_publish_gap_ms));
-    co_await publishUpdates();
-  }
-
-  XLOG(INFO, "[Exit] PeerManagerBase stream updates coroutine stopped");
-  co_return;
-}
-
 folly::coro::Task<void> PeerManagerBase::reportStreamSubscriberStatsRoutine() {
   XLOG(DBG1, "Start stream subscriber stats coro task...");
 
@@ -962,10 +917,8 @@ folly::coro::Task<void> PeerManagerBase::reportStreamSubscriberStatsRoutine() {
     co_await folly::coro::co_safe_point;
 
     /*
-     * This loop uses the same period as publishUpdatesRoutine(). The period
-     * sets how fast bgpd sees a block, so a block that lasts one period stays
-     * visible. The reporting has its own task, so a slow or a failed publish
-     * tick cannot delay or skip a sample.
+     * The period sets how fast bgpd sees a block, so a block that lasts one
+     * period stays visible.
      */
     co_await folly::coro::sleepReturnEarlyOnCancel(
         milliseconds(FLAGS_thrift_stream_publish_gap_ms));
@@ -975,79 +928,6 @@ folly::coro::Task<void> PeerManagerBase::reportStreamSubscriberStatsRoutine() {
   XLOG(
       INFO, "[Exit] PeerManagerBase stream subscriber stats coroutine stopped");
   co_return;
-}
-
-folly::coro::Task<void> PeerManagerBase::publishUpdates() {
-  for (auto& [subscriberName, subscriber] : streamSubscribers_) {
-    /*
-     * This loop serves the subscribers that use the unbounded egress path.
-     *
-     * A bounded subscriber has one reader: subscriberStreamGenerator(). That
-     * generator pops boundedPeerInputQ only when the client gives stream
-     * credit. If this loop also popped that queue, the two readers would take
-     * turns and the UPDATE stream of the subscriber would lose its order.
-     */
-    if (subscriber.boundedEgress) {
-      continue;
-    }
-    while (!subscriber.peerInputQ->empty()) {
-      auto maybeMsg = co_await co_awaitTry(subscriber.peerInputQ->pop());
-      if (!maybeMsg.hasValue() || !(*maybeMsg).has_value()) {
-        /*
-         * Stop the work for this subscriber only. A co_return here would end
-         * the loop over streamSubscribers_. Then every subscriber after this
-         * one would get no message for the rest of the tick.
-         */
-        XLOGF(
-            WARN,
-            "Received an empty message from AdjRib to subscriber {}",
-            subscriberName);
-        break;
-      }
-
-      TBgpRouteDelta delta;
-      auto& publisher = subscriber.publisher;
-      // drop messages if subscriber is not established
-      if (subscriber.state != TBgpPeerState::ESTABLISHED) {
-        XLOGF(
-            DBG2,
-            "Subscriber {} connection is not ESTABLISHED",
-            subscriberName);
-        continue;
-      }
-      folly::variant_match(
-          **maybeMsg, // dereference folly::Try<T> and std::optional
-          [&](std::shared_ptr<const nettools::bgplib::BgpUpdate2>
-                  update) mutable {
-            delta.update2OrEor()->update2() = *update;
-            delta.onDeviceTimeStampMs() =
-                std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::system_clock::now().time_since_epoch())
-                    .count();
-            publisher->next(delta);
-          },
-          [&](const nettools::bgplib::UpdateDescriptor& /*not used*/) {
-            /*
-             * No-op: UpdateDescriptor is handled directly in I/O thread
-             * for zero-copy serialization path
-             */
-          },
-          [&](const BgpEndOfRib& eor) {
-            delta.update2OrEor()->eor() = eor;
-            delta.onDeviceTimeStampMs() =
-                std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::system_clock::now().time_since_epoch())
-                    .count();
-            publisher->next(delta);
-          },
-          [&](const BgpNotification& /*not used*/) {
-            // Do nothing
-          },
-          [&](const BgpRouteRefresh& /*not used*/) {
-            // TO BE IMPLEMENTED
-          });
-    }
-  }
 }
 
 SubscriberStreamTeardown::SubscriberStreamTeardown(
@@ -1185,8 +1065,7 @@ PeerManagerBase::subscriberStreamGenerator(
 
     /*
      * Drop the message if the server tore the subscriber down while the
-     * message was in flight. publishUpdates() does the same test on
-     * StreamSubscriber::state.
+     * message was in flight.
      *
      * This generator runs on the executor of thrift. Therefore it must not
      * read streamSubscribers_, because evb_ owns that map. The cancellation
@@ -1266,7 +1145,7 @@ void PeerManagerBase::reportStreamSubscriberBackpressureStats() noexcept {
   bool anyBoundedSubscriber = false;
 
   for (auto& [subscriberName, subscriber] : streamSubscribers_) {
-    if (!subscriber.boundedEgress || !subscriber.boundedPeerInputQ) {
+    if (!subscriber.boundedPeerInputQ) {
       continue;
     }
     /*
@@ -3818,28 +3697,22 @@ void PeerManagerBase::setSubscriberAdjRib(
     std::shared_ptr<AdjRib>& adjRib) {
   auto addPathCapa = nettools::bgplib::BgpAddPathSendRec::SEND;
   /*
-   * In the unbounded mode the AdjRib of the subscriber writes into peerInputQ
-   * and never throttles the change-list consumer. Egress backpressure stays
-   * off.
-   *
-   * In the bounded mode the AdjRib of the subscriber runs the same cycle as
-   * the AdjRib of a peer. It writes into boundedPeerInputQ. When that queue
-   * reaches the high watermark, waitForQueueSpace() cancels the change-list
-   * consume timer. The timer starts again when the reader takes the queue
-   * below the low watermark.
+   * The AdjRib of the subscriber runs the same cycle as the AdjRib of a peer.
+   * It writes into boundedPeerInputQ. When that queue reaches the high
+   * watermark, waitForQueueSpace() cancels the change-list consume timer. The
+   * timer starts again when the reader takes the queue below the low
+   * watermark.
    */
-  adjRib->enableEgressQueueBackpressure(subscriber.boundedEgress);
-  if (subscriber.boundedEgress) {
-    /*
-     * The AdjRib of a subscriber is never registered with UpdateGroupManager.
-     * It keeps the per-peer AdjRibOutGroup that createAdjRib() built with
-     * enableUpdateGroup=false. The bounded path sends through
-     * sendBgpUpdates(), which would run the group state machine against that
-     * non-group. Disable the update group for this AdjRib. Then it uses the
-     * per-peer packing path in reschedulePackingTimers().
-     */
-    adjRib->setEnableUpdateGroup(false);
-  }
+  adjRib->enableEgressQueueBackpressure(true);
+  /*
+   * The AdjRib of a subscriber is never registered with UpdateGroupManager.
+   * It keeps the per-peer AdjRibOutGroup that createAdjRib() built with
+   * enableUpdateGroup=false. The bounded path sends through
+   * sendBgpUpdates(), which would run the group state machine against that
+   * non-group. Disable the update group for this AdjRib. Then it uses the
+   * per-peer packing path in reschedulePackingTimers().
+   */
+  adjRib->setEnableUpdateGroup(false);
   adjRib->sessionEstablished(
       std::nullopt, /* GR disabled */
       subscriber.peerOutputQ, /* aka adjRibInQueue */
@@ -3940,30 +3813,6 @@ bool PeerManagerBase::exceedsStreamSubscriberLimit() {
   return numStreamSubscribers() >= globalConfig->streamSubscriberLimit;
 }
 
-bool PeerManagerBase::streamSubscriberBackpressureEnabled() const {
-  /*
-   * The config has priority over the gflag. If the config sets the field, its
-   * value decides. If the config does not set the field, the gflag decides.
-   * The gflag is true by default.
-   *
-   * The config field is BgpGlobalConfig::enableStreamSubscriberBackpressure.
-   * Config.cpp reads it from
-   * BgpConfig.bgp_setting_config().enable_stream_subscriber_backpressure().
-   * A bgp_setting .cconf outside fbcode sets that field, so a change in
-   * fbcode alone cannot change it. The gflag is the local override for a lab
-   * device and for an EBB device.
-   *
-   * This function is the only place that reads the two sources. subscribe()
-   * copies the result into StreamSubscriber::boundedEgress for the life of
-   * the session, so the data path never reads either source again.
-   */
-  auto globalConfig = configManager_->getConfig()->getBgpGlobalConfig();
-  if (globalConfig && globalConfig->enableStreamSubscriberBackpressure) {
-    return *globalConfig->enableStreamSubscriberBackpressure;
-  }
-  return FLAGS_enable_stream_subscriber_backpressure;
-}
-
 StreamSubscriber* FOLLY_NULLABLE
 PeerManagerBase::getStreamSubscriber(const std::string& subscriberName) {
   auto it = streamSubscribers_.find(subscriberName);
@@ -3981,28 +3830,23 @@ apache::thrift::ServerStream<TBgpRouteDelta> PeerManagerBase::subscribe(
   XLOGF(INFO, "Received stream subscribe request from {}", subscriberName);
 
   /*
-   * evb_ owns streamSubscribers_. publishUpdates() iterates the map on evb_
-   * one time in each thrift_stream_publish_gap_ms period.
+   * evb_ owns streamSubscribers_. reportStreamSubscriberBackpressureStats()
+   * iterates the map on evb_ one time in each thrift_stream_publish_gap_ms
+   * period.
    * cancelSubscriberStream() also runs only on evb_.
    *
    * subscribe() runs on a thread of the thrift server. Therefore its lookups,
    * its emplace, and its increment of lastStreamPeerId_ must also run on
    * evb_. An emplace can rehash the map. A rehash during the iteration in
-   * publishUpdates() makes the iterator of that loop invalid.
+   * reportStreamSubscriberBackpressureStats() makes the iterator of that loop
+   * invalid.
    *
    * No code erases an entry from streamSubscribers_, and F14NodeMap keeps a
    * reference to an element valid across a rehash. Therefore the pointer that
    * this function takes stays valid after the hop returns. The evb_ block
    * below writes through the same reference and depends on the same rule.
-   *
-   * The code calls complete() after the hop and not inside the hop.
-   * ServerStreamPublisher::complete() calls the completion callback of
-   * createPublisher on the calling thread. That callback calls
-   * evb_.runInEventBaseThreadAndWait(). That function logs DFATAL and drops
-   * its functor when it is already on the EventBase thread.
    */
   StreamSubscriber* subscriberPtr = nullptr;
-  bool completePublisher = false;
   uint32_t publisherId = 0;
 
   evb_.runInEventBaseThreadAndWait([&]() {
@@ -4048,9 +3892,8 @@ apache::thrift::ServerStream<TBgpRouteDelta> PeerManagerBase::subscribe(
          */
         resetSubscriberAdjRib(existing);
         /*
-         * The bounded mode has no publisher to complete. The generator ends
-         * itself when it sees the cancellation that resetSubscriberAdjRib()
-         * requested above.
+         * The generator ends itself when it sees the cancellation that
+         * resetSubscriberAdjRib() requested above.
          *
          * One case is slower: a generator that is suspended at its co_yield.
          * That happens when the client of the subscriber stops to give stream
@@ -4063,9 +3906,6 @@ apache::thrift::ServerStream<TBgpRouteDelta> PeerManagerBase::subscribe(
          * generator and its queue stay in memory until the client goes away,
          * and that queue is bounded.
          */
-        if (existing.publisher) {
-          completePublisher = true;
-        }
       }
     }
 
@@ -4110,10 +3950,6 @@ apache::thrift::ServerStream<TBgpRouteDelta> PeerManagerBase::subscribe(
   }
 
   auto& subscriber = *subscriberPtr;
-
-  if (completePublisher) {
-    std::move(*subscriber.publisher.get()).complete();
-  }
 
   auto peerId = subscriber.peerId;
 
@@ -4160,33 +3996,6 @@ apache::thrift::ServerStream<TBgpRouteDelta> PeerManagerBase::subscribe(
         duration.count());
   }
 
-  /*
-   * Read the mode one time for each session. If the code read it again later,
-   * a config change during the session could leave the AdjRib writing to one
-   * queue while the reader takes from the other queue.
-   */
-  const bool boundedEgress = streamSubscriberBackpressureEnabled();
-
-  std::optional<std::pair<
-      apache::thrift::ServerStream<TBgpRouteDelta>,
-      apache::thrift::ServerStreamPublisher<TBgpRouteDelta>>>
-      streamAndPublisher;
-  if (!boundedEgress) {
-    streamAndPublisher =
-        apache::thrift::ServerStream<TBgpRouteDelta>::createPublisher(
-            [this, peerId, subscriberName, publisherId]() {
-              // This lamdba is called when channel is closed on client side
-              evb_.runInEventBaseThreadAndWait(
-                  [this, peerId, subscriberName, publisherId]() {
-                    cancelSubscriberStream(peerId, subscriberName, publisherId);
-                    XLOGF(
-                        INFO,
-                        "Channel for subscriber {} has been closed",
-                        peerId.str());
-                  });
-            });
-  }
-
   /**
    * It is necessary to run this block of the code to the completion
    * before returning from this function call. And since it has to
@@ -4214,34 +4023,16 @@ apache::thrift::ServerStream<TBgpRouteDelta> PeerManagerBase::subscribe(
       adjRib->resetInInitialAnnouncement();
     }
 
-    subscriber.boundedEgress = boundedEgress;
-    if (boundedEgress) {
-      /*
-       * The AdjRib of the previous session closed these queues at its
-       * teardown, and a closed MPMCWatermarkQueue drops a push without an
-       * error. Therefore a re-subscribe must give the AdjRib new queues. The
-       * terminate baton above already confirmed that the old session ended,
-       * so it is safe to replace the queues here.
-       */
-      subscriber.resetQueues();
-      subscriber.streamCancelSource =
-          std::make_shared<folly::CancellationSource>();
-      subscriber.publisher.reset();
-    } else {
-      /*
-       * A subscriber can re-subscribe after an operator disabled the bounded
-       * mode. Such a subscriber must not keep the old cancellation source,
-       * because that source is already cancelled. If it kept the source,
-       * resetSubscriberAdjRib() would go on to request a cancellation on a
-       * generator that no longer exists. The bounded branch above clears the
-       * publisher for the same reason.
-       */
-      subscriber.streamCancelSource.reset();
-      subscriber.publisher =
-          std::make_unique<apache::thrift::ServerStreamPublisher<
-              neteng::fboss::bgp::thrift::TBgpRouteDelta>>(
-              std::move(streamAndPublisher->second));
-    }
+    /*
+     * The AdjRib of the previous session closed these queues at its
+     * teardown, and a closed MPMCWatermarkQueue drops a push without an
+     * error. Therefore a re-subscribe must give the AdjRib new queues. The
+     * terminate baton above already confirmed that the old session ended,
+     * so it is safe to replace the queues here.
+     */
+    subscriber.resetQueues();
+    subscriber.streamCancelSource =
+        std::make_shared<folly::CancellationSource>();
     subscriber.state = TBgpPeerState::ESTABLISHED;
     subscriber.upSince = std::chrono::steady_clock::now();
 
@@ -4262,32 +4053,22 @@ apache::thrift::ServerStream<TBgpRouteDelta> PeerManagerBase::subscribe(
 
     setSubscriberAdjRib(subscriber, adjRib);
 
-    if (boundedEgress) {
-      /*
-       * This code creates the generator but does not start it. Thrift
-       * schedules the generator on its own server executor after this
-       * function returns the stream to the client.
-       */
-      resultStream =
-          std::make_unique<apache::thrift::ServerStream<TBgpRouteDelta>>(
-              subscriberStreamGenerator(
-                  subscriber.boundedPeerInputQ,
-                  subscriber.streamCancelSource->getToken(),
-                  subscriber.sessionState,
-                  peerId,
-                  subscriberName,
-                  SubscriberStreamTeardown(
-                      this, peerId, subscriberName, publisherId)));
-    } else {
-      resultStream =
-          std::make_unique<apache::thrift::ServerStream<TBgpRouteDelta>>(
-              std::move(streamAndPublisher->first));
-    }
-    XLOGF(
-        INFO,
-        "Start publishing to peer {} (bounded egress = {})",
-        peerId.str(),
-        boundedEgress);
+    /*
+     * This code creates the generator but does not start it. Thrift
+     * schedules the generator on its own server executor after this
+     * function returns the stream to the client.
+     */
+    resultStream =
+        std::make_unique<apache::thrift::ServerStream<TBgpRouteDelta>>(
+            subscriberStreamGenerator(
+                subscriber.boundedPeerInputQ,
+                subscriber.streamCancelSource->getToken(),
+                subscriber.sessionState,
+                peerId,
+                subscriberName,
+                SubscriberStreamTeardown(
+                    this, peerId, subscriberName, publisherId)));
+    XLOGF(INFO, "Start publishing to peer {}", peerId.str());
   });
 
   if (!resultStream) {

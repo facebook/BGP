@@ -32,7 +32,6 @@
 #include <algorithm>
 #include <atomic>
 
-#include <gflags/gflags.h>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
@@ -295,14 +294,6 @@ class PretendMonitor {
 class StreamSubscriberBackpressureTest : public E2ETestFixture {
  protected:
   void SetUp() override {
-    /*
-     * FLAGS_enable_stream_subscriber_backpressure is a process-global gflag.
-     * The saver restores it on destruction, so a suite that changes the gflag
-     * cannot change the behavior of another fixture in this binary.
-     */
-    flagSaver_ = std::make_unique<gflags::FlagSaver>();
-    FLAGS_enable_stream_subscriber_backpressure = gflagBackpressure();
-    setEnableStreamSubscriberBackpressure(configBackpressure());
     addPeer(kDefaultPeerSpec3);
     createRib();
     createPeerManager(
@@ -327,21 +318,6 @@ class StreamSubscriberBackpressureTest : public E2ETestFixture {
     monitors_.clear();
     server_.reset();
     E2ETestFixture::TearDown();
-    flagSaver_.reset();
-  }
-
-  /*
-   * The value of the BgpConfig field. std::nullopt leaves the field out of
-   * the config. The base suite runs the production default: the config says
-   * nothing and the gflag decides.
-   */
-  virtual std::optional<bool> configBackpressure() const {
-    return std::nullopt;
-  }
-
-  /* The value of the gflag. It is true in production. */
-  virtual bool gflagBackpressure() const {
-    return true;
   }
 
   /* Overridden by the update-groups-on suite. */
@@ -407,7 +383,6 @@ class StreamSubscriberBackpressureTest : public E2ETestFixture {
   }
 
   BgpPeerId peerId3_;
-  std::unique_ptr<gflags::FlagSaver> flagSaver_;
   std::unique_ptr<apache::thrift::ScopedServerInterfaceThread> server_;
   std::vector<std::unique_ptr<PretendMonitor>> monitors_;
 };
@@ -711,44 +686,6 @@ TEST_F(
   auto combined = expected;
   combined.insert(more.begin(), more.end());
   EXPECT_TRUE(monitor.waitForAnnouncedPrefixes(combined));
-}
-
-/*
- * The config enables the feature while the gflag disables it. The config must
- * win, and the subscriber must use the bounded path.
- */
-class StreamSubscriberConfigEnableTest
-    : public StreamSubscriberBackpressureTest {
- protected:
-  std::optional<bool> configBackpressure() const override {
-    return true;
-  }
-  bool gflagBackpressure() const override {
-    return false;
-  }
-};
-
-TEST_F(StreamSubscriberConfigEnableTest, ConfigTrueOverridesGflagFalse) {
-  auto& monitor = makeMonitor(kMonitorName);
-  ASSERT_NO_FATAL_FAILURE(startAndQuiesce(monitor, kMonitorName));
-
-  peerManager_->getEventBase().runInEventBaseThreadAndWait([&]() {
-    auto* subscriber = peerManager_->getStreamSubscriber(kMonitorName);
-    ASSERT_NE(subscriber, nullptr);
-    EXPECT_TRUE(subscriber->boundedEgress);
-    /* The bounded path serves the stream from a generator. */
-    EXPECT_EQ(subscriber->publisher, nullptr);
-  });
-
-  const auto expected = injectDistinctRoutes(20, 23);
-  EXPECT_TRUE(waitForSubscriberQueueBlocked(kMonitorName));
-  EXPECT_THAT(
-      getSubscriberQueueSize(kMonitorName),
-      ::testing::Optional(::testing::Le(kSubscriberQueueCapacity)));
-
-  monitor.resume();
-  EXPECT_TRUE(waitForSubscriberQueueUnblocked(kMonitorName));
-  EXPECT_TRUE(monitor.waitForAnnouncedPrefixes(expected));
 }
 
 } // namespace facebook::bgp

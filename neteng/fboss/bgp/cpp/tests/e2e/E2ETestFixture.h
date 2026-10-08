@@ -1007,20 +1007,6 @@ class E2ETestFixture : public ::testing::Test {
    */
 
   /*
-   * Sets BgpGlobalConfig::enableStreamSubscriberBackpressure in the config
-   * that this fixture builds. Call this function before createRib() and
-   * before createPeerManager().
-   *
-   * The value has three states, and the fixture keeps all three. std::nullopt
-   * leaves the field out of the config, and then
-   * FLAGS_enable_stream_subscriber_backpressure decides. A set value goes
-   * into the config and overrides that gflag.
-   */
-  void setEnableStreamSubscriberBackpressure(std::optional<bool> enable) {
-    enableStreamSubscriberBackpressure_ = enable;
-  }
-
-  /*
    * Current depth of a subscriber's bounded egress queue. std::nullopt if the
    * subscriber or its bounded queue is absent -- callers MUST distinguish
    * that from "empty", otherwise a subscriber that was torn down looks
@@ -1537,12 +1523,6 @@ class E2ETestFixture : public ::testing::Test {
 
   // Dynamic policy evaluation (thrift config gate)
   bool enableDynamicPolicyEvaluation_ = false;
-
-  /*
-   * Bounded, backpressured stream subscriber egress (thrift config gate).
-   * std::nullopt leaves the field out of the config.
-   */
-  std::optional<bool> enableStreamSubscriberBackpressure_;
 
   /*
    * Update group config override (call setUpdateGroupConfig before
