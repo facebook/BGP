@@ -148,9 +148,9 @@ std::shared_ptr<BgpPolicyActionData> createPolicyActionDataCommon(
  *
  * Two cases when cleaning up old association:
  * 1. We find the prefix in the prefix set; we did not queue this packed
- *    prefix to the egress queue before the next update came in.
+ *    prefix to boundedAdjRibOutQueue_ before the next update came in.
  * 2. We don't find this prefix in the prefix set. We already wrote this
- *    update to the egress queue and removed it from the packing list.
+ *    update to boundedAdjRibOutQueue_ and removed it from the packing list.
  * Both are valid scenarios. We handle (1) below.
  *
  * @param prefixPathId - Prefix and path ID pair

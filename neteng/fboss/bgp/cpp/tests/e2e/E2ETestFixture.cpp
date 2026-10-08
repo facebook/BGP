@@ -3200,9 +3200,9 @@ bool E2ETestFixture::drainAndFindRouteAdvertised(
      *
      * Pass maxDrainAttempts so the inner skip-EoR loop checks queueEmpty
      * before each pop. Otherwise, if the queue's only message is an EoR,
-     * the inner loop pops it, hits `continue`, then blocks indefinitely
-     * on popFromQueue's unbounded blockingWait — and our outer empty-check
-     * never re-runs. Bound by maxFlushRetries so caller can tune.
+     * the inner loop pops it, hits `continue`, then waits in popFromQueue
+     * until its bounded pop times out — and our outer empty-check never
+     * re-runs. Bound by maxFlushRetries so caller can tune.
      */
     auto updateOpt =
         tryReadUpdateFromQueue(*queues, /*maxDrainAttempts=*/maxFlushRetries);

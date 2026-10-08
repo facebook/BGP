@@ -234,7 +234,7 @@ class RibInitialAnnouncementTestFixture : public PeerManagerTestFixture {
 
   /**
    * Helper utility for PeerSessionEstablished.*RibInitialAnnouncementTests
-   * to check the invariant that the adjRibOutQ_ should finally contain
+   * to check the invariant that the boundedAdjRibOutQ_ should finally contain
    * two announcements and one EoR at the time that this method is called.
    */
   folly::coro::Task<void> verifyTwoAnnouncementsWithEoR() {
@@ -2401,7 +2401,7 @@ TEST_F(
 
 /**
  * Invariant: peer should have two announcements and
- * one EOR queued in the adjRibOutQ_ even if the peer
+ * one EOR queued in the boundedAdjRibOutQ_ even if the peer
  * comes up before RIB starts announcing initial dump.
  */
 CO_TEST_F(
@@ -2467,7 +2467,7 @@ CO_TEST_F(
 
 /**
  * Invariant: peer should have two announcements and
- * one EOR queued in the adjRibOutQ_ even if the session
+ * one EOR queued in the boundedAdjRibOutQ_ even if the session
  * comes up for the first time during RIB initial dump.
  */
 CO_TEST_F(
@@ -2550,7 +2550,7 @@ CO_TEST_F(
 
 /**
  * Invariant: peer should have two announcements and
- * one EOR queued in the adjRibOutQ_ even if
+ * one EOR queued in the boundedAdjRibOutQ_ even if
  * the session flaps and comes back up, with both
  * sessionEstablished calls DURING RIB initial announcement.
  */
@@ -2672,7 +2672,7 @@ CO_TEST_F(
 
 /**
  * Invariant: peer should have two announcements and
- * one EOR queued in the adjRibOutQ_ even if the
+ * one EOR queued in the boundedAdjRibOutQ_ even if the
  * peer session is established after RIB's
  * initial dump.
  */

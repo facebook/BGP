@@ -234,7 +234,7 @@ TEST_F(BgpProfilerE2ETest, ProfileLargeScaleRouteProcessing) {
    *
    * Without this barrier, in @mode/opt the test thread races ahead of the
    * async pipeline (adjRibInQ -> AdjRib -> fromAdjRibQ_ ->
-   * processAdjRibMsgLoop -> adjRibOutQ). drainPeerQueueCompletely's
+   * processAdjRibMsgLoop -> boundedAdjRibOutQ). drainPeerQueueCompletely's
    * default 5-retry empty-queue check exits before the pipeline has
    * produced any output, getStats() then returns empty, and the test
    * fails with stats.size() == 0 (~65% flake rate observed in opt-mode
