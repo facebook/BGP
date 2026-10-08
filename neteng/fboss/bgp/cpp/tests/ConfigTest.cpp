@@ -3278,9 +3278,23 @@ TEST_F(ConfigTestFixture, DynamicPeerLimitConfigTest) {
   }
 }
 
-/*
- * Verify the parsing of streamSubscriberLimit from raw thrift::BgpConfig to
- * BgpGlobalConfig.
+/**
+ * @brief streamSubscriberLimit resolves from the "stream_subscriber_limit"
+ * feature string plus the optional numeric bgp_setting field, with the
+ * compiled member as the fallback.
+ *
+ * @details Test steps:
+ * 1. No feature, no value: the limit is unset.
+ * 2. Value present, feature absent: still unset.
+ * 3. Feature present, FeatureFlags loaded after Config: still unset.
+ * 4. Feature present, no value: the compiled fallback is used.
+ * 5. Feature present with an explicit value: that value is used. The value is
+ *    the compiled fallback plus one, so it cannot coincide with the fallback.
+ * 6. Feature present with 0: the fallback is kept, so the device does not
+ *    lock out every monitor.
+ * 7. Feature present with a negative value: the fallback is kept. The field
+ *    is a signed i32, so an unguarded cast would wrap to a huge unsigned
+ *    limit and enforce nothing.
  */
 TEST_F(ConfigTestFixture, StreamSubscriberLimitConfigTest) {
   // Create a thrift::BgpConfig object
@@ -3299,7 +3313,25 @@ TEST_F(ConfigTestFixture, StreamSubscriberLimitConfigTest) {
     EXPECT_FALSE(globalConfig->streamSubscriberLimit.has_value());
   }
 
-  // Test case 2: Limit specified but FeatureFlags initialized after Config
+  // Test case 2: value present but feature absent -> still unenforced.
+  // Must stay ahead of every case that enables the feature: FeatureFlags is a
+  // process-global that never clears, so a load cannot be undone.
+  {
+    thriftConfig.bgp_setting_config() = thrift::BgpSettingConfig();
+    thriftConfig.bgp_setting_config()->features() = std::set<std::string>{};
+    thriftConfig.bgp_setting_config()->stream_subscriber_limit() = 3;
+
+    FeatureFlags::LoadFromThriftConfig(thriftConfig);
+    EXPECT_FALSE(FeatureFlags::IsFeatureEnabled(kStreamSubscriberLimit));
+
+    Config config(thriftConfig);
+    auto globalConfig = config.getBgpGlobalConfig();
+    EXPECT_FALSE(globalConfig->streamSubscriberLimit.has_value());
+  }
+
+  // Test case 3: Limit specified but FeatureFlags initialized after Config.
+  // Config reads the global FeatureFlags, not the thrift struct it is handed,
+  // so a Config built before the load sees no features.
   {
     thriftConfig.bgp_setting_config() = thrift::BgpSettingConfig();
     std::set<std::string> features = {kStreamSubscriberLimit};
@@ -3313,7 +3345,9 @@ TEST_F(ConfigTestFixture, StreamSubscriberLimitConfigTest) {
     EXPECT_FALSE(globalConfig->streamSubscriberLimit.has_value());
   }
 
-  // Test case 3: Limit specified with FeatureFlags enabled first
+  // Test case 4: feature enabled, no value -> compiled fallback.
+  // This is the deploy window: a bgpd carrying this code running against a
+  // config that has not been updated yet.
   {
     thriftConfig.bgp_setting_config() = thrift::BgpSettingConfig();
     std::set<std::string> features = {kStreamSubscriberLimit};
@@ -3325,6 +3359,64 @@ TEST_F(ConfigTestFixture, StreamSubscriberLimitConfigTest) {
     Config config(thriftConfig);
     auto globalConfig = config.getBgpGlobalConfig();
     // Expect that streamSubscriber has a value and it's equal to 10
+    EXPECT_TRUE(globalConfig->streamSubscriberLimit.has_value());
+    EXPECT_EQ(
+        globalConfig->streamSubscriberLimit.value(),
+        config.streamSubscriberLimit_);
+  }
+
+  // Test case 5: feature enabled with an explicit value -> that value wins.
+  // The value is derived from the compiled fallback rather than hardcoded, so
+  // it can never coincide with it -- a literal would silently stop proving
+  // anything if the fallback were ever changed to match.
+  {
+    thriftConfig.bgp_setting_config() = thrift::BgpSettingConfig();
+    thriftConfig.bgp_setting_config()->features() =
+        std::set<std::string>{kStreamSubscriberLimit};
+
+    FeatureFlags::LoadFromThriftConfig(thriftConfig);
+
+    const uint32_t configuredLimit =
+        Config(thriftConfig).streamSubscriberLimit_ + 1;
+    thriftConfig.bgp_setting_config()->stream_subscriber_limit() =
+        static_cast<int32_t>(configuredLimit);
+
+    Config config(thriftConfig);
+    auto globalConfig = config.getBgpGlobalConfig();
+    EXPECT_TRUE(globalConfig->streamSubscriberLimit.has_value());
+    EXPECT_EQ(configuredLimit, globalConfig->streamSubscriberLimit.value());
+  }
+
+  // Test case 6: explicit 0 -> rejected, compiled fallback kept.
+  {
+    thriftConfig.bgp_setting_config() = thrift::BgpSettingConfig();
+    thriftConfig.bgp_setting_config()->features() =
+        std::set<std::string>{kStreamSubscriberLimit};
+    thriftConfig.bgp_setting_config()->stream_subscriber_limit() = 0;
+
+    FeatureFlags::LoadFromThriftConfig(thriftConfig);
+
+    Config config(thriftConfig);
+    auto globalConfig = config.getBgpGlobalConfig();
+    EXPECT_TRUE(globalConfig->streamSubscriberLimit.has_value());
+    EXPECT_EQ(
+        globalConfig->streamSubscriberLimit.value(),
+        config.streamSubscriberLimit_);
+  }
+
+  // Test case 7: negative value -> rejected, compiled fallback kept.
+  // Without the guard the cast wraps and the limit becomes ~4 billion, which
+  // enforces nothing at all.
+  {
+    thriftConfig.bgp_setting_config() = thrift::BgpSettingConfig();
+    thriftConfig.bgp_setting_config()->features() =
+        std::set<std::string>{kStreamSubscriberLimit};
+    thriftConfig.bgp_setting_config()->stream_subscriber_limit() = -1;
+
+    FeatureFlags::LoadFromThriftConfig(thriftConfig);
+
+    Config config(thriftConfig);
+    auto globalConfig = config.getBgpGlobalConfig();
     EXPECT_TRUE(globalConfig->streamSubscriberLimit.has_value());
     EXPECT_EQ(
         globalConfig->streamSubscriberLimit.value(),

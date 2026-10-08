@@ -24,6 +24,10 @@
 
 #include "neteng/fboss/bgp/cpp/tests/PeerManagerTestUtils.h"
 
+#include <vector>
+
+#include <fmt/core.h>
+
 #include "neteng/fboss/bgp/cpp/config/facebook/ConfigDC.h"
 #include "neteng/fboss/bgp/cpp/tests/BoundedWaitUtils.h"
 
@@ -405,7 +409,8 @@ std::shared_ptr<Config> PeerManagerTestFixture::getConfig(
     bool applyGoldenPrefixPolicy,
     const std::set<std::string>& bgpFeatures,
     bool enableDynamicPolicyEvaluation,
-    bool enableUpdateGroup) {
+    bool enableUpdateGroup,
+    int32_t streamSubscriberLimit) {
   thrift::BgpConfig thriftConfig;
   thriftConfig.router_id() = kLocalAddr1.str();
   thriftConfig.local_as() = kAsn1;
@@ -452,12 +457,6 @@ std::shared_ptr<Config> PeerManagerTestFixture::getConfig(
     thriftConfig.enable_vip_service() = true;
   }
 
-  if (enableSubscriberLimit) {
-    thriftConfig.bgp_setting_config() = thrift::BgpSettingConfig();
-    std::set<std::string> features = {"stream_subscriber_limit"};
-    thriftConfig.bgp_setting_config()->features() = std::move(features);
-  }
-
   if (enableSwitchLimit) {
     thrift::BgpSwitchLimitConfig switchLimitConfig;
     switchLimitConfig.overload_protection_mode() = applyGoldenPrefixPolicy
@@ -471,6 +470,10 @@ std::shared_ptr<Config> PeerManagerTestFixture::getConfig(
   // setup bgpSettingConfig with features and dynamic policy evaluation flag
   thrift::BgpSettingConfig tBgpSettingConfig;
   tBgpSettingConfig.features() = bgpFeatures;
+  if (enableSubscriberLimit) {
+    tBgpSettingConfig.features()->insert("stream_subscriber_limit");
+    tBgpSettingConfig.stream_subscriber_limit() = streamSubscriberLimit;
+  }
   tBgpSettingConfig.enable_dynamic_policy_evaluation() =
       enableDynamicPolicyEvaluation;
   tBgpSettingConfig.enable_update_group() = enableUpdateGroup;
@@ -1211,11 +1214,13 @@ folly::coro::Task<void> PeerManagerTestFixture::waitForAdjRibsToProcessUpdates(
  * @param initialAnnouncementDone: ribInitialAnnouncementDone_ flag in the
  * peerManager
  * @param enableSubscriberLimit: Enable stream subscriber limit.
+ * @param streamSubscriberLimit: Value of the limit when it is enabled.
  */
 void StreamSubscriberFixture::SetUp(
     bool configureMonitorPeer,
     bool initialAnnouncementDone,
-    bool enableSubscriberLimit) {
+    bool enableSubscriberLimit,
+    int32_t streamSubscriberLimit) {
   PeerManagerTestFixture::SetUp();
 
   // Get the BgpMonitor peer config
@@ -1227,12 +1232,13 @@ void StreamSubscriberFixture::SetUp(
       false /* enableStatefulHa */,
       true /* enableVipServer */,
       kDefaultEorTimeS /* eorTimeS = */,
-      enableSubscriberLimit);
-
-  if (enableSubscriberLimit) {
-    // Set the stream subscriber limit to 1
-    config_->getBgpGlobalConfig()->streamSubscriberLimit = 1;
-  }
+      enableSubscriberLimit,
+      false /* enableSwitchLimit */,
+      false /* applyGoldenPrefixPolicy */,
+      {} /* bgpFeatures */,
+      false /* enableDynamicPolicyEvaluation */,
+      false /* enableUpdateGroup */,
+      streamSubscriberLimit);
 
   // Instantiate peerManager object
   auto configManager = std::make_shared<ConfigManager>(config_);
@@ -1269,6 +1275,13 @@ void StreamSubscriberFixture::TearDown() {
   peerMgr->stop();
   peerMgrThread->join();
   sessionMgrThread->join();
+  /*
+   * LoadFromThriftConfig only inserts into this process-global set; nothing
+   * clears it. Tests on this fixture enable stream_subscriber_limit, so
+   * without this reset the feature would stay on for every Config built later
+   * in the binary and unrelated tests would depend on run order.
+   */
+  FeatureFlags::features.clear();
   SUCCEED();
 }
 

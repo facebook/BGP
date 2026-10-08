@@ -357,7 +357,9 @@ class Config {
   uint32_t dynamicPeerLimit_{1000};
 
   /**
-   * Maximum number of stream subscribers allowed.
+   * Fallback maximum number of stream subscribers, used when the
+   * stream_subscriber_limit feature is enabled but the bgp_setting layer
+   * carries no stream_subscriber_limit value.
    */
   uint32_t streamSubscriberLimit_{10};
 

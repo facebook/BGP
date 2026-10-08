@@ -166,7 +166,8 @@ class PeerManagerTestFixture : public ::testing::Test {
       bool applyGoldenPrefixPolicy = false,
       const std::set<std::string>& bgpFeatures = {},
       bool enableDynamicPolicyEvaluation = false,
-      bool enableUpdateGroup = false);
+      bool enableUpdateGroup = false,
+      int32_t streamSubscriberLimit = 1);
 
   std::shared_ptr<Config> addPeerToConfig(
       const std::shared_ptr<Config>& config,
@@ -291,11 +292,13 @@ class StreamSubscriberFixture : public PeerManagerTestFixture {
    * @param initialAnnouncementDone: ribInitialAnnouncementDone_ flag in the
    * peerManager
    * @param enableSubscriberLimit: Enable stream subscriber limit.
+   * @param streamSubscriberLimit: Value of the limit when it is enabled.
    */
   void SetUp(
       bool configureMonitorPeer,
       bool initialAnnouncementDone,
-      bool enableSubscriberLimit = false);
+      bool enableSubscriberLimit = false,
+      int32_t streamSubscriberLimit = 1);
 
   /**
    * @brief Override default tear down function

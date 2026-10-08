@@ -960,7 +960,24 @@ void Config::populateConfigDatabase(
 
   std::optional<uint32_t> streamSubscriberLimit{std::nullopt};
   if (FeatureFlags::IsFeatureEnabled("stream_subscriber_limit")) {
+    /*
+     * The config has priority over the compiled fallback. A bgp_setting layer
+     * that turns the feature on but carries no value keeps the previous
+     * behavior, so this binary can roll out ahead of the config.
+     */
     streamSubscriberLimit = streamSubscriberLimit_;
+    if (auto setting = config_.bgp_setting_config()) {
+      if (auto configuredLimit = setting->stream_subscriber_limit()) {
+        /*
+         * The field is a signed i32. A negative value would wrap to a huge
+         * unsigned limit and admit every subscriber, and 0 would lock out the
+         * monitors needed to debug the device. Keep the fallback for both.
+         */
+        if (*configuredLimit > 0) {
+          streamSubscriberLimit = static_cast<uint32_t>(*configuredLimit);
+        }
+      }
+    }
   }
 
   bool enableNextHopTracking{false};

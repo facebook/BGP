@@ -111,6 +111,8 @@
       StreamSubscriberFixture, ThriftStreamSubscribeForceCompletionTest);      \
   FRIEND_TEST(StreamSubscriberFixture, NumStreamSubscribersTest);              \
   FRIEND_TEST(StreamSubscriberFixture, ExceedsStreamSubscriberLimitTest);      \
+  FRIEND_TEST(StreamSubscriberFixture, ConfiguredStreamSubscriberLimitTest);   \
+  FRIEND_TEST(StreamSubscriberFixture, ReconnectAfterDisconnectAtLimitTest);   \
   FRIEND_TEST(                                                                 \
       StreamSubscriberFixture, StreamSubscriberIdleTimeoutReclaimsSession);    \
   FRIEND_TEST(StreamSubscriberFixture, StreamSubscriberIdleTimeoutDisabled);   \
@@ -227,9 +229,11 @@
 #define PeerManagerDerived_TEST_FRIENDS \
   FRIEND_TEST(PeerManagerTestFixture, EnableVipServerLimitTest);
 
-#define StreamSubscriber_TEST_FRIENDS   \
-  friend class StreamSubscriberFixture; \
-  FRIEND_TEST(StreamSubscriberFixture, ExceedsStreamSubscriberLimitTest);
+#define StreamSubscriber_TEST_FRIENDS                                        \
+  friend class StreamSubscriberFixture;                                      \
+  FRIEND_TEST(StreamSubscriberFixture, ExceedsStreamSubscriberLimitTest);    \
+  FRIEND_TEST(StreamSubscriberFixture, ConfiguredStreamSubscriberLimitTest); \
+  FRIEND_TEST(StreamSubscriberFixture, ReconnectAfterDisconnectAtLimitTest);
 
 #define AdjRibOutGroup_TEST_FRIENDS \
   FRIEND_TEST(PeerManagerTestFixture, GetEffectivePostOutPrefixCountTest);
@@ -5502,6 +5506,145 @@ TEST_F(StreamSubscriberFixture, ExceedsStreamSubscriberLimitTest) {
   EXPECT_FALSE(peerMgr->exceedsStreamSubscriberLimit());
 
   XLOG(INFO, "Done");
+}
+
+/**
+ * @brief A config-supplied stream_subscriber_limit is honored: the device
+ * admits exactly that many subscribers and rejects the next one.
+ *
+ * @details Test steps:
+ * 1. Set up with the limit delivered through the bgp_setting_config field.
+ * 2. Subscribe up to the limit; each is admitted.
+ * 3. Assert the next subscription is rejected.
+ */
+TEST_F(StreamSubscriberFixture, ConfiguredStreamSubscriberLimitTest) {
+  /*
+   * Arbitrary representative value. The implementation does not branch on the
+   * number, so the FE (3) and BE (2) values need no separate coverage.
+   */
+  constexpr uint32_t kLimit = 3;
+  /*
+   * The limit arrives through the bgp_setting_config field, so this exercises
+   * the real config path rather than a directly-poked BgpGlobalConfig.
+   */
+  SetUp(
+      true /* configureMonitorPeer */,
+      true /* initialAnnouncementDone */,
+      true /* enableSubscriberLimit */,
+      kLimit);
+
+  EXPECT_FALSE(peerMgr->exceedsStreamSubscriberLimit());
+
+  /*
+   * The streams must outlive the loop. A destroyed stream ends its session,
+   * which frees the slot and would let the over-limit subscription through.
+   */
+  std::vector<apache::thrift::ServerStream<TBgpRouteDelta>> streams;
+  for (uint32_t i = 0; i < kLimit; ++i) {
+    const auto name = std::make_unique<std::string>(fmt::format("sub{}", i));
+    streams.emplace_back(peerMgr->subscribe(name));
+    EXPECT_EQ(i + 1, peerMgr->numStreamSubscribers());
+  }
+  EXPECT_TRUE(peerMgr->exceedsStreamSubscriberLimit());
+
+  /*
+   * subscribe() rejects synchronously. It runs the admission check inside
+   * evb_.runInEventBaseThreadAndWait(), so the throw reaches this thread
+   * before subscribe() returns. No baton, counter poll or retry is needed.
+   */
+  const auto overLimit = std::make_unique<std::string>("subOverLimit");
+  EXPECT_THROW(peerMgr->subscribe(overLimit), TBgpServiceException);
+  EXPECT_EQ(kLimit, peerMgr->numStreamSubscribers());
+  EXPECT_FALSE(peerMgr->streamSubscribers_.contains(*overLimit));
+}
+
+/**
+ * @brief A subscriber that drops while the device is at its configured limit
+ * can reconnect into the slot it freed.
+ *
+ * @details Test steps:
+ * 1. Set up with a limit of 2 and fill both slots.
+ * 2. Drop the first subscriber and wait for its session to terminate.
+ * 3. Assert the device is no longer at the limit.
+ * 4. Re-subscribe under the same name and assert it is admitted.
+ */
+TEST_F(StreamSubscriberFixture, ReconnectAfterDisconnectAtLimitTest) {
+  constexpr uint32_t kLimit = 2;
+  SetUp(
+      true /* configureMonitorPeer */,
+      true /* initialAnnouncementDone */,
+      true /* enableSubscriberLimit */,
+      kLimit);
+  auto& evb = peerMgr->getEventBase();
+
+  /*
+   * Hold the names alongside the streams. subscribe() keys streamSubscribers_
+   * by name, and the reconnect below must present the same name to take the
+   * re-subscribe path rather than insert a new subscriber.
+   */
+  std::vector<std::unique_ptr<std::string>> names;
+  std::vector<apache::thrift::ServerStream<TBgpRouteDelta>> streams;
+  for (uint32_t i = 0; i < kLimit; ++i) {
+    names.emplace_back(std::make_unique<std::string>(fmt::format("sub{}", i)));
+    streams.emplace_back(peerMgr->subscribe(names.back()));
+  }
+  EXPECT_EQ(kLimit, peerMgr->numStreamSubscribers());
+  EXPECT_TRUE(peerMgr->exceedsStreamSubscriberLimit());
+
+  /*
+   * Drop the first subscriber by cancelling its client-side subscription.
+   * toClientStreamUnsafeDoNotUse is deprecated in favour of
+   * ScopedServerInterfaceThread, but the other 12 stream subscriber tests in
+   * this file cancel a subscription the same way. Migrating one call site
+   * alone would spin up a real server and change the threading model of the
+   * teardown path under test, so the whole file should move together.
+   *
+   * The deprecated call is pulled out of the chain onto its own line because
+   * @lint-ignore only suppresses the line directly below it, and in chained
+   * form the diagnostic is reported on the .toClientStream... line.
+   */
+  // @lint-ignore CLANGTIDY clang-diagnostic-deprecated-declarations
+  // @lint-ignore CLANGTIDY facebook-hte-Deprecated
+  auto clientStream = std::move(streams[0]).toClientStreamUnsafeDoNotUse();
+  auto subscription =
+      std::move(clientStream).subscribeExTry(&evb, [](auto&&) {});
+  subscription.cancel();
+  std::move(subscription).detach();
+
+  /*
+   * Read the peer id from the subscriber entry rather than assuming the first
+   * subscriber got id 1, and use at() so a missing baton fails the test
+   * instead of default-inserting a null shared_ptr that would be dereferenced.
+   */
+  const auto& firstSubscriber = peerMgr->streamSubscribers_.at(*names[0]);
+  ASSERT_TRUE(
+      peerMgr->sessionTerminateBatons_.contains(firstSubscriber.peerId));
+  auto terminateBaton =
+      peerMgr->sessionTerminateBatons_.at(firstSubscriber.peerId);
+  ASSERT_NE(nullptr, terminateBaton);
+  folly::coro::blockingWait(
+      [&]() -> folly::coro::Task<void> { co_await *terminateBaton; }());
+
+  /*
+   * The entry survives the disconnect in IDLE state, so the slot is free even
+   * though streamSubscribers_ still contains the name.
+   */
+  EXPECT_EQ(
+      TBgpPeerState::IDLE, peerMgr->streamSubscribers_.at(*names[0]).state);
+  EXPECT_EQ(kLimit - 1, peerMgr->numStreamSubscribers());
+  EXPECT_FALSE(peerMgr->exceedsStreamSubscriberLimit());
+
+  /*
+   * Reusing the same name is what makes this distinct from
+   * ExceedsStreamSubscriberLimitTest, which only ever gives a freed slot to a
+   * name that has never connected. This takes the re-subscribe path instead,
+   * reusing the retained IDLE entry.
+   */
+  auto reconnected = peerMgr->subscribe(names[0]);
+  EXPECT_EQ(kLimit, peerMgr->numStreamSubscribers());
+  EXPECT_TRUE(peerMgr->exceedsStreamSubscriberLimit());
+  EXPECT_NE(
+      TBgpPeerState::IDLE, peerMgr->streamSubscribers_.at(*names[0]).state);
 }
 
 namespace {
