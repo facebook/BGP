@@ -1050,10 +1050,19 @@ TBgpSession PeerManagerBase::getSessionInfo(
           fmt::format("{}", adjRib->getPeerState());
     }
     tBgpSession.peer_addr() = peerAddr.str();
+    if (const auto it = adjRibs_.find(bgpPeerId); it != adjRibs_.end()) {
+      tBgpSession.eor_received() = it->second->eorReceivedTime() > 0;
+      tBgpSession.eor_sent() = it->second->eorSentTime() > 0;
+    } else {
+      tBgpSession.eor_received() = false;
+      tBgpSession.eor_sent() = false;
+    }
   } else {
     // Dynamic peer IDLE entry
     tBgpSession.peer_addr() = folly::IPAddress::networkToString(
         *(peerInfo->peeringParams.peerPrefix));
+    tBgpSession.eor_received() = false;
+    tBgpSession.eor_sent() = false;
   }
   tBgpSession.description() = peerInfo->peeringParams.description;
   return tBgpSession;

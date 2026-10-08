@@ -14,19 +14,21 @@
  * limitations under the License.
  */
 
-#define PeerManager_TEST_FRIENDS                                 \
-  FRIEND_TEST(                                                   \
-      PeerManagerFixtureCanaryKnobTestSuite,                     \
-      Exportfb303CounterSessionUpAndDownTest);                   \
-  FRIEND_TEST(PeerManagerTestFixture, StopPeerToSessionMgrTest); \
-  FRIEND_TEST(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest);
+#define PeerManager_TEST_FRIENDS                                             \
+  FRIEND_TEST(                                                               \
+      PeerManagerFixtureCanaryKnobTestSuite,                                 \
+      Exportfb303CounterSessionUpAndDownTest);                               \
+  FRIEND_TEST(PeerManagerTestFixture, StopPeerToSessionMgrTest);             \
+  FRIEND_TEST(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest); \
+  FRIEND_TEST(PeerManagerTestFixture, GetBgpSessionEoRStatusTest);
 
-#define AdjRib_TEST_FRIENDS                           \
-  friend class PeerManagerFixtureCanaryKnobTestSuite; \
-  FRIEND_TEST(                                        \
-      PeerManagerFixtureCanaryKnobTestSuite,          \
-      Exportfb303CounterSessionUpAndDownTest);        \
-  FRIEND_TEST(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest);
+#define AdjRib_TEST_FRIENDS                                                  \
+  friend class PeerManagerFixtureCanaryKnobTestSuite;                        \
+  FRIEND_TEST(                                                               \
+      PeerManagerFixtureCanaryKnobTestSuite,                                 \
+      Exportfb303CounterSessionUpAndDownTest);                               \
+  FRIEND_TEST(PeerManagerTestFixture, GetBgpSessionAdjRibMessageCountsTest); \
+  FRIEND_TEST(PeerManagerTestFixture, GetBgpSessionEoRStatusTest);
 
 #define AdjRibStats_TEST_FRIENDS                      \
   friend class PeerManagerFixtureCanaryKnobTestSuite; \
@@ -72,6 +74,56 @@ INSTANTIATE_TEST_SUITE_P(
     PeerManagerTestFixture,
     PeerManagerFixtureCanaryKnobTestSuite,
     testing::Values(false, true /* knob */));
+
+TEST_F(PeerManagerTestFixture, GetBgpSessionEoRStatusTest) {
+  auto mockPeerMgr = setupMockPeerManager(
+      true /* includeStaticPeer */, false /* includeDynamicShivPeer */);
+  auto sessionMgr = setupMockSessionManager(mockPeerMgr);
+  const auto staticPeerAddr = folly::IPAddress(*staticPeer1_.peer_addr());
+  const BgpPeerId peerId{staticPeerAddr, 0};
+  auto adjRib = setupMockAdjRib(
+      mockPeerMgr->getEventBase(),
+      peerId,
+      AsNum(kAsn1),
+      sessionTerminateBaton_);
+  mockPeerMgr->adjRibs_[peerId] = adjRib;
+
+  EXPECT_CALL(*adjRib, stop()).WillRepeatedly([]() -> folly::coro::Task<void> {
+    co_return;
+  });
+  EXPECT_CALL(*adjRib, cleanupGrState(testing::_))
+      .WillRepeatedly([](bool) -> folly::coro::Task<void> { co_return; });
+
+  auto peerMgrThread = mockPeerMgr->runInThread();
+  auto sessionMgrThread = sessionMgr->runInThread();
+  mockPeerMgr->addPeersToSessionMgr();
+
+  auto getStatus = [&]() -> std::pair<bool, bool> {
+    const auto sessions = getSessionsViaSessionMgr(*mockPeerMgr);
+    const auto it =
+        std::find_if(sessions.begin(), sessions.end(), [&](auto& s) {
+          return s.peer_addr().value() == *staticPeer1_.peer_addr();
+        });
+    EXPECT_NE(it, sessions.end());
+    if (it == sessions.end()) {
+      return {false, false};
+    }
+    EXPECT_TRUE(it->eor_received().has_value());
+    EXPECT_TRUE(it->eor_sent().has_value());
+    return {it->eor_received().value_or(false), it->eor_sent().value_or(false)};
+  };
+
+  EXPECT_EQ(getStatus(), (std::pair<bool, bool>{false, false}));
+  adjRib->eorReceivedTime_ = 1740000000000;
+  EXPECT_EQ(getStatus(), (std::pair<bool, bool>{true, false}));
+  adjRib->eorSentTime_ = 1740000000001;
+  EXPECT_EQ(getStatus(), (std::pair<bool, bool>{true, true}));
+
+  mockPeerMgr->stop();
+  sessionMgr->stop();
+  peerMgrThread.join();
+  sessionMgrThread.join();
+}
 
 TEST_F(PeerManagerTestFixture, StartSessionTest) {
   auto mockPeerMgr = setupMockPeerManagerWithSeparateThread(
