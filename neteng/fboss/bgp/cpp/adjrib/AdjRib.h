@@ -2230,41 +2230,6 @@ class AdjRib : boost::noncopyable,
 
   /**
    * ------------------- Sending to IO thread -----------------------
-   * =================== WITHOUT BACKPRESSURE ======================
-   */
-  /* Send attrToPrefixMap_ as BGP updates to the peer. */
-  void buildAndSendBgpMessages(bool sendWithEoR = false) noexcept;
-
-  /**
-   * Returns number of prefixes drained from prefixPathIds into the
-   * RiggedIPPrefix container for a BgpUpdate2.
-   */
-  uint32_t packPrefixes(
-      PrefixSet& prefixPathIds,
-      std::vector<nettools::bgplib::RiggedIPPrefix>& bgpUpdatePrefixes);
-
-  /**
-   * @brief: Build and send announcements.
-   * @details: Build and send announcement messages for all non-nullptr
-   * attrs in attrToPrefixMap_. This writes all of the announced prefixes
-   * to queue. Returns number of prefixes announced.
-   */
-  uint32_t buildAndQueueAnnouncements(uint64_t& bgpMessageCnt) noexcept;
-
-  /**
-   * @brief: Build and send withdrawals.
-   *
-   * @details: Build and send withdrawal messages for the prefixes mapped
-   * to nullptr in attrToPrefixMap_. This writes all of the withdrawn
-   * prefixes to queue in one message. Returns number of prefixes withdrawn.
-   */
-  uint32_t buildAndQueueWithdrawals(uint64_t& bgpMessageCnt) noexcept;
-
-  /* Build and send EoRs */
-  void buildAndQueueEoRs(uint64_t& bgpMessageCnt) noexcept;
-
-  /**
-   * ------------------- Sending to IO thread -----------------------
    * =================== WITH BACKPRESSURE ======================
    */
 

@@ -420,8 +420,7 @@ uint32_t packPrefixesWithLimitCommon(
 /**
  * @brief Pack all prefixes into BgpUpdate2 thrift collection
  *
- * Common implementation shared by both AdjRib::packPrefixes()
- * and AdjRibOutGroup::packGroupPrefixes().
+ * Used by AdjRibOutGroup::packGroupPrefixes().
  *
  * @param prefixPathIds - Set of (prefix, pathId) pairs (modified in place)
  * @param bgpUpdatePrefixes - Container to pack prefixes into

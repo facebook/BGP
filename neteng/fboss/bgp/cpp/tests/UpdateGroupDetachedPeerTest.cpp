@@ -3388,6 +3388,20 @@ class UpdateGroupDetachLifecycleTest : public ::testing::Test {
     /* Drain asyncScope_ cooperatively before destroying the group */
     folly::coro::blockingWait(group_->drainAsyncScope());
     group_.reset();
+
+    /*
+     * activateChangeListConsumer() schedules sendBgpUpdates on evb_, which
+     * these tests never loop. ~AdjRib() would then block forever joining a
+     * task that cannot start, so cancel and join each peer's scope while
+     * driving evb_, as AdjRib::stop() does in production.
+     */
+    for (auto& peer : peers_) {
+      if (peer->asyncScope_) {
+        folly::coro::blockingWait(
+            peer->asyncScope_->cancelAndJoinAsync(), evb_.get());
+        peer->asyncScope_.reset();
+      }
+    }
     peers_.clear();
     evb_.reset();
   }

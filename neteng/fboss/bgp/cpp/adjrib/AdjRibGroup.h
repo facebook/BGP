@@ -799,7 +799,7 @@ class AdjRibOutGroup : public std::enable_shared_from_this<AdjRibOutGroup> {
 
   /*
    * Build single BGP UPDATE message with size limit
-   * Similar to AdjRib::buildAndQueueAnnouncements but for group-level
+   * Similar to AdjRib::buildUpdateWithSizeEstimation but for group-level
    * Made public for testing
    */
   std::shared_ptr<nettools::bgplib::BgpUpdate2> buildGroupUpdate(

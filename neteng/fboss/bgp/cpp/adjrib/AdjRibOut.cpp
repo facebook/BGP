@@ -182,10 +182,6 @@ void AdjRib::processRibMessage(const RibOutMessage& ribMsg) noexcept {
       [](const ShadowRibOutAnnouncement&) {},
       [](const ShadowRibOutWithdrawal&) {},
       [](const RibInitialAnnouncementStart& /* unused*/) {});
-
-  if (!enableEgressQueueBackpressure_) {
-    attrToPrefixMap_.clear();
-  }
 }
 
 void AdjRib::scheduleSendBgpUpdates(bool tryPullNewChangeItems) noexcept {
@@ -676,121 +672,6 @@ std::shared_ptr<BgpUpdate2> AdjRib::buildUpdateWithSizeEstimation(
   return update;
 }
 
-void AdjRib::buildAndSendBgpMessages(bool sendWithEoR) noexcept {
-  ScopedProfile profile("AdjRib::buildAndSendBgpMessages");
-  // Return early if nothing to announce/withdraw.
-  if (attrToPrefixMap_.empty() && !sendWithEoR) {
-    return;
-  }
-
-  uint64_t bgpMessageCnt{0};
-  /*
-   * TODO: Merge withdraw and updates into same message. We need delay timer
-   *       to merge as they come in separate messages.
-   */
-  auto withdrawPrefixCnt = buildAndQueueWithdrawals(bgpMessageCnt);
-  auto announcePrefixCnt = buildAndQueueAnnouncements(bgpMessageCnt);
-  if (sendWithEoR) {
-    buildAndQueueEoRs(bgpMessageCnt);
-  }
-
-  stats_.incrementSentUpdateMsgs(bgpMessageCnt);
-  XLOGF(
-      INFO,
-      "Sending accumulated changes to {}."
-      "({} withdraws, {} announcements, EoR requested {}) - {} BGP message(s).",
-      getPeerName(),
-      withdrawPrefixCnt,
-      announcePrefixCnt,
-      sendWithEoR,
-      bgpMessageCnt);
-
-  // temp collection cleanup
-  attrToPrefixMap_.clear();
-}
-
-/**
- * This can be used to pack all prefixes into the provided RiggedIPPrefix
- * container with no limit. Used when backpressure is not enabled.
- * This method will be removed when backpressure is enabled by default
- * and the feature flag is removed.
- */
-uint32_t AdjRib::packPrefixes(
-    PrefixSet& prefixPathIds,
-    std::vector<RiggedIPPrefix>& bgpUpdatePrefixes) {
-  return packPrefixesCommon(
-      prefixPathIds, bgpUpdatePrefixes, sendAddPath_, getPeerName());
-}
-
-uint32_t AdjRib::buildAndQueueAnnouncements(uint64_t& bgpMessageCnt) noexcept {
-  uint32_t prefixesAnnounced = 0;
-  // Start packing updates from attrToPrefixMap_
-  for (auto& [attrsWithAfi, prefixPathIds] : attrToPrefixMap_) {
-    auto& postOutAttrs = attrsWithAfi.attrs;
-    auto afi = attrsWithAfi.afi;
-    if (!postOutAttrs) {
-      // Ignore withdrawals.
-      continue;
-    }
-    if (prefixPathIds.empty()) {
-      continue;
-    }
-
-    /* Set the new nexthop on the BgpUpdate2 message. */
-    auto newNexthop = getNewNexthopFromAttributesOut(
-        afi == BgpUpdateAfi::AFI_IPv4 /* isV4 */,
-        postOutAttrs,
-        attrsWithAfi.isNexthopSetByPolicy);
-
-    auto update = postOutAttrs->getBgpUpdate2();
-    /* The NEXT_HOP attribute string is identical for both encodings. */
-    update->attrs()->nexthop() = newNexthop.str();
-    switch (v4EncodingDecision(
-        updateGroupKey_,
-        afi == BgpUpdateAfi::AFI_IPv4,
-        newNexthop,
-        getPeerName())) {
-      case V4EncodingDecision::ClassicNlri:
-        /* Legacy RFC 4271: classic v4 NLRI + NEXT_HOP (attr 3). */
-        update->v4Nexthop() = network::toBinaryAddress(newNexthop);
-        prefixesAnnounced +=
-            packPrefixes(prefixPathIds, *update->v4Announced2());
-        if (!update->v4Announced2()->empty()) {
-          stats_.incrementSentLegacyV4Announcements();
-        }
-        break;
-      case V4EncodingDecision::Drop:
-        /*
-         * Capability-less peer with a v6 nexthop: drop the route (already
-         * logged) instead of enqueuing an UPDATE the peer would reject. Clear
-         * prefixPathIds so the entry is treated as fully processed.
-         */
-        prefixPathIds.clear();
-        continue;
-      case V4EncodingDecision::MpReach:
-        update->mpAnnounced()->afi() = afi;
-        update->mpAnnounced()->safi() = BgpUpdateSafi::SAFI_UNICAST;
-        update->mpAnnounced()->nexthop() = network::toBinaryAddress(newNexthop);
-        prefixesAnnounced +=
-            packPrefixes(prefixPathIds, *update->mpAnnounced()->prefixes());
-        break;
-    }
-
-    // Enqueue update
-    bgpMessageCnt++;
-    boundedAdjRibOutQueue_->push(std::move(update));
-
-    if (afi == BgpUpdateAfi::AFI_IPv4) {
-      stats_.incrementSentAnnouncementsIpv4();
-    } else if (afi == BgpUpdateAfi::AFI_IPv6) {
-      stats_.incrementSentAnnouncementsIpv6();
-    } else {
-      XLOGF(WARN, "Unexpected BgpUpdateAfi: {}", static_cast<int>(afi));
-    }
-  }
-  return prefixesAnnounced;
-}
-
 bool AdjRib::buildAndSendRouteRefresh(
     const nettools::bgplib::BgpRouteRefreshMessageSubtype& subtype,
     BgpUpdateAfi afi) noexcept {
@@ -804,71 +685,6 @@ bool AdjRib::buildAndSendRouteRefresh(
     return false;
   }
   return boundedAdjRibOutQueue_->push(std::move(routeRefresh));
-}
-
-uint32_t AdjRib::buildAndQueueWithdrawals(uint64_t& bgpMessageCnt) noexcept {
-  auto v4Itr = attrToPrefixMap_.find(
-      BgpPathWithAfi{nullptr /* withdrawal */, BgpUpdateAfi::AFI_IPv4});
-  auto v6Itr = attrToPrefixMap_.find(
-      BgpPathWithAfi{nullptr /* withdrawal */, BgpUpdateAfi::AFI_IPv6});
-  bool hasV4 = v4Itr != attrToPrefixMap_.end();
-  bool hasV6 = v6Itr != attrToPrefixMap_.end();
-
-  if (!hasV4 && !hasV6) {
-    return 0;
-  }
-
-  uint32_t prefixesWithdrawn = 0;
-  auto update = std::make_shared<BgpUpdate2>();
-  // Pack v4 withdrawals.
-  if (hasV4) {
-    prefixesWithdrawn += packPrefixes(v4Itr->second, *update->v4Withdrawn2());
-  }
-
-  // Pack v6 withdrawals.
-  if (hasV6) {
-    prefixesWithdrawn +=
-        packPrefixes(v6Itr->second, *update->mpWithdrawn()->prefixes());
-    update->mpWithdrawn()->afi() = BgpUpdateAfi::AFI_IPv6;
-    update->mpWithdrawn()->safi() = BgpUpdateSafi::SAFI_UNICAST;
-  }
-
-  if (prefixesWithdrawn > 0) {
-    stats_.incrementSentWithdrawals();
-    bgpMessageCnt++;
-    boundedAdjRibOutQueue_->push(std::move(update));
-  }
-  return prefixesWithdrawn;
-}
-
-void AdjRib::buildAndQueueEoRs(uint64_t& bgpMessageCnt) noexcept {
-  const auto sendV4EoR = egressEoRPendingV4();
-  const auto sendV6EoR = egressEoRPendingV6();
-  if (!sendV4EoR && !sendV6EoR) {
-    return;
-  }
-
-  XLOGF(INFO, "Sending EoR to peer {}", getPeerName());
-
-  // mark egressEoR being sent as a one-time flag for initialization
-  egressEoRsSent_ = true;
-  clearEgressEoRPendingV4();
-  clearEgressEoRPendingV6();
-  eorSentTime_ = getCurrentTimeMs();
-  logPeerEvent("SESSION_EOR_SENT", BGP_LOG_SRC());
-
-  // send out egressEoR notification to peer manager for initialization
-  fromAdjRibQ_.push({*remotePeerId_, EgressEoR{}});
-
-  // send out to FiberBgpPeerManager to send via socket
-  if (sendV4EoR) {
-    bgpMessageCnt++;
-    boundedAdjRibOutQueue_->push(buildEndOfRib(BgpUpdateAfi::AFI_IPv4));
-  }
-  if (sendV6EoR) {
-    bgpMessageCnt++;
-    boundedAdjRibOutQueue_->push(buildEndOfRib(BgpUpdateAfi::AFI_IPv6));
-  }
 }
 
 void AdjRib::markEgressEoRsPendingFor(
@@ -922,9 +738,6 @@ void AdjRib::processRibOutAnnouncement(
   }
   scheduleOutDelayTimer();
   markEgressEoRsPendingFor(announcement);
-  if (!enableEgressQueueBackpressure_) {
-    buildAndSendBgpMessages(announcement.sendWithEoR);
-  }
 
   /*
    * InProgress -> Idle once the terminal Route Refresh announcement
@@ -1725,11 +1538,7 @@ void AdjRib::programOutDelayTimer() noexcept {
         }
       }
     }
-    if (enableEgressQueueBackpressure_) {
-      scheduleSendBgpUpdates(true /* tryPullNewChangeItems */);
-    } else {
-      buildAndSendBgpMessages();
-    }
+    scheduleSendBgpUpdates(true /* tryPullNewChangeItems */);
     outDelayPQ_.pop();
 
     /*
@@ -1789,10 +1598,6 @@ void AdjRib::processRibOutWithdrawal(
 
     // Update cached RIB version to track how caught up this peer is
     setLastSeenRibVersion(entry.ribVersion);
-  }
-  if (!enableEgressQueueBackpressure_) {
-    // Send out all the accumulated changes
-    buildAndSendBgpMessages();
   }
 }
 

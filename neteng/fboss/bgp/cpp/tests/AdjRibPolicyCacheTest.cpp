@@ -613,7 +613,7 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheLruEviction) {
           localPeerV4_,
           true, // EOR is true.
           BgpAttrOrigin::BGP_ORIGIN_IGP);
-      adjRib_->processRibMessage(ribMsg);
+      pushRibOutMsgToAdjRib(ribMsg);
     }
     {
       facebook::bgp::test::boundedBatonWait(
@@ -628,7 +628,7 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheLruEviction) {
           localPeerV4_,
           false,
           BgpAttrOrigin::BGP_ORIGIN_EGP);
-      adjRib_->processRibMessage(ribMsg);
+      pushRibOutMsgToAdjRib(ribMsg);
     }
     {
       facebook::bgp::test::boundedBatonWait(
@@ -643,7 +643,7 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheLruEviction) {
           localPeerV4_,
           false,
           BgpAttrOrigin::BGP_ORIGIN_EGP);
-      adjRib_->processRibMessage(ribMsg);
+      pushRibOutMsgToAdjRib(ribMsg);
     }
     {
       facebook::bgp::test::boundedBatonWait(
@@ -658,7 +658,7 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheLruEviction) {
           localPeerV4_,
           false,
           BgpAttrOrigin::BGP_ORIGIN_INCOMPLETE);
-      adjRib_->processRibMessage(ribMsg);
+      pushRibOutMsgToAdjRib(ribMsg);
     }
   });
 
@@ -908,7 +908,7 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheStaleEviction) {
           localPeerV4_,
           true, // EOR is true.
           BgpAttrOrigin::BGP_ORIGIN_IGP);
-      adjRib_->processRibMessage(ribMsg);
+      pushRibOutMsgToAdjRib(ribMsg);
     }
     {
       baton.wait();
@@ -922,7 +922,7 @@ TEST_F(AdjRibOutPolicyCacheFixture, PolicyCacheStaleEviction) {
           localPeerV4_,
           false,
           BgpAttrOrigin::BGP_ORIGIN_EGP);
-      adjRib_->processRibMessage(ribMsg);
+      pushRibOutMsgToAdjRib(ribMsg);
     }
   });
 

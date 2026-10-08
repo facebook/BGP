@@ -835,10 +835,8 @@ folly::coro::Task<void> AdjRib::sessionTerminated(
    * so the old queue on this adjRib will be replaced and destroyed then
    * by shared_ptr handling.
    */
-  if (enableEgressQueueBackpressure_ || enableUpdateGroup_) {
-    if (boundedAdjRibOutQueue_) {
-      boundedAdjRibOutQueue_->close();
-    }
+  if (boundedAdjRibOutQueue_) {
+    boundedAdjRibOutQueue_->close();
   }
 
   if (asyncScope_) {
@@ -1378,9 +1376,7 @@ void AdjRib::tryIterateChangesToEnd() noexcept {
  * @return void
  */
 void AdjRib::activateChangeListConsumer() noexcept {
-  if (isEnableEgressQueueBackpressure()) {
-    scheduleSendBgpUpdates(false /* tryPullNewChangeItems */);
-  }
+  scheduleSendBgpUpdates(false /* tryPullNewChangeItems */);
   if (!changeListConsumer_) {
     XLOGF(
         ERR,
@@ -1456,11 +1452,7 @@ void AdjRib::activateChangeListConsumer() noexcept {
                 getPeerName());
             scheduleOutDelayTimer();
           }
-          if (enableEgressQueueBackpressure_) {
-            scheduleSendBgpUpdates(true /* tryPullNewChangeItems */);
-          } else {
-            buildAndSendBgpMessages();
-          }
+          scheduleSendBgpUpdates(true /* tryPullNewChangeItems */);
           co_return;
         }))
         .start();
@@ -1468,10 +1460,9 @@ void AdjRib::activateChangeListConsumer() noexcept {
   changeListConsumer_->registerWithTracker();
   changeListConsumer_->setPolledMode();
   changeListConsumer_->setBitmap();
-  if (enableEgressQueueBackpressure_ && !egressEoRsSent_) {
+  if (!egressEoRsSent_) {
     /*
-     * When egress backpressure is enabled,
-     * we cannot consume from change list until EoR has been sent to peer.
+     * We cannot consume from change list until EoR has been sent to peer.
      * sendBgpUpdates will reschedule the timer.
      */
     return;

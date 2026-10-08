@@ -1952,7 +1952,7 @@ uint32_t AdjRibOutGroup::packGroupPrefixes(
 
 /*
  * @brief  Build a single BGP UPDATE message from attrToPrefixMap entry
- *         Similar to AdjRib::buildAndQueueAnnouncements.
+ *         Similar to AdjRib::buildUpdateWithSizeEstimation.
  *
  * Handles BOTH announcements and withdrawals in one method.
  * Drains the entire pfxSet.
@@ -2001,11 +2001,10 @@ std::shared_ptr<nettools::bgplib::BgpUpdate2> AdjRibOutGroup::buildGroupUpdate(
          * binary v4Nexthop() (what the serializer emits and rewrites per-peer);
          * attrs()->nexthop() is intentionally left unset to stay symmetric with
          * the MP branch below, which likewise relies on the binary nexthop.
-         * Unlike the single-peer path (AdjRib::buildUpdateWithSizeEstimation /
-         * buildAndQueueAnnouncements), which also sets the string
-         * attrs()->nexthop(), the group path omits it: group PDUs are
-         * serialized straight from the binary nexthop (per-peer rewritten), so
-         * the string form is never read.
+         * Unlike the single-peer path (AdjRib::buildUpdateWithSizeEstimation),
+         * which also sets the string attrs()->nexthop(), the group path omits
+         * it: group PDUs are serialized straight from the binary nexthop
+         * (per-peer rewritten), so the string form is never read.
          */
         update->v4Nexthop() = network::toBinaryAddress(newNexthop);
         packGroupPrefixes(

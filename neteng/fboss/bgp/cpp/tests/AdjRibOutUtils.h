@@ -96,9 +96,7 @@ class AdjRibOutboundFixture : public ::testing::Test {
   void pushRibOutMsgToAdjRib(T&& msg) {
     RibOutMessage ribOutMsg(std::forward<T>(msg));
     adjRib_->processRibMessage(ribOutMsg);
-    if (FLAGS_enable_egress_backpressure_in_adjribout_tests) {
-      adjRib_->scheduleSendBgpUpdates(true /* tryPullNewChangeItems */);
-    }
+    adjRib_->scheduleSendBgpUpdates(true /* tryPullNewChangeItems */);
   }
 
   /**

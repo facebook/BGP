@@ -104,9 +104,7 @@ class AdjRibOutboundFixtureV4V6Nexthop
       bool ebgpPeer = true) {
     auto ribOutMsg = buildAnnouncementFromMap(entries, ebgpPeer);
     adjRib->processRibMessage(ribOutMsg);
-    if (adjRib->isEnableEgressQueueBackpressure()) {
-      adjRib->scheduleSendBgpUpdates(true /* tryPullNewChangeItems */);
-    }
+    adjRib->scheduleSendBgpUpdates(true /* tryPullNewChangeItems */);
   }
 
   void verifyPrefixesAndNexthopInUpdate(
