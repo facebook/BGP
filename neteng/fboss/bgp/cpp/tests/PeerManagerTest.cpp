@@ -113,6 +113,8 @@
   FRIEND_TEST(StreamSubscriberFixture, ExceedsStreamSubscriberLimitTest);      \
   FRIEND_TEST(StreamSubscriberFixture, ConfiguredStreamSubscriberLimitTest);   \
   FRIEND_TEST(StreamSubscriberFixture, ReconnectAfterDisconnectAtLimitTest);   \
+  FRIEND_TEST(StreamSubscriberFixture, ResubscribeAtLimitTest);                \
+  FRIEND_TEST(StreamSubscriberFixture, DuplicateAtLimitReportsDuplicateTest);  \
   FRIEND_TEST(                                                                 \
       StreamSubscriberFixture, StreamSubscriberIdleTimeoutReclaimsSession);    \
   FRIEND_TEST(StreamSubscriberFixture, StreamSubscriberIdleTimeoutDisabled);   \
@@ -233,7 +235,9 @@
   friend class StreamSubscriberFixture;                                      \
   FRIEND_TEST(StreamSubscriberFixture, ExceedsStreamSubscriberLimitTest);    \
   FRIEND_TEST(StreamSubscriberFixture, ConfiguredStreamSubscriberLimitTest); \
-  FRIEND_TEST(StreamSubscriberFixture, ReconnectAfterDisconnectAtLimitTest);
+  FRIEND_TEST(StreamSubscriberFixture, ReconnectAfterDisconnectAtLimitTest); \
+  FRIEND_TEST(StreamSubscriberFixture, ResubscribeAtLimitTest);              \
+  FRIEND_TEST(StreamSubscriberFixture, DuplicateAtLimitReportsDuplicateTest);
 
 #define AdjRibOutGroup_TEST_FRIENDS \
   FRIEND_TEST(PeerManagerTestFixture, GetEffectivePostOutPrefixCountTest);
@@ -5645,6 +5649,96 @@ TEST_F(StreamSubscriberFixture, ReconnectAfterDisconnectAtLimitTest) {
   EXPECT_TRUE(peerMgr->exceedsStreamSubscriberLimit());
   EXPECT_NE(
       TBgpPeerState::IDLE, peerMgr->streamSubscribers_.at(*names[0]).state);
+}
+
+/**
+ * @brief A subscriber whose connection dies without the server noticing can
+ * re-subscribe while the device is at its limit, because a re-subscribe under
+ * the same name occupies no new slot.
+ *
+ * @details Test steps:
+ * 1. Set up with a limit of 2 and fill both slots.
+ * 2. Assert the first subscriber is still ESTABLISHED.
+ * 3. Re-subscribe under the same name and assert it is admitted.
+ * 4. Assert the subscriber count is unchanged.
+ */
+TEST_F(StreamSubscriberFixture, ResubscribeAtLimitTest) {
+  constexpr uint32_t kLimit = 2;
+  SetUp(
+      true /* configureMonitorPeer */,
+      true /* initialAnnouncementDone */,
+      true /* enableSubscriberLimit */,
+      kLimit);
+
+  std::vector<std::unique_ptr<std::string>> names;
+  std::vector<apache::thrift::ServerStream<TBgpRouteDelta>> streams;
+  for (uint32_t i = 0; i < kLimit; ++i) {
+    names.emplace_back(std::make_unique<std::string>(fmt::format("sub{}", i)));
+    streams.emplace_back(peerMgr->subscribe(names.back()));
+  }
+  EXPECT_EQ(kLimit, peerMgr->numStreamSubscribers());
+  EXPECT_TRUE(peerMgr->exceedsStreamSubscriberLimit());
+
+  /*
+   * Still ESTABLISHED is what a network blackhole looks like from the server:
+   * no FIN or RST arrives, so nothing tells the peer manager the client is
+   * gone and the entry keeps counting toward numStreamSubscribers(). Every
+   * other disconnect drives the entry to IDLE and frees the slot on its own.
+   */
+  EXPECT_EQ(
+      TBgpPeerState::ESTABLISHED,
+      peerMgr->streamSubscribers_.at(*names[0]).state);
+
+  /*
+   * Same name and address, so this takes over instead of needing a slot. The
+   * returned stream has to outlive the count check: dropping it tears the
+   * subscription down again, which races the assertion and can show the slot
+   * already freed.
+   */
+  apache::thrift::ServerStream<TBgpRouteDelta> reconnected =
+      peerMgr->subscribe(names[0]);
+  EXPECT_EQ(kLimit, peerMgr->numStreamSubscribers());
+}
+
+/**
+ * @brief At the limit, a name collision is reported as a duplicate rather
+ * than as a capacity problem.
+ *
+ * @details Test steps:
+ * 1. Set up with a limit of 1 and fill the only slot.
+ * 2. Point the peer manager at a different stream peer address.
+ * 3. Subscribe again under the same name.
+ * 4. Assert the error names the duplicate, not the limit.
+ */
+TEST_F(StreamSubscriberFixture, DuplicateAtLimitReportsDuplicateTest) {
+  SetUp(
+      true /* configureMonitorPeer */,
+      true /* initialAnnouncementDone */,
+      true /* enableSubscriberLimit */,
+      1 /* streamSubscriberLimit */);
+
+  const auto name = std::make_unique<std::string>("sub0");
+  auto stream = peerMgr->subscribe(name);
+  EXPECT_EQ(1, peerMgr->numStreamSubscribers());
+  EXPECT_TRUE(peerMgr->exceedsStreamSubscriberLimit());
+
+  /*
+   * Same name from a different address is a collision, not a re-subscribe.
+   * The limit is skipped whenever an ESTABLISHED entry exists, so this error
+   * survives; checking the limit first would mask it with "Max stream
+   * subscribers reached" and send the operator after capacity instead of
+   * after two hosts sharing a name. At a BE limit of 2 that masking would be
+   * the usual outcome, since the device sits at its limit normally.
+   */
+  peerMgr->streamPeerAddr_ = folly::IPAddress("::2");
+
+  try {
+    peerMgr->subscribe(name);
+    FAIL() << "expected the duplicate subscription to be rejected";
+  } catch (const TBgpServiceException& e) {
+    EXPECT_STREQ(
+        "Subscription failed: duplicate subscription attempted", e.what());
+  }
 }
 
 namespace {

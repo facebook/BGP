@@ -3854,7 +3854,30 @@ apache::thrift::ServerStream<TBgpRouteDelta> PeerManagerBase::subscribe(
       failedAlready = true;
       return;
     }
-    if (exceedsStreamSubscriberLimit()) {
+    /*
+     * The limit guards new slots. A request that already has an ESTABLISHED
+     * entry under this name never needs one: it either takes over its own
+     * session (same address, see below) or is rejected as a duplicate. The
+     * test mirrors numStreamSubscribers(), which counts ESTABLISHED entries,
+     * so the exemption and the count cannot drift apart.
+     *
+     * Skipping the limit here also lets the duplicate case report the accurate
+     * error. Checking the limit first would mask it with "Max stream
+     * subscribers reached", pointing the operator at capacity when the real
+     * problem is two hosts sharing a subscriber name.
+     *
+     * Without the exemption a network blackhole locks the subscriber out:
+     * nothing tells the peer manager the client is gone, so the stale entry
+     * stays ESTABLISHED and keeps counting until
+     * reclaimIdleStreamSubscriber() fires, up to
+     * stream_subscriber_idle_timeout_ms later.
+     */
+    const auto existingSubscriber = streamSubscribers_.find(subscriberName);
+    const bool hasEstablishedEntry =
+        existingSubscriber != streamSubscribers_.end() &&
+        existingSubscriber->second.state == TBgpPeerState::ESTABLISHED;
+
+    if (!hasEstablishedEntry && exceedsStreamSubscriberLimit()) {
       XLOGF(
           INFO,
           "Max stream subscribers reached: Rejecting connection from {}",
