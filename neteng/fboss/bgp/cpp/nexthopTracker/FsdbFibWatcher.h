@@ -275,6 +275,10 @@ class FsdbFibWatcher : public std::enable_shared_from_this<FsdbFibWatcher> {
    * lookupIgpCostFromRoute().
    */
   std::optional<fboss::ClientID> igpCostClientId_;
+
+#ifdef FsdbFibWatcher_TEST_FRIENDS
+  FsdbFibWatcher_TEST_FRIENDS
+#endif
 };
 
 } // namespace facebook::bgp
