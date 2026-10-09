@@ -277,6 +277,13 @@ std::vector<TUpdateGroupInfo> PeerManagerBase::getUpdateGroupInfo(
           peerInfo.detached_rib_version() = adjRib->getDetachedRibVersion();
         }
 
+        const auto& peerUpdateStateInfo = adjRib->getPeerUpdateStateInfo();
+        if (auto reason = peerUpdateStateInfo.lastDetachReason) {
+          peerInfo.last_detach_reason() =
+              std::string(magic_enum::enum_name(*reason));
+          peerInfo.last_detach_time_ms() = peerUpdateStateInfo.lastDetachTimeMs;
+        }
+
         /*
          * TODO: session_state and description should come from
          * BgpPeer/SessionManager, not AdjRib. AdjRib only has the update-group
@@ -305,8 +312,7 @@ std::vector<TUpdateGroupInfo> PeerManagerBase::getUpdateGroupInfo(
           peerInfo.eor_sent_time_ms() = eorTime;
         }
 
-        auto peerStateTime =
-            adjRib->getPeerUpdateStateInfo().lastModifiedTimeMs;
+        auto peerStateTime = peerUpdateStateInfo.lastModifiedTimeMs;
         if (peerStateTime > 0) {
           peerInfo.last_modified_peer_update_state_time_ms() = peerStateTime;
         }
