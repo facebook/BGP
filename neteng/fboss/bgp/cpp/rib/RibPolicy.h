@@ -37,8 +37,13 @@ class BgpPathMatcher {
    */
   bool match(const std::shared_ptr<RouteInfo>& path) const;
 
+  bool prefersLowestIgpCost() const {
+    return prefersLowestIgpCost_;
+  }
+
  private:
   std::vector<std::unique_ptr<AttributesMatch>> matches_{};
+  const bool prefersLowestIgpCost_{false};
 
 /*
  * per class placeholder for code injection
@@ -71,10 +76,7 @@ class RibPolicyResultBase {
 class PathSelectionCriteria {
  public:
   explicit PathSelectionCriteria(
-      const rib_policy::TPathSelectionCriteria& criteria)
-      : tCriteria_(criteria),
-        pathMatchers_(getPathMatchers(criteria)),
-        minNexthop_(criteria.min_nexthop().to_optional()) {}
+      const rib_policy::TPathSelectionCriteria& criteria);
 
   bool operator==(const PathSelectionCriteria& other) const {
     return tCriteria_ == other.tCriteria_;
@@ -107,6 +109,7 @@ class PathSelectionCriteria {
 
   // Here pointers are needed so that we could perform polymorphism
   const std::vector<std::unique_ptr<BgpPathMatcher>> pathMatchers_{};
+  const bool hasLowestIgpCostMatcher_{false};
   const std::optional<int32_t> minNexthop_{std::nullopt};
 
 /*

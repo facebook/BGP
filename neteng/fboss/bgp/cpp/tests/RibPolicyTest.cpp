@@ -53,6 +53,8 @@
 #include "neteng/fboss/bgp/cpp/BgpServiceUtil.h"
 #include "neteng/fboss/bgp/cpp/common/RouteInfo.h"
 #include "neteng/fboss/bgp/cpp/common/Utils.h"
+#include "neteng/fboss/bgp/cpp/nexthopTracker/NexthopInfo.h"
+#include "neteng/fboss/bgp/cpp/nexthopTracker/NexthopStatus.h"
 #include "neteng/fboss/bgp/cpp/rib/RibBase.h"
 #include "neteng/fboss/bgp/cpp/rib/RibDC.h"
 #include "neteng/fboss/bgp/cpp/rib/RibEntry.h"
@@ -690,6 +692,33 @@ TEST(RibPolicyTest, PathSelectionCriteriaTest) {
   tCriteria.min_nexthop() = 2;
   PathSelectionCriteria criteria2(tCriteria);
   EXPECT_NE(criteria1, criteria2);
+}
+
+TEST(RibPolicyTest, LowestIgpCostMatcherValidationTest) {
+  TBgpPathMatcher matcher;
+  matcher.prefer_lowest_igp_cost() = true;
+  EXPECT_THROW(BgpPathMatcher{matcher}, BgpError);
+
+  TCommunityListMatch emptyAndCommunities;
+  emptyAndCommunities.boolean_operator() = routing_policy::BooleanOperator::AND;
+  matcher.community_list() = emptyAndCommunities;
+  EXPECT_THROW(BgpPathMatcher{matcher}, BgpError);
+
+  matcher.origin() = bgp_policy::Origin::EGP;
+  BgpPathMatcher withOrigin(matcher);
+  EXPECT_TRUE(withOrigin.prefersLowestIgpCost());
+
+  matcher.community_list().reset();
+  matcher.origin().reset();
+  matcher.prefer_lowest_igp_cost() = false;
+  EXPECT_THROW(BgpPathMatcher{matcher}, BgpError);
+
+  matcher.origin() = bgp_policy::Origin::EGP;
+  matcher.prefer_lowest_igp_cost() = true;
+  TNextHopWeightAction action;
+  action.path_matchers()->push_back(matcher);
+  action.weight() = 10;
+  EXPECT_THROW(NextHopWeightAction{action}, BgpError);
 }
 
 TEST(RibPolicyTest, BgpPathMatcherCommunityMatchTest) {
@@ -1999,6 +2028,117 @@ TEST_F(RibPolicyFixture, SelectPathMinLbwBpsMatchTest) {
           *ribEntry_, pathsToOverride_, multipathSelector);
 
   EXPECT_EQ(overriddenPaths.size(), 1);
+}
+
+TEST_F(RibPolicyFixture, SelectLowestIgpCostAmongMatchingPaths) {
+  TBgpPathMatcher matcher;
+  matcher.origin() = bgp_policy::Origin::EGP;
+  matcher.prefer_lowest_igp_cost() = true;
+  RibPolicy policy{createTRibPolicyWithPathSelector(
+      {kV4Prefix1}, createTPathSlectorWithOneMatcher(matcher))};
+
+  NexthopInfo first(NexthopStatus(kV4Nexthop1, true, 30));
+  NexthopInfo second(NexthopStatus(kV4Nexthop2, true, 10));
+  first.linkRouteInfo(*pathsToOverride_[0]);
+  second.linkRouteInfo(*pathsToOverride_[1]);
+
+  const auto select = [&] {
+    return policy.getPathSelectionPolicy()->overrideMultipathSelection(
+        *ribEntry_, pathsToOverride_, multipathSelector);
+  };
+  EXPECT_THAT(select(), ElementsAre(pathsToOverride_[1]));
+
+  first.updateStatus(NexthopStatus(kV4Nexthop1, true, 10));
+  EXPECT_EQ(select(), pathsToOverride_);
+
+  first.updateStatus(NexthopStatus(kV4Nexthop1, true, 5));
+  EXPECT_THAT(select(), ElementsAre(pathsToOverride_[0]));
+
+  first.unlinkRouteInfo(*pathsToOverride_[0]);
+  EXPECT_THAT(select(), ElementsAre(pathsToOverride_[1]));
+  second.unlinkRouteInfo(*pathsToOverride_[1]);
+  EXPECT_EQ(select(), pathsToOverride_);
+
+  const auto active =
+      policy.getPathSelectionPolicy()->getActivePathSelectionCriteria(
+          {folly::IPAddress::networkToString(ribEntry_->getPrefix())});
+  ASSERT_EQ(active.size(), 1);
+  EXPECT_TRUE(
+      active[0]
+          .criteria_list()
+          ->front()
+          .path_matchers()
+          ->front()
+          .prefer_lowest_igp_cost()
+          .value_or(false));
+}
+
+TEST_F(
+    RibPolicyFixture,
+    LowestIgpCostMatcherRespectsAttributesOrAndMinNexthop) {
+  const auto& communityPath = pathsToOverride_[0]->getBgpAsPathLen() == 4
+      ? pathsToOverride_[0]
+      : pathsToOverride_[1];
+  const auto& otherPath = communityPath == pathsToOverride_[0]
+      ? pathsToOverride_[1]
+      : pathsToOverride_[0];
+  NexthopInfo expensive(NexthopStatus(kV4Nexthop1, true, 30));
+  NexthopInfo inexpensive(NexthopStatus(kV4Nexthop2, true, 10));
+  expensive.linkRouteInfo(*communityPath);
+  inexpensive.linkRouteInfo(*otherPath);
+
+  TPathSelectionCriteria criteria;
+  auto communityMatcher =
+      createCommunityMatch(200, 666, bgp_policy::Origin::EGP);
+  communityMatcher.prefer_lowest_igp_cost() = true;
+  criteria.path_matchers()->push_back(communityMatcher);
+  EXPECT_THAT(
+      PathSelectionCriteria(criteria).tryOverrideMultipathSelection(
+          pathsToOverride_),
+      ElementsAre(communityPath));
+
+  auto otherMatcher = createCommunityMatch(100, 234, bgp_policy::Origin::EGP);
+  otherMatcher.prefer_lowest_igp_cost() = true;
+  criteria.path_matchers()->push_back(otherMatcher);
+  criteria.min_nexthop() = 2;
+  EXPECT_EQ(
+      PathSelectionCriteria(criteria).tryOverrideMultipathSelection(
+          pathsToOverride_),
+      pathsToOverride_);
+
+  TBgpPathMatcher allPathsMatcher;
+  allPathsMatcher.origin() = bgp_policy::Origin::EGP;
+  allPathsMatcher.prefer_lowest_igp_cost() = true;
+  criteria.path_matchers()->clear();
+  criteria.path_matchers()->push_back(allPathsMatcher);
+  EXPECT_TRUE(PathSelectionCriteria(criteria)
+                  .tryOverrideMultipathSelection(pathsToOverride_)
+                  .empty());
+
+  communityMatcher.prefer_lowest_igp_cost().reset();
+  criteria.path_matchers()->push_back(communityMatcher);
+  EXPECT_EQ(
+      PathSelectionCriteria(criteria).tryOverrideMultipathSelection(
+          pathsToOverride_),
+      pathsToOverride_);
+
+  allPathsMatcher.prefer_lowest_igp_cost() = false;
+  criteria.path_matchers()->clear();
+  criteria.path_matchers()->push_back(allPathsMatcher);
+  EXPECT_EQ(
+      PathSelectionCriteria(criteria).tryOverrideMultipathSelection(
+          pathsToOverride_),
+      pathsToOverride_);
+  allPathsMatcher.prefer_lowest_igp_cost().reset();
+  criteria.path_matchers()->clear();
+  criteria.path_matchers()->push_back(allPathsMatcher);
+  EXPECT_EQ(
+      PathSelectionCriteria(criteria).tryOverrideMultipathSelection(
+          pathsToOverride_),
+      pathsToOverride_);
+
+  expensive.unlinkRouteInfo(*communityPath);
+  inexpensive.unlinkRouteInfo(*otherPath);
 }
 
 /*

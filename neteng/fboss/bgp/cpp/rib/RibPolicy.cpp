@@ -18,6 +18,7 @@
 
 #include <re2/re2.h>
 #include <algorithm>
+#include <limits>
 #include <memory>
 
 #include <fmt/format.h>
@@ -32,7 +33,8 @@ using namespace rib_policy;
 /*
  * BgpPathMatcher
  */
-BgpPathMatcher::BgpPathMatcher(const TBgpPathMatcher& matcher) {
+BgpPathMatcher::BgpPathMatcher(const TBgpPathMatcher& matcher)
+    : prefersLowestIgpCost_(matcher.prefer_lowest_igp_cost().value_or(false)) {
   if (matcher.community_list()) {
     matches_.emplace_back(std::make_unique<CommunityMatch>(matcher));
   }
@@ -48,7 +50,10 @@ BgpPathMatcher::BgpPathMatcher(const TBgpPathMatcher& matcher) {
   if (matcher.min_lbw_bps()) {
     matches_.emplace_back(std::make_unique<MinLbwBpsMatch>(matcher));
   }
-  if (matches_.empty()) {
+  const bool hasOnlyEmptyCommunityMatch = prefersLowestIgpCost_ &&
+      matches_.size() == 1 && matcher.community_list() &&
+      matcher.community_list()->communities()->empty();
+  if (matches_.empty() || hasOnlyEmptyCommunityMatch) {
     throw BgpError("missing matches in bgp path matcher");
   }
 }
@@ -65,6 +70,19 @@ bool BgpPathMatcher::match(const std::shared_ptr<RouteInfo>& path) const {
 /*
  * PathSelectionCriteria
  */
+PathSelectionCriteria::PathSelectionCriteria(
+    const rib_policy::TPathSelectionCriteria& criteria)
+    : tCriteria_(criteria),
+      pathMatchers_(getPathMatchers(criteria)),
+      hasLowestIgpCostMatcher_(
+          std::any_of(
+              pathMatchers_.begin(),
+              pathMatchers_.end(),
+              [](const auto& matcher) {
+                return matcher->prefersLowestIgpCost();
+              })),
+      minNexthop_(criteria.min_nexthop().to_optional()) {}
+
 TPathSelectionCriteria PathSelectionCriteria::toThrift() const {
   return tCriteria_;
 }
@@ -84,14 +102,35 @@ PathSelectionCriteria::getPathMatchers(const TPathSelectionCriteria& criteria) {
 std::vector<std::shared_ptr<RouteInfo>>
 PathSelectionCriteria::tryOverrideMultipathSelection(
     const std::vector<std::shared_ptr<RouteInfo>>& paths) const {
+  std::vector<uint32_t> lowestCosts(
+      hasLowestIgpCostMatcher_ ? pathMatchers_.size() : 0,
+      std::numeric_limits<uint32_t>::max());
+  for (size_t i = 0; i < lowestCosts.size(); ++i) {
+    const auto& matcher = pathMatchers_.at(i);
+    if (!matcher->prefersLowestIgpCost()) {
+      continue;
+    }
+    for (const auto& path : paths) {
+      if (matcher->match(path)) {
+        lowestCosts.at(i) =
+            std::min(lowestCosts.at(i), path->getIgpCostValue());
+      }
+    }
+  }
+
   std::vector<std::shared_ptr<RouteInfo>> multipaths;
   for (const auto& path : paths) {
-    for (const auto& matcher : pathMatchers_) {
-      // if path matches one matcher, include the path
-      if (matcher->match(path)) {
-        multipaths.emplace_back(path);
-        break;
+    for (size_t i = 0; i < pathMatchers_.size(); ++i) {
+      const auto& matcher = pathMatchers_.at(i);
+      if (!matcher->match(path)) {
+        continue;
       }
+      if (matcher->prefersLowestIgpCost() &&
+          path->getIgpCostValue() != lowestCosts.at(i)) {
+        continue;
+      }
+      multipaths.emplace_back(path);
+      break;
     }
   }
 
@@ -840,6 +879,10 @@ NextHopWeightAction::getPathMatchers(const TNextHopWeightAction& action) {
     throw BgpError("missing path matchers in next-hop weight action");
   }
   for (const auto& matcher : *action.path_matchers()) {
+    if (matcher.prefer_lowest_igp_cost().value_or(false)) {
+      throw BgpError(
+          "prefer_lowest_igp_cost is only supported for path selection");
+    }
     pathMatchers.emplace_back(std::make_unique<BgpPathMatcher>(matcher));
   }
   return pathMatchers;
