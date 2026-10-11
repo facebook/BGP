@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <map>
 #include <set>
 #include <string>
 #include <string_view>
@@ -52,6 +53,8 @@ class BgpServiceBase
       Watchdog& watchdog,
       bool enable_thrift_protection);
   ~BgpServiceBase() override = default;
+
+  void getBuildInfo(std::map<std::string, std::string>& info) override;
 
   /**
    * [Logging]

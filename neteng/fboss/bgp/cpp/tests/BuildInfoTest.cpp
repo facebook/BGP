@@ -48,3 +48,14 @@ TEST(BuildInfoTest, LogWritesFieldLabelsToStream) {
   EXPECT_NE(std::string::npos, output.find("Built by"));
   EXPECT_NE(std::string::npos, output.find("Build Revision"));
 }
+
+TEST(BuildInfoTest, ToMapContainsCliVersionFields) {
+  const auto info = BuildInfo::toMap();
+
+  EXPECT_EQ(info.at("build_package_name"), "bgp");
+  EXPECT_EQ(
+      info.at("build_package_version"), BuildInfo::getBuildRevision());
+  EXPECT_EQ(info.at("build_revision"), BuildInfo::getBuildRevision());
+  EXPECT_EQ(info.at("build_user"), BuildInfo::getBuildUser());
+  EXPECT_EQ(info.at("build_platform"), BuildInfo::getBuildPlatform());
+}

@@ -37,6 +37,7 @@
 #include "neteng/fboss/bgp/cpp/BgpProfiler.h"
 #include "neteng/fboss/bgp/cpp/BgpServiceBase.h"
 #include "neteng/fboss/bgp/cpp/BgpServiceUtil.h"
+#include "neteng/fboss/bgp/cpp/common/BuildInfo.h"
 #include "neteng/fboss/bgp/cpp/common/EvbUtils.h"
 #include "neteng/fboss/bgp/cpp/peer/PeerManagerBase.h"
 #include "neteng/fboss/bgp/cpp/stats/StatsBase.h"
@@ -91,6 +92,11 @@ TBgpNetwork toBgpNetwork(const TIpPrefix& prefix, const TBgpPath& path) {
 } // namespace
 
 namespace facebook::bgp {
+
+void BgpServiceBase::getBuildInfo(
+    std::map<std::string, std::string>& info) {
+  info = BuildInfo::toMap();
+}
 
 BgpServiceBase::BgpServiceBase(
     PeerManagerBase& peerMgr,

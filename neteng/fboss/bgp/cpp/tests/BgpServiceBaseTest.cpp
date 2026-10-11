@@ -17,6 +17,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <map>
 #include <stdexcept>
 
 #include <folly/ScopeGuard.h>
@@ -496,6 +497,16 @@ TEST_F(BgpServiceBaseTestFixture, GetProcessUptimeSecondsTest) {
 
   const int64_t uptime2 = service_->getProcessUptimeSeconds();
   EXPECT_GE(uptime2, uptime1);
+}
+
+TEST_F(BgpServiceBaseTestFixture, GetBuildInfoReturnsRunningBinaryMetadata) {
+  std::map<std::string, std::string> info;
+
+  service_->getBuildInfo(info);
+
+  EXPECT_EQ(info.at("build_package_name"), "bgp");
+  EXPECT_FALSE(info.at("build_package_version").empty());
+  EXPECT_EQ(info.at("build_package_version"), info.at("build_revision"));
 }
 
 } // namespace facebook::bgp
