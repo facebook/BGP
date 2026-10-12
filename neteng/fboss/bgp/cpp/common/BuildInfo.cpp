@@ -88,6 +88,27 @@ const char* BuildInfo::getBuildMode() {
   return BuildInfo_kBuildMode;
 }
 
+std::map<std::string, std::string> BuildInfo::toMap() {
+  const auto packageName = std::string(getBuildPackageName()).empty()
+      ? "bgp"
+      : getBuildPackageName();
+  const auto packageVersion = std::string(getBuildPackageVersion()).empty()
+      ? getBuildRevision()
+      : getBuildPackageVersion();
+  return {
+      {"build_package_name", packageName},
+      {"build_package_version", packageVersion},
+      {"build_package_info",
+       fmt::format("{}-{}", packageName, packageVersion)},
+      {"build_user", getBuildUser()},
+      {"build_time", getBuildTime()},
+      {"build_host", getBuildHost()},
+      {"build_path", getBuildPath()},
+      {"build_platform", getBuildPlatform()},
+      {"build_revision", getBuildRevision()},
+  };
+}
+
 std::string BuildInfo::toDebugString() {
   return fmt::format(
       "\n  Built by: {}\n"

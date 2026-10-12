@@ -17,6 +17,7 @@
 #pragma once
 
 #include <inttypes.h>
+#include <map>
 #include <ostream>
 #include <string>
 
@@ -45,6 +46,9 @@ class BuildInfo {
   static const char* getBuildType();
   static const char* getBuildTool();
   static const char* getBuildMode();
+
+  /** Returns build metadata using the fb303-compatible build_* keys. */
+  static std::map<std::string, std::string> toMap();
 
   /**
    * Returns a formatted debug string with all build information.
