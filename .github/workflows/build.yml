@@ -41,6 +41,20 @@ jobs:
         run: sudo rm -rf ${{ github.workspace }}/*
       - name: Check out repository code
         uses: actions/checkout@v7
+      # Build in the FBOSS CentOS Stream 9 image through run-getdeps.py, as the
+      # internal BGP OSS builds do. The wrapper switches the image to clang and
+      # sets flags some dependencies need (e.g. HAVE_SETNS for iproute2); plain
+      # getdeps on the Ubuntu runner has never built this dependency closure.
+      # Neither the Dockerfile nor the wrapper ships in this repo, so both come
+      # from an FBOSS clone.
+      - name: Fetch FBOSS build tooling
+        run: git clone --depth 1 https://github.com/meta/fboss.git ${{ runner.temp }}/fboss
+      - name: Build FBOSS Docker image
+        run: >
+          sudo docker build ${{ runner.temp }}/fboss
+          -f ${{ runner.temp }}/fboss/fboss/oss/docker/Dockerfile
+          -t fboss_image
+          --build-arg USE_CLANG=true
       # Build DC against the FBOSS fsdb_client profile and BB against the
       # smaller exported_libraries profile. Separate build directories ensure
       # each variant configures and installs its own dependency closure.
@@ -51,39 +65,43 @@ jobs:
       # scratch dir nested in this repo makes it patch from the BGP root and fail
       # (e.g. boost -> "No such file or directory"). runner.temp is a sibling of
       # the checkout and is not a git repo.
+      # FBOSS_ROOT points run-getdeps.py at this checkout's getdeps instead of
+      # the FBOSS clone it runs from.
       - name: Build BGP ${{ matrix.variant }} (getdeps / CMake)
         run: >
-          sudo
-          env
-          BUILD_SAI_FAKE=1
-          FBOSS_BUILD_PROFILE=${{ matrix.fboss_profile }}
-          python3
-          build/fbcode_builder/getdeps.py
-          --allow-system-packages
-          --scratch-path
-          ${{ runner.temp }}/bgp-build-${{ matrix.variant }}
+          sudo docker run --rm
+          --cap-add=CAP_AUDIT_WRITE
+          -e FBOSS_ROOT=/var/FBOSS/fboss
+          -e FBOSS_BUILD_PROFILE=${{ matrix.fboss_profile }}
+          -v ${{ github.workspace }}:/var/FBOSS/fboss:z
+          -v ${{ runner.temp }}/fboss:/var/FBOSS/fboss_tools:ro
+          -v ${{ runner.temp }}/bgp-build-${{ matrix.variant }}:/var/FBOSS/tmp_bld_dir:z
+          fboss_image:latest
+          python3 /var/FBOSS/fboss_tools/fboss/oss/scripts/run-getdeps.py
           build
+          --allow-system-packages
+          --scratch-path /var/FBOSS/tmp_bld_dir
           --extra-cmake-defines='{"BGP_BUILD_VARIANT":"${{ matrix.variant }}"}'
           --src-dir=.
-          --num-jobs
-          18
+          --num-jobs 18
           bgp
       - name: Test BGP ${{ matrix.variant }} (getdeps / CTest)
         run: >
-          sudo
-          env
-          BUILD_SAI_FAKE=1
-          FBOSS_BUILD_PROFILE=${{ matrix.fboss_profile }}
-          python3
-          build/fbcode_builder/getdeps.py
-          --allow-system-packages
-          --scratch-path
-          ${{ runner.temp }}/bgp-build-${{ matrix.variant }}
+          sudo docker run --rm
+          --cap-add=CAP_AUDIT_WRITE
+          -e FBOSS_ROOT=/var/FBOSS/fboss
+          -e FBOSS_BUILD_PROFILE=${{ matrix.fboss_profile }}
+          -v ${{ github.workspace }}:/var/FBOSS/fboss:z
+          -v ${{ runner.temp }}/fboss:/var/FBOSS/fboss_tools:ro
+          -v ${{ runner.temp }}/bgp-build-${{ matrix.variant }}:/var/FBOSS/tmp_bld_dir:z
+          fboss_image:latest
+          python3 /var/FBOSS/fboss_tools/fboss/oss/scripts/run-getdeps.py
           test
+          --allow-system-packages
+          --scratch-path /var/FBOSS/tmp_bld_dir
           --extra-cmake-defines='{"BGP_BUILD_VARIANT":"${{ matrix.variant }}"}'
           --src-dir=.
-          --num-jobs
-          18
+          --num-jobs 18
           bgp
       - name: Restore build ownership
         if: always()
