@@ -19,6 +19,7 @@
  */
 #include "RouteFilter.h"
 
+#include <fmt/format.h>
 #include <folly/Optional.h>
 #include <folly/Overload.h>
 #include <folly/logging/xlog.h>
